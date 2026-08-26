@@ -39,8 +39,13 @@ import {
 } from '@/lib/market-pulse-defaults'
 import {
   defaultMarketPulseCombinedRows,
+  isAllTownsCity,
   marketPulseAllTownsAvgDom,
 } from '@/lib/market-pulse-combined-rows'
+import {
+  marketPulseHeatByCity,
+  marketPulseHeatLabel,
+} from '@/lib/market-pulse-favorability'
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
@@ -715,6 +720,19 @@ export function formatMarketDigestEmail(
   const stackedMetrics = marketPulseStackedMetrics(
     marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
   )
+  const heatByCity = marketPulseHeatByCity(
+    combined,
+    (r) => ({
+      monthsSupply: r.monthsSupply,
+      avgDaysOnMarket: r.avgDaysOnMarket,
+      closedCount: r.closedCount,
+      medianPrice: r.medianPrice,
+      priceDelta: r.priceDelta,
+      averagePrice: r.averagePrice,
+      saleToAskPct: r.saleToAskPct,
+    }),
+    (r) => isAllTownsCity(r.city),
+  )
   const stackedLines = [
     'TOWN METRICS STACKED (sales · Seller Friendly)',
     '---------------------------------------------',
@@ -722,8 +740,9 @@ export function formatMarketDigestEmail(
       ? ['(no town rows in cache yet)']
       : combined.flatMap((row) => {
           const city = row.city.trim() || '—'
+          const heat = heatByCity.get(row.city)
           return [
-            city,
+            heat == null ? city : `${city} — ${marketPulseHeatLabel(heat)}`,
             ...stackedMetrics.map((m) => `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${m.format(row)}`),
           ]
         })),

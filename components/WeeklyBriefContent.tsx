@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
+import MarketPulseHeatStrip from "@/components/MarketPulseHeatStrip";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import { fmtMoney } from "@/lib/listing-history";
 import { type MarketDigestSnapshot } from "@/lib/market-digest-types";
@@ -19,6 +20,7 @@ import {
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
 import {
+  marketPulseHeatByCity,
   sortRowsByBuyerFriendlyScore,
   unstackedFavorSortDir,
   type MarketPulseFavorSort,
@@ -79,16 +81,54 @@ const BAR_VALUE_ON_EMPTY = "text-[var(--mp-text)]";
 const ASIDE_SPAN_PCT = 16;
 /** The dollar value right-aligns across the whole track and must stay clear. */
 const VALUE_SPAN_PCT = 14;
+/**
+ * Strip held clear past the right edge of every track. A percent with no room
+ * left beside its fill moves out here instead of covering the fill or the
+ * dollars, and reserving the same strip on every bar keeps the shared price
+ * axis (Median / Delta / Average) lined up.
+ */
+const BAR_EXTERIOR_LANE = "mr-8 sm:mr-10";
+
+/**
+ * Where a bar's percent sits relative to the fill it describes.
+ * - `right` / `left`: on the track, just past the near edge of the fill.
+ * - `outside-right`: in the exterior lane past the track's right border.
+ * - `label`: back beside the row's own label, the only room left of the track.
+ */
+type BarAsidePlacement = "right" | "outside-right" | "left" | "label";
+
+/**
+ * A positive percent reads off the fill's right edge, then hops the track's
+ * right border once the fill reaches it or crowds the right-aligned dollars.
+ * A negative one mirrors that to the left, where the row label holds the only
+ * space outside the track.
+ */
+function barAsidePlacement(
+  leftPct: number,
+  widthPct: number,
+  negative: boolean,
+): BarAsidePlacement {
+  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
+  const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
+  if (negative) {
+    return fillLeft >= ASIDE_SPAN_PCT ? "left" : "label";
+  }
+  return 100 - fillRight >= ASIDE_SPAN_PCT + VALUE_SPAN_PCT
+    ? "right"
+    : "outside-right";
+}
 
 function BarValueOverlay({
   value,
   aside,
+  asidePlacement = "right",
   leftPct,
   widthPct,
   colorClass,
 }: {
   value: ReactNode;
   aside?: ReactNode;
+  asidePlacement?: BarAsidePlacement;
   leftPct: number;
   widthPct: number;
   colorClass?: string;
@@ -100,37 +140,22 @@ function BarValueOverlay({
   // Every value right-aligns in the grey track; only a full bar puts it on the fill.
   const valueColor =
     colorClass ?? (fillRight >= 95 ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
-  /**
-   * The aside (Delta % / List to ask %) reads against the bar it describes, so it
-   * follows the fill's right edge. Three placements, in order of preference:
-   * outside that edge on the track; centred on the fill in cream once the bar
-   * runs too near the dollar value to leave a gap; and back to the fill's left
-   * edge when the fill is also too narrow to hold the text — which is where a
-   * Delta span pinned to the top of the price axis ends up.
-   */
-  const placement =
-    100 - fillRight >= ASIDE_SPAN_PCT + VALUE_SPAN_PCT
-      ? "right"
-      : widthPct >= ASIDE_SPAN_PCT
-        ? "inside"
-        : "left";
-
+  // `label` puts the percent next to the row label instead of on the track.
+  const showAside = aside != null && asidePlacement !== "label";
   const asideClass =
-    placement === "right"
-      ? `justify-start pl-1 ${BAR_VALUE_ON_EMPTY}`
-      : placement === "inside"
-        ? `justify-center ${BAR_VALUE_ON_FILL}`
-        : `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`;
+    asidePlacement === "left"
+      ? `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`
+      : `justify-start pl-1 ${BAR_VALUE_ON_EMPTY}`;
   const asideStyle =
-    placement === "right"
-      ? { left: `${fillRight}%`, right: 0 }
-      : placement === "inside"
-        ? { left: `${fillLeft}%`, right: `${100 - fillRight}%` }
-        : { left: 0, right: `${100 - fillLeft}%` };
+    asidePlacement === "left"
+      ? { left: 0, right: `${100 - fillLeft}%` }
+      : asidePlacement === "outside-right"
+        ? { left: "100%" }
+        : { left: `${fillRight}%`, right: 0 };
 
   return (
     <>
-      {aside ? (
+      {showAside ? (
         <span className={`${base} ${asideClass}`} style={asideStyle}>
           {aside}
         </span>
@@ -141,6 +166,10 @@ function BarValueOverlay({
     </>
   );
 }
+
+/** Percent shown beside a row label when it cannot fit around its own bar. */
+const BAR_ASIDE_LABEL_CLASS =
+  "shrink-0 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)]";
 
 const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
@@ -513,6 +542,7 @@ function BarChart<Row extends { city: string }>({
   sortValueOf,
   formatValue,
   formatValueAside,
+  asideNegative,
   explainDelta = false,
   scaleMax,
   barSpanOf,
@@ -538,6 +568,8 @@ function BarChart<Row extends { city: string }>({
   formatValue?: (row: Row, display: number | null, index: number) => string;
   /** Percent (or other) shown against the bar itself, not beside the dollar amount. */
   formatValueAside?: (row: Row, index: number) => string;
+  /** Settled sign of that percent — it decides which side of the fill it takes. */
+  asideNegative?: (row: Row) => boolean;
   /** Title “Delta” is a link with the mean-vs-median popup. */
   explainDelta?: boolean;
   /** When set (Median / Average / Delta), bars share one dollar axis. */
@@ -717,35 +749,51 @@ function BarChart<Row extends { city: string }>({
                   : title.startsWith("Closed")
                     ? "Closed sales"
                     : "Active inventory";
+          const asideText = formatValueAside?.(row, index);
+          const asidePlacement = barAsidePlacement(
+            aligned.leftPct,
+            aligned.widthPct,
+            asideNegative?.(row) ?? false,
+          );
+          const townName = onAllTownsToggle ? (
+            <TownName
+              city={row.city ?? label}
+              label={label}
+              href={href}
+              townsExpanded={townsExpanded}
+              onAllTownsToggle={onAllTownsToggle}
+              settle={settle}
+              rotateTownNames={rotateNames}
+            />
+          ) : href ? (
+            <Link
+              href={href}
+              className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
+            >
+              {label}
+            </Link>
+          ) : (
+            <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
+              {label}
+            </span>
+          );
           return (
             <li
               key={`${row.city}-${title}`}
               data-mp-town={row.city}
               className="grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"
             >
-              {onAllTownsToggle ? (
-                <TownName
-                  city={row.city ?? label}
-                  label={label}
-                  href={href}
-                  townsExpanded={townsExpanded}
-                  onAllTownsToggle={onAllTownsToggle}
-                  settle={settle}
-                  rotateTownNames={rotateNames}
-                />
-              ) : href ? (
-                <Link
-                  href={href}
-                  className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
-                >
-                  {label}
-                </Link>
-              ) : (
-                <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
-                  {label}
+              {asidePlacement === "label" && asideText ? (
+                <span className="flex min-w-0 items-baseline gap-1">
+                  <span className="min-w-0 truncate">{townName}</span>
+                  <span className={BAR_ASIDE_LABEL_CLASS}>{asideText}</span>
                 </span>
+              ) : (
+                townName
               )}
-              <div className="group relative h-4 rounded-sm bg-black/10 overflow-visible">
+              <div
+                className={`group relative h-4 rounded-sm bg-black/10 overflow-visible ${BAR_EXTERIOR_LANE}`}
+              >
                 <div className="h-full overflow-hidden rounded-sm">
                   <div
                     className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${barClassName}`}
@@ -757,9 +805,8 @@ function BarChart<Row extends { city: string }>({
                 </div>
                 <BarValueOverlay
                   value={valueText}
-                  aside={
-                    formatValueAside ? formatValueAside(row, index) : undefined
-                  }
+                  aside={asideText}
+                  asidePlacement={asidePlacement}
                   leftPct={aligned.leftPct}
                   widthPct={aligned.widthPct}
                   // Gold months-supply fill reads fine under the standard text,
@@ -861,6 +908,7 @@ function CombinedMetricsChart({
   closedBarMax = 0,
   townsExpanded,
   onAllTownsToggle,
+  scopeLabel,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -872,6 +920,8 @@ function CombinedMetricsChart({
   closedBarMax?: number;
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
+  /** Active tab scope for the heat strip tooltip, e.g. `sales` / `rentals`. */
+  scopeLabel: string;
 }) {
   const metrics = combinedMetrics(closedLookbackLabel);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
@@ -881,8 +931,28 @@ function CombinedMetricsChart({
       setBarScramble(null);
       return;
     }
-    setBarScramble(randomBarPercents(rows.length * metrics.length));
+    // One extra slot per row so the heat marker scrambles on its own number.
+    setBarScramble(randomBarPercents(rows.length * (metrics.length + 1)));
   }, [settle.phase, settle.tick, rows.length, metrics.length]);
+
+  const heatByCity = useMemo(
+    () =>
+      marketPulseHeatByCity(
+        rows,
+        (r) => ({
+          monthsSupply: r.monthsSupply,
+          avgDaysOnMarket: r.avgDaysOnMarket,
+          closedCount: r.closedCount,
+          medianPrice: r.medianPrice,
+          priceDelta: r.priceDelta,
+          averagePrice: r.averagePrice,
+          saleToAskPct: r.saleToAskPct,
+        }),
+        (r) => isAllTownsCity(r.city),
+      ),
+    [rows],
+  );
+  const heatPeerCount = rows.filter((r) => !isAllTownsCity(r.city)).length;
 
   if (rows.length === 0) {
     return (
@@ -990,6 +1060,19 @@ function CombinedMetricsChart({
     // labelOf still holds it for the email and text digest, which have no overlay.
     const stackedLabel =
       m.id === "saleToAsk" ? m.label : (m.labelOf?.(row) ?? m.label);
+    const asideText =
+      m.id === "priceDelta"
+        ? formatPriceDeltaPct(deltaPct)
+        : m.id === "saleToAsk"
+          ? formatSaleToAskPct(row.saleToAskPct)
+          : undefined;
+    // List to ask is a level in the high 90s, so only Delta can run negative.
+    const asidePlacement = barAsidePlacement(
+      aligned.leftPct,
+      aligned.widthPct,
+      m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0,
+    );
+    const asideOnLabel = asidePlacement === "label" ? asideText : undefined;
     return (
       <li
         key={m.id}
@@ -999,14 +1082,21 @@ function CombinedMetricsChart({
         {/* Labels right-align against the bar rather than flush under the town. */}
         {m.id === "priceDelta" ? (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
-            <MarketPulseDeltaLabel />
+            <MarketPulseDeltaLabel pctLabel={asideOnLabel} />
           </span>
         ) : (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
             {stackedLabel}
+            {asideOnLabel ? (
+              <span className="ml-1 shrink-0 tabular-nums text-[var(--mp-text)]">
+                {asideOnLabel}
+              </span>
+            ) : null}
           </span>
         )}
-        <div className="relative h-4 rounded-sm bg-black/10 overflow-visible">
+        <div
+          className={`relative h-4 rounded-sm bg-black/10 overflow-visible ${BAR_EXTERIOR_LANE}`}
+        >
           <div className="h-full overflow-hidden rounded-sm">
             <div
               className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${m.barClassName}`}
@@ -1025,13 +1115,8 @@ function CombinedMetricsChart({
                   )
                 : valueText
             }
-            aside={
-              m.id === "priceDelta"
-                ? formatPriceDeltaPct(deltaPct)
-                : m.id === "saleToAsk"
-                  ? formatSaleToAskPct(row.saleToAskPct)
-                  : undefined
-            }
+            aside={asideText}
+            asidePlacement={asidePlacement}
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
             // Gold months-supply fill reads fine under the standard text.
@@ -1064,21 +1149,40 @@ function CombinedMetricsChart({
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
+          const heat = heatByCity.get(row.city) ?? null;
           return (
             <li
               key={`combined-${row.city}`}
               data-mp-town={row.city}
               className="space-y-1"
             >
-              <TownName
-                city={row.city ?? label}
-                label={label}
-                href={href}
-                townsExpanded={townsExpanded}
-                onAllTownsToggle={onAllTownsToggle}
-                settle={settle}
-                rotateTownNames={rotateNames}
-              />
+              {/* Heat strip ends where the bar tracks do, so the two read as one chart. */}
+              <div
+                className={`flex min-w-0 items-center justify-between gap-3 ${BAR_EXTERIOR_LANE}`}
+              >
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={href}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
+                />
+                {heat != null ? (
+                  <MarketPulseHeatStrip
+                    townLabel={label}
+                    pct={settleBarPercent(
+                      heat * 100,
+                      rows.length * metrics.length + rowIndex,
+                      settle,
+                      barScramble,
+                    )}
+                    peerCount={heatPeerCount}
+                    scopeLabel={scopeLabel}
+                  />
+                ) : null}
+              </div>
               <ul className="space-y-1.5">
                 {metrics.map((m, metricIndex) => {
                   if (m.id === "averagePrice" || m.id === "priceDelta") {
@@ -1542,6 +1646,7 @@ export default function WeeklyBriefContent({
             closedBarMax={closedBarMax}
             townsExpanded={townsExpanded}
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            scopeLabel={scopeLabel}
           />
         ) : (
           <>
@@ -1662,6 +1767,9 @@ export default function WeeklyBriefContent({
                 1,
               ),
             )
+          }
+          asideNegative={(r) =>
+            (meanMinusMedian(r.averagePrice, r.medianPrice).pct ?? 0) < 0
           }
           explainDelta
           valueKind="int"

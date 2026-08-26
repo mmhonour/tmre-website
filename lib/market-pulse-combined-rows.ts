@@ -41,7 +41,8 @@ function cityKey(city: string): string {
   return city.trim().toLowerCase()
 }
 
-function isAllTownsCity(city: string): boolean {
+/** The market aggregate row, however the cache spelled it. */
+export function isAllTownsCity(city: string): boolean {
   const t = cityKey(city)
   return t === 'all' || t === 'all towns'
 }

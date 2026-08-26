@@ -157,26 +157,39 @@ function finiteOrNull(v: number | null | undefined): number | null {
   return v != null && Number.isFinite(v) ? v : null
 }
 
+const FAVOR_FACTORS: {
+  of: (i: MarketPulseFavorInputs) => number | null
+  /** True when a larger raw value is more buyer-friendly. */
+  buyerHigher: boolean
+  /**
+   * A town total rather than a level. An All-towns row sums its towns, so it
+   * always sits past the peer range and cannot be ranked against them.
+   */
+  townTotal?: boolean
+}[] = [
+  { of: (i) => finiteOrNull(i.monthsSupply), buyerHigher: true },
+  { of: (i) => finiteOrNull(i.avgDaysOnMarket), buyerHigher: true },
+  { of: (i) => finiteOrNull(i.closedCount), buyerHigher: false, townTotal: true },
+  { of: (i) => finiteOrNull(i.medianPrice), buyerHigher: false },
+  { of: (i) => finiteOrNull(i.priceDelta), buyerHigher: false },
+  { of: (i) => finiteOrNull(i.averagePrice), buyerHigher: false },
+  { of: (i) => finiteOrNull(i.saleToAskPct), buyerHigher: false },
+  { of: (i) => finiteOrNull(i.inventoryPerHome), buyerHigher: true },
+  { of: (i) => finiteOrNull(i.closed24moPerHome), buyerHigher: true },
+]
+
 /** Average of per-factor ranks in [0, 1]; null if no live factors present. */
 export function buyerFriendlyScore(
   inputs: MarketPulseFavorInputs,
   peers: readonly MarketPulseFavorInputs[],
+  options?: {
+    /** Score a market aggregate: drop the factors that are town totals. */
+    aggregate?: boolean
+  },
 ): number | null {
-  const factors: {
-    of: (i: MarketPulseFavorInputs) => number | null
-    /** True when a larger raw value is more buyer-friendly. */
-    buyerHigher: boolean
-  }[] = [
-    { of: (i) => finiteOrNull(i.monthsSupply), buyerHigher: true },
-    { of: (i) => finiteOrNull(i.avgDaysOnMarket), buyerHigher: true },
-    { of: (i) => finiteOrNull(i.closedCount), buyerHigher: false },
-    { of: (i) => finiteOrNull(i.medianPrice), buyerHigher: false },
-    { of: (i) => finiteOrNull(i.priceDelta), buyerHigher: false },
-    { of: (i) => finiteOrNull(i.averagePrice), buyerHigher: false },
-    { of: (i) => finiteOrNull(i.saleToAskPct), buyerHigher: false },
-    { of: (i) => finiteOrNull(i.inventoryPerHome), buyerHigher: true },
-    { of: (i) => finiteOrNull(i.closed24moPerHome), buyerHigher: true },
-  ]
+  const factors = options?.aggregate
+    ? FAVOR_FACTORS.filter((f) => !f.townTotal)
+    : FAVOR_FACTORS
 
   const ranks: number[] = []
   for (const factor of factors) {
@@ -192,11 +205,95 @@ export function buyerFriendlyScore(
       ranks.push(0.5)
     } else {
       const high = (self - min) / (max - min)
-      ranks.push(factor.buyerHigher ? high : 1 - high)
+      const rank = factor.buyerHigher ? high : 1 - high
+      ranks.push(Math.max(0, Math.min(1, rank)))
     }
   }
   if (ranks.length === 0) return null
   return ranks.reduce((a, b) => a + b, 0) / ranks.length
+}
+
+/**
+ * Position on the seller (0) ↔ buyer (1) spectrum for every row, keyed by city.
+ *
+ * Towns are ranked against each other; an All-towns row is ranked against those
+ * same towns on its level factors, so the market reads on the one scale its
+ * towns do. The composite is an average of per-factor ranks, which bunches
+ * every town near the middle, so the readings are then stretched across the
+ * span the towns actually cover. Stretching is monotonic, so the order still
+ * matches the Seller / Buyer Friendly sort — it only spends the whole scale.
+ */
+export function marketPulseHeatByCity<T extends { city: string }>(
+  rows: readonly T[],
+  inputsOf: (row: T) => MarketPulseFavorInputs,
+  isAllTowns: (row: T) => boolean,
+): Map<string, number> {
+  const peers = rows.filter((r) => !isAllTowns(r)).map(inputsOf)
+  const raw = new Map<string, number>()
+  for (const row of rows) {
+    const score = buyerFriendlyScore(inputsOf(row), peers, {
+      aggregate: isAllTowns(row),
+    })
+    if (score != null) raw.set(row.city, score)
+  }
+
+  const townScores = rows
+    .filter((r) => !isAllTowns(r))
+    .map((r) => raw.get(r.city))
+    .filter((s): s is number => s != null)
+  if (townScores.length === 0) return raw
+  const min = Math.min(...townScores)
+  const max = Math.max(...townScores)
+  if (max === min) {
+    return new Map([...raw.keys()].map((city) => [city, 0.5]))
+  }
+  return new Map(
+    [...raw].map(([city, score]) => [
+      city,
+      Math.max(0, Math.min(1, (score - min) / (max - min))),
+    ]),
+  )
+}
+
+/** Seller end first — the order a heat scale is drawn in. */
+export const MARKET_PULSE_HEAT_BAND_IDS = [
+  'seller-hot',
+  'seller-warm',
+  'balanced',
+  'buyer-warm',
+  'buyer-hot',
+] as const
+
+export type MarketPulseHeatBandId =
+  (typeof MARKET_PULSE_HEAT_BAND_IDS)[number]
+
+export type MarketPulseHeatBand = {
+  id: MarketPulseHeatBandId
+  /** Caption on the strip, e.g. `Seller hot`. */
+  label: string
+  /** The same reading from the other side, e.g. `buyer cold`. */
+  counter: string
+}
+
+const HEAT_BANDS: readonly (MarketPulseHeatBand & { max: number })[] = [
+  { max: 0.2, id: 'seller-hot', label: 'Seller hot', counter: 'buyer cold' },
+  { max: 0.4, id: 'seller-warm', label: 'Seller warm', counter: 'buyer cool' },
+  { max: 0.6, id: 'balanced', label: 'Balanced', counter: 'no side favoured' },
+  { max: 0.8, id: 'buyer-warm', label: 'Buyer warm', counter: 'seller cool' },
+  { max: 1.01, id: 'buyer-hot', label: 'Buyer hot', counter: 'seller cold' },
+]
+
+/** Composite (0 = seller end, 1 = buyer end) → heat band. */
+export function marketPulseHeatBand(score: number): MarketPulseHeatBand {
+  const clamped = Math.max(0, Math.min(1, score))
+  const band = HEAT_BANDS.find((b) => clamped < b.max) ?? HEAT_BANDS[4]
+  return { id: band.id, label: band.label, counter: band.counter }
+}
+
+/** One-line reading, e.g. `Seller hot — buyer cold`. */
+export function marketPulseHeatLabel(score: number): string {
+  const band = marketPulseHeatBand(score)
+  return `${band.label} — ${band.counter}`
 }
 
 export function sortRowsByBuyerFriendlyScore<T>(
