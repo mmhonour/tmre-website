@@ -142,12 +142,13 @@ export default function ShowcaseCompsMap({
           ))}
         </div>
         <div className="flex items-center gap-1">
+          {/* Sizing is meaningless on a phone — the sheet is already full screen. */}
           {onToggleExpanded ? (
             <button
               type="button"
               onClick={onToggleExpanded}
               aria-pressed={expanded}
-              className="px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white"
+              className="hidden px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white lg:block"
             >
               {expanded ? "Shrink" : "Full size"}
             </button>
@@ -157,7 +158,7 @@ export default function ShowcaseCompsMap({
               type="button"
               onClick={onExit}
               aria-label="Exit map view"
-              className="inline-flex h-6 w-6 items-center justify-center font-mono text-sm leading-none text-white/60 transition-colors hover:bg-white/15 hover:text-white"
+              className="inline-flex h-9 w-9 items-center justify-center font-mono text-base leading-none text-white/70 transition-colors hover:bg-white/15 hover:text-white lg:h-6 lg:w-6 lg:text-sm"
             >
               ✕
             </button>

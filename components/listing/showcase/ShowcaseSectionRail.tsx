@@ -93,14 +93,17 @@ export default function ShowcaseSectionRail({
    */
   const mapOverlay = mapOpen ? (
     /*
-     * Clears the site's fixed header, which is roughly 77px tall on mobile and
-     * 85px on desktop — the usual pt-20/pt-24 offsets leave too little room and
-     * the header's zip / mail / phone cluster (z-50) paints over the map,
-     * especially once it is expanded to full width.
+     * Phone: a full-screen sheet. A right-hand column on a 390px screen is a
+     * tall thin slice of geography, leaves a useless strip of photo beside it,
+     * and still swallows touch because the map owns pan and pinch.
+     *
+     * Desktop: a column beside the photo, offset to clear the fixed header —
+     * roughly 85px tall, so the usual pt-24 leaves the header's zip / mail /
+     * phone cluster (z-50) painting over the map.
      */
     <div
-      className={`absolute bottom-0 right-0 top-24 z-40 flex flex-col lg:top-28 ${
-        mapExpanded ? "w-[min(50vw,44rem)] max-lg:w-full" : RAIL_WIDTH
+      className={`flex flex-col max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-0 lg:top-28 lg:z-40 ${
+        mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
       <button
