@@ -127,6 +127,10 @@ export type MarketPulseTownMetric = ReturnType<
 /**
  * One town's pulse: its name, its buyer/seller heat, and the stacked bars.
  *
+ * This is the stacked view's town block, and only that. The unstacked view is
+ * one chart per metric ranking every town against each other, which has no
+ * single-town form to lift out, so a listing page always shows this.
+ *
  * Self-contained on purpose. Everything that comes from the towns around it
  * arrives in `scale`, so a host with a single town — a listing page showing the
  * pulse for the town that listing sits in — renders the same markup as the
