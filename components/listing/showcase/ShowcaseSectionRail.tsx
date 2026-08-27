@@ -82,8 +82,10 @@ export default function ShowcaseSectionRail({
    * the tiles in place instead of unmounting them and shifting the stack.
    */
   const mapOverlay = mapOpen ? (
+    // Starts below the site's fixed nav — at inset-y-0 the collapse header
+    // renders underneath it and cannot be clicked.
     <div
-      className={`absolute inset-y-0 right-0 z-40 flex flex-col ${
+      className={`absolute bottom-0 right-0 top-20 z-40 flex flex-col lg:top-24 ${
         mapExpanded ? "w-[min(50vw,44rem)] max-lg:w-full" : RAIL_WIDTH
       }`}
     >
