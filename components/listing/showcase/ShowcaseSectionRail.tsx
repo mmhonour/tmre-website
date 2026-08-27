@@ -57,6 +57,24 @@ function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/**
+ * The comps pool reaches back further than its nominal lookback — this subject
+ * returns 48 sold comps spanning ~2.5 years — so the headline figure has to be
+ * filtered by close date rather than taken as the array length.
+ */
+function countSoldWithinYear(
+  sold: readonly { closeDate?: string | null }[],
+): number {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const cutoffMs = cutoff.getTime();
+  return sold.filter((comp) => {
+    if (!comp.closeDate) return false;
+    const closed = Date.parse(comp.closeDate);
+    return Number.isFinite(closed) && closed >= cutoffMs;
+  }).length;
+}
+
 type CompsCounts = { active: number; sold: number };
 type IfAmounts = { sale: number | null; rent: number | null };
 
@@ -97,11 +115,15 @@ export default function ShowcaseSectionRail({
     let cancelled = false;
     // Both are already in the tab-data cache in most cases, so this is usually
     // a memory read rather than a second request.
-    void loadTabJson<{ sold?: unknown[]; active?: unknown[] }>(
-      `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
-    ).then((d) => {
+    void loadTabJson<{
+      sold?: { closeDate?: string | null }[];
+      active?: unknown[];
+    }>(`/api/listings/${encodeURIComponent(mlsId)}/comparables`).then((d) => {
       if (cancelled || !d) return;
-      setCounts({ active: d.active?.length ?? 0, sold: d.sold?.length ?? 0 });
+      setCounts({
+        active: d.active?.length ?? 0,
+        sold: countSoldWithinYear(d.sold ?? []),
+      });
     });
     void loadTabJson<{
       sale?: { amount?: number | null };
@@ -176,7 +198,7 @@ export default function ShowcaseSectionRail({
         >
           <span className="shrink-0">{label}</span>
           {showFigures && figures ? (
-            <span className="ml-3 flex flex-1 items-center justify-end gap-3 normal-case tracking-[0.08em] text-white">
+            <span className="ml-3 flex flex-1 items-center justify-end gap-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
               {figures}
             </span>
           ) : null}
@@ -257,7 +279,7 @@ export default function ShowcaseSectionRail({
         }}
         className={isDesktop ? "cursor-pointer hover:text-gold" : undefined}
       >
-        {counts.sold} Sold
+        {counts.sold} Sold in 12 months
       </span>
     </>
   ) : null;
