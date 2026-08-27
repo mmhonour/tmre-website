@@ -142,17 +142,6 @@ export default function ShowcaseCompsMap({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          {/* Sizing is meaningless on a phone — the sheet is already full screen. */}
-          {onToggleExpanded ? (
-            <button
-              type="button"
-              onClick={onToggleExpanded}
-              aria-pressed={expanded}
-              className="hidden px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white lg:block"
-            >
-              {expanded ? "Shrink" : "Full size"}
-            </button>
-          ) : null}
           {onExit ? (
             <button
               type="button"
@@ -182,6 +171,18 @@ export default function ShowcaseCompsMap({
           className="h-full"
           heightClass="h-full"
         />
+        {/* Over the map, opposite its zoom controls. Sizing is meaningless on a
+            phone, where the sheet is already full screen. */}
+        {onToggleExpanded ? (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-pressed={expanded}
+            className="absolute right-2 top-2 z-20 hidden rounded-md border border-white/15 bg-navy/85 px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85 shadow-lg backdrop-blur-sm transition-colors hover:text-gold lg:block"
+          >
+            {expanded ? "Shrink" : "Full size"}
+          </button>
+        ) : null}
         <Compass />
       </div>
     </div>

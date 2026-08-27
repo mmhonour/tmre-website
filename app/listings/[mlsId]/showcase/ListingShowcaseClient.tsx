@@ -8,7 +8,12 @@ import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRa
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
-import { formatMlsStatus, primaryListingPrice } from "@/lib/listing-history";
+import { formatListingHeaderPrice } from "@/lib/listing-header-price";
+import {
+  formatMlsStatus,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { isRentalListing } from "@/lib/listing-kind";
 import {
@@ -209,6 +214,12 @@ export default function ListingShowcaseClient({
   const city = townHint || listing.address.city;
   const status = formatMlsStatus(listing.status);
   const insight = data?.insight?.trim() || null;
+  const primaryPrice = primaryListingPrice(listing);
+  const priceIsClosed = primaryListingPriceIsClosed(listing);
+  const headerPrice =
+    primaryPrice != null && primaryPrice > 0
+      ? formatListingHeaderPrice(primaryPrice)
+      : null;
   const isRental = isRentalListing(listing);
   const remarks =
     listing.remarks?.trim() ||
@@ -282,7 +293,7 @@ export default function ListingShowcaseClient({
         />
 
         <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
-          <div className="mx-auto w-full max-w-7xl">
+          <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-6">
             <div className="max-w-xl">
               <span className="inline-flex bg-[#0d1424]/85 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
                 {status}
@@ -296,6 +307,18 @@ export default function ListingShowcaseClient({
                   .join(" ")}
               </p>
             </div>
+
+            {headerPrice ? (
+              <div className="shrink-0 text-right">
+                <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
+                  {priceIsClosed ? "Closed at" : "Offered at"}
+                </p>
+                {/* Same treatment the detail header uses beside the score. */}
+                <p className="mt-1 font-serif text-3xl font-bold tabular-nums leading-none text-gold lg:text-4xl">
+                  {headerPrice}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-end gap-5 sm:grid-cols-[1fr_auto_1fr]">
