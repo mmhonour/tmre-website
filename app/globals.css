@@ -889,6 +889,29 @@ html.listing-split-test body {
   paint-order: stroke fill;
 }
 
+/* Mobile rail tiles hide their figures until tapped; the pulsing chevrons are
+   the affordance that says there is more behind the label. */
+@keyframes showcaseChevronPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.showcase-chevron-pulse {
+  animation: showcaseChevronPulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .showcase-chevron-pulse {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
 /* Second line of defence for type sitting over a busy or blown-out photo. */
 .listing-showcase-type {
   text-shadow:

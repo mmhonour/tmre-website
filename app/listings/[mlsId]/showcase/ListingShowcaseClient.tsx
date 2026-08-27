@@ -286,7 +286,7 @@ export default function ListingShowcaseClient({
         <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
           <div className="mx-auto w-full max-w-7xl">
             <div className="max-w-xl">
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
+              <span className="inline-flex bg-[#0d1424]/85 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
                 {status}
               </span>
               <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
