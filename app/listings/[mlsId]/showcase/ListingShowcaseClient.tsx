@@ -282,7 +282,23 @@ export default function ListingShowcaseClient({
           onNext={() => step(1)}
         />
 
-        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-end px-4 pb-10 sm:px-8 lg:px-12 lg:pb-14">
+        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
+          <div className="mx-auto w-full max-w-7xl">
+            <div className="max-w-xl">
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
+                {status}
+              </span>
+              <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
+                {street}
+              </h1>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
+                {[city, listing.address.state, listing.address.postalCode]
+                  .filter(Boolean)
+                  .join(" ")}
+              </p>
+            </div>
+          </div>
+
           <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-end gap-5 sm:grid-cols-[1fr_auto_1fr]">
             <button
               type="button"

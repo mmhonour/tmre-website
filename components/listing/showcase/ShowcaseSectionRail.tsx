@@ -53,8 +53,7 @@ export default function ShowcaseSectionRail({
   const [mapOpen, setMapOpen] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
 
-  const toggle = (id: CardId) =>
-    setOpenCard((cur) => (cur === id ? null : id));
+  const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
 
   const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
     const open = openCard === id;
@@ -78,98 +77,114 @@ export default function ShowcaseSectionRail({
     );
   };
 
-  if (mapOpen) {
-    return (
-      <div
-        className={`absolute inset-y-0 right-0 z-30 flex flex-col ${
-          mapExpanded ? "w-[min(50vw,44rem)] max-lg:w-full" : RAIL_WIDTH
-        }`}
+  /**
+   * Map is a sibling overlay rather than a replacement, so opening it covers
+   * the tiles in place instead of unmounting them and shifting the stack.
+   */
+  const mapOverlay = mapOpen ? (
+    <div
+      className={`absolute inset-y-0 right-0 z-40 flex flex-col ${
+        mapExpanded ? "w-[min(50vw,44rem)] max-lg:w-full" : RAIL_WIDTH
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => setMapOpen(false)}
+        aria-expanded
+        className={`${pillClass(true)} shrink-0`}
       >
-        <button
-          type="button"
-          onClick={() => setMapOpen(false)}
-          aria-expanded
-          className={pillClass(true)}
-        >
-          <span className="flex-1">Map</span>
-          <Chevron open />
-        </button>
-        <div className="min-h-0 flex-1">
-          <ShowcaseCompsMap
-            mlsId={mlsId}
-            subject={subject}
-            townHint={townHint}
-            expanded={mapExpanded}
-            onToggleExpanded={() => setMapExpanded((on) => !on)}
-          />
-        </div>
+        <span className="flex-1">Map</span>
+        <Chevron open />
+      </button>
+      <div className="min-h-0 flex-1">
+        <ShowcaseCompsMap
+          mlsId={mlsId}
+          subject={subject}
+          townHint={townHint}
+          expanded={mapExpanded}
+          onToggleExpanded={() => setMapExpanded((on) => !on)}
+        />
       </div>
-    );
-  }
+    </div>
+  ) : null;
 
   /**
    * Top-anchored rather than centred so an open card only ever grows downward;
    * the offset puts the step arrow on the vertical middle when nothing is open.
    */
   return (
-    <div
-      className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
-    >
-      {cardPill(
-        "insight",
-        "Insight",
-        insight ? (
-          <ListingInsightCopy
-            text={insight}
-            className="text-sm leading-relaxed text-white/80"
-          />
-        ) : (
-          <p className="text-sm text-white/50">No insight for this listing.</p>
-        ),
-      )}
-
-      {cardPill(
-        "details",
-        "Details",
-        <dl className="divide-y divide-white/10">
-          {detailRows.map((row) => (
-            <div key={row.label} className="flex items-baseline justify-between gap-4 py-2">
-              <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
-                {row.label}
-              </dt>
-              <dd className="text-right text-sm text-white/90">{row.value}</dd>
-            </div>
-          ))}
-        </dl>,
-      )}
-
-      <button
-        type="button"
-        onClick={() => scrollToShowcaseSection("comps")}
-        className={pillClass(false)}
+    <>
+      {mapOverlay}
+      <div
+        className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
-        <span className="flex-1">Comps</span>
-      </button>
+        {cardPill(
+          "insight",
+          "Insight",
+          insight ? (
+            <ListingInsightCopy
+              text={insight}
+              className="text-sm leading-relaxed text-white/80"
+            />
+          ) : (
+            <p className="text-sm text-white/50">
+              No insight for this listing.
+            </p>
+          ),
+        )}
 
-      <ShowcaseStepArrow direction="next" label="Next photo" onClick={onNext} />
+        {cardPill(
+          "details",
+          "Details",
+          <dl className="divide-y divide-white/10">
+            {detailRows.map((row) => (
+              <div
+                key={row.label}
+                className="flex items-baseline justify-between gap-4 py-2"
+              >
+                <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
+                  {row.label}
+                </dt>
+                <dd className="text-right text-sm text-white/90">
+                  {row.value}
+                </dd>
+              </div>
+            ))}
+          </dl>,
+        )}
 
-      <button
-        type="button"
-        onClick={() => scrollToShowcaseSection("if")}
-        className={pillClass(false)}
-      >
-        <span className="flex-1">What if</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => scrollToShowcaseSection("comps")}
+          className={pillClass(false)}
+        >
+          <span className="flex-1">Comps</span>
+        </button>
 
-      <button
-        type="button"
-        onClick={() => setMapOpen(true)}
-        aria-expanded={false}
-        className={pillClass(false)}
-      >
-        <span className="flex-1">Map</span>
-        <Chevron open={false} />
-      </button>
-    </div>
+        <ShowcaseStepArrow
+          direction="next"
+          label="Next photo"
+          onClick={onNext}
+        />
+
+        <button
+          type="button"
+          onClick={() => scrollToShowcaseSection("if")}
+          className={pillClass(false)}
+        >
+          <span className="flex-1">What if</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMapOpen(true)}
+          aria-expanded={false}
+          className={pillClass(false)}
+        >
+          <span className="flex-1">Map</span>
+          <Chevron open={false} />
+        </button>
+      </div>
+    </>
   );
 }

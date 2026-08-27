@@ -144,11 +144,14 @@ export default function ShowcaseCompsMap({
       </div>
 
       <div className="relative min-h-0 flex-1">
+        {/* DealBoardMap puts `heightClass` on an inner div, so its own outer
+            wrapper needs a height too or `h-full` resolves against auto. */}
         <DealBoardMap
           listings={listings}
           activeKey={activeKey}
           onSelect={setActiveKey}
           hrefFor={(l) => listingDetailHref(l.key, l.address, l.city ?? townHint)}
+          className="h-full"
           heightClass="h-full"
         />
         <Compass />
