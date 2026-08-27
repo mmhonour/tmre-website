@@ -11,8 +11,6 @@ import type { ShowcaseListing } from "@/components/listing/showcase/showcase-typ
 import { formatMlsStatus, primaryListingPrice } from "@/lib/listing-history";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { isRentalListing } from "@/lib/listing-kind";
-import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
-import { propertyTaxFromRaw } from "@/lib/listing-property-tax";
 import {
   listingDetailHref,
   listingPhotoProxyUrlsFromCount,
@@ -210,8 +208,6 @@ export default function ListingShowcaseClient({
   const street = listing.address.street || listing.address.full || addressHint || "";
   const city = townHint || listing.address.city;
   const status = formatMlsStatus(listing.status);
-  const lotAcres = parseLotAcresFromRaw(listing.raw);
-  const tax = propertyTaxFromRaw(listing.raw);
   const insight = data?.insight?.trim() || null;
   const isRental = isRentalListing(listing);
   const remarks =
@@ -221,15 +217,17 @@ export default function ListingShowcaseClient({
       .join("\n\n");
 
   const detailRows = [
-    { label: "Lot", value: fmtAcres(lotAcres) ?? "—" },
+    { label: "Lot", value: fmtAcres(listing.lotAcres) ?? "—" },
     { label: "MLS #", value: listing.mlsId },
     { label: "Status", value: status },
     { label: "Type", value: listing.propertyType || "—" },
     { label: "Style", value: listing.style || "—" },
     { label: "Days on market", value: listing.dom != null ? String(listing.dom) : "—" },
     {
-      label: tax.yearLabel ? `Taxes (${tax.yearLabel})` : "Taxes",
-      value: fmtFullMoney(tax.annualAmount) ?? "—",
+      label: listing.propertyTaxYear
+        ? `Taxes (${listing.propertyTaxYear})`
+        : "Taxes",
+      value: fmtFullMoney(listing.propertyTax) ?? "—",
     },
     { label: "Elementary", value: listing.schools.elementary || "—" },
     { label: "High school", value: listing.schools.high || "—" },

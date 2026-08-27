@@ -57,25 +57,8 @@ function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-/**
- * The comps pool reaches back further than its nominal lookback — this subject
- * returns 48 sold comps spanning ~2.5 years — so the headline figure has to be
- * filtered by close date rather than taken as the array length.
- */
-function countSoldWithinYear(
-  sold: readonly { closeDate?: string | null }[],
-): number {
-  const cutoff = new Date();
-  cutoff.setFullYear(cutoff.getFullYear() - 1);
-  const cutoffMs = cutoff.getTime();
-  return sold.filter((comp) => {
-    if (!comp.closeDate) return false;
-    const closed = Date.parse(comp.closeDate);
-    return Number.isFinite(closed) && closed >= cutoffMs;
-  }).length;
-}
 
-type CompsCounts = { active: number; sold: number };
+type CompsCounts = { active: number; sold: number; soldMonths: number };
 type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
@@ -116,13 +99,15 @@ export default function ShowcaseSectionRail({
     // Both are already in the tab-data cache in most cases, so this is usually
     // a memory read rather than a second request.
     void loadTabJson<{
-      sold?: { closeDate?: string | null }[];
       active?: unknown[];
+      soldWithinLookbackCount?: number;
+      soldLookbackMonths?: number;
     }>(`/api/listings/${encodeURIComponent(mlsId)}/comparables`).then((d) => {
       if (cancelled || !d) return;
       setCounts({
         active: d.active?.length ?? 0,
-        sold: countSoldWithinYear(d.sold ?? []),
+        sold: d.soldWithinLookbackCount ?? 0,
+        soldMonths: d.soldLookbackMonths ?? 12,
       });
     });
     void loadTabJson<{
@@ -279,7 +264,7 @@ export default function ShowcaseSectionRail({
         }}
         className={isDesktop ? "cursor-pointer hover:text-gold" : undefined}
       >
-        {counts.sold} Sold in 12 months
+        {counts.sold} Sold in {counts.soldMonths} months
       </span>
     </>
   ) : null;

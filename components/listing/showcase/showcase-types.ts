@@ -21,6 +21,10 @@ export type ShowcaseListing = {
   dom: number | null;
   latitude: number | null;
   longitude: number | null;
+  /** Denormalised at sync — do not re-derive these from `raw` on the client. */
+  lotAcres: number | null;
+  propertyTax: number | null;
+  propertyTaxYear: string | null;
   modificationTimestamp: string | null;
   photoCount: number | null;
   remarks: string | null;
