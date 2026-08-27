@@ -240,12 +240,13 @@ export default function ShowcaseDetailsPanel({
                 from here or the map collapses to nothing. */}
             {/* Same deal-board engine as Intelligence: real pan / wheel zoom
                 and a pin per comparable, with the subject alongside them. */}
-            <ShowcaseCompsMap
-              mlsId={listing.mlsId}
-              subject={subject}
-              townHint={city}
-              heightClass="h-[20rem] sm:h-[26rem]"
-            />
+            <div className="h-[20rem] w-full sm:h-[26rem]">
+              <ShowcaseCompsMap
+                mlsId={listing.mlsId}
+                subject={subject}
+                townHint={city}
+              />
+            </div>
           </Section>
         </div>
       </div>

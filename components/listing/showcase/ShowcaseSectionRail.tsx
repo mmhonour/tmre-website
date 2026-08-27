@@ -8,9 +8,11 @@ import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseDetailRow } from "@/components/listing/showcase/showcase-types";
 
-type CardId = "insight" | "details" | "map";
+type CardId = "insight" | "details";
 
-/** Rectangular, borderless, full rail width, label left-aligned. */
+const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
+
+/** Rectangular, borderless, flush-stacked, label left-aligned. */
 const pillClass = (open: boolean) =>
   `flex w-full items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
     open
@@ -18,13 +20,19 @@ const pillClass = (open: boolean) =>
       : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
   }`;
 
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <span aria-hidden className="ml-3 font-mono text-white/60">
+      {open ? "↑" : "↓"}
+    </span>
+  );
+}
+
 /**
- * Rail of rectangular tiles floating over the right of the photo, inset from
- * the screen edge. Insight / Details / Map expand a card in flow directly
- * under their own tile, pushing the tiles below them down; clicking the tile
- * again collapses it. What if jumps to its section, Comps leaves for its route.
- * The next-photo arrow sits inside the stack so it lands on the vertical
- * middle of the photo.
+ * Rail of flush rectangular tiles over the right of the photo. Insight and
+ * Details expand in flow beneath their own tile; Map takes over the whole
+ * right column instead, since a map short enough to sit in the stack ran off
+ * the bottom of the frame. What if and Comps jump to their sections below.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -42,14 +50,13 @@ export default function ShowcaseSectionRail({
   onNext: () => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
-  const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(false);
 
-  const cardPill = (
-    id: CardId,
-    label: string,
-    body: React.ReactNode,
-    padded = true,
-  ) => {
+  const toggle = (id: CardId) =>
+    setOpenCard((cur) => (cur === id ? null : id));
+
+  const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
     const open = openCard === id;
     return (
       <div className="w-full">
@@ -60,16 +67,10 @@ export default function ShowcaseSectionRail({
           className={pillClass(open)}
         >
           <span className="flex-1">{label}</span>
-          <span aria-hidden className="ml-3 text-white/60">
-            {open ? "−" : "+"}
-          </span>
+          <Chevron open={open} />
         </button>
         {open ? (
-          <div
-            className={`bg-[#0d1424]/95 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md ${
-              padded ? "max-h-[60vh] overflow-y-auto overscroll-contain p-4" : ""
-            }`}
-          >
+          <div className="max-h-[60vh] overflow-y-auto overscroll-contain bg-[#0d1424]/95 p-4 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
             {body}
           </div>
         ) : null}
@@ -77,13 +78,43 @@ export default function ShowcaseSectionRail({
     );
   };
 
+  if (mapOpen) {
+    return (
+      <div
+        className={`absolute inset-y-0 right-0 z-30 flex flex-col ${
+          mapExpanded ? "w-[min(50vw,44rem)] max-lg:w-full" : RAIL_WIDTH
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setMapOpen(false)}
+          aria-expanded
+          className={pillClass(true)}
+        >
+          <span className="flex-1">Map</span>
+          <Chevron open />
+        </button>
+        <div className="min-h-0 flex-1">
+          <ShowcaseCompsMap
+            mlsId={mlsId}
+            subject={subject}
+            townHint={townHint}
+            expanded={mapExpanded}
+            onToggleExpanded={() => setMapExpanded((on) => !on)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   /**
-   * Top-anchored rather than centred so an open card only ever grows downward
-   * — the offset puts the step arrow on the vertical middle when nothing is
-   * open, and lets the map run to the foot of the photo when Map is.
+   * Top-anchored rather than centred so an open card only ever grows downward;
+   * the offset puts the step arrow on the vertical middle when nothing is open.
    */
   return (
-    <div className="absolute right-3 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] w-[min(24rem,calc(100vw-3rem))] flex-col items-end gap-2 overflow-y-auto sm:right-6">
+    <div
+      className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
+    >
       {cardPill(
         "insight",
         "Insight",
@@ -117,7 +148,7 @@ export default function ShowcaseSectionRail({
         onClick={() => scrollToShowcaseSection("comps")}
         className={pillClass(false)}
       >
-        Comps
+        <span className="flex-1">Comps</span>
       </button>
 
       <ShowcaseStepArrow direction="next" label="Next photo" onClick={onNext} />
@@ -127,21 +158,18 @@ export default function ShowcaseSectionRail({
         onClick={() => scrollToShowcaseSection("if")}
         className={pillClass(false)}
       >
-        What if
+        <span className="flex-1">What if</span>
       </button>
 
-      {cardPill(
-        "map",
-        "Map",
-        <ShowcaseCompsMap
-          mlsId={mlsId}
-          subject={subject}
-          townHint={townHint}
-          // Runs from the Map tile down to roughly the foot of the photo.
-          heightClass="h-[calc(50dvh-5rem)] min-h-[14rem]"
-        />,
-        /* padded */ false,
-      )}
+      <button
+        type="button"
+        onClick={() => setMapOpen(true)}
+        aria-expanded={false}
+        className={pillClass(false)}
+      >
+        <span className="flex-1">Map</span>
+        <Chevron open={false} />
+      </button>
     </div>
   );
 }

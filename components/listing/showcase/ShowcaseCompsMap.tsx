@@ -15,10 +15,7 @@ type ComparablesResponse = {
   active?: ComparableListing[];
 };
 
-function toPin(
-  comp: ComparableListing,
-  pool: Pool,
-): DealBoardMapListing | null {
+function toPin(comp: ComparableListing, pool: Pool): DealBoardMapListing | null {
   if (comp.latitude == null || comp.longitude == null) return null;
   const price = (pool === "sold" ? comp.closePrice : comp.price) ?? comp.price;
   if (price == null) return null;
@@ -64,24 +61,24 @@ function Compass() {
 }
 
 /**
- * The Intelligence deal-board map, pointed at this listing's comparables
- * instead of the board. Gives real pan / wheel-zoom / pinch and multi-pin
- * rendering, which the single-pin `ListingLocationMap` does not have.
+ * The Intelligence deal-board map pointed at this listing's comparables rather
+ * than the board. Fills its parent, so the caller owns the height.
  */
 export default function ShowcaseCompsMap({
   mlsId,
   subject,
-  heightClass,
   townHint,
+  expanded = false,
+  onToggleExpanded,
 }: {
   mlsId: string;
   subject: DealBoardMapListing | null;
-  heightClass: string;
   townHint?: string | null;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 }) {
   const [data, setData] = useState<ComparablesResponse | null>(null);
   const [pool, setPool] = useState<Pool>("active");
-  const [expanded, setExpanded] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,8 +111,8 @@ export default function ShowcaseCompsMap({
   };
 
   return (
-    <div className="relative">
-      <div className="flex items-center justify-between gap-2 bg-[#0d1424]/95 px-3 py-2">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 bg-[#0d1424]/95 px-3 py-2">
         <div className="flex items-center gap-1">
           {(["active", "sold"] as const).map((p) => (
             <button
@@ -124,9 +121,7 @@ export default function ShowcaseCompsMap({
               onClick={() => setPool(p)}
               aria-pressed={pool === p}
               className={`px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
-                pool === p
-                  ? "bg-white/15 text-white"
-                  : "text-white/50 hover:text-white"
+                pool === p ? "bg-white/15 text-white" : "text-white/50 hover:text-white"
               }`}
             >
               {p === "active" ? "For sale" : "Closed"}
@@ -136,23 +131,25 @@ export default function ShowcaseCompsMap({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setExpanded((on) => !on)}
-          aria-pressed={expanded}
-          className="px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white"
-        >
-          {expanded ? "Shrink" : "Full size"}
-        </button>
+        {onToggleExpanded ? (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-pressed={expanded}
+            className="px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white"
+          >
+            {expanded ? "Shrink" : "Full size"}
+          </button>
+        ) : null}
       </div>
 
-      <div className="relative">
+      <div className="relative min-h-0 flex-1">
         <DealBoardMap
           listings={listings}
           activeKey={activeKey}
           onSelect={setActiveKey}
           hrefFor={(l) => listingDetailHref(l.key, l.address, l.city ?? townHint)}
-          heightClass={expanded ? "h-[50dvh]" : heightClass}
+          heightClass="h-full"
         />
         <Compass />
       </div>
