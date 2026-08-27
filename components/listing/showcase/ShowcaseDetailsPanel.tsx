@@ -7,8 +7,8 @@ import { ListingComparablesPageContent } from "@/components/listing/ListingCompa
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
-import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import { ListingBackLink } from "@/components/listing/ListingShell";
+import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ListingSubnav, { type ListingTab } from "@/components/listing/ListingSubnav";
 import {
   SHOWCASE_SECTION_IDS,
@@ -79,11 +79,23 @@ export default function ShowcaseDetailsPanel({
 }) {
   const router = useRouter();
   const status = formatMlsStatus(listing.status);
-  const mapsQuery =
-    listing.address.full?.trim() ||
-    [street, city, listing.address.state, listing.address.postalCode]
-      .filter(Boolean)
-      .join(", ");
+  const subject =
+    listing.latitude != null && listing.longitude != null
+      ? {
+          key: listing.listingKey || listing.mlsId,
+          address: street,
+          city,
+          price: primaryListingPrice(listing) ?? 0,
+          score: goldilocksScore ?? 0,
+          isRental,
+          beds: listing.beds,
+          baths: listing.baths,
+          sqft: listing.sqft,
+          latitude: listing.latitude,
+          longitude: listing.longitude,
+          photoCount: listing.photoCount,
+        }
+      : null;
 
   /**
    * Without this the subnav drops into hash-jump mode and every content tab
@@ -226,18 +238,14 @@ export default function ShowcaseDetailsPanel({
           <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
             {/* `variant="hero"` fills its parent, so the height has to come
                 from here or the map collapses to nothing. */}
-            <div className="h-[20rem] w-full overflow-hidden rounded-xl sm:h-[26rem]">
-              {/* `seamless` drops the component's own frame — otherwise its
-                  border plus the navy backing reads as a heavy blue edge. */}
-              <ListingLocationMap
-                latitude={listing.latitude}
-                longitude={listing.longitude}
-                addressQuery={mapsQuery}
-                variant="hero"
-                hideLabel
-                seamless
-              />
-            </div>
+            {/* Same deal-board engine as Intelligence: real pan / wheel zoom
+                and a pin per comparable, with the subject alongside them. */}
+            <ShowcaseCompsMap
+              mlsId={listing.mlsId}
+              subject={subject}
+              townHint={city}
+              heightClass="h-[20rem] sm:h-[26rem]"
+            />
           </Section>
         </div>
       </div>

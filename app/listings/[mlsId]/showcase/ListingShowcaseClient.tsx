@@ -8,7 +8,7 @@ import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRa
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
-import { formatMlsStatus } from "@/lib/listing-history";
+import { formatMlsStatus, primaryListingPrice } from "@/lib/listing-history";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { isRentalListing } from "@/lib/listing-kind";
 import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
@@ -214,11 +214,6 @@ export default function ListingShowcaseClient({
   const tax = propertyTaxFromRaw(listing.raw);
   const insight = data?.insight?.trim() || null;
   const isRental = isRentalListing(listing);
-  const mapsQuery =
-    listing.address.full?.trim() ||
-    [street, city, listing.address.state, listing.address.postalCode]
-      .filter(Boolean)
-      .join(", ");
   const remarks =
     listing.remarks?.trim() ||
     REMARKS_KEYS.map((k) => listing.raw?.[k])
@@ -262,16 +257,33 @@ export default function ListingShowcaseClient({
           className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
         />
         <ShowcaseSectionRail
+          mlsId={listing.mlsId}
           insight={insight}
           detailRows={detailRows}
-          latitude={listing.latitude}
-          longitude={listing.longitude}
-          addressQuery={mapsQuery}
+          townHint={city}
+          subject={
+            listing.latitude != null && listing.longitude != null
+              ? {
+                  key: listing.listingKey || listing.mlsId,
+                  address: street,
+                  city,
+                  price: primaryListingPrice(listing) ?? 0,
+                  score: data?.goldilocksScore ?? 0,
+                  isRental,
+                  beds: listing.beds,
+                  baths: listing.baths,
+                  sqft: listing.sqft,
+                  latitude: listing.latitude,
+                  longitude: listing.longitude,
+                  photoCount: listing.photoCount,
+                }
+              : null
+          }
           onNext={() => step(1)}
         />
 
         <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-end px-4 pb-10 sm:px-8 lg:px-12 lg:pb-14">
-          <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-end gap-5 sm:grid-cols-[1fr_auto_1fr]">
             <button
               type="button"
               onClick={() => scrollToShowcaseSection("overview")}
@@ -286,35 +298,34 @@ export default function ListingShowcaseClient({
               </span>
             </button>
 
-            <div className="flex flex-col items-start gap-4 sm:items-end">
-              <div className="flex items-center gap-3">
-                <ControlButton
-                  label={paused ? "Resume slideshow" : "Pause slideshow"}
-                  onClick={() => setPaused((p) => !p)}
-                >
-                  <span aria-hidden className="text-xs leading-none">
-                    {paused ? "▶" : "❚❚"}
-                  </span>
-                </ControlButton>
-                <span className="font-mono text-xs tracking-[0.2em] text-white/70 tabular-nums">
-                  {String(safeIndex + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+            {/* Centre column keeps pause + counter on the page midline. */}
+            <div className="flex items-center justify-center gap-3">
+              <ControlButton
+                label={paused ? "Resume slideshow" : "Pause slideshow"}
+                onClick={() => setPaused((p) => !p)}
+              >
+                <span aria-hidden className="text-xs leading-none">
+                  {paused ? "▶" : "❚❚"}
                 </span>
-              </div>
+              </ControlButton>
+              <span className="font-mono text-xs tracking-[0.2em] text-white/70 tabular-nums">
+                {String(safeIndex + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+              </span>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-4">
-                <Link
-                  href={listingPhotosHref(listing.mlsId, street, city)}
-                  className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
-                >
-                  See all photos
-                </Link>
-                <Link
-                  href={listingDetailHref(listing.mlsId, street, city)}
-                  className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
-                >
-                  Full detail page
-                </Link>
-              </div>
+            <div className="flex flex-wrap items-center gap-4 sm:justify-end">
+              <Link
+                href={listingPhotosHref(listing.mlsId, street, city)}
+                className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+              >
+                See all photos
+              </Link>
+              <Link
+                href={listingDetailHref(listing.mlsId, street, city)}
+                className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+              >
+                Full detail page
+              </Link>
             </div>
           </div>
         </div>

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import ListingLocationMap from "@/components/listing/ListingLocationMap";
+import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseDetailRow } from "@/components/listing/showcase/showcase-types";
@@ -26,24 +27,29 @@ const pillClass = (open: boolean) =>
  * middle of the photo.
  */
 export default function ShowcaseSectionRail({
+  mlsId,
   insight,
   detailRows,
-  latitude,
-  longitude,
-  addressQuery,
+  subject,
+  townHint,
   onNext,
 }: {
+  mlsId: string;
   insight: string | null;
   detailRows: ShowcaseDetailRow[];
-  latitude: number | null;
-  longitude: number | null;
-  addressQuery: string;
+  subject: DealBoardMapListing | null;
+  townHint?: string | null;
   onNext: () => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
   const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
 
-  const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
+  const cardPill = (
+    id: CardId,
+    label: string,
+    body: React.ReactNode,
+    padded = true,
+  ) => {
     const open = openCard === id;
     return (
       <div className="w-full">
@@ -59,7 +65,11 @@ export default function ShowcaseSectionRail({
           </span>
         </button>
         {open ? (
-          <div className="max-h-[60vh] overflow-y-auto overscroll-contain bg-[#0d1424]/95 p-4 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+          <div
+            className={`bg-[#0d1424]/95 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md ${
+              padded ? "max-h-[60vh] overflow-y-auto overscroll-contain p-4" : ""
+            }`}
+          >
             {body}
           </div>
         ) : null}
@@ -67,8 +77,13 @@ export default function ShowcaseSectionRail({
     );
   };
 
+  /**
+   * Top-anchored rather than centred so an open card only ever grows downward
+   * — the offset puts the step arrow on the vertical middle when nothing is
+   * open, and lets the map run to the foot of the photo when Map is.
+   */
   return (
-    <div className="absolute right-3 top-1/2 z-20 flex w-[min(24rem,calc(100vw-3rem))] -translate-y-1/2 flex-col items-end gap-2 sm:right-6">
+    <div className="absolute right-3 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] w-[min(24rem,calc(100vw-3rem))] flex-col items-end gap-2 overflow-y-auto sm:right-6">
       {cardPill(
         "insight",
         "Insight",
@@ -118,16 +133,14 @@ export default function ShowcaseSectionRail({
       {cardPill(
         "map",
         "Map",
-        <div className="h-56 w-full overflow-hidden">
-          <ListingLocationMap
-            latitude={latitude}
-            longitude={longitude}
-            addressQuery={addressQuery}
-            variant="hero"
-            hideLabel
-            seamless
-          />
-        </div>,
+        <ShowcaseCompsMap
+          mlsId={mlsId}
+          subject={subject}
+          townHint={townHint}
+          // Runs from the Map tile down to roughly the foot of the photo.
+          heightClass="h-[calc(50dvh-5rem)] min-h-[14rem]"
+        />,
+        /* padded */ false,
       )}
     </div>
   );
