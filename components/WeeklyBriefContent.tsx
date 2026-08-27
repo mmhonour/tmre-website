@@ -207,10 +207,13 @@ function ClosedLookbackSlider({
   const lastIndex = MARKET_PULSE_LOOKBACK_OPTIONS.length - 1;
   // The selected label is centred on its tick and so overhangs the rail by half
   // its height at either end; the gap below keeps the top one off the caption.
-  return (
+  const body = (
     <div
-      className={`flex w-[4.75rem] shrink-0 flex-col gap-2 sm:w-20 ${
-        fill ? "h-auto" : "h-56"
+      className={`flex flex-col gap-2 ${
+        // Filling takes the height of the block alongside. The rail has to be
+        // taken out of flow to do that, or the range input's own intrinsic
+        // length would set the height and drag the block taller with it.
+        fill ? "absolute inset-0" : "h-56 w-[4.75rem] shrink-0 sm:w-20"
       }`}
     >
       <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold tracking-[0.16em] uppercase text-[var(--mp-text)]">
@@ -280,6 +283,13 @@ function ClosedLookbackSlider({
           </div>
         </div>
       </div>
+    </div>
+  );
+
+  if (!fill) return body;
+  return (
+    <div className="relative w-[4.75rem] shrink-0 self-stretch sm:w-20">
+      {body}
     </div>
   );
 }
