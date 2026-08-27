@@ -68,14 +68,19 @@ export default function ShowcaseCompsMap({
   mlsId,
   subject,
   townHint,
+  postalCode,
   expanded = false,
   onToggleExpanded,
+  onExit,
 }: {
   mlsId: string;
   subject: DealBoardMapListing | null;
   townHint?: string | null;
+  /** Drives the blue town outline via the map's zip-boundary layer. */
+  postalCode?: string | null;
   expanded?: boolean;
   onToggleExpanded?: () => void;
+  onExit?: () => void;
 }) {
   const [data, setData] = useState<ComparablesResponse | null>(null);
   const [pool, setPool] = useState<Pool>("active");
@@ -110,6 +115,11 @@ export default function ShowcaseCompsMap({
     sold: data?.sold?.length ?? 0,
   };
 
+  const zips = useMemo(() => {
+    const zip = postalCode?.trim().slice(0, 5);
+    return zip && /^\d{5}$/.test(zip) ? [zip] : [];
+  }, [postalCode]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-2 bg-[#0d1424]/95 px-3 py-2">
@@ -131,23 +141,40 @@ export default function ShowcaseCompsMap({
             </button>
           ))}
         </div>
-        {onToggleExpanded ? (
-          <button
-            type="button"
-            onClick={onToggleExpanded}
-            aria-pressed={expanded}
-            className="px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white"
-          >
-            {expanded ? "Shrink" : "Full size"}
-          </button>
-        ) : null}
+        <div className="flex items-center gap-1">
+          {onToggleExpanded ? (
+            <button
+              type="button"
+              onClick={onToggleExpanded}
+              aria-pressed={expanded}
+              className="px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-white"
+            >
+              {expanded ? "Shrink" : "Full size"}
+            </button>
+          ) : null}
+          {onExit ? (
+            <button
+              type="button"
+              onClick={onExit}
+              aria-label="Exit map view"
+              className="inline-flex h-6 w-6 items-center justify-center font-mono text-sm leading-none text-white/60 transition-colors hover:bg-white/15 hover:text-white"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
         {/* DealBoardMap puts `heightClass` on an inner div, so its own outer
             wrapper needs a height too or `h-full` resolves against auto. */}
+        {/* `highlightZip` is what paints the boundary blue; `boundZips` alone
+            draws it navy and also frames the initial viewport on the town. */}
         <DealBoardMap
           listings={listings}
+          subjectKey={subject?.key ?? null}
+          boundZips={zips}
+          highlightZip={zips[0] ?? null}
           activeKey={activeKey}
           onSelect={setActiveKey}
           hrefFor={(l) => listingDetailHref(l.key, l.address, l.city ?? townHint)}

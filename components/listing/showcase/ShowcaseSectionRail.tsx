@@ -48,6 +48,7 @@ export default function ShowcaseSectionRail({
   detailRows,
   subject,
   townHint,
+  postalCode,
   onNext,
 }: {
   mlsId: string;
@@ -55,6 +56,7 @@ export default function ShowcaseSectionRail({
   detailRows: ShowcaseDetailRow[];
   subject: DealBoardMapListing | null;
   townHint?: string | null;
+  postalCode?: string | null;
   onNext: () => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
@@ -111,8 +113,10 @@ export default function ShowcaseSectionRail({
           mlsId={mlsId}
           subject={subject}
           townHint={townHint}
+          postalCode={postalCode}
           expanded={mapExpanded}
           onToggleExpanded={() => setMapExpanded((on) => !on)}
+          onExit={() => setMapOpen(false)}
         />
       </div>
     </div>

@@ -261,6 +261,7 @@ export default function ListingShowcaseClient({
           insight={insight}
           detailRows={detailRows}
           townHint={city}
+          postalCode={listing.address.postalCode}
           subject={
             listing.latitude != null && listing.longitude != null
               ? {

@@ -245,6 +245,7 @@ export default function ShowcaseDetailsPanel({
                 mlsId={listing.mlsId}
                 subject={subject}
                 townHint={city}
+                postalCode={listing.address.postalCode}
               />
             </div>
           </Section>

@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { HouseIcon } from "@/components/icons";
 import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
@@ -406,6 +407,7 @@ export default function DealBoardMap({
   onFullscreenToggle,
   onExitToGrid,
   fitInset = ZERO_FIT_INSET,
+  subjectKey = null,
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -435,6 +437,11 @@ export default function DealBoardMap({
    * usable edge in regular and full-screen mode.
    */
   fitInset?: Partial<FitInset>;
+  /**
+   * Marks one listing as the subject of the map — drawn as a house rather than
+   * a price pill. Unset on the deal board, where every pin is a peer.
+   */
+  subjectKey?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -1166,7 +1173,17 @@ export default function DealBoardMap({
             isActive ? "z-20 scale-125" : ""
           }`;
           const pinStyle = { left: pin.left, top: pin.top };
-          const pill = (
+          const isSubject = subjectKey != null && pin.listing.key === subjectKey;
+          const pill = isSubject ? (
+            <span className="flex flex-col items-center">
+              <span className="text-sky drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
+                <HouseIcon className="h-6 w-6" />
+              </span>
+              <span className="mt-0.5 whitespace-nowrap rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy shadow-sm">
+                This home
+              </span>
+            </span>
+          ) : (
             <>
               <span
                 className={`block rounded-full border px-1.5 py-0.5 font-mono leading-none shadow-sm transition-colors ${
