@@ -717,13 +717,14 @@ export default function DealBoardMap({
         top: latToWorldY(listing.latitude, zoom) - viewport.top - spread,
       });
     }
-    // Selected pin renders last so its label is never covered.
+    // Subject, then selected, render last so their labels are never covered.
+    const rank = (key: string) =>
+      key === subjectKey ? 2 : key === activeKey || key === hoverKey ? 1 : 0;
     return placed.sort((a, b) => {
-      if (a.listing.key === activeKey || a.listing.key === hoverKey) return 1;
-      if (b.listing.key === activeKey || b.listing.key === hoverKey) return -1;
-      return a.top - b.top;
+      const diff = rank(a.listing.key) - rank(b.listing.key);
+      return diff !== 0 ? diff : a.top - b.top;
     });
-  }, [activeKey, hoverKey, placeable, viewport, zoom]);
+  }, [activeKey, hoverKey, placeable, subjectKey, viewport, zoom]);
 
   const panBy = useCallback((dxPx: number, dyPx: number, from: LonLat) => {
     const level = zoomRef.current;
@@ -1169,11 +1170,11 @@ export default function DealBoardMap({
             pin.listing.price,
             pin.listing.isRental,
           )}`;
-          const pinClass = `absolute z-10 -translate-x-1/2 -translate-y-full origin-bottom transition-transform ${
-            isActive ? "z-20 scale-125" : ""
+          const isSubject = subjectKey != null && pin.listing.key === subjectKey;
+          const pinClass = `absolute -translate-x-1/2 -translate-y-full origin-bottom transition-transform ${
+            isSubject ? "z-30" : isActive ? "z-20 scale-125" : "z-10"
           }`;
           const pinStyle = { left: pin.left, top: pin.top };
-          const isSubject = subjectKey != null && pin.listing.key === subjectKey;
           const pill = isSubject ? (
             <span className="flex flex-col items-center">
               <span className="text-sky drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
