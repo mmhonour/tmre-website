@@ -23,16 +23,48 @@ type CardId = "pulse" | "insight" | "details";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
-const pillClass = (open: boolean, fullWidth = false) =>
+/** Shared tile geometry; `interactive` adds the hover the whole-row tiles use. */
+const railRowClass = (opts: {
+  open?: boolean;
+  fullWidth?: boolean;
+  interactive?: boolean;
+}) =>
   `flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
     // `w-fit` rather than `w-auto`: a block-level flex box with auto width
     // still stretches to its container.
-    fullWidth ? "w-full" : "w-fit lg:w-full"
+    opts.fullWidth ? "w-full" : "w-fit lg:w-full"
   } ${
-    open
+    opts.open
       ? "bg-navy text-white"
-      : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
+      : `bg-[#0d1424]/85 text-white/85 ${
+          opts.interactive === false ? "" : "hover:bg-navy hover:text-white"
+        }`
   }`;
+
+const pillClass = (open: boolean, fullWidth = false) =>
+  railRowClass({ open, fullWidth });
+
+/** Summary + jump control, matching the map's For sale / Closed toggles. */
+function CountChip({
+  label,
+  count,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex shrink-0 items-center gap-1.5 bg-white/[0.08] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/65 transition-colors hover:bg-white/20 hover:text-white"
+    >
+      {label}
+      <span className="tabular-nums text-white">{count}</span>
+    </button>
+  );
+}
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -241,34 +273,57 @@ export default function ShowcaseSectionRail({
     </div>
   ) : null;
 
-  const compsFigures = counts ? (
-    <>
-      <span
-        role={isDesktop ? "button" : undefined}
-        tabIndex={isDesktop ? 0 : -1}
-        onClick={(e) => {
-          if (!isDesktop) return;
-          e.stopPropagation();
-          scrollToId(LISTING_SALE_ON_MARKET_PANEL_ID);
-        }}
-        className={isDesktop ? "cursor-pointer hover:text-gold" : undefined}
-      >
-        {counts.active} On Market
-      </span>
-      <span
-        role={isDesktop ? "button" : undefined}
-        tabIndex={isDesktop ? 0 : -1}
-        onClick={(e) => {
-          if (!isDesktop) return;
-          e.stopPropagation();
-          scrollToId(LISTING_RECENTLY_SOLD_PANEL_ID);
-        }}
-        className={isDesktop ? "cursor-pointer hover:text-gold" : undefined}
-      >
-        {counts.sold} Sold in {counts.soldMonths} months
-      </span>
-    </>
-  ) : null;
+  /**
+   * Its own tile rather than a `figurePill`: the two chips are real buttons,
+   * which cannot be nested inside the tile's own button element.
+   */
+  const compsPill = (() => {
+    const showChips = (isDesktop || revealed === "comps") && counts;
+    if (!showChips) {
+      return (
+        <div className="flex w-full flex-col items-end lg:items-stretch">
+          <button
+            type="button"
+            onClick={() => setRevealed("comps")}
+            className={pillClass(false)}
+          >
+            <span className="shrink-0">Comps</span>
+            <span
+              aria-hidden
+              className="showcase-chevron-pulse ml-3 font-mono text-white/70"
+            >
+              »
+            </span>
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex w-full flex-col items-end lg:items-stretch">
+        <div className={`${railRowClass({ interactive: false })} gap-2`}>
+          <button
+            type="button"
+            onClick={() => scrollToShowcaseSection("comps")}
+            className="shrink-0 transition-colors hover:text-gold"
+          >
+            Comps
+          </button>
+          <span className="flex flex-1 items-center justify-end gap-1">
+            <CountChip
+              label="On market"
+              count={counts.active}
+              onClick={() => scrollToId(LISTING_SALE_ON_MARKET_PANEL_ID)}
+            />
+            <CountChip
+              label={`Sold ${counts.soldMonths} mo`}
+              count={counts.sold}
+              onClick={() => scrollToId(LISTING_RECENTLY_SOLD_PANEL_ID)}
+            />
+          </span>
+        </div>
+      </div>
+    );
+  })();
 
   return (
     <>
@@ -315,9 +370,7 @@ export default function ShowcaseSectionRail({
           </dl>,
         )}
 
-        {figurePill("comps", "Comps", compsFigures, () =>
-          scrollToShowcaseSection("comps"),
-        )}
+        {compsPill}
 
         <ShowcaseStepArrow direction="next" label="Next photo" onClick={onNext} />
 
