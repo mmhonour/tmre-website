@@ -93,16 +93,18 @@ export default function ShowcaseSectionRail({
    */
   const mapOverlay = mapOpen ? (
     /*
-     * Phone: a full-screen sheet. A right-hand column on a 390px screen is a
-     * tall thin slice of geography, leaves a useless strip of photo beside it,
-     * and still swallows touch because the map owns pan and pinch.
+     * Phone: pinned edge to edge under the site header. A right-hand column on
+     * a 390px screen is a tall thin slice of geography beside a useless strip
+     * of photo. Deliberately below the header rather than over it — the map
+     * owns pan and pinch, so leaving the nav reachable is the only way off the
+     * page besides the close button.
      *
-     * Desktop: a column beside the photo, offset to clear the fixed header —
-     * roughly 85px tall, so the usual pt-24 leaves the header's zip / mail /
-     * phone cluster (z-50) painting over the map.
+     * Desktop: a column beside the photo. Both offsets clear the fixed header
+     * (~77px mobile, ~85px desktop); the usual pt-20/pt-24 leaves its zip /
+     * mail / phone cluster (z-50) painting over the map.
      */
     <div
-      className={`flex flex-col max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-0 lg:top-28 lg:z-40 ${
+      className={`flex flex-col max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-24 max-lg:z-40 lg:absolute lg:bottom-0 lg:right-0 lg:top-28 lg:z-40 ${
         mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
