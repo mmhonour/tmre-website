@@ -194,10 +194,13 @@ function ClosedLookbackSlider({
   lookbackId,
   onChange,
   pending,
+  fill = false,
 }: {
   lookbackId: MarketPulseLookbackId;
   onChange: (id: MarketPulseLookbackId) => void;
   pending?: boolean;
+  /** Take the height of whatever it stands beside instead of a fixed rail. */
+  fill?: boolean;
 }) {
   const index = marketPulseLookbackIndex(lookbackId);
   const current = marketPulseLookbackChartLabel(lookbackId);
@@ -205,7 +208,11 @@ function ClosedLookbackSlider({
   // The selected label is centred on its tick and so overhangs the rail by half
   // its height at either end; the gap below keeps the top one off the caption.
   return (
-    <div className="flex h-56 w-[4.75rem] shrink-0 flex-col gap-2 sm:w-20">
+    <div
+      className={`flex w-[4.75rem] shrink-0 flex-col gap-2 sm:w-20 ${
+        fill ? "h-auto" : "h-56"
+      }`}
+    >
       <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold tracking-[0.16em] uppercase text-[var(--mp-text)]">
         Lookback
       </span>
@@ -946,6 +953,7 @@ function CombinedMetricsChart({
   scopeLabel,
   saleToAskTownHref,
   kind,
+  lookbackRail,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -953,6 +961,8 @@ function CombinedMetricsChart({
   /** Turns the List to ask row label into a link to its Stats chart. */
   saleToAskTownHref?: (cityLabel: string) => string;
   kind: ListingKind;
+  /** Lookback control, stood beside the All towns block and sized to it. */
+  lookbackRail?: ReactNode;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   closedPending?: boolean;
@@ -1200,12 +1210,8 @@ function CombinedMetricsChart({
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
           const heat = heatByCity.get(row.city) ?? null;
-          return (
-            <li
-              key={`combined-${row.city}`}
-              data-mp-town={row.city}
-              className="space-y-1"
-            >
+          const block = (
+            <>
               {/* Heat strip ends where the bar tracks do, so the two read as one chart. */}
               <div
                 className={`flex min-w-0 items-center justify-between gap-3 ${BAR_EXTERIOR_LANE}`}
@@ -1270,6 +1276,27 @@ function CombinedMetricsChart({
                   return metricRow(row, rowIndex, label, m, metricIndex);
                 })}
               </ul>
+            </>
+          );
+          return (
+            <li
+              key={`combined-${row.city}`}
+              data-mp-town={row.city}
+              className="space-y-1"
+            >
+              {/*
+               * The rail stands alongside the first block only, and stretches to
+               * it, so it runs from the All towns name to its last bar and no
+               * further. Towns below it are not indented past empty space.
+               */}
+              {rowIndex === 0 && lookbackRail ? (
+                <div className="flex items-stretch gap-2 sm:gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">{block}</div>
+                  {lookbackRail}
+                </div>
+              ) : (
+                block
+              )}
             </li>
           );
         })}
@@ -1690,12 +1717,14 @@ export default function WeeklyBriefContent({
           />
         </div>
 
-        {/* Heading sits above the split so the slider starts level with All towns. */}
         <div className="space-y-6">
         {townMetricsHeading}
-        <div className="flex items-start gap-2 sm:gap-3">
-          <div className="min-w-0 flex-1 space-y-6">
         {chartLayout === "stacked" || !townsExpanded ? (
+          /*
+           * Stacked hands the slider to the chart, which stands it beside the
+           * All towns block alone. Every town below then keeps the full width
+           * instead of being indented past a control that is not there.
+           */
           <CombinedMetricsChart
             rows={combinedRows}
             townHref={townHref}
@@ -1708,8 +1737,20 @@ export default function WeeklyBriefContent({
             scopeLabel={scopeLabel}
             saleToAskTownHref={saleToAskTownHref}
             kind={kind}
+            lookbackRail={
+              onLookbackIdChange ? (
+                <ClosedLookbackSlider
+                  lookbackId={lookbackId}
+                  onChange={onLookbackIdChange}
+                  pending={closedPending}
+                  fill
+                />
+              ) : null
+            }
           />
         ) : (
+        <div className="flex items-start gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1 space-y-6">
           <>
         <BarChart
           title="Active inventory"
@@ -1901,7 +1942,6 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.saleToAskCalc}
         />
           </>
-        )}
           </div>
           {onLookbackIdChange ? (
             <ClosedLookbackSlider
@@ -1911,6 +1951,7 @@ export default function WeeklyBriefContent({
             />
           ) : null}
         </div>
+        )}
         </div>
 
         {deal ? (
