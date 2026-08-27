@@ -245,7 +245,7 @@ export default function ShowcaseSectionRail({
         }}
         className={isDesktop ? "cursor-pointer hover:text-gold" : undefined}
       >
-        {counts.active} Market
+        {counts.active} On Market
       </span>
       <span
         role={isDesktop ? "button" : undefined}
