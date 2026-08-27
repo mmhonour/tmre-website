@@ -92,10 +92,14 @@ export default function ShowcaseSectionRail({
    * the tiles in place instead of unmounting them and shifting the stack.
    */
   const mapOverlay = mapOpen ? (
-    // Starts below the site's fixed nav — at inset-y-0 the collapse header
-    // renders underneath it and cannot be clicked.
+    /*
+     * Clears the site's fixed header, which is roughly 77px tall on mobile and
+     * 85px on desktop — the usual pt-20/pt-24 offsets leave too little room and
+     * the header's zip / mail / phone cluster (z-50) paints over the map,
+     * especially once it is expanded to full width.
+     */
     <div
-      className={`absolute bottom-0 right-0 top-20 z-40 flex flex-col lg:top-24 ${
+      className={`absolute bottom-0 right-0 top-24 z-40 flex flex-col lg:top-28 ${
         mapExpanded ? "w-[min(50vw,44rem)] max-lg:w-full" : RAIL_WIDTH
       }`}
     >
