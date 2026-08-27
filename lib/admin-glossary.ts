@@ -48,6 +48,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Clean install: deletes node_modules (when present) and installs exactly from package-lock.json — reproducible CI/deploy installs, unlike npm install which may mutate the lockfile. On Railway Railpack, prefer npm install for mls-sync: npm ci’s wipe hits EBUSY on the locked node_modules/.cache mount. Needs Node + (for native addons like node-expat) Python/g++. See Railpack, EBUSY node_modules/.cache (Railway).',
   },
   {
+    term: 'PR (pull request)',
+    category: 'tooling',
+    definition:
+      'A named bundle of commits on its own branch, proposed for merging into `main`, with a page on GitHub showing every changed line. Nothing in a PR affects the live site: Netlify and Railway deploy from `main`, so the code sits there until someone presses Merge — that is the point of it, a place to read and argue with a change while production carries on unaffected. "Draft" means not yet asking for review. Merging is the deploy trigger, so treat Merge, not the PR, as the risky button. A PR that has been open a while can go stale if `main` moved underneath it; GitHub says so and it gets rebased or merged forward. Cursor cloud agents open one per branch.',
+  },
+  {
     term: 'package-lock.json',
     category: 'tooling',
     definition:
