@@ -9,9 +9,10 @@
  *   npm run smoke:sync-queue -- --enqueue=stats-cache # round-trip a real job
  *   npm run smoke:sync-queue -- --enqueue=stats-cache --wait-min=20
  *
- * Point DATABASE_URL at whichever Neon branch you are checking. Read-only mode
- * writes nothing and is safe against production; --enqueue really runs the job
- * you name, so name one you are happy to run.
+ * Reads DATABASE_URL from .env.local, or from the environment when you want to
+ * aim it somewhere else (a Neon branch). Read-only mode writes nothing and is
+ * safe against production; --enqueue really runs the job you name, so name one
+ * you are happy to run.
  *
  * Exit 0 only when every check passes, so it can gate a rollout step.
  */
@@ -39,6 +40,51 @@ if (existsSync('.env.local')) {
 
 const DEFAULT_WAIT_MIN = 15
 const POLL_MS = 5_000
+
+/**
+ * Say which database this is about to talk to, host and name only.
+ *
+ * This tool is read-only by default but `--enqueue` is not, and the whole point
+ * of it is to be pointed at different databases during a rollout. Being told
+ * which one you hit belongs at the top of the output, not in your memory of
+ * which shell you are in.
+ */
+function describeTarget(): string {
+  const raw = (
+    process.env.DATABASE_URL ??
+    process.env.NETLIFY_DATABASE_URL ??
+    ''
+  ).trim()
+  try {
+    const u = new URL(raw)
+    return `${u.hostname}${u.pathname}`
+  } catch {
+    return 'unparseable connection string'
+  }
+}
+
+/**
+ * The library throws a perfectly good error for this, but it arrives as a stack
+ * trace from four frames deep. An operator midway through a deploy should be
+ * told what to do, not handed a traceback.
+ */
+function assertDatabaseUrl(): void {
+  if (
+    process.env.DATABASE_URL?.trim() ||
+    process.env.NETLIFY_DATABASE_URL?.trim()
+  ) {
+    return
+  }
+  console.error(
+    'DATABASE_URL is not set, so there is no database to check.\n\n' +
+      'Normally it comes from .env.local in the repo root:\n' +
+      '    DATABASE_URL=postgres://…  (the pooled Neon string, same one Netlify uses)\n\n' +
+      'To aim at a different database for one run instead:\n' +
+      '    PowerShell   $env:DATABASE_URL="postgres://…"; npm run smoke:sync-queue\n' +
+      '    bash/zsh     DATABASE_URL="postgres://…" npm run smoke:sync-queue',
+  )
+  process.exit(1)
+}
 
 type Args = { enqueue: string | null; waitMin: number }
 
@@ -223,7 +269,8 @@ async function roundTrip(jobId: string, waitMin: number): Promise<void> {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
-  console.info('sync queue smoke test\n')
+  assertDatabaseUrl()
+  console.info(`sync queue smoke test\n      against ${describeTarget()}\n`)
 
   if (!(await checkTable())) {
     console.info('\nFAILED — nothing else can be checked without the table.')
@@ -243,6 +290,23 @@ async function main() {
 }
 
 void main().catch((err) => {
-  console.error('smoke test could not run', err)
+  // Connection problems are the common way to get here and they have obvious
+  // causes, so name them instead of printing a stack an operator has to read.
+  const message = err instanceof Error ? err.message : String(err)
+  const hint = /ENOTFOUND|EAI_AGAIN/i.test(message)
+    ? 'The database host does not resolve — check the hostname in DATABASE_URL.'
+    : /ETIMEDOUT|ECONNREFUSED|connection timeout|Connection terminated/i.test(
+          message,
+        )
+      ? 'Could not reach the database — check the host is up and that your IP is allowed.'
+      : /password|authentication|role .* does not exist/i.test(message)
+        ? 'The database rejected the credentials in DATABASE_URL.'
+        : null
+
+  console.error(`\nsmoke test could not run against ${describeTarget()}`)
+  console.error(`  ${message}`)
+  if (hint) console.error(`  ${hint}`)
+  else if (process.env.SMOKE_DEBUG) console.error(err)
+  else console.error('  Re-run with SMOKE_DEBUG=1 for the stack trace.')
   process.exit(1)
 })
