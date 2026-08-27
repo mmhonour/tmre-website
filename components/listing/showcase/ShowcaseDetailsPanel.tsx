@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
@@ -79,7 +80,34 @@ export default function ShowcaseDetailsPanel({
   goldilocksBreakdown?: Parameters<typeof listingHeaderScoreProps>[0]["goldilocksBreakdown"];
 }) {
   const router = useRouter();
+  const stickyRef = useRef<HTMLDivElement | null>(null);
   const status = formatMlsStatus(listing.status);
+
+  /**
+   * Publish the sticky chrome's height so anchors below it — ours and the ones
+   * inside the comps body — can set a matching scroll-margin. Mirrors the
+   * `--listing-sticky-offset` mechanism in ListingHeroPanels.
+   */
+  useEffect(() => {
+    const el = stickyRef.current;
+    if (!el) return;
+    const publish = () => {
+      const stickyTop = window.innerWidth >= 1024 ? 96 : 80;
+      document.documentElement.style.setProperty(
+        "--showcase-sticky-offset",
+        `${stickyTop + el.offsetHeight + 12}px`,
+      );
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    window.addEventListener("resize", publish);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", publish);
+      document.documentElement.style.removeProperty("--showcase-sticky-offset");
+    };
+  }, []);
   const subject =
     listing.latitude != null && listing.longitude != null
       ? {
@@ -114,17 +142,26 @@ export default function ShowcaseDetailsPanel({
   };
 
   return (
-    <section className="navy-gradient relative border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16">
+    <section className="showcase-details navy-gradient relative border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16">
       <div className="absolute inset-0 hero-grid opacity-20" aria-hidden />
       <div className="relative mx-auto w-full max-w-7xl">
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <ListingBackLink className="mb-0" />
-          <span className="shrink-0">
-            <DealBoardStatusBadge status={status} size="sm" surface="listing" />
-          </span>
-        </div>
+        {/*
+          Desktop: the summary and tab strip pin once you scroll past them, so
+          the tabs act as a nav rail for the panels below. Static on mobile —
+          that layout is being reviewed separately.
+        */}
+        <div
+          ref={stickyRef}
+          className="showcase-sticky-chrome z-30 lg:sticky lg:top-24"
+        >
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <ListingBackLink className="mb-0" />
+            <span className="shrink-0">
+              <DealBoardStatusBadge status={status} size="sm" surface="listing" />
+            </span>
+          </div>
 
-        <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
           Property Details
         </p>
         <ListingHeader
@@ -154,17 +191,18 @@ export default function ShowcaseDetailsPanel({
           })}
         />
 
-        <div className="mt-3">
-          <ListingSubnav
-            mlsId={listing.mlsId}
-            active="overview"
-            addressHint={street || addressHint}
-            townHint={city}
-            isRental={isRental}
-            compact
-            onTabSelect={handleTabSelect}
-            onMapToggle={() => scrollToShowcaseSection("map")}
-          />
+          <div className="mt-3 pb-3">
+            <ListingSubnav
+              mlsId={listing.mlsId}
+              active="overview"
+              addressHint={street || addressHint}
+              townHint={city}
+              isRental={isRental}
+              compact
+              onTabSelect={handleTabSelect}
+              onMapToggle={() => scrollToShowcaseSection("map")}
+            />
+          </div>
         </div>
 
         <div className="mt-8 flex flex-col gap-8">
@@ -267,7 +305,7 @@ export default function ShowcaseDetailsPanel({
           the active one is ever mounted. */}
       <div
         id={LISTING_CRITERIA_SLOT_ID}
-        className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto empty:hidden"
+        className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto empty:hidden lg:top-[var(--showcase-sticky-offset,12rem)]"
       />
     </section>
   );

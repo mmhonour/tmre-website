@@ -912,6 +912,24 @@ html.listing-split-test body {
   }
 }
 
+/* Showcase details panel — desktop pins the summary + tab strip so the tabs
+   act as a nav rail for the panels below. Mobile is left static for now. */
+@media (min-width: 1024px) {
+  .showcase-sticky-chrome {
+    background: rgba(19, 31, 56, 0.97);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 14px 30px -20px rgba(0, 0, 0, 0.85);
+  }
+
+  /* Any anchor in the panel — ours and the ones inside the comps body — has to
+     clear the pinned chrome, whose height is published as a CSS var. */
+  .showcase-details [id] {
+    scroll-margin-top: var(--showcase-sticky-offset, 12rem);
+  }
+}
+
 /* Second line of defence for type sitting over a busy or blown-out photo. */
 .listing-showcase-type {
   text-shadow:
