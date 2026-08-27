@@ -132,10 +132,10 @@ export function marketPulseStackedMetrics(
 
 /** Shared dollar axis for Median, Delta, and Average (do not scale Delta to its own max). */
 export function marketPulsePriceBarMax(
-  rows: Array<{
+  rows: readonly {
     medianPrice: number | null
     averagePrice: number | null
-  }>,
+  }[],
 ): number {
   let max = 0
   for (const r of rows) {
