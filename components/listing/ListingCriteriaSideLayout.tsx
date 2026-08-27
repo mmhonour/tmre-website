@@ -148,9 +148,21 @@ export default function ListingCriteriaSideLayout({
 
   const criteriaPanel = (
     <div className="min-w-0 w-full rounded-2xl border border-white/10 bg-[#152238] p-4 text-left shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)]">
-      <p className="mb-3 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-        {headingLabel}
-      </p>
+      {/* Close lives on the panel itself: the "Hide criteria" toggle sits in the
+          page body, which a floating panel can cover. */}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+          {headingLabel}
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label={`Close ${headingLabel.toLowerCase()}`}
+          className="-mr-1 -mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded font-mono text-sm leading-none text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          ✕
+        </button>
+      </div>
       {criteria}
     </div>
   );

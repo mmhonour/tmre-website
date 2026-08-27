@@ -262,9 +262,12 @@ export default function ShowcaseDetailsPanel({
         behaves as a pop-out rather than a reserved column. Mobile is unaffected:
         that path already uses ListingSideDrawer.
       */}
+      {/* `space-y-3` because Comps and What if are both on-screen here, so both
+          panels can portal in at once — unlike the production tabs, where only
+          the active one is ever mounted. */}
       <div
         id={LISTING_CRITERIA_SLOT_ID}
-        className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto empty:hidden"
+        className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto empty:hidden"
       />
     </section>
   );
