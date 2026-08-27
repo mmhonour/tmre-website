@@ -12,9 +12,17 @@ type CardId = "insight" | "details";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
-/** Rectangular, borderless, flush-stacked, label left-aligned. */
-const pillClass = (open: boolean) =>
-  `flex w-full items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
+/**
+ * Rectangular, borderless, flush-stacked, label left-aligned. Below `lg` each
+ * tile shrinks to its own label so the stack does not wall off the photo on a
+ * phone; from `lg` up they line up with the card width again.
+ */
+const pillClass = (open: boolean, fullWidth = false) =>
+  `flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
+    // `w-fit` rather than `w-auto`: a block-level flex box with auto width
+    // still stretches to its container.
+    fullWidth ? "w-full" : "w-fit lg:w-full"
+  } ${
     open
       ? "bg-navy text-white"
       : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
@@ -58,7 +66,7 @@ export default function ShowcaseSectionRail({
   const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
     const open = openCard === id;
     return (
-      <div className="w-full">
+      <div className="flex w-full flex-col items-end lg:items-stretch">
         <button
           type="button"
           onClick={() => toggle(id)}
@@ -93,7 +101,7 @@ export default function ShowcaseSectionRail({
         type="button"
         onClick={() => setMapOpen(false)}
         aria-expanded
-        className={`${pillClass(true)} shrink-0`}
+        className={`${pillClass(true, true)} shrink-0`}
       >
         <span className="flex-1">Map</span>
         <Chevron open />
