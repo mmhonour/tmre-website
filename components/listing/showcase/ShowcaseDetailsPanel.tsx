@@ -7,6 +7,7 @@ import { ListingComparablesPageContent } from "@/components/listing/ListingCompa
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ListingSubnav, { type ListingTab } from "@/components/listing/ListingSubnav";
@@ -251,6 +252,20 @@ export default function ShowcaseDetailsPanel({
           </Section>
         </div>
       </div>
+
+      {/*
+        Criteria portals itself here on desktop (ListingCriteriaSideLayout);
+        production supplies this slot from the sticky sidebar in
+        ListingHeroPanels, which this page does not render — without it the
+        Criteria toggle appears but has nowhere to draw and looks broken.
+        `empty:hidden` keeps it invisible until the portal fills it, so it
+        behaves as a pop-out rather than a reserved column. Mobile is unaffected:
+        that path already uses ListingSideDrawer.
+      */}
+      <div
+        id={LISTING_CRITERIA_SLOT_ID}
+        className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto empty:hidden"
+      />
     </section>
   );
 }
