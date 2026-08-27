@@ -6,6 +6,7 @@ import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import MarketPulseHeatStrip from "@/components/MarketPulseHeatStrip";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
+import type { ListingKind } from "@/lib/listing-kind";
 import { fmtMoney } from "@/lib/listing-history";
 import { type MarketDigestSnapshot } from "@/lib/market-digest-types";
 import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
@@ -170,6 +171,13 @@ function BarValueOverlay({
 /** Percent shown beside a row label when it cannot fit around its own bar. */
 const BAR_ASIDE_LABEL_CLASS =
   "shrink-0 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)]";
+
+/** Rentals are leased, not closed, and every label that says so follows. */
+function closedNounFor(kind: ListingKind): { title: string; lower: string } {
+  return kind === "rental"
+    ? { title: "Leased", lower: "leases" }
+    : { title: "Closed sales", lower: "closed sales" };
+}
 
 const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
@@ -773,8 +781,8 @@ function BarChart<Row extends { city: string }>({
                     : title.startsWith("Median")
                       ? "Median"
                       : "Delta"
-                  : title.startsWith("Closed")
-                    ? "Closed sales"
+                  : title.startsWith("Closed") || title.startsWith("Leased")
+                    ? title.split(" —")[0]
                     : "Active inventory";
           const asideText = formatValueAside?.(row, index);
           const asidePlacement = barAsidePlacement(
@@ -860,7 +868,7 @@ function BarChart<Row extends { city: string }>({
   );
 }
 
-function combinedMetrics(closedLookbackLabel: string) {
+function combinedMetrics(closedLookbackLabel: string, kind: ListingKind) {
   const chrome: Record<
     MarketPulseStackedMetricId,
     {
@@ -916,7 +924,7 @@ function combinedMetrics(closedLookbackLabel: string) {
     },
   };
 
-  return marketPulseStackedMetrics(closedLookbackLabel).map((m) => ({
+  return marketPulseStackedMetrics(closedLookbackLabel, kind).map((m) => ({
     ...m,
     ...chrome[m.id],
     valueOf: m.barValueOf,
@@ -937,12 +945,14 @@ function CombinedMetricsChart({
   onAllTownsToggle,
   scopeLabel,
   saleToAskTownHref,
+  kind,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
   /** Turns the List to ask row label into a link to its Stats chart. */
   saleToAskTownHref?: (cityLabel: string) => string;
+  kind: ListingKind;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   closedPending?: boolean;
@@ -953,7 +963,7 @@ function CombinedMetricsChart({
   /** Active tab scope for the heat strip tooltip, e.g. `sales` / `rentals`. */
   scopeLabel: string;
 }) {
-  const metrics = combinedMetrics(closedLookbackLabel);
+  const metrics = combinedMetrics(closedLookbackLabel, kind);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
   useEffect(() => {
@@ -1343,6 +1353,7 @@ export default function WeeklyBriefContent({
   closedSalesTownHref,
   avgDomTownHref,
   saleToAskTownHref,
+  kind = "sale",
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
@@ -1370,6 +1381,8 @@ export default function WeeklyBriefContent({
   avgDomTownHref?: (cityLabel: string) => string;
   /** List to ask → Stats list-to-ask chart (its own graph and data table). */
   saleToAskTownHref?: (cityLabel: string) => string;
+  /** Rentals are leased rather than closed, and the labels follow. */
+  kind?: ListingKind;
   /** Shared settle clock from Market Pulse (scramble → count-up). */
   settle?: MarketPulseSettleState;
   /** Closed totals still in flight — otherwise empty means "cache not built". */
@@ -1404,6 +1417,7 @@ export default function WeeklyBriefContent({
     }
   }, [townsExpanded, chartLayout]);
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
+  const closedNoun = closedNounFor(kind);
   const lookbackDays = marketPulseLookbackById(lookbackId).days;
   const lookbackDrivesMos = lookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
 
@@ -1693,6 +1707,7 @@ export default function WeeklyBriefContent({
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
             scopeLabel={scopeLabel}
             saleToAskTownHref={saleToAskTownHref}
+            kind={kind}
           />
         ) : (
           <>
@@ -1745,7 +1760,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title={`Closed sales — trailing ${closedLookbackLabel}`}
+          title={`${closedNoun.title} — trailing ${closedLookbackLabel}`}
           rows={closedRows}
           valueOf={(r) => r.count}
           valueKind="int"
@@ -1754,8 +1769,8 @@ export default function WeeklyBriefContent({
           barClassName={METRIC_COLORS.closed}
           emptyMessage={
             closedPending
-              ? "Loading closed sales for this lookback…"
-              : "No closed sales in this lookback window (or the count request failed — try another period)."
+              ? `Loading ${closedNoun.lower} for this lookback…`
+              : `No ${closedNoun.lower} in this lookback window (or the count request failed — try another period).`
           }
           townHref={closedSalesTownHref}
           settle={settle}

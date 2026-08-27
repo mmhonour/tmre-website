@@ -16,6 +16,7 @@ import {
 } from "@/lib/market-pulse-lookback";
 import {
   MARKET_PULSE_CATEGORY_IDS,
+  marketPulseCategoryToIntelligenceFilters,
   marketPulseTownAvgDomStatsHref,
   marketPulseTownListToAskStatsHref,
   marketPulseTownClosedSalesStatsHref,
@@ -332,6 +333,11 @@ export default function MarketPulseContent({
       closedSalesTownHref={closedSalesTownHref}
       avgDomTownHref={avgDomTownHref}
       saleToAskTownHref={saleToAskTownHref}
+      kind={
+        marketPulseCategoryToIntelligenceFilters(category).tx === "rental"
+          ? "rental"
+          : "sale"
+      }
       settle={settle}
       closedPending={closedPending}
       categoryFilter={categoryFilter}
