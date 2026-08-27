@@ -1,3 +1,4 @@
+import type { ListingKind } from '@/lib/listing-kind'
 import type { MarketPulseCombinedTownRow } from '@/lib/market-pulse-combined-rows'
 import { formatClosedCountWithLookback } from '@/lib/market-pulse-lookback'
 import {
@@ -59,10 +60,16 @@ export function formatSaleToAskPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`
 }
 
-/** Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `12 mos`. */
+/**
+ * Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `12 mos`.
+ * Rentals are leased rather than closed, so the tab renames that row; the email
+ * is always ALL sales and keeps the default.
+ */
 export function marketPulseStackedMetrics(
   closedLookbackLabel: string,
+  kind: ListingKind = 'sale',
 ): MarketPulseStackedMetricDef[] {
+  const leased = kind === 'rental'
   return [
     {
       id: 'inventory',
@@ -84,7 +91,7 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'closed',
-      label: 'Closed',
+      label: leased ? 'Leased' : 'Closed',
       barValueOf: (r) => r.closedCount,
       format: (r) =>
         formatClosedCountWithLookback(
@@ -125,10 +132,10 @@ export function marketPulseStackedMetrics(
 
 /** Shared dollar axis for Median, Delta, and Average (do not scale Delta to its own max). */
 export function marketPulsePriceBarMax(
-  rows: Array<{
+  rows: readonly {
     medianPrice: number | null
     averagePrice: number | null
-  }>,
+  }[],
 ): number {
   let max = 0
   for (const r of rows) {
