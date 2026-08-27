@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
@@ -32,7 +31,6 @@ export default function ShowcaseSectionRail({
   latitude,
   longitude,
   addressQuery,
-  compsHref,
   onNext,
 }: {
   insight: string | null;
@@ -40,7 +38,6 @@ export default function ShowcaseSectionRail({
   latitude: number | null;
   longitude: number | null;
   addressQuery: string;
-  compsHref: string;
   onNext: () => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
@@ -100,9 +97,13 @@ export default function ShowcaseSectionRail({
         </dl>,
       )}
 
-      <Link href={compsHref} className={pillClass(false)}>
+      <button
+        type="button"
+        onClick={() => scrollToShowcaseSection("comps")}
+        className={pillClass(false)}
+      >
         Comps
-      </Link>
+      </button>
 
       <ShowcaseStepArrow direction="next" label="Next photo" onClick={onNext} />
 

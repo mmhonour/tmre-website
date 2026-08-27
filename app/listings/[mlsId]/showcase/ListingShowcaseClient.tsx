@@ -17,7 +17,6 @@ import {
   listingDetailHref,
   listingPhotoProxyUrlsFromCount,
   listingPhotosHref,
-  listingSectionHref,
 } from "@/lib/listing-url";
 import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
 
@@ -268,7 +267,6 @@ export default function ListingShowcaseClient({
           latitude={listing.latitude}
           longitude={listing.longitude}
           addressQuery={mapsQuery}
-          compsHref={listingSectionHref(listing.mlsId, "comparables", street, city)}
           onNext={() => step(1)}
         />
 

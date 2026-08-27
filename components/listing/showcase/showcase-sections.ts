@@ -9,6 +9,7 @@ export const SHOWCASE_SECTION_IDS = {
   overview: "showcase-overview",
   insight: "showcase-insight",
   details: "showcase-details",
+  comps: "showcase-comps",
   if: "showcase-if",
   history: "showcase-history",
   map: "showcase-map",
@@ -19,6 +20,9 @@ export type ShowcaseSection = keyof typeof SHOWCASE_SECTION_IDS;
 /** Tabs with a section in the panel; anything else still navigates to its route. */
 const TAB_TO_SECTION: Partial<Record<ListingTab, ShowcaseSection>> = {
   overview: "overview",
+  // Sold and Rented share one section; the comps body picks its own kind.
+  comparables: "comps",
+  "comparable-rentals": "comps",
   if: "if",
   history: "history",
   map: "map",

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
+import { ListingComparablesPageContent } from "@/components/listing/ListingComparablesPanel";
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
@@ -188,6 +189,20 @@ export default function ShowcaseDetailsPanel({
                 </div>
               ))}
             </dl>
+          </Section>
+
+          <Section
+            id={SHOWCASE_SECTION_IDS.comps}
+            title={isRental ? "Rented comparables" : "Sold comparables"}
+          >
+            {/* Same body the Overview slide panel and the dedicated
+                /comparables route render — one component, three hosts. */}
+            <ListingComparablesPageContent
+              mlsId={listing.mlsId}
+              townHint={city}
+              kind={isRental ? "rental" : "sale"}
+              suppressPageChrome
+            />
           </Section>
 
           <Section id={SHOWCASE_SECTION_IDS.if} title="What if">
