@@ -909,10 +909,13 @@ function CombinedMetricsChart({
   townsExpanded,
   onAllTownsToggle,
   scopeLabel,
+  saleToAskTownHref,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
+  /** Turns the List to ask row label into a link to its Stats chart. */
+  saleToAskTownHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   closedPending?: boolean;
@@ -1086,7 +1089,17 @@ function CombinedMetricsChart({
           </span>
         ) : (
           <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
-            {stackedLabel}
+            {m.id === "saleToAsk" && saleToAskTownHref ? (
+              <Link
+                href={saleToAskTownHref(townLabel)}
+                title={`${stackedLabel} on Stats — chart and data table`}
+                className="underline decoration-[var(--mp-muted-text)]/40 underline-offset-2 transition-colors hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
+              >
+                {stackedLabel}
+              </Link>
+            ) : (
+              stackedLabel
+            )}
             {asideOnLabel ? (
               <span className="ml-1 shrink-0 tabular-nums text-[var(--mp-text)]">
                 {asideOnLabel}
@@ -1302,6 +1315,7 @@ export default function WeeklyBriefContent({
   monthsSupplyTownHref,
   closedSalesTownHref,
   avgDomTownHref,
+  saleToAskTownHref,
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
@@ -1327,6 +1341,8 @@ export default function WeeklyBriefContent({
   closedSalesTownHref?: (cityLabel: string) => string;
   /** Avg DOM town labels → Stats avg-dom chart. */
   avgDomTownHref?: (cityLabel: string) => string;
+  /** List to ask → Stats list-to-ask chart (its own graph and data table). */
+  saleToAskTownHref?: (cityLabel: string) => string;
   /** Shared settle clock from Market Pulse (scramble → count-up). */
   settle?: MarketPulseSettleState;
   /** Closed totals still in flight — otherwise empty means "cache not built". */
@@ -1647,6 +1663,7 @@ export default function WeeklyBriefContent({
             townsExpanded={townsExpanded}
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
             scopeLabel={scopeLabel}
+            saleToAskTownHref={saleToAskTownHref}
           />
         ) : (
           <>
@@ -1833,7 +1850,7 @@ export default function WeeklyBriefContent({
           favorSortDir={unstackedFavorSortDir(favorSort, "saleToAsk")}
           barClassName={METRIC_COLORS.saleToAsk}
           emptyMessage="No close-vs-original-ask pool yet — run a stats rebuild."
-          townHref={townHref}
+          townHref={saleToAskTownHref ?? townHref}
           settle={settle}
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}

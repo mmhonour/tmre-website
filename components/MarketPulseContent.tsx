@@ -17,6 +17,7 @@ import {
 import {
   MARKET_PULSE_CATEGORY_IDS,
   marketPulseTownAvgDomStatsHref,
+  marketPulseTownListToAskStatsHref,
   marketPulseTownClosedSalesStatsHref,
   marketPulseTownIntelligenceHref,
   marketPulseTownMonthsSupplyStatsHref,
@@ -277,6 +278,8 @@ export default function MarketPulseContent({
     marketPulseTownClosedSalesStatsHref(cityLabel, category);
   const avgDomTownHref = (cityLabel: string) =>
     marketPulseTownAvgDomStatsHref(cityLabel, category);
+  const saleToAskTownHref = (cityLabel: string) =>
+    marketPulseTownListToAskStatsHref(cityLabel, category);
   const categoryFilter = (
     <div
       className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.12em] uppercase"
@@ -328,6 +331,7 @@ export default function MarketPulseContent({
       monthsSupplyTownHref={monthsSupplyTownHref}
       closedSalesTownHref={closedSalesTownHref}
       avgDomTownHref={avgDomTownHref}
+      saleToAskTownHref={saleToAskTownHref}
       settle={settle}
       closedPending={closedPending}
       categoryFilter={categoryFilter}

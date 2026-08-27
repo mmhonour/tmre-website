@@ -49,6 +49,19 @@ export function statsSalesTrendHref(options: {
   return `/stats?${params.toString()}`;
 }
 
+/** Deep link to Stats → list-to-ask chart for a town (or All). */
+export function statsListToAskHref(options: {
+  city: string;
+  kind?: "sale" | "rental";
+}): string {
+  const params = new URLSearchParams({
+    city: options.city,
+    kind: options.kind ?? "sale",
+    chart: "list-to-ask",
+  });
+  return `/stats?${params.toString()}`;
+}
+
 /** Deep link to Stats → avg days on market chart for a town (or All). */
 export function statsAvgDomHref(options: {
   city: string;

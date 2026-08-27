@@ -1,6 +1,7 @@
 import { buildIntelligenceShareHref } from '@/lib/intelligence-search-url'
 import {
   statsAvgDomHref,
+  statsListToAskHref,
   statsMonthsSupplyHref,
   statsSalesTrendHref,
 } from '@/lib/stats-url'
@@ -103,6 +104,18 @@ export function marketPulseTownAvgDomStatsHref(
 ): string {
   const filters = marketPulseCategoryToIntelligenceFilters(categoryId)
   return statsAvgDomHref({
+    city: marketPulseTownLabelToStatsCity(cityLabel),
+    kind: filters.tx === 'rental' ? 'rental' : 'sale',
+  })
+}
+
+/** /stats deep link to the list-to-ask chart for a Market Pulse town row. */
+export function marketPulseTownListToAskStatsHref(
+  cityLabel: string,
+  categoryId: MarketPulseCategoryId,
+): string {
+  const filters = marketPulseCategoryToIntelligenceFilters(categoryId)
+  return statsListToAskHref({
     city: marketPulseTownLabelToStatsCity(cityLabel),
     kind: filters.tx === 'rental' ? 'rental' : 'sale',
   })
