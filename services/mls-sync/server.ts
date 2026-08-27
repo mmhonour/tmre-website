@@ -372,6 +372,8 @@ async function handleRequest(
         lastOutcome: runner.lastOutcome,
       },
       queue: {
+        drainHeartbeatAt: queue.drainHeartbeatAt,
+        runnerStale: queue.runnerStale,
         waiting: queue.waiting.map((item) => ({
           id: item.id,
           jobId: item.jobId,

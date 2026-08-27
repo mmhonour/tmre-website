@@ -30,6 +30,28 @@ export const SYNC_QUEUE_HEARTBEAT_STALE_MS = 5 * 60 * 1000
 export const SYNC_QUEUE_RUNNER_STALE_MS = 10 * 60 * 1000
 
 /**
+ * Stamped only by the drain loop, and deliberately not `last_mls_sync_heartbeat`.
+ *
+ * Netlify decides whether to rescue a stranded row by asking whether a runner is
+ * alive. If that question were answered by the plain heartbeat, the answer would
+ * be yes for an mls-sync build that predates the queue — a process that is up,
+ * beating, and claiming nothing. Netlify would stand down for a runner that was
+ * never coming, and every job would stop with no error anywhere. Deploys are not
+ * atomic across two hosts, so that state exists on every rollout; asking "is
+ * something draining the queue" instead of "is something running" is what makes
+ * the order of those deploys not matter.
+ */
+export const SYNC_QUEUE_DRAIN_HEARTBEAT_KEY = 'last_sync_queue_drain_at'
+
+/** Called by the runner's drain loop to prove it is claiming, not merely alive. */
+export async function stampSyncQueueDrainHeartbeat(
+  at = new Date().toISOString(),
+): Promise<void> {
+  const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
+  await setSyncMetaDurable(SYNC_QUEUE_DRAIN_HEARTBEAT_KEY, at)
+}
+
+/**
  * How long to leave a job alone after it timed out or crashed. An OOM takes the
  * whole container with it, so without a cooldown the sweep re-enqueues the same
  * fatal job on every boot and starves everything behind it.
@@ -471,18 +493,24 @@ export async function readSyncQueueSnapshot(
     ])
     const live = liveRows.map(mapRow)
     const { getSyncMeta } = await import('@/lib/db/sync-meta')
-    const runnerHeartbeatAt = await getSyncMeta('last_mls_sync_heartbeat').catch(
-      () => null,
-    )
-    const beatMs = runnerHeartbeatAt ? Date.parse(runnerHeartbeatAt) : Number.NaN
+    // Staleness is judged on the drain stamp, not the process heartbeat — see
+    // SYNC_QUEUE_DRAIN_HEARTBEAT_KEY. The heartbeat is still reported, because
+    // "the process is up but nothing is draining" is the interesting case and
+    // Admin should be able to show it.
+    const [runnerHeartbeatAt, drainAt] = await Promise.all([
+      getSyncMeta('last_mls_sync_heartbeat').catch(() => null),
+      getSyncMeta(SYNC_QUEUE_DRAIN_HEARTBEAT_KEY).catch(() => null),
+    ])
+    const drainMs = drainAt ? Date.parse(drainAt) : Number.NaN
     return {
       waiting: live.filter((item) => item.state === 'queued'),
       running: live.filter((item) => item.state === 'running'),
       recent: recentRows.map(mapRow),
       runnerHeartbeatAt,
+      drainHeartbeatAt: drainAt,
       runnerStale:
-        !Number.isFinite(beatMs) ||
-        Date.now() - beatMs > SYNC_QUEUE_RUNNER_STALE_MS,
+        !Number.isFinite(drainMs) ||
+        Date.now() - drainMs > SYNC_QUEUE_RUNNER_STALE_MS,
     }
   } catch (err) {
     console.warn('[sync-queue] snapshot failed', err)

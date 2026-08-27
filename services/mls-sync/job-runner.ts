@@ -37,6 +37,9 @@ const KILL_GRACE_MS = 15_000
 /** Keep the queue row's heartbeat fresh so another host cannot reap a live run. */
 const QUEUE_HEARTBEAT_MS = 60_000
 
+/** Cadence for proving to Netlify that a queue-aware runner is on duty. */
+const DRAIN_HEARTBEAT_MS = 60_000
+
 /**
  * Optional heap cap for children. Setting this is what converts a container-wide
  * OOM kill into a single failed job: V8 aborts the child at the cap while the
@@ -379,6 +382,19 @@ export function startSyncQueueDrain(): void {
   }
   setTimeout(tick, 5_000)
   setInterval(tick, DRAIN_POLL_MS)
+
+  // Only reached from here, so only a build that drains can ever write it — the
+  // whole point of the key. It is on its own interval rather than inside the
+  // drain because the drain returns early while a child works, and a job that
+  // legitimately runs for forty minutes must not look like an absent runner and
+  // invite Netlify to start a second copy.
+  const stampDrain = () => {
+    void import('../../lib/sync-queue')
+      .then(({ stampSyncQueueDrainHeartbeat }) => stampSyncQueueDrainHeartbeat())
+      .catch((err) => console.warn('[mls-sync] drain heartbeat failed', err))
+  }
+  stampDrain()
+  setInterval(stampDrain, DRAIN_HEARTBEAT_MS)
 
   const heapMb = childHeapMb()
   console.info(

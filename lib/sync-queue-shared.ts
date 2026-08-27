@@ -77,7 +77,13 @@ export type SyncQueueSnapshot = {
   recent: SyncQueueItem[]
   /** Last heartbeat from the runner process, whether or not a job is in flight. */
   runnerHeartbeatAt: string | null
-  /** True when the runner has not checked in recently enough to be trusted. */
+  /**
+   * Last time something actually drained the queue. Distinct from the heartbeat
+   * above: a runner build that predates the queue is up and beating while
+   * claiming nothing, and that pair is what Netlify must not read as healthy.
+   */
+  drainHeartbeatAt: string | null
+  /** True when nothing has drained the queue recently enough to be trusted. */
   runnerStale: boolean
 }
 
@@ -87,6 +93,7 @@ export function emptySyncQueueSnapshot(): SyncQueueSnapshot {
     running: [],
     recent: [],
     runnerHeartbeatAt: null,
+    drainHeartbeatAt: null,
     runnerStale: true,
   }
 }

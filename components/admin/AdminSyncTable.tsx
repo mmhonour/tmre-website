@@ -4129,12 +4129,20 @@ export default function AdminSyncTable({
                             <span
                               className="font-mono text-[8px] tracking-wide text-coral/80"
                               title={
-                                syncQueue.runnerHeartbeatAt
-                                  ? `Last runner heartbeat ${formatTimestamp(syncQueue.runnerHeartbeatAt)}`
-                                  : "The runner has never checked in"
+                                // A process that is up while nothing drains is
+                                // the mid-deploy state, and it reads very
+                                // differently from a runner that is simply down.
+                                syncQueue.drainHeartbeatAt
+                                  ? `Nothing has drained the queue since ${formatTimestamp(syncQueue.drainHeartbeatAt)}`
+                                  : syncQueue.runnerHeartbeatAt
+                                    ? `The mls-sync process is alive (heartbeat ${formatTimestamp(syncQueue.runnerHeartbeatAt)}) but has never drained the queue — it is probably still on a build that predates it. Netlify is covering.`
+                                    : "No runner has ever checked in"
                               }
                             >
-                              runner silent
+                              {syncQueue.drainHeartbeatAt == null &&
+                              syncQueue.runnerHeartbeatAt
+                                ? "runner up, not draining"
+                                : "runner silent"}
                             </span>
                           ) : null}
                         </div>
