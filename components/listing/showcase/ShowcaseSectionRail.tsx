@@ -9,6 +9,7 @@ import {
 } from "@/components/listing/listing-section-ids";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
+import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseDetailRow } from "@/components/listing/showcase/showcase-types";
 import {
@@ -18,7 +19,7 @@ import {
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
-type CardId = "insight" | "details";
+type CardId = "pulse" | "insight" | "details";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
@@ -280,6 +281,12 @@ export default function ShowcaseSectionRail({
       <div
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
+        {cardPill(
+          "pulse",
+          "Town pulse",
+          <ShowcaseTownPulse city={townHint ?? ""} expanded={openCard === "pulse"} />,
+        )}
+
         {cardPill(
           "insight",
           "Insight",
