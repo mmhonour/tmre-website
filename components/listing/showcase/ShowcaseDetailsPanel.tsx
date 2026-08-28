@@ -12,6 +12,7 @@ import ListingRemarksSidePanel, {
 } from "@/components/listing/ListingRemarksSidePanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
+import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import { fmtMoney } from "@/lib/listing-history";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
@@ -102,6 +103,7 @@ export default function ShowcaseDetailsPanel({
   const [activeDeckCard, setActiveDeckCard] =
     useState<ListingDesktopDeckCardId | null>("remarks");
   const remarksExpand = useListingRemarksExpand();
+  const isDesktop = useIsDesktop();
   const { goldilocksScore, goldilocksBreakdown } = score;
   const status = formatMlsStatus(listing.status);
 
@@ -155,11 +157,6 @@ export default function ShowcaseDetailsPanel({
    */
   const handleTabSelect = (tab: ListingTab) => {
     if (tab === "admin") return;
-    // Desktop keeps History in the dashboard deck rather than a section.
-    if (tab === "history" && window.innerWidth >= 1024) {
-      setActiveDeckCard((cur) => (cur === "history" ? null : "history"));
-      return;
-    }
     const section = showcaseSectionForTab(tab);
     if (section) {
       scrollToShowcaseSection(section);
@@ -256,17 +253,31 @@ export default function ShowcaseDetailsPanel({
               })}
             />
 
-            <div className="mt-3 pb-3">
-              <ListingSubnav
+          {/*
+            Desktop keeps History in the dashboard deck, so its tab toggles the
+            card and lights up with it — the same wiring ListingHeroPanels uses.
+            Null on mobile, where the tab falls through to the stacked section.
+          */}
+          <div className="mt-3 pb-3">
+            <ListingSubnav
                 mlsId={listing.mlsId}
                 active="overview"
                 addressHint={street || addressHint}
                 townHint={city}
                 isRental={isRental}
-                compact
-                onTabSelect={handleTabSelect}
-                onMapToggle={() => scrollToShowcaseSection("map")}
-              />
+              compact
+              onTabSelect={handleTabSelect}
+              onMapToggle={() => scrollToShowcaseSection("map")}
+              historyElevated={activeDeckCard === "history"}
+              onHistoryToggle={
+                isDesktop
+                  ? () =>
+                      setActiveDeckCard((cur) =>
+                        cur === "history" ? null : "history",
+                      )
+                  : null
+              }
+            />
             </div>
           </div>
 
