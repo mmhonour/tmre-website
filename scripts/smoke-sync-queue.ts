@@ -196,10 +196,22 @@ async function checkBacklog(): Promise<void> {
     `${oldest?.jobId} has been waiting ${waitedMin}m — nothing is claiming it and no rescue has fired`,
   )
 
+  // Only the newest failure is printed in full. Truncating these to one short
+  // line hid the actionable half of a provider error — "Resend API 403: {"
+  // tells you nothing, and the sentence after it names the fix.
+  const newestFailure = snap.recent.find((item) => item.ok === false)
   for (const item of snap.recent.slice(0, 5)) {
+    const full = item === newestFailure
+    const detail = item.detail
+      ? full
+        ? item.detail
+        : item.detail.length > 90
+          ? `${item.detail.slice(0, 90)}…`
+          : item.detail
+      : null
     console.info(
       `      recent: ${item.jobId} → ${syncQueueOutcomeLabel(item.outcome)}${
-        item.detail ? ` (${item.detail.slice(0, 70)})` : ''
+        detail ? ` (${detail})` : ''
       }`,
     )
   }
