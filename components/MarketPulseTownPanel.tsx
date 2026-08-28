@@ -44,7 +44,7 @@ import {
 } from "@/components/market-pulse-metrics";
 
 /** Panel surface, lifted from the listing showcase tile. */
-const PANEL_SURFACE = "rounded-xl bg-black/15 px-4 py-3";
+const PANEL_SURFACE = "rounded-lg bg-[var(--mp-page-bg)]/60 px-3 py-2";
 
 /**
  * Buyer ↔ seller spectrum in the showcase's treatment: a coral-to-sage gradient
@@ -62,9 +62,9 @@ function FavorabilityBar({
   const band = pct == null ? null : marketPulseHeatBand(pct / 100);
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.16em] text-white/45">
+      <div className="flex items-baseline justify-between gap-2 [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.16em] text-[var(--mp-muted-text)]">
         <span>Seller</span>
-        <span className="truncate text-white/70">
+        <span className="truncate text-[var(--mp-text)]">
           {band?.label ?? "No signal"}
           {peerCount != null ? ` · vs ${peerCount} towns` : ""}
         </span>
@@ -73,7 +73,7 @@ function FavorabilityBar({
       <div className="relative mt-1.5 h-2 w-full rounded-full bg-gradient-to-r from-coral via-gold to-sage">
         {pct != null ? (
           <span
-            className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_2px_rgba(13,20,36,0.9)]"
+            className="absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--mp-text)] shadow-[0_0_0_2px_var(--mp-card-bg,#fff)]"
             style={{ left: `${pct}%` }}
             aria-hidden
           />
@@ -137,13 +137,17 @@ export default function MarketPulseTownPanel({
   return (
     <div className={PANEL_SURFACE}>
       {/*
-       * Name sits beside the spectrum rather than above it, so the spectrum
-       * gives up exactly the width the name takes — longer town names simply
-       * condense it further.
+       * The section's own title now lives here, in the site's heading voice —
+       * plain words, comma, the subject in italics — so the town reads as part
+       * of the label rather than a heading of its own. Sat beside the
+       * spectrum, which gives up exactly the width the title takes.
        */}
       <div className="flex items-center gap-3">
-        <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
-          {heading ?? townLabel}
+        <span className="shrink-0 [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] text-[var(--mp-muted-text)]">
+          Town metrics,{" "}
+          <span className="italic text-[var(--mp-text)]">
+            {heading ?? townLabel}
+          </span>
         </span>
         <div className="min-w-0 flex-1">
           <FavorabilityBar
@@ -164,7 +168,7 @@ export default function MarketPulseTownPanel({
 
       {tabs ? <div className="mt-3">{tabs}</div> : null}
 
-      <div className="mt-3 divide-y divide-white/[0.06] border-t border-white/[0.06]">
+      <div className="mt-2 divide-y divide-[var(--mp-hairline,rgba(0,0,0,0.08))] border-t border-[var(--mp-hairline,rgba(0,0,0,0.08))]">
         {metrics.map((m, metricIndex) => {
           const value = m.valueOf(row);
           const max = marketPulseMetricMax(scale, m.id);
@@ -261,12 +265,12 @@ export default function MarketPulseTownPanel({
               key={m.id}
               className="grid h-6 grid-cols-[7.75rem_1fr_auto] items-center gap-2"
             >
-              <span className="truncate text-right font-mono text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-white/45">
+              <span className="truncate text-right [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-[var(--mp-muted-text)]">
                 {m.id === "saleToAsk" && saleToAskHref ? (
                   <Link
                     href={saleToAskHref}
                     title={`${m.label} on Stats — chart and data table`}
-                    className="underline decoration-white/25 underline-offset-2 transition-colors hover:text-gold"
+                    className="underline decoration-[var(--mp-muted-text)]/40 underline-offset-2 transition-colors hover:text-[var(--mp-accent)]"
                   >
                     {m.label}
                   </Link>
@@ -274,7 +278,7 @@ export default function MarketPulseTownPanel({
                   m.label
                 )}
                 {placement === "label" && asideText ? (
-                  <span className="ml-1 tabular-nums text-white/80">
+                  <span className="ml-1 tabular-nums text-[var(--mp-text)]">
                     {asideText}
                   </span>
                 ) : null}
@@ -285,9 +289,9 @@ export default function MarketPulseTownPanel({
                * too thin to hold it, so it centres on the bar and overhangs.
                */}
               <span className="relative block h-1.5 w-full">
-                <span className="block h-full w-full overflow-hidden rounded-full bg-white/10">
+                <span className="block h-full w-full overflow-hidden rounded-full bg-[var(--mp-track,rgba(0,0,0,0.10))]">
                   <span
-                    className="block h-full rounded-full bg-gold/70"
+                    className="block h-full rounded-full bg-[var(--mp-accent)]"
                     style={{
                       marginLeft: `${aligned.leftPct}%`,
                       width: `${aligned.widthPct}%`,
@@ -296,7 +300,7 @@ export default function MarketPulseTownPanel({
                 </span>
                 {asideText && placement && placement !== "label" ? (
                   <span
-                    className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap font-mono text-[9px] tabular-nums text-white/70 ${
+                    className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-text)] ${
                       placement === "left" ? "text-right" : ""
                     }`}
                     style={
@@ -311,7 +315,7 @@ export default function MarketPulseTownPanel({
                   </span>
                 ) : null}
               </span>
-              <span className="text-right font-mono text-[11px] tabular-nums text-white/90">
+              <span className="text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-[var(--mp-text)]">
                 {valueText}
               </span>
             </div>
@@ -320,7 +324,7 @@ export default function MarketPulseTownPanel({
       </div>
 
       {caption ? (
-        <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.14em] text-white/35">
+        <p className="mt-2 [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] text-[var(--mp-muted-text)]">
           {caption}
         </p>
       ) : null}

@@ -284,33 +284,45 @@ const TOWN_METRICS_HEADING_CLASS =
   "[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1.5";
 
 const TOWN_NAME_CLASS =
-  "[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors";
+  "text-inherit underline decoration-[var(--mp-text)]/40 underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors";
 
-function TownMetricsLayoutWord({
-  label,
-  selected,
+/**
+ * Bar-state toggle. Two glyphs, one for each layout: rows banded together for
+ * stacked, rows split apart for unstacked. The title beside it names the town,
+ * so spelling the two states out in words was costing a line for nothing.
+ */
+function TownMetricsLayoutToggle({
+  layout,
   onSelect,
 }: {
-  label: "stacked" | "unstacked";
-  selected: boolean;
-  onSelect: () => void;
+  layout: ChartLayout;
+  onSelect: (next: ChartLayout) => void;
 }) {
-  const text = label === "unstacked" ? "Unstacked" : "stacked";
-  if (selected) {
-    return (
-      <span className="font-semibold text-[var(--mp-accent)]" aria-current="true">
-        {text}
-      </span>
-    );
-  }
+  const stacked = layout === "stacked";
+  const next: ChartLayout = stacked ? "unstacked" : "stacked";
   return (
     <button
       type="button"
-      aria-label={`Show ${text} town metrics`}
-      onClick={onSelect}
-      className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
+      aria-label={`Showing ${layout} town metrics. Switch to ${next}.`}
+      title={`Switch to ${next}`}
+      onClick={() => onSelect(next)}
+      className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 hover:text-[var(--mp-text)]"
     >
-      {text}
+      <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" aria-hidden>
+        {stacked ? (
+          <>
+            <rect x="1" y="3" width="12" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="6" width="9" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="9" width="6" height="2" rx="1" fill="currentColor" />
+          </>
+        ) : (
+          <>
+            <rect x="1" y="1.5" width="12" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="6" width="8" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="10.5" width="4" height="2" rx="1" fill="currentColor" />
+          </>
+        )}
+      </svg>
     </button>
   );
 }
@@ -381,11 +393,7 @@ function TownName({
       </Link>
     );
   }
-  return (
-    <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
-      {label}
-    </span>
-  );
+  return <span className="truncate text-inherit">{label}</span>;
 }
 
 function FavorSortToggle({
@@ -1173,34 +1181,24 @@ export default function WeeklyBriefContent({
 
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
 
-  const townMetricsHeading = (
-    <p className={TOWN_METRICS_HEADING_CLASS}>
-      Town metrics
+  const townMetricsControls = (
+    <div className="flex items-center gap-2">
+      <TownMetricsLayoutToggle
+        layout={chartLayout}
+        onSelect={(next) => {
+          if (next === "unstacked") setTownsExpanded(true);
+          setChartLayout(next);
+        }}
+      />
       <button
         type="button"
-        className="align-super font-mono text-[12px] leading-none text-[var(--mp-accent)] hover:text-[var(--mp-text)]"
+        className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)] underline decoration-[var(--mp-muted-text)]/40 underline-offset-2 hover:text-[var(--mp-accent)]"
         aria-label="How towns are sorted"
         onClick={() => setSortExplainOpen(true)}
       >
-        *
+        Why
       </button>
-      <TownMetricsLayoutWord
-        label="stacked"
-        selected={chartLayout === "stacked"}
-        onSelect={() => setChartLayout("stacked")}
-      />
-      <span className="text-[var(--mp-accent)]/45" aria-hidden>
-        {"-->"}
-      </span>
-      <TownMetricsLayoutWord
-        label="unstacked"
-        selected={chartLayout === "unstacked"}
-        onSelect={() => {
-          setTownsExpanded(true);
-          setChartLayout("unstacked");
-        }}
-      />
-    </p>
+    </div>
   );
 
   const comparingTown =
@@ -1287,8 +1285,10 @@ export default function WeeklyBriefContent({
           {kpiStrip}
         </div>
 
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {categoryFilter}
+          <div className="flex items-center gap-3">
+          {townMetricsControls}
           <FavorSortToggle
             favorSort={favorSort}
             onToggle={() =>
@@ -1297,10 +1297,10 @@ export default function WeeklyBriefContent({
               )
             }
           />
+          </div>
         </div>
 
-        <div className="space-y-6">
-        {townMetricsHeading}
+        <div>
         {chartLayout === "stacked" || !townsExpanded ? (
           /*
            * Stacked hands the slider to the chart, which stands it beside the

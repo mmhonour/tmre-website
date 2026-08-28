@@ -31,13 +31,13 @@ export type MarketPulseTheme = {
 };
 
 export const DEFAULT_MARKET_PULSE_THEME: MarketPulseTheme = {
-  pageBackground: "#1B2637",
-  cardBackground: "#26374F",
+  pageBackground: "#EEF1F6",
+  cardBackground: "#FFFFFF",
   surface: "#1B2A4A",
   surfaceDeep: "#131F38",
   accent: "#C8A951",
-  text: "#F1F4FA",
-  mutedText: "#8C9AB4",
+  text: "#1B2A4A",
+  mutedText: "#5A5A56",
   inventoryBar: "#2A3D6B",
   monthsSupplyBar: "#C8A951",
   headingFont: "serif",
