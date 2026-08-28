@@ -88,10 +88,13 @@ export default function ListingDetailClient({
   mlsId,
   addressHint,
   townHint,
+  embedded = false,
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
+  /** Hosted below other content (showcase) — do not lock document scroll. */
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<ApiResponse | null>(
     () => listingDetailCache.get(mlsId) ?? null,
@@ -297,6 +300,7 @@ export default function ListingDetailClient({
           />
         }
         sidebar={<ListingSidebar details={details} />}
+        lockPanelScroll={!embedded}
       />
     </ListingShell>
   );

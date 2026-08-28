@@ -394,6 +394,7 @@ export default function ListingShowcaseClient({
             mlsId={mlsId}
             addressHint={street || addressHint}
             townHint={city}
+            embedded
           />
         </div>
       ) : (
