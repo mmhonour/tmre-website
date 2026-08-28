@@ -6,7 +6,10 @@ import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
-import { marketPulseTownScale } from "@/lib/market-pulse-town-scale";
+import {
+  marketPulseTownScale,
+  type MarketPulseTownScale,
+} from "@/lib/market-pulse-town-scale";
 import {
   PANEL_SURFACE,
   PANEL_TITLE,
@@ -38,15 +41,13 @@ import {
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
 import {
+  formatMarketPulseMoney,
   formatPriceDeltaK,
   formatPriceDeltaPct,
-  meanMinusMedian,
-  PRICE_DELTA_EXPLAIN,
 } from "@/lib/market-pulse-price-delta";
 import {
   formatSaleToAskPct,
   marketPulseDeltaBarSpan,
-  marketPulsePriceBarMax,
   marketPulsePricePct,
 } from "@/lib/market-pulse-stacked-metrics";
 import {
@@ -723,6 +724,146 @@ function BarChart<Row extends { city: string }>({
   );
 }
 
+
+/** Median, Delta and Average for one town, on the shared dollar axis. */
+const PRICE_METRIC_IDS = ["medianPrice", "priceDelta", "averagePrice"] as const;
+
+/**
+ * The price trio, grouped by town rather than by metric.
+ *
+ * These three are one reading, not three: Delta is the span between Median and
+ * Average, so it only says anything sat between the two bars it measures. Three
+ * separate town rankings broke that apart, and one card per metric broke it
+ * apart three times over.
+ */
+function UnstackedPricePanel({
+  rows,
+  scale,
+  metrics,
+  settle,
+  townsExpanded,
+  onAllTownsToggle,
+  townHref,
+}: {
+  rows: CombinedTownRow[];
+  scale: MarketPulseTownScale;
+  metrics: ReturnType<typeof marketPulseTownMetrics>;
+  settle: MarketPulseSettleState;
+  townsExpanded: boolean;
+  onAllTownsToggle: () => void;
+  townHref?: (cityLabel: string) => string;
+}) {
+  const priceMetrics = PRICE_METRIC_IDS.map((id) =>
+    metrics.find((m) => m.id === id),
+  ).filter((m): m is (typeof metrics)[number] => m != null);
+  const rotateNames = rotatingTownNames(rows);
+  const widthTransition =
+    settle.phase === "scramble"
+      ? "duration-300"
+      : settle.phase === "countup"
+        ? "duration-75"
+        : "duration-150";
+
+  if (rows.length === 0 || priceMetrics.length === 0) return null;
+
+  return (
+    <section className={PANEL_SURFACE}>
+      <p className={PANEL_TITLE}>Median, delta, average</p>
+      <ul className="mt-2 space-y-3">
+        {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
+          const label = cityLabel(row);
+          return (
+            <li key={`price-${row.city}`} data-mp-town={row.city}>
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={townHref?.(row.city ?? label)}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
+                />
+              </p>
+              <div className="mt-1 divide-y divide-white/[0.08] border-t border-white/[0.08]">
+                {priceMetrics.map((m, i) => {
+                  const scrambleIndex = rowIndex * metrics.length + i;
+                  const pctOf = (id: "medianPrice" | "averagePrice") =>
+                    settleBarPercent(
+                      marketPulsePricePct(
+                        id === "medianPrice" ? row.medianPrice : row.averagePrice,
+                        scale.priceMax,
+                      ),
+                      rowIndex * metrics.length +
+                        metrics.findIndex((x) => x.id === id),
+                      settle,
+                      barScrambleNone,
+                    );
+                  const aligned =
+                    m.id === "priceDelta"
+                      ? marketPulseDeltaBarSpan(
+                          pctOf("medianPrice"),
+                          pctOf("averagePrice"),
+                        )
+                      : {
+                          leftPct: 0,
+                          widthPct: pctOf(
+                            m.id === "medianPrice" ? "medianPrice" : "averagePrice",
+                          ),
+                        };
+                  const valueText =
+                    m.id === "priceDelta"
+                      ? formatPriceDeltaK(
+                          settleSignedNumber(
+                            row.priceDelta,
+                            settle,
+                            scrambleIndex,
+                            0,
+                          ),
+                        )
+                      : formatMarketPulseMoney(
+                          m.id === "medianPrice"
+                            ? row.medianPrice
+                            : row.averagePrice,
+                        );
+                  return (
+                    <PanelBarRow
+                      key={m.id}
+                      label={m.label}
+                      valueText={valueText}
+                      leftPct={aligned.leftPct}
+                      widthPct={aligned.widthPct}
+                      aside={
+                        m.id === "priceDelta"
+                          ? formatPriceDeltaPct(
+                              settleSignedNumber(
+                                row.priceDeltaPct,
+                                settle,
+                                scrambleIndex + 19,
+                                1,
+                              ),
+                            )
+                          : null
+                      }
+                      asideNegative={
+                        m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0
+                      }
+                      widthTransition={widthTransition}
+                    />
+                  );
+                })}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** This panel rides the page settle, not the per-chart scramble frames. */
+const barScrambleNone = null;
+
 /** One town block with four stacked metric bars (each normalized to its own max). */
 function CombinedMetricsChart({
   title,
@@ -1043,7 +1184,6 @@ export default function WeeklyBriefContent({
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
   const priceRows = snapshot.priceByTown ?? [];
-  const priceBarMax = marketPulsePriceBarMax(priceRows);
 
   const allTownsAvgDom = useMemo(() => {
     const allRow = domRows.find((r) => isAllTownsCity(r.city));
@@ -1055,6 +1195,8 @@ export default function WeeklyBriefContent({
     ? (inventoryRows.find((r) => isAllTownsCity(r.city))?.monthsSupply ?? null)
     : (snapshot.market?.monthsSupply ?? null);
   const allTownsActive = snapshot.market?.activeCount ?? null;
+
+  const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind);
 
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
@@ -1078,6 +1220,18 @@ export default function WeeklyBriefContent({
       (r) => isAllTownsCity(r.city),
     );
   }, [inventoryRows, domRows, closedRows, priceRows, favorSort]);
+
+  // Unstacked's price panel ranks the same towns on the same axis the stacked
+  // view uses, so it reads off the same scale rather than a second one.
+  const unstackedScale = useMemo(
+    () =>
+      marketPulseTownScale(combinedRows, {
+        closedLookbackLabel,
+        kind,
+        closedBarMax,
+      }),
+    [combinedRows, closedLookbackLabel, kind, closedBarMax],
+  );
 
   const compareRow = useMemo(() => {
     if (!compareCity || isAllTownsCity(compareCity)) return null;
@@ -1364,98 +1518,15 @@ export default function WeeklyBriefContent({
           }
         />
 
-        {/*
-         * Median, Delta and Average share one dollar axis — Delta is literally
-         * the span between the other two — so they belong on one card rather
-         * than three that happen to agree.
-         */}
-        <div className={`${PANEL_SURFACE} space-y-4`}>
-          <BarChart
-            inPanel
-            title="Median"
-            rows={priceRows}
-            valueOf={(r) => r.medianPrice}
-            valueKind="money"
-            sortable
-            favorSortDir={unstackedFavorSortDir(favorSort, "medianPrice")}
-            emptyMessage="No median price rows in cache yet (rebuild market stats)."
-            townHref={townHref}
-            settle={settle}
-            townsExpanded={townsExpanded}
-            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-            calcOf={(r) => r.medianPriceCalc}
-            scaleMax={priceBarMax}
-          />
-
-          <BarChart
-            inPanel
-            title="Delta"
-            rows={priceRows}
-            valueOf={(r) => {
-              const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
-              return d == null ? null : Math.abs(d);
-            }}
-            sortValueOf={(r) =>
-              meanMinusMedian(r.averagePrice, r.medianPrice).dollars
-            }
-            formatValue={(r, _display, index) => {
-              const d = meanMinusMedian(r.averagePrice, r.medianPrice);
-              return formatPriceDeltaK(
-                settleSignedNumber(d.dollars, settle, index, 0),
-              );
-            }}
-            formatValueAside={(r, index) =>
-              formatPriceDeltaPct(
-                settleSignedNumber(
-                  meanMinusMedian(r.averagePrice, r.medianPrice).pct,
-                  settle,
-                  index + 19,
-                  1,
-                ),
-              )
-            }
-            asideNegative={(r) =>
-              (meanMinusMedian(r.averagePrice, r.medianPrice).pct ?? 0) < 0
-            }
-            explainDelta
-            valueKind="int"
-            sortable
-            favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
-            emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
-            townHref={townHref}
-            settle={settle}
-            townsExpanded={townsExpanded}
-            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-            calcOf={(r) => ({
-              summary: PRICE_DELTA_EXPLAIN,
-              detail: [
-                `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
-              ],
-            })}
-            scaleMax={priceBarMax}
-            barSpanOf={(r) => ({
-              start: r.medianPrice,
-              end: r.averagePrice,
-            })}
-          />
-
-          <BarChart
-            inPanel
-            title="Average"
-            rows={priceRows}
-            valueOf={(r) => r.averagePrice}
-            valueKind="money"
-            sortable
-            favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
-            emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
-            townHref={townHref}
-            settle={settle}
-            townsExpanded={townsExpanded}
-            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-            calcOf={(r) => r.averagePriceCalc}
-            scaleMax={priceBarMax}
-          />
-        </div>
+        <UnstackedPricePanel
+          rows={combinedRows}
+          scale={unstackedScale}
+          metrics={unstackedMetrics}
+          settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+          townHref={townHref}
+        />
 
         <BarChart
           title="List to ask"
