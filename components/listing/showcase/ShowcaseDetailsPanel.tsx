@@ -23,6 +23,7 @@ import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import { ListingComparablesPageContent } from "@/components/listing/ListingComparablesPanel";
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
+import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
@@ -51,6 +52,20 @@ import {
   listingSectionHref,
   listingShareHref,
 } from "@/lib/listing-url";
+
+type TransactionTab = "comparables" | "comparable-rentals" | "uag";
+
+function isTransactionTab(tab: ListingTab): tab is TransactionTab {
+  return (
+    tab === "comparables" || tab === "comparable-rentals" || tab === "uag"
+  );
+}
+
+const TRANSACTION_TITLES: Record<TransactionTab, string> = {
+  comparables: "Sold comparables",
+  "comparable-rentals": "Rented comparables",
+  uag: "Under agreement",
+};
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -115,6 +130,13 @@ export default function ShowcaseDetailsPanel({
     useState<ListingDesktopDeckCardId | null>("remarks");
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
+  /**
+   * Sold / Rented / Under Agreement share one section, so the tab has to pick
+   * which body renders — otherwise Rented and UAG scroll to a section still
+   * showing sold comps and look like they did nothing.
+   */
+  const [txTab, setTxTab] = useState<TransactionTab>("comparables");
+  const [activeTab, setActiveTab] = useState<ListingTab>("overview");
   const { goldilocksScore, goldilocksBreakdown } = score;
   const status = formatMlsStatus(listing.status);
 
@@ -168,8 +190,10 @@ export default function ShowcaseDetailsPanel({
    */
   const handleTabSelect = (tab: ListingTab) => {
     if (tab === "admin") return;
+    if (isTransactionTab(tab)) setTxTab(tab);
     const section = showcaseSectionForTab(tab);
     if (section) {
+      setActiveTab(tab);
       scrollToShowcaseSection(section);
       return;
     }
@@ -273,9 +297,9 @@ export default function ShowcaseDetailsPanel({
           */}
           <div className="mt-3 pb-3">
             <ListingSubnav
-                mlsId={listing.mlsId}
-                active="overview"
-                addressHint={street || addressHint}
+              mlsId={listing.mlsId}
+              active={activeTab}
+              addressHint={street || addressHint}
                 townHint={city}
                 isRental={isRental}
               compact
@@ -373,19 +397,24 @@ export default function ShowcaseDetailsPanel({
             )}
           </Section>
 
-          <Section
-            id={SHOWCASE_SECTION_IDS.comps}
-                title={isRental ? "Rented comparables" : "Sold comparables"}
-              >
-                {/* Same body the Overview slide panel and the dedicated
-                /comparables route render — one component, three hosts. */}
-                <ListingComparablesPageContent
-                  mlsId={listing.mlsId}
-                  townHint={city}
-                  kind={isRental ? "rental" : "sale"}
-                  suppressPageChrome
-                />
-              </Section>
+          <Section id={SHOWCASE_SECTION_IDS.comps} title={TRANSACTION_TITLES[txTab]}>
+            {/* Same bodies the Overview slide panel and the dedicated
+                /comparables and /uag routes render. */}
+            {txTab === "uag" ? (
+              <ListingUagPageContent
+                mlsId={listing.mlsId}
+                townHint={city}
+                suppressPageChrome
+              />
+            ) : (
+              <ListingComparablesPageContent
+                mlsId={listing.mlsId}
+                townHint={city}
+                kind={txTab === "comparable-rentals" ? "rental" : "sale"}
+                suppressPageChrome
+              />
+            )}
+          </Section>
 
               <Section id={SHOWCASE_SECTION_IDS.if} title="What if">
                 <ListingIfPageContent
