@@ -1445,9 +1445,15 @@ export default function WeeklyBriefContent({
             }
           />
         ) : (
-        <div className="flex items-start gap-2 sm:gap-3">
-          <div className="min-w-0 flex-1 space-y-6">
+        <div className="space-y-6">
           <>
+        {/*
+         * The rail stands beside the first panel only, and stretches to it, so
+         * every panel below reclaims the width rather than being indented past
+         * a control that is not there — as the stacked view already does.
+         */}
+        <div className="flex items-stretch gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1">
         <BarChart
           title="Active inventory"
           rows={inventoryRows}
@@ -1462,6 +1468,16 @@ export default function WeeklyBriefContent({
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "inventory")}
         />
+          </div>
+          {onLookbackIdChange ? (
+            <ClosedLookbackSlider
+              lookbackId={lookbackId}
+              onChange={onLookbackIdChange}
+              pending={closedPending}
+              fill
+            />
+          ) : null}
+        </div>
 
         <BarChart
           title="Months supply"
@@ -1557,14 +1573,6 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.saleToAskCalc}
         />
           </>
-          </div>
-          {onLookbackIdChange ? (
-            <ClosedLookbackSlider
-              lookbackId={lookbackId}
-              onChange={onLookbackIdChange}
-              pending={closedPending}
-            />
-          ) : null}
         </div>
         )}
         </div>
