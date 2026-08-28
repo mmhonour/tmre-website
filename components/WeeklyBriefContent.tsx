@@ -1080,6 +1080,7 @@ export default function WeeklyBriefContent({
   closedPending = false,
   categoryFilter,
   lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  closedLookbackId,
   onLookbackIdChange,
   closedBarMax = 0,
 }: {
@@ -1115,6 +1116,11 @@ export default function WeeklyBriefContent({
   categoryFilter?: ReactNode;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
+  /**
+   * Window the closed rows on screen belong to. Lags `lookbackId` while a new
+   * one loads, so the slider answers at once and the labels stay truthful.
+   */
+  closedLookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
@@ -1138,14 +1144,23 @@ export default function WeeklyBriefContent({
       setChartLayout("stacked");
     }
   }, [townsExpanded, chartLayout]);
-  const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
+  const shownLookbackId = closedLookbackId ?? lookbackId;
+  const closedLookbackLabel = marketPulseLookbackChartLabel(shownLookbackId);
   const closedNoun = closedNounFor(kind);
-  const lookbackDays = marketPulseLookbackById(lookbackId).days;
-  const lookbackDrivesMos = lookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
+  const lookbackDays = marketPulseLookbackById(shownLookbackId).days;
+  const lookbackDrivesMos =
+    shownLookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
+  /**
+   * A request is in flight and there is nothing held to show meanwhile. Only
+   * then does a figure become an ellipsis — otherwise the last window stays up
+   * and simply dims, which is what keeps the panel from folding and reopening.
+   */
+  const closedBlank =
+    closedPending && (snapshot.closedTrailing ?? []).length === 0;
 
   const inventoryRows = useMemo(() => {
     const rows = chartRows(snapshot);
-    if (!lookbackDrivesMos || closedPending) return rows;
+    if (!lookbackDrivesMos || closedBlank) return rows;
     const closedBy = new Map(
       (snapshot.closedTrailing ?? []).map(
         (r) => [cityKey(r.city), r.count] as const,
@@ -1186,7 +1201,7 @@ export default function WeeklyBriefContent({
     lookbackDays,
     closedLookbackLabel,
     lookbackId,
-    closedPending,
+    closedBlank,
   ]);
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
