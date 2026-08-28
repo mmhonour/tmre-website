@@ -31,8 +31,8 @@ export type MarketPulseTheme = {
 };
 
 export const DEFAULT_MARKET_PULSE_THEME: MarketPulseTheme = {
-  pageBackground: "#0A1020",
-  cardBackground: "#0D1424",
+  pageBackground: "#1B2637",
+  cardBackground: "#26374F",
   surface: "#1B2A4A",
   surfaceDeep: "#131F38",
   accent: "#C8A951",

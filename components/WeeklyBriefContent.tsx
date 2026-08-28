@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
-import MarketPulseTownPulse, {
-  marketPulseTownMetrics,
-} from "@/components/MarketPulseTownPulse";
+import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
 import { marketPulseTownScale } from "@/lib/market-pulse-town-scale";
 import {
@@ -772,7 +770,6 @@ function CombinedMetricsChart({
   closedBarMax = 0,
   townsExpanded,
   onAllTownsToggle,
-  scopeLabel,
   saleToAskTownHref,
   kind,
   lookbackRail,
@@ -793,8 +790,6 @@ function CombinedMetricsChart({
   closedBarMax?: number;
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
-  /** Active tab scope for the heat strip tooltip, e.g. `sales` / `rentals`. */
-  scopeLabel: string;
 }) {
   const metrics = marketPulseTownMetrics(closedLookbackLabel, kind);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
@@ -841,13 +836,12 @@ function CombinedMetricsChart({
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
           const block = (
-            <MarketPulseTownPulse
+            <MarketPulseTownPanel
               row={row}
               scale={scale}
               metrics={metrics}
               lookbackId={lookbackId}
               kind={kind}
-              scopeLabel={scopeLabel}
               townLabel={label}
               saleToAskHref={saleToAskTownHref?.(label)}
               closedPending={closedPending}
@@ -871,11 +865,7 @@ function CombinedMetricsChart({
             />
           );
           return (
-            <li
-              key={`combined-${row.city}`}
-              data-mp-town={row.city}
-              className="space-y-1"
-            >
+            <li key={`combined-${row.city}`} data-mp-town={row.city}>
               {/*
                * The rail stands alongside the first block only, and stretches to
                * it, so it runs from the All towns name to its last bar and no
@@ -883,31 +873,12 @@ function CombinedMetricsChart({
                */}
               {rowIndex === 0 && lookbackRail ? (
                 <div className="flex items-stretch gap-2 sm:gap-3">
-                  <div className="min-w-0 flex-1 space-y-1">{block}</div>
+                  <div className="min-w-0 flex-1">{block}</div>
                   {lookbackRail}
                 </div>
               ) : (
                 block
               )}
-              {/*
-               * The same town drawn the way the listing showcase draws it, sat
-               * directly under the brief's own rendering so the two can be read
-               * against each other. Sample only — drop this branch to retire it.
-               */}
-              {rowIndex === 0 ? (
-                <div className={`mt-4 ${BAR_EXTERIOR_LANE}`}>
-                  <MarketPulseTownPanel
-                    row={row}
-                    scale={scale}
-                    metrics={metrics}
-                    lookbackId={lookbackId}
-                    kind={kind}
-                    townLabel={label}
-                    closedPending={closedPending}
-                    caption="Format sample · listing showcase treatment"
-                  />
-                </div>
-              ) : null}
             </li>
           );
         })}
@@ -1346,7 +1317,6 @@ export default function WeeklyBriefContent({
             closedBarMax={closedBarMax}
             townsExpanded={townsExpanded}
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-            scopeLabel={scopeLabel}
             saleToAskTownHref={saleToAskTownHref}
             kind={kind}
             lookbackRail={
