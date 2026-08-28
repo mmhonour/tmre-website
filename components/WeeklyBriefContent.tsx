@@ -475,6 +475,7 @@ function BarChart<Row extends { city: string }>({
   explainDelta = false,
   scaleMax,
   barSpanOf,
+  inPanel = false,
   townsExpanded = true,
   onAllTownsToggle,
 }: {
@@ -502,6 +503,8 @@ function BarChart<Row extends { city: string }>({
   explainDelta?: boolean;
   /** When set (Median / Average / Delta), bars share one dollar axis. */
   scaleMax?: number;
+  /** Drop the card, so a parent can group several charts on one. */
+  inPanel?: boolean;
   /** Delta: bar starts at one price-axis end and stops at the other. */
   barSpanOf?: (row: Row) => {
     start: number | null;
@@ -583,7 +586,7 @@ function BarChart<Row extends { city: string }>({
 
   if (rows.length === 0) {
     return (
-      <section className={PANEL_SURFACE}>
+      <section className={inPanel ? undefined : PANEL_SURFACE}>
         {sortable ? titleRow : <p className={PANEL_TITLE}>{title}</p>}
         <p className="mt-2 [font-family:var(--mp-mono-font)] text-[10px] text-white/45">
           {emptyMessage}
@@ -616,7 +619,7 @@ function BarChart<Row extends { city: string }>({
         : "duration-150";
 
   return (
-    <section className={PANEL_SURFACE}>
+    <section className={inPanel ? undefined : PANEL_SURFACE}>
       {titleRow}
       <ul>
         {visibleRows.map((row, index) => {
@@ -1361,88 +1364,98 @@ export default function WeeklyBriefContent({
           }
         />
 
-        <BarChart
-          title="Median"
-          rows={priceRows}
-          valueOf={(r) => r.medianPrice}
-          valueKind="money"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "medianPrice")}
-          emptyMessage="No median price rows in cache yet (rebuild market stats)."
-          townHref={townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.medianPriceCalc}
-          scaleMax={priceBarMax}
-        />
+        {/*
+         * Median, Delta and Average share one dollar axis — Delta is literally
+         * the span between the other two — so they belong on one card rather
+         * than three that happen to agree.
+         */}
+        <div className={`${PANEL_SURFACE} space-y-4`}>
+          <BarChart
+            inPanel
+            title="Median"
+            rows={priceRows}
+            valueOf={(r) => r.medianPrice}
+            valueKind="money"
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "medianPrice")}
+            emptyMessage="No median price rows in cache yet (rebuild market stats)."
+            townHref={townHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => r.medianPriceCalc}
+            scaleMax={priceBarMax}
+          />
 
-        <BarChart
-          title="Delta"
-          rows={priceRows}
-          valueOf={(r) => {
-            const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
-            return d == null ? null : Math.abs(d);
-          }}
-          sortValueOf={(r) =>
-            meanMinusMedian(r.averagePrice, r.medianPrice).dollars
-          }
-          formatValue={(r, _display, index) => {
-            const d = meanMinusMedian(r.averagePrice, r.medianPrice);
-            return formatPriceDeltaK(
-              settleSignedNumber(d.dollars, settle, index, 0),
-            );
-          }}
-          formatValueAside={(r, index) =>
-            formatPriceDeltaPct(
-              settleSignedNumber(
-                meanMinusMedian(r.averagePrice, r.medianPrice).pct,
-                settle,
-                index + 19,
-                1,
-              ),
-            )
-          }
-          asideNegative={(r) =>
-            (meanMinusMedian(r.averagePrice, r.medianPrice).pct ?? 0) < 0
-          }
-          explainDelta
-          valueKind="int"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
-          emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
-          townHref={townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => ({
-            summary: PRICE_DELTA_EXPLAIN,
-            detail: [
-              `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
-            ],
-          })}
-          scaleMax={priceBarMax}
-          barSpanOf={(r) => ({
-            start: r.medianPrice,
-            end: r.averagePrice,
-          })}
-        />
+          <BarChart
+            inPanel
+            title="Delta"
+            rows={priceRows}
+            valueOf={(r) => {
+              const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
+              return d == null ? null : Math.abs(d);
+            }}
+            sortValueOf={(r) =>
+              meanMinusMedian(r.averagePrice, r.medianPrice).dollars
+            }
+            formatValue={(r, _display, index) => {
+              const d = meanMinusMedian(r.averagePrice, r.medianPrice);
+              return formatPriceDeltaK(
+                settleSignedNumber(d.dollars, settle, index, 0),
+              );
+            }}
+            formatValueAside={(r, index) =>
+              formatPriceDeltaPct(
+                settleSignedNumber(
+                  meanMinusMedian(r.averagePrice, r.medianPrice).pct,
+                  settle,
+                  index + 19,
+                  1,
+                ),
+              )
+            }
+            asideNegative={(r) =>
+              (meanMinusMedian(r.averagePrice, r.medianPrice).pct ?? 0) < 0
+            }
+            explainDelta
+            valueKind="int"
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
+            emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
+            townHref={townHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => ({
+              summary: PRICE_DELTA_EXPLAIN,
+              detail: [
+                `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
+              ],
+            })}
+            scaleMax={priceBarMax}
+            barSpanOf={(r) => ({
+              start: r.medianPrice,
+              end: r.averagePrice,
+            })}
+          />
 
-        <BarChart
-          title="Average"
-          rows={priceRows}
-          valueOf={(r) => r.averagePrice}
-          valueKind="money"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
-          emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
-          townHref={townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.averagePriceCalc}
-          scaleMax={priceBarMax}
-        />
+          <BarChart
+            inPanel
+            title="Average"
+            rows={priceRows}
+            valueOf={(r) => r.averagePrice}
+            valueKind="money"
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
+            emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
+            townHref={townHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => r.averagePriceCalc}
+            scaleMax={priceBarMax}
+          />
+        </div>
 
         <BarChart
           title="List to ask"
