@@ -996,6 +996,7 @@ function CombinedMetricsChart({
 
 function Kpi({
   label,
+  townLabel,
   final,
   kind,
   settle,
@@ -1004,6 +1005,8 @@ function Kpi({
   compareValue = null,
 }: {
   label: string;
+  /** Town the figure belongs to, prefixed onto the label. */
+  townLabel: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
@@ -1013,8 +1016,11 @@ function Kpi({
   compareValue?: number | null;
 }) {
   const comparing = Boolean(compareCity && !isAllTownsCity(compareCity));
-  const shownLabel =
-    comparing && kind === "mos" ? "Months Inventory" : label;
+  // Reads as one phrase — "Westport months inventory" — so the strip says which
+  // town it is reporting on even when it is floating away from that town.
+  const shownLabel = `${townLabel} ${
+    comparing && kind === "mos" ? "Months Inventory" : label
+  }`;
   const value = comparing ? compareValue : final;
   const display =
     comparing
@@ -1318,10 +1324,13 @@ export default function WeeklyBriefContent({
       ? cityLabel({ city: compareCity })
       : null;
 
+  const kpiTownLabel = comparingTown ?? "All towns";
+
   const kpiStrip = (
     <div className="grid grid-cols-3 gap-2 sm:gap-3">
       <Kpi
         label="Market active"
+        townLabel={kpiTownLabel}
         final={allTownsActive}
         kind="int"
         settle={settle}
@@ -1330,7 +1339,8 @@ export default function WeeklyBriefContent({
         compareValue={compareRow?.activeCount ?? null}
       />
       <Kpi
-        label="All Town Months Inventory"
+        label="Months Inventory"
+        townLabel={kpiTownLabel}
         final={allTownsMos}
         kind="mos"
         settle={settle}
@@ -1340,6 +1350,7 @@ export default function WeeklyBriefContent({
       />
       <Kpi
         label="Avg days on market"
+        townLabel={kpiTownLabel}
         final={allTownsAvgDom}
         kind="dom"
         settle={settle}
@@ -1381,9 +1392,8 @@ export default function WeeklyBriefContent({
         >
           <div className="mx-auto max-w-2xl px-3 py-2 sm:px-8">
             {comparingTown ? (
-              <p className="mb-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-accent)]">
-                {comparingTown}
-                <span className="text-[var(--mp-muted-text)]"> vs All towns</span>
+              <p className="mb-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                vs All towns
               </p>
             ) : null}
             {kpiStrip}
