@@ -13,7 +13,7 @@ import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
  * Rough share of the track the 10px mono percent needs. The overlay is placed
  * off the fill, which is itself a percentage, so the reserve has to be one too.
  */
-const ASIDE_SPAN_PCT = 16;
+const ASIDE_SPAN_PCT = 24;
 /**
  * Strip held clear past the right edge of every track. A percent with no room
  * left beside its fill moves out here instead of covering the fill or the
@@ -88,7 +88,7 @@ export function formatMetricValue(
 }
 
 /** Denim card the town panels and the unstacked charts both sit on. */
-export const PANEL_SURFACE = "rounded-xl bg-[#26374F] px-4 py-3";
+export const PANEL_SURFACE = "rounded-xl bg-[#26374F] py-3 pl-4 pr-11";
 export const PANEL_TITLE =
   "[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold";
 export const PANEL_LABEL =
@@ -166,13 +166,13 @@ export function PanelBarRow({
         {valueText}
       </span>
       {/*
-       * A fill that reaches the end of the track leaves the percent nowhere on
-       * it, and the space immediately right belongs to the value. It steps off
-       * the panel instead, which puts it on the card, so it takes the card's
-       * ink rather than the panel's.
+       * A fill that runs to the end of the track leaves the percent nowhere on
+       * it, and the space immediately right belongs to the value. It steps out
+       * of the row into the panel's own gutter, clearing both — kept inside the
+       * panel so it cannot land on the lookback rail beside the first card.
        */}
       {aside && placement === "outside-right" ? (
-        <span className="pointer-events-none absolute top-1/2 left-full ml-2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-muted-text)]">
+        <span className="pointer-events-none absolute top-1/2 left-full ml-2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70">
           {aside}
         </span>
       ) : null}
