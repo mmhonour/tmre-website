@@ -14,8 +14,6 @@ import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
  * off the fill, which is itself a percentage, so the reserve has to be one too.
  */
 const ASIDE_SPAN_PCT = 16;
-/** The dollar value right-aligns across the whole track and must stay clear. */
-const VALUE_SPAN_PCT = 14;
 /**
  * Strip held clear past the right edge of every track. A percent with no room
  * left beside its fill moves out here instead of covering the fill or the
@@ -33,10 +31,10 @@ export const BAR_EXTERIOR_LANE = "mr-8 sm:mr-10";
 export type BarAsidePlacement = "right" | "outside-right" | "left" | "label";
 
 /**
- * A positive percent reads off the fill's right edge, then hops the track's
- * right border once the fill reaches it or crowds the right-aligned dollars.
- * A negative one mirrors that to the left, where the row label holds the only
- * space outside the track.
+ * A positive percent reads off the fill's right edge, and once the fill runs
+ * to the end of the track it leaves the panel entirely rather than climbing
+ * over the value beside it. A negative one mirrors that to the left, where the
+ * row label holds the only space outside the track.
  */
 export function barAsidePlacement(
   leftPct: number,
@@ -48,9 +46,7 @@ export function barAsidePlacement(
   if (negative) {
     return fillLeft >= ASIDE_SPAN_PCT ? "left" : "label";
   }
-  return 100 - fillRight >= ASIDE_SPAN_PCT + VALUE_SPAN_PCT
-    ? "right"
-    : "outside-right";
+  return 100 - fillRight >= ASIDE_SPAN_PCT ? "right" : "outside-right";
 }
 
 export const METRIC_COLORS = {
@@ -144,7 +140,7 @@ export function PanelBarRow({
             style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
           />
         </span>
-        {aside && placement && placement !== "label" ? (
+        {aside && (placement === "left" || placement === "right") ? (
           <span
             className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70 ${
               placement === "left" ? "text-right" : ""
@@ -152,9 +148,7 @@ export function PanelBarRow({
             style={
               placement === "left"
                 ? { right: `${100 - leftPct}%`, marginRight: 4 }
-                : placement === "outside-right"
-                  ? { left: "100%", marginLeft: 6 }
-                  : { left: `${fillRight}%`, marginLeft: 4 }
+                : { left: `${fillRight}%`, marginLeft: 4 }
             }
           >
             {aside}
@@ -164,6 +158,17 @@ export function PanelBarRow({
       <span className="text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-white/90">
         {valueText}
       </span>
+      {/*
+       * A fill that reaches the end of the track leaves the percent nowhere on
+       * it, and the space immediately right belongs to the value. It steps off
+       * the panel instead, which puts it on the card, so it takes the card's
+       * ink rather than the panel's.
+       */}
+      {aside && placement === "outside-right" ? (
+        <span className="pointer-events-none absolute top-1/2 left-full ml-2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-muted-text)]">
+          {aside}
+        </span>
+      ) : null}
       {tooltip}
     </div>
   );
