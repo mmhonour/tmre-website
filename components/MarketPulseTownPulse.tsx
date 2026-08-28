@@ -294,7 +294,7 @@ export default function MarketPulseTownPulse({
           </span>
         )}
         <div
-          className={`relative h-4 rounded-sm bg-black/10 overflow-visible ${BAR_EXTERIOR_LANE}`}
+          className={`relative h-4 rounded-sm bg-[var(--mp-track,rgba(0,0,0,0.10))] overflow-visible ${BAR_EXTERIOR_LANE}`}
         >
           <div className="h-full overflow-hidden rounded-sm">
             <div

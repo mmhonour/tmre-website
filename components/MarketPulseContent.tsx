@@ -283,45 +283,7 @@ export default function MarketPulseContent({
     marketPulseTownListToAskStatsHref(cityLabel, category);
   const categoryFilter = (
     <div
-      className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.12em] uppercase"
-      role="tablist"
-      aria-label="Property type"
-    >
-      {categories.map((cat) => {
-        const selected = active?.id === cat.id;
-        if (selected) {
-          return (
-            <span
-              key={cat.id}
-              role="tab"
-              aria-selected
-              aria-current="page"
-              className="text-[var(--mp-text)]"
-            >
-              {cat.label}
-            </span>
-          );
-        }
-        return (
-          <button
-            key={cat.id}
-            type="button"
-            role="tab"
-            aria-selected={false}
-            onClick={() => setCategoryId(cat.id)}
-            className="text-[var(--mp-muted-text)] underline decoration-[var(--mp-text)]/30 underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
-          >
-            {cat.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  /* Same tabs, in the listing showcase's pill style, for the format sample. */
-  const categoryFilterPanel = (
-    <div
-      className="flex flex-wrap gap-1"
+      className="flex min-w-0 flex-wrap gap-1"
       role="tablist"
       aria-label="Property type"
     >
@@ -333,11 +295,12 @@ export default function MarketPulseContent({
             type="button"
             role="tab"
             aria-selected={selected}
+            aria-current={selected ? "page" : undefined}
             onClick={() => setCategoryId(cat.id)}
-            className={`px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+            className={`rounded-sm px-2 py-1 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase transition-colors ${
               selected
-                ? "bg-white/15 text-white"
-                : "text-white/45 hover:text-white"
+                ? "bg-[var(--mp-text)]/15 text-[var(--mp-text)]"
+                : "text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
             }`}
           >
             {cat.label}
@@ -370,7 +333,6 @@ export default function MarketPulseContent({
       settle={settle}
       closedPending={closedPending}
       categoryFilter={categoryFilter}
-      categoryFilterPanel={categoryFilterPanel}
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}

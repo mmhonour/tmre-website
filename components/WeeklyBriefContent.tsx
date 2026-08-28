@@ -122,7 +122,7 @@ function ClosedLookbackSlider({
       <div className="relative flex min-h-0 flex-1 items-stretch">
         <div className="relative flex w-3 shrink-0 items-center justify-center">
           <div
-            className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-black/15"
+            className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--mp-hairline,rgba(0,0,0,0.15))]"
             aria-hidden
           />
           <input
@@ -719,7 +719,7 @@ function BarChart<Row extends { city: string }>({
                 townName
               )}
               <div
-                className={`group relative h-4 rounded-sm bg-black/10 overflow-visible ${BAR_EXTERIOR_LANE}`}
+                className={`group relative h-4 rounded-sm bg-[var(--mp-track,rgba(0,0,0,0.10))] overflow-visible ${BAR_EXTERIOR_LANE}`}
               >
                 <div className="h-full overflow-hidden rounded-sm">
                   <div
@@ -776,7 +776,6 @@ function CombinedMetricsChart({
   saleToAskTownHref,
   kind,
   lookbackRail,
-  categoryFilterPanel,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -786,8 +785,6 @@ function CombinedMetricsChart({
   kind: ListingKind;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
-  /** Property-type buttons in the showcase style, for the format sample. */
-  categoryFilterPanel?: ReactNode;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   lookbackId: MarketPulseLookbackId;
@@ -907,7 +904,6 @@ function CombinedMetricsChart({
                     kind={kind}
                     townLabel={label}
                     closedPending={closedPending}
-                    tabs={categoryFilterPanel}
                     caption="Format sample · listing showcase treatment"
                   />
                 </div>
@@ -959,7 +955,7 @@ function Kpi({
   const delta = comparing ? fmtSignedDelta(compareValue, final, kind) : null;
 
   return (
-    <div className="rounded-lg border border-black/[0.08] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
+    <div className="rounded-lg border border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
       <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
         {shownLabel}
       </p>
@@ -999,7 +995,6 @@ export default function WeeklyBriefContent({
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
-  categoryFilterPanel,
   lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   onLookbackIdChange,
   closedBarMax = 0,
@@ -1034,8 +1029,6 @@ export default function WeeklyBriefContent({
    * Property-type pills (All / SFR / …). Own +/- disclosure — not a boxed panel.
    */
   categoryFilter?: ReactNode;
-  /** Same tabs in the showcase pill style, for the format sample. */
-  categoryFilterPanel?: ReactNode;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
@@ -1299,7 +1292,7 @@ export default function WeeklyBriefContent({
       {kpisPinned ? (
         <div
           ref={pinnedKpiBarRef}
-          className="fixed inset-x-0 z-40 border-b border-black/[0.08] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
+          className="fixed inset-x-0 z-40 border-b border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
           style={{ top: navOffsetPx }}
           data-mp-kpi-pinned
         >
@@ -1315,7 +1308,7 @@ export default function WeeklyBriefContent({
         </div>
       ) : null}
 
-      <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-8 shadow-sm shadow-black/5">
+      <div className="rounded-b-2xl border border-t-0 border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-8 shadow-sm shadow-black/5">
         <div
           ref={kpiSentinelRef}
           className={kpisPinned ? "invisible" : undefined}
@@ -1356,7 +1349,6 @@ export default function WeeklyBriefContent({
             scopeLabel={scopeLabel}
             saleToAskTownHref={saleToAskTownHref}
             kind={kind}
-            categoryFilterPanel={categoryFilterPanel}
             lookbackRail={
               onLookbackIdChange ? (
                 <ClosedLookbackSlider

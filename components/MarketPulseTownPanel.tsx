@@ -6,7 +6,10 @@ import {
   formatMetricValue,
 } from "@/components/market-pulse-bar";
 import type { ListingKind } from "@/lib/listing-kind";
-import type { MarketPulseCombinedTownRow } from "@/lib/market-pulse-combined-rows";
+import {
+  isAllTownsCity,
+  type MarketPulseCombinedTownRow,
+} from "@/lib/market-pulse-combined-rows";
 import {
   formatClosedCountWithLookback,
   marketPulseLookbackChartLabel,
@@ -39,14 +42,24 @@ const PANEL_SURFACE =
  * Buyer ↔ seller spectrum in the showcase's treatment: a coral-to-sage gradient
  * with a white marker, captioned at both ends.
  */
-function FavorabilityBar({ score }: { score: number | null }) {
+function FavorabilityBar({
+  score,
+  peerCount,
+}: {
+  score: number | null;
+  /** Null on the composite row, which is the towns rather than one of them. */
+  peerCount: number | null;
+}) {
   const pct = score == null ? null : Math.min(100, Math.max(0, score * 100));
   const band = pct == null ? null : marketPulseHeatBand(pct / 100);
   return (
     <div>
-      <div className="flex items-baseline justify-between font-mono text-[9px] uppercase tracking-[0.16em] text-white/45">
+      <div className="flex items-baseline justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.16em] text-white/45">
         <span>Seller</span>
-        <span className="text-white/70">{band?.label ?? "No signal"}</span>
+        <span className="truncate text-white/70">
+          {band?.label ?? "No signal"}
+          {peerCount != null ? ` · vs ${peerCount} towns` : ""}
+        </span>
         <span>Buyer</span>
       </div>
       <div className="relative mt-1.5 h-2 w-full rounded-full bg-gradient-to-r from-coral via-gold to-sage">
@@ -95,20 +108,24 @@ export default function MarketPulseTownPanel({
   const metrics =
     metricsProp ?? marketPulseTownMetrics(closedLookbackLabel, kind);
   const heat = scale.heatByCity.get(row.city) ?? null;
+  // The composite is the towns summed and averaged, so ranking it against a
+  // count of them reads as nonsense. The spectrum still places it.
+  const aggregate = isAllTownsCity(row.city);
 
   return (
     <div className={PANEL_SURFACE}>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
+      {/*
+       * Name sits beside the spectrum rather than above it, so the spectrum
+       * gives up exactly the width the name takes — longer town names simply
+       * condense it further.
+       */}
+      <div className="flex items-center gap-3">
+        <p className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
           {townLabel}
         </p>
-        <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">
-          vs {scale.peerCount} towns
-        </p>
-      </div>
-
-      <div className="mt-3">
-        <FavorabilityBar score={heat} />
+        <div className="min-w-0 flex-1">
+          <FavorabilityBar score={heat} peerCount={aggregate ? null : scale.peerCount} />
+        </div>
       </div>
 
       {tabs ? <div className="mt-3">{tabs}</div> : null}
@@ -167,9 +184,9 @@ export default function MarketPulseTownPanel({
           return (
             <div
               key={m.id}
-              className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-2 py-1"
+              className="grid h-6 grid-cols-[7.75rem_1fr_auto] items-center gap-2"
             >
-              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/45">
+              <span className="truncate text-right font-mono text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-white/45">
                 {m.label}
                 {placement === "label" && asideText ? (
                   <span className="ml-1 tabular-nums text-white/80">
