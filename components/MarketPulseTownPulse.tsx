@@ -12,6 +12,7 @@ import {
   BarValueOverlay,
   formatMetricValue,
   METRIC_COLORS,
+  MONO_BAR_CLASS,
   type MetricValueKind,
 } from "@/components/market-pulse-bar";
 import type { ListingKind } from "@/lib/listing-kind";
@@ -151,6 +152,7 @@ export default function MarketPulseTownPulse({
   settle = MARKET_PULSE_SETTLE_IDLE,
   scramble,
   metrics: metricsProp,
+  tone = "metric",
 }: {
   row: Row;
   /** Ceilings and heat from the whole town set — see `marketPulseTownScale`. */
@@ -169,6 +171,11 @@ export default function MarketPulseTownPulse({
   scramble?: { values: number[] | null; rowIndex: number; townCount: number };
   /** Reuse the caller's metric list rather than rebuilding it per town. */
   metrics?: MarketPulseTownMetric[];
+  /**
+   * `metric` gives each bar its own colour, which is how the brief reads.
+   * `mono` draws them all in one ink, the way the listing showcase does.
+   */
+  tone?: "metric" | "mono";
 }) {
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const metrics =
@@ -298,7 +305,9 @@ export default function MarketPulseTownPulse({
         >
           <div className="h-full overflow-hidden rounded-sm">
             <div
-              className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${m.barClassName}`}
+              className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${
+                tone === "mono" ? MONO_BAR_CLASS : m.barClassName
+              }`}
               style={{
                 marginLeft: `${aligned.leftPct}%`,
                 width: `${aligned.widthPct}%`,
@@ -311,9 +320,12 @@ export default function MarketPulseTownPulse({
             asidePlacement={asidePlacement}
             leftPct={aligned.leftPct}
             widthPct={aligned.widthPct}
-            // Gold months-supply fill reads fine under the standard text.
+            // Gold months-supply fill reads fine under the standard text, but
+            // the mono ink is the text colour, so a value on it needs cream.
             colorClass={
-              m.id === "monthsSupply" ? BAR_VALUE_ON_EMPTY : undefined
+              tone !== "mono" && m.id === "monthsSupply"
+                ? BAR_VALUE_ON_EMPTY
+                : undefined
             }
           />
           <div

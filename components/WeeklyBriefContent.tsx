@@ -888,6 +888,38 @@ function CombinedMetricsChart({
               ) : (
                 block
               )}
+              {/*
+               * The same town again in the listing showcase's single ink, sat
+               * directly under the coloured one so the two can be read against
+               * each other. Sample only — drop this branch to retire it.
+               */}
+              {rowIndex === 0 ? (
+                <div className="mt-4 border-t border-black/[0.08] pt-3 space-y-1">
+                  <p
+                    className={`[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.16em] uppercase text-[var(--mp-muted-text)] ${BAR_EXTERIOR_LANE}`}
+                  >
+                    Same town, one ink — format sample
+                  </p>
+                  <MarketPulseTownPulse
+                    row={row}
+                    scale={scale}
+                    metrics={metrics}
+                    lookbackId={lookbackId}
+                    kind={kind}
+                    scopeLabel={scopeLabel}
+                    townLabel={label}
+                    saleToAskHref={saleToAskTownHref?.(label)}
+                    closedPending={closedPending}
+                    settle={settle}
+                    scramble={{
+                      values: barScramble,
+                      rowIndex,
+                      townCount: rows.length,
+                    }}
+                    tone="mono"
+                  />
+                </div>
+              ) : null}
             </li>
           );
         })}

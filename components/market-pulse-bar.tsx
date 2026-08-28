@@ -110,6 +110,13 @@ export function BarValueOverlay({
 export const BAR_ASIDE_LABEL_CLASS =
   "shrink-0 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)]";
 
+/**
+ * One ink for every bar, the way the listing showcase draws a town. Colour
+ * there carries no meaning — the row label already names the metric — so a
+ * single tone lets the lengths be the only thing that varies.
+ */
+export const MONO_BAR_CLASS = "bg-[var(--mp-text)]/85";
+
 export const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
   monthsSupply: "bg-[var(--mp-months-supply-bar)]",
