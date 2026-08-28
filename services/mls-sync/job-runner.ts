@@ -121,6 +121,9 @@ function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
     ...(typeof item.payload.force === 'boolean'
       ? { force: item.payload.force }
       : {}),
+    ...(typeof item.payload.stampWeek === 'boolean'
+      ? { stampWeek: item.payload.stampWeek }
+      : {}),
   }
 
   const heapMb = childHeapMb()

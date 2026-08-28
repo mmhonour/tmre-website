@@ -45,6 +45,11 @@ export type SyncJobChildSpec = {
    * Sync now must.
    */
   force?: boolean
+  /**
+   * Market brief only: move the weekly watermark on success. False for the
+   * Communications test send, which must not cancel the real Monday brief.
+   */
+  stampWeek?: boolean
 }
 
 export type SyncJobChildMessage =
@@ -109,6 +114,9 @@ async function main(): Promise<number> {
       ? { statusScope: spec.statusScope }
       : {}),
     ...(typeof spec.force === 'boolean' ? { force: spec.force } : {}),
+    ...(typeof spec.stampWeek === 'boolean'
+      ? { stampWeek: spec.stampWeek }
+      : {}),
   })
 
   clearInterval(heartbeat)

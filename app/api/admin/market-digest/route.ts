@@ -119,10 +119,59 @@ export async function POST(req: NextRequest) {
 
   try {
     // Building the snapshot (two-year closed-sales aggregate) outlives a
-    // synchronous Netlify function, so serverless hands off to the same
-    // background worker the Monday cron uses. stampWeek stays false — a test
-    // must not consume the weekly watermark.
+    // synchronous Netlify function, so serverless has to hand the work off.
+    // That used to mean POSTing the background worker directly, which is why
+    // this button still answered "HTTP 429" long after the scheduled path
+    // stopped depending on that hop. It goes on `sync_queue` now, like every
+    // other brief. stampWeek stays false throughout: a test that consumed the
+    // weekly watermark would silently cancel the real Monday send.
     if (isServerlessRuntime()) {
+      const config = await payload()
+      const { enqueueSyncJob, readSyncQueueSnapshot } = await import(
+        '@/lib/sync-queue'
+      )
+      const { SYNC_QUEUE_PRIORITY_MANUAL } = await import(
+        '@/lib/sync-queue-shared'
+      )
+
+      if (!(await readSyncQueueSnapshot(1)).runnerStale) {
+        const enqueued = await enqueueSyncJob({
+          jobId: 'market-digest',
+          trigger: 'admin-test',
+          priority: SYNC_QUEUE_PRIORITY_MANUAL,
+          payload: { force: true, stampWeek: false },
+          ignoreCooldown: true,
+        })
+
+        // One queued row per job. Silently piggybacking on a scheduled brief
+        // would send with stampWeek true and burn the watermark, so refuse.
+        if (!enqueued.enqueued) {
+          return NextResponse.json(
+            {
+              ...config,
+              error: enqueued.alreadyRunning
+                ? 'A brief is already sending. Wait for it to finish, then test again.'
+                : 'A scheduled brief is already queued ahead of this test. Wait for it to send, then test again.',
+            },
+            { status: 409 },
+          )
+        }
+
+        const { pokeMlsSyncServiceQueue } = await import(
+          '@/lib/mls-sync-service-client'
+        )
+        await pokeMlsSyncServiceQueue('market-digest').catch(() => null)
+
+        return NextResponse.json({
+          ...config,
+          ok: true,
+          queued: true,
+          to: config.email,
+          message: `Test brief queued on the sync runner — ${config.email} should have it within a couple of minutes. It does not consume the weekly watermark, so Monday still sends. Syncs → Dashboard shows it in the Queue column.`,
+        })
+      }
+
+      // Runner silent: fall back to the worker that used to own this outright.
       const { queueNetlifyMarketDigest } = await import(
         '@/lib/netlify-sync-trigger'
       )
@@ -131,12 +180,11 @@ export async function POST(req: NextRequest) {
         force: true,
         stampWeek: false,
       })
-      const config = await payload()
       if (!queued.ok) {
         return NextResponse.json(
           {
             ...config,
-            error: `Could not queue the brief worker: ${queued.error ?? 'unknown'}`,
+            error: `The sync runner is not responding and Netlify refused the fallback worker: ${queued.error ?? 'unknown'}`,
           },
           { status: 502 },
         )
@@ -146,12 +194,13 @@ export async function POST(req: NextRequest) {
         ok: true,
         queued: true,
         to: config.email,
-        message: `Test brief queued on the background worker — ${config.email} should have it within a couple of minutes. Syncs → History logs the result under digest.`,
+        message: `Sync runner is silent — test brief queued on the Netlify worker instead. ${config.email} should have it within a couple of minutes.`,
       })
     }
 
     const result = await sendMarketDigestEmail({
       force: true,
+      stampWeek: false,
       trigger: 'admin-test',
     })
     if (!result.ok) {
