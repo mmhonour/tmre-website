@@ -1241,8 +1241,10 @@ export default function WeeklyBriefContent({
   return (
     <article className="mx-auto max-w-2xl">
       <header className="rounded-t-2xl bg-[var(--mp-surface)] px-3 py-6 sm:px-8 sm:py-7">
-        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] uppercase text-[var(--mp-accent)] mb-2">
-          {eyebrow}
+        {/* House voice: plain words, comma, the subject in italics. */}
+        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] text-white mb-2">
+          {eyebrow},{" "}
+          <span className="italic text-[var(--mp-accent)]">Town Metrics</span>
         </p>
         <h1 className="[font-family:var(--mp-heading-font)] text-2xl sm:text-3xl text-white leading-snug">
           {etDate}
