@@ -7,6 +7,7 @@ import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import MarketPulseTownPulse, {
   marketPulseTownMetrics,
 } from "@/components/MarketPulseTownPulse";
+import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
 import { marketPulseTownScale } from "@/lib/market-pulse-town-scale";
 import {
   BAR_ASIDE_LABEL_CLASS,
@@ -775,6 +776,7 @@ function CombinedMetricsChart({
   saleToAskTownHref,
   kind,
   lookbackRail,
+  categoryFilterPanel,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -784,6 +786,8 @@ function CombinedMetricsChart({
   kind: ListingKind;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
+  /** Property-type buttons in the showcase style, for the format sample. */
+  categoryFilterPanel?: ReactNode;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   lookbackId: MarketPulseLookbackId;
@@ -889,34 +893,22 @@ function CombinedMetricsChart({
                 block
               )}
               {/*
-               * The same town again in the listing showcase's single ink, sat
-               * directly under the coloured one so the two can be read against
-               * each other. Sample only — drop this branch to retire it.
+               * The same town drawn the way the listing showcase draws it, sat
+               * directly under the brief's own rendering so the two can be read
+               * against each other. Sample only — drop this branch to retire it.
                */}
               {rowIndex === 0 ? (
-                <div className="mt-4 border-t border-black/[0.08] pt-3 space-y-1">
-                  <p
-                    className={`[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.16em] uppercase text-[var(--mp-muted-text)] ${BAR_EXTERIOR_LANE}`}
-                  >
-                    Same town, one ink — format sample
-                  </p>
-                  <MarketPulseTownPulse
+                <div className={`mt-4 ${BAR_EXTERIOR_LANE}`}>
+                  <MarketPulseTownPanel
                     row={row}
                     scale={scale}
                     metrics={metrics}
                     lookbackId={lookbackId}
                     kind={kind}
-                    scopeLabel={scopeLabel}
                     townLabel={label}
-                    saleToAskHref={saleToAskTownHref?.(label)}
                     closedPending={closedPending}
-                    settle={settle}
-                    scramble={{
-                      values: barScramble,
-                      rowIndex,
-                      townCount: rows.length,
-                    }}
-                    tone="mono"
+                    tabs={categoryFilterPanel}
+                    caption="Format sample · listing showcase treatment"
                   />
                 </div>
               ) : null}
@@ -1007,6 +999,7 @@ export default function WeeklyBriefContent({
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
+  categoryFilterPanel,
   lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   onLookbackIdChange,
   closedBarMax = 0,
@@ -1041,6 +1034,8 @@ export default function WeeklyBriefContent({
    * Property-type pills (All / SFR / …). Own +/- disclosure — not a boxed panel.
    */
   categoryFilter?: ReactNode;
+  /** Same tabs in the showcase pill style, for the format sample. */
+  categoryFilterPanel?: ReactNode;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
@@ -1361,6 +1356,7 @@ export default function WeeklyBriefContent({
             scopeLabel={scopeLabel}
             saleToAskTownHref={saleToAskTownHref}
             kind={kind}
+            categoryFilterPanel={categoryFilterPanel}
             lookbackRail={
               onLookbackIdChange ? (
                 <ClosedLookbackSlider

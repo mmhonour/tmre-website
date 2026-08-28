@@ -318,6 +318,35 @@ export default function MarketPulseContent({
     </div>
   );
 
+  /* Same tabs, in the listing showcase's pill style, for the format sample. */
+  const categoryFilterPanel = (
+    <div
+      className="flex flex-wrap gap-1"
+      role="tablist"
+      aria-label="Property type"
+    >
+      {categories.map((cat) => {
+        const selected = active?.id === cat.id;
+        return (
+          <button
+            key={cat.id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => setCategoryId(cat.id)}
+            className={`px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+              selected
+                ? "bg-white/15 text-white"
+                : "text-white/45 hover:text-white"
+            }`}
+          >
+            {cat.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <WeeklyBriefContent
       snapshot={viewSnapshot}
@@ -341,6 +370,7 @@ export default function MarketPulseContent({
       settle={settle}
       closedPending={closedPending}
       categoryFilter={categoryFilter}
+      categoryFilterPanel={categoryFilterPanel}
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}
