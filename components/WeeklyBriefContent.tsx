@@ -785,7 +785,7 @@ function UnstackedPricePanel({
                   rotateTownNames={rotateNames}
                 />
               </p>
-              <div className="mt-1 divide-y divide-white/[0.08] border-t border-white/[0.08]">
+              <div className="mt-1 border-t border-white/[0.08] pt-0.5">
                 {priceMetrics.map((m, i) => {
                   const scrambleIndex = rowIndex * metrics.length + i;
                   const pctOf = (id: "medianPrice" | "averagePrice") =>
@@ -849,6 +849,7 @@ function UnstackedPricePanel({
                         m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0
                       }
                       widthTransition={widthTransition}
+                      dense
                     />
                   );
                 })}

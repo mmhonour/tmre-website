@@ -113,6 +113,7 @@ export function PanelBarRow({
   asideNegative = false,
   widthTransition = "",
   tooltip,
+  dense = false,
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -122,11 +123,17 @@ export function PanelBarRow({
   asideNegative?: boolean;
   widthTransition?: string;
   tooltip?: ReactNode;
+  /** Closes the rows up where a group reads as one figure rather than a list. */
+  dense?: boolean;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
   return (
-    <div className="group relative grid h-6 grid-cols-[7.75rem_1fr_auto] items-center gap-2">
+    <div
+      className={`group relative grid grid-cols-[7.75rem_1fr_auto] items-center gap-2 ${
+        dense ? "h-[18px]" : "h-6"
+      }`}
+    >
       <span className={PANEL_LABEL}>
         {label}
         {placement === "label" && aside ? (
