@@ -1,7 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ListingDesktopDeckProvider,
+  type ListingDesktopDeckCardId,
+} from "@/components/listing/ListingDesktopDeckContext";
+import ListingHistorySidePanel from "@/components/listing/ListingHistorySidePanel";
+import ListingRemarksSidePanel, {
+  useListingRemarksExpand,
+} from "@/components/listing/ListingRemarksSidePanel";
+import ListingSidebar from "@/components/listing/ListingSidebar";
+import { listingPanelCompactClass } from "@/components/listing/listing-frame";
+import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { fmtMoney } from "@/lib/listing-history";
+import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import { ListingComparablesPageContent } from "@/components/listing/ListingComparablesPanel";
@@ -11,7 +24,9 @@ import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
-import ListingSubnav, { type ListingTab } from "@/components/listing/ListingSubnav";
+import ListingSubnav, {
+  type ListingTab,
+} from "@/components/listing/ListingSubnav";
 import {
   SHOWCASE_SECTION_IDS,
   scrollToShowcaseSection,
@@ -22,7 +37,11 @@ import type {
   ShowcaseListing,
 } from "@/components/listing/showcase/showcase-types";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
-import { formatMlsStatus, primaryListingPrice, primaryListingPriceIsClosed } from "@/lib/listing-history";
+import {
+  formatMlsStatus,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
 import { listingHeaderScoreProps } from "@/lib/listing-header-score-props";
 import { listingSectionHref, listingShareHref } from "@/lib/listing-url";
 
@@ -65,8 +84,7 @@ export default function ShowcaseDetailsPanel({
   remarks,
   detailRows,
   isRental,
-  goldilocksScore,
-  goldilocksBreakdown,
+  score,
 }: {
   listing: ShowcaseListing;
   street: string;
@@ -76,11 +94,15 @@ export default function ShowcaseDetailsPanel({
   remarks: string;
   detailRows: ShowcaseDetailRow[];
   isRental: boolean;
-  goldilocksScore?: number | null;
-  goldilocksBreakdown?: Parameters<typeof listingHeaderScoreProps>[0]["goldilocksBreakdown"];
+  /** Score + median-band fields straight off the listing chrome API. */
+  score: ListingScoreApiFields;
 }) {
   const router = useRouter();
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  const [activeDeckCard, setActiveDeckCard] =
+    useState<ListingDesktopDeckCardId | null>("remarks");
+  const remarksExpand = useListingRemarksExpand();
+  const { goldilocksScore, goldilocksBreakdown } = score;
   const status = formatMlsStatus(listing.status);
 
   /**
@@ -133,6 +155,11 @@ export default function ShowcaseDetailsPanel({
    */
   const handleTabSelect = (tab: ListingTab) => {
     if (tab === "admin") return;
+    // Desktop keeps History in the dashboard deck rather than a section.
+    if (tab === "history" && window.innerWidth >= 1024) {
+      setActiveDeckCard((cur) => (cur === "history" ? null : "history"));
+      return;
+    }
     const section = showcaseSectionForTab(tab);
     if (section) {
       scrollToShowcaseSection(section);
@@ -141,157 +168,250 @@ export default function ShowcaseDetailsPanel({
     router.push(listingSectionHref(listing.mlsId, tab, street, city));
   };
 
+  /** Deck cards overlap by their header strip, as on production Overview. */
+  const deckCard = (
+    child: React.ReactNode,
+    cardId: ListingDesktopDeckCardId,
+  ) => (
+    <div
+      className={`relative shrink-0 transition-[box-shadow] duration-300 ${
+        activeDeckCard === cardId
+          ? "z-30 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.65)]"
+          : "z-10"
+      }`}
+    >
+      {child}
+    </div>
+  );
+
+  const detailsPanelProps = buildListingDetailsPanelProps(
+    { ...listing, townHint: city },
+    fmtMoney,
+    {
+      listingId: listing.mlsId,
+      addressHint: street || addressHint,
+      townHint: city,
+      cityMedianPpsf: score.cityMedianPpsf,
+      listingPricePerSqft: score.pricePerSqft,
+      medianPpsfBand: score.medianPpsfBand,
+      marketBandLabel: score.marketBandLabel,
+    },
+  );
+
   return (
-    <section className="showcase-details navy-gradient relative border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16">
-      <div className="absolute inset-0 hero-grid opacity-20" aria-hidden />
-      <div className="relative mx-auto w-full max-w-7xl">
-        {/*
+    <ListingDesktopDeckProvider
+      activeCard={activeDeckCard}
+      onActiveCardChange={setActiveDeckCard}
+    >
+      <section className="showcase-details navy-gradient relative border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16">
+        <div className="absolute inset-0 hero-grid opacity-20" aria-hidden />
+        <div className="relative mx-auto w-full max-w-7xl">
+          {/*
           Desktop: the summary and tab strip pin once you scroll past them, so
           the tabs act as a nav rail for the panels below. Static on mobile —
           that layout is being reviewed separately.
         */}
-        <div
-          ref={stickyRef}
-          className="showcase-sticky-chrome z-30 lg:sticky lg:top-24"
-        >
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <ListingBackLink className="mb-0" />
-            <span className="shrink-0">
-              <DealBoardStatusBadge status={status} size="sm" surface="listing" />
-            </span>
-          </div>
-
-          <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-          Property Details
-        </p>
-        <ListingHeader
-          parts="meta"
-          mlsId={listing.mlsId}
-          status={listing.status}
-          address={listing.address}
-          propertyType={listing.propertyType}
-          style={listing.style}
-          beds={listing.beds}
-          baths={listing.baths}
-          sqft={listing.sqft}
-          yearBuilt={listing.yearBuilt}
-          modificationTimestamp={listing.modificationTimestamp}
-          price={primaryListingPrice(listing)}
-          priceIsClosed={primaryListingPriceIsClosed(listing)}
-          bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
-          shareHref={listingShareHref(listing.mlsId)}
-          compact
-          {...listingHeaderScoreProps({
-            goldilocksScore,
-            goldilocksBreakdown,
-            insight,
-            title: street,
-            subtitle: city,
-            propertyType: listing.propertyType,
-          })}
-        />
-
-          <div className="mt-3 pb-3">
-            <ListingSubnav
-              mlsId={listing.mlsId}
-              active="overview"
-              addressHint={street || addressHint}
-              townHint={city}
-              isRental={isRental}
-              compact
-              onTabSelect={handleTabSelect}
-              onMapToggle={() => scrollToShowcaseSection("map")}
-            />
-          </div>
-        </div>
-
-        <div className="mt-8 flex flex-col gap-8">
-          <section id={SHOWCASE_SECTION_IDS.overview} className="scroll-mt-24">
-            {remarks ? (
-              <p className="whitespace-pre-line text-base leading-relaxed text-white/80">
-                {remarks}
-              </p>
-            ) : (
-              <p className="text-base text-white/50">
-                No public remarks on this listing.
-              </p>
-            )}
-          </section>
-
-          <Section id={SHOWCASE_SECTION_IDS.insight} title="Insight">
-            {insight ? (
-              <ListingInsightCopy text={insight} />
-            ) : (
-              <p className="text-sm text-white/50">No insight for this listing.</p>
-            )}
-          </Section>
-
-          <Section id={SHOWCASE_SECTION_IDS.details} title="Details">
-            <dl className="divide-y divide-white/10 border-y border-white/10 lg:max-w-xl">
-              {detailRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-baseline justify-between gap-6 py-3"
-                >
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
-                    {row.label}
-                  </dt>
-                  <dd className="text-right text-sm text-white/90">{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </Section>
-
-          <Section
-            id={SHOWCASE_SECTION_IDS.comps}
-            title={isRental ? "Rented comparables" : "Sold comparables"}
+          <div
+            ref={stickyRef}
+            className="showcase-sticky-chrome z-30 lg:sticky lg:top-24"
           >
-            {/* Same body the Overview slide panel and the dedicated
-                /comparables route render — one component, three hosts. */}
-            <ListingComparablesPageContent
-              mlsId={listing.mlsId}
-              townHint={city}
-              kind={isRental ? "rental" : "sale"}
-              suppressPageChrome
-            />
-          </Section>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <ListingBackLink className="mb-0" />
+              <span className="shrink-0">
+                <DealBoardStatusBadge
+                  status={status}
+                  size="sm"
+                  surface="listing"
+                />
+              </span>
+            </div>
 
-          <Section id={SHOWCASE_SECTION_IDS.if} title="What if">
-            <ListingIfPageContent
+            <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+              Property Details
+            </p>
+            <ListingHeader
+              parts="meta"
               mlsId={listing.mlsId}
-              addressHint={street || addressHint}
-              townHint={city}
-              isRental={isRental}
-              suppressPageChrome
+              status={listing.status}
+              address={listing.address}
+              propertyType={listing.propertyType}
+              style={listing.style}
+              beds={listing.beds}
+              baths={listing.baths}
+              sqft={listing.sqft}
+              yearBuilt={listing.yearBuilt}
+              modificationTimestamp={listing.modificationTimestamp}
+              price={primaryListingPrice(listing)}
+              priceIsClosed={primaryListingPriceIsClosed(listing)}
+              bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
+              shareHref={listingShareHref(listing.mlsId)}
+              compact
+              {...listingHeaderScoreProps({
+                goldilocksScore,
+                goldilocksBreakdown,
+                insight,
+                title: street,
+                subtitle: city,
+                propertyType: listing.propertyType,
+              })}
             />
-          </Section>
 
-          <Section id={SHOWCASE_SECTION_IDS.history} title="History">
-            <ListingHistoryPanel
-              mlsId={listing.mlsId}
-              townHint={city}
-              variant="page"
-            />
-          </Section>
-
-          <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
-            {/* `variant="hero"` fills its parent, so the height has to come
-                from here or the map collapses to nothing. */}
-            {/* Same deal-board engine as Intelligence: real pan / wheel zoom
-                and a pin per comparable, with the subject alongside them. */}
-            <div className="h-[20rem] w-full sm:h-[26rem]">
-              <ShowcaseCompsMap
+            <div className="mt-3 pb-3">
+              <ListingSubnav
                 mlsId={listing.mlsId}
-                subject={subject}
+                active="overview"
+                addressHint={street || addressHint}
                 townHint={city}
-                postalCode={listing.address.postalCode}
+                isRental={isRental}
+                compact
+                onTabSelect={handleTabSelect}
+                onMapToggle={() => scrollToShowcaseSection("map")}
               />
             </div>
-          </Section>
-        </div>
-      </div>
+          </div>
 
-      {/*
+          {/*
+          Desktop splits into main content + a sticky dashboard, matching the
+          production Overview grid. Remarks / Details / History live in the
+          dashboard there; below `lg` they stay as stacked sections, since the
+          mobile layout is being reviewed separately.
+        */}
+          <div className="mt-8 grid grid-cols-1 items-start gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)]">
+            <div className="flex min-w-0 flex-col gap-8 lg:col-start-1">
+              <section
+                id={SHOWCASE_SECTION_IDS.overview}
+                className="scroll-mt-24 lg:hidden"
+              >
+                {remarks ? (
+                  <p className="whitespace-pre-line text-base leading-relaxed text-white/80">
+                    {remarks}
+                  </p>
+                ) : (
+                  <p className="text-base text-white/50">
+                    No public remarks on this listing.
+                  </p>
+                )}
+              </section>
+
+              <Section id={SHOWCASE_SECTION_IDS.insight} title="Insight">
+                {insight ? (
+                  <ListingInsightCopy text={insight} />
+                ) : (
+                  <p className="text-sm text-white/50">
+                    No insight for this listing.
+                  </p>
+                )}
+              </Section>
+
+              <div className="lg:hidden">
+                <Section id={SHOWCASE_SECTION_IDS.details} title="Details">
+                  <dl className="divide-y divide-white/10 border-y border-white/10">
+                    {detailRows.map((row) => (
+                      <div
+                        key={row.label}
+                        className="flex items-baseline justify-between gap-6 py-3"
+                      >
+                        <dt className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
+                          {row.label}
+                        </dt>
+                        <dd className="text-right text-sm text-white/90">
+                          {row.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </Section>
+              </div>
+
+              <Section
+                id={SHOWCASE_SECTION_IDS.comps}
+                title={isRental ? "Rented comparables" : "Sold comparables"}
+              >
+                {/* Same body the Overview slide panel and the dedicated
+                /comparables route render — one component, three hosts. */}
+                <ListingComparablesPageContent
+                  mlsId={listing.mlsId}
+                  townHint={city}
+                  kind={isRental ? "rental" : "sale"}
+                  suppressPageChrome
+                />
+              </Section>
+
+              <Section id={SHOWCASE_SECTION_IDS.if} title="What if">
+                <ListingIfPageContent
+                  mlsId={listing.mlsId}
+                  addressHint={street || addressHint}
+                  townHint={city}
+                  isRental={isRental}
+                  suppressPageChrome
+                />
+              </Section>
+
+              <div className="lg:hidden">
+                <Section id={SHOWCASE_SECTION_IDS.history} title="History">
+                  <ListingHistoryPanel
+                    mlsId={listing.mlsId}
+                    townHint={city}
+                    variant="page"
+                  />
+                </Section>
+              </div>
+
+              <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
+                {/* `variant="hero"` fills its parent, so the height has to come
+                from here or the map collapses to nothing. */}
+                {/* Same deal-board engine as Intelligence: real pan / wheel zoom
+                and a pin per comparable, with the subject alongside them. */}
+                <div className="h-[20rem] w-full sm:h-[26rem]">
+                  <ShowcaseCompsMap
+                    mlsId={listing.mlsId}
+                    subject={subject}
+                    townHint={city}
+                    postalCode={listing.address.postalCode}
+                  />
+                </div>
+              </Section>
+            </div>
+
+            <aside
+              className="hidden min-w-0 lg:col-start-2 lg:block lg:self-stretch"
+              aria-label="Listing dashboard"
+            >
+              <div className="sticky flex flex-col gap-4 lg:top-[var(--showcase-sticky-offset,12rem)]">
+                <div className="flex min-w-0 flex-col">
+                  {deckCard(
+                    <ListingRemarksSidePanel
+                      remarks={remarks || null}
+                      frameClass={listingPanelCompactClass}
+                      expanded={remarksExpand.expanded}
+                      onExpand={remarksExpand.expand}
+                      onCollapse={remarksExpand.collapse}
+                    />,
+                    "remarks",
+                  )}
+                  <div className="-mt-2">
+                    {deckCard(
+                      <ListingSidebar details={detailsPanelProps} />,
+                      "details",
+                    )}
+                  </div>
+                  <div className="-mt-2">
+                    {deckCard(
+                      <ListingHistorySidePanel
+                        mlsId={listing.mlsId}
+                        townHint={city}
+                        frameClass={listingPanelCompactClass}
+                      />,
+                      "history",
+                    )}
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        {/*
         Criteria portals itself here on desktop (ListingCriteriaSideLayout);
         production supplies this slot from the sticky sidebar in
         ListingHeroPanels, which this page does not render — without it the
@@ -300,13 +420,14 @@ export default function ShowcaseDetailsPanel({
         behaves as a pop-out rather than a reserved column. Mobile is unaffected:
         that path already uses ListingSideDrawer.
       */}
-      {/* `space-y-3` because Comps and What if are both on-screen here, so both
+        {/* `space-y-3` because Comps and What if are both on-screen here, so both
           panels can portal in at once — unlike the production tabs, where only
           the active one is ever mounted. */}
-      <div
-        id={LISTING_CRITERIA_SLOT_ID}
-        className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto empty:hidden lg:top-[var(--showcase-sticky-offset,12rem)]"
-      />
-    </section>
+        <div
+          id={LISTING_CRITERIA_SLOT_ID}
+          className="fixed right-4 top-28 z-40 max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto empty:hidden lg:top-[var(--showcase-sticky-offset,12rem)]"
+        />
+      </section>
+    </ListingDesktopDeckProvider>
   );
 }

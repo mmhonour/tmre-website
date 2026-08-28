@@ -387,8 +387,7 @@ export default function ListingShowcaseClient({
         remarks={remarks}
         detailRows={detailRows}
         isRental={isRental}
-        goldilocksScore={data?.goldilocksScore}
-        goldilocksBreakdown={data?.goldilocksBreakdown}
+        score={data ?? {}}
       />
     </div>
   );
