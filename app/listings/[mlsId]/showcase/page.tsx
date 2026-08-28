@@ -29,15 +29,16 @@ export default async function ListingShowcasePage({
   searchParams,
 }: {
   params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string }>;
+  searchParams: Promise<{ address?: string; city?: string; panel?: string }>;
 }) {
   const { mlsId } = await params;
-  const { address, city } = await searchParams;
+  const { address, city, panel } = await searchParams;
   return (
     <ListingShowcaseClient
       mlsId={mlsId}
       addressHint={address?.trim() || null}
       townHint={city?.trim() || null}
+      productionPanel={panel === "production"}
     />
   );
 }

@@ -56,9 +56,7 @@ import {
 type TransactionTab = "comparables" | "comparable-rentals" | "uag";
 
 function isTransactionTab(tab: ListingTab): tab is TransactionTab {
-  return (
-    tab === "comparables" || tab === "comparable-rentals" || tab === "uag"
-  );
+  return tab === "comparables" || tab === "comparable-rentals" || tab === "uag";
 }
 
 const TRANSACTION_TITLES: Record<TransactionTab, string> = {
@@ -260,61 +258,81 @@ export default function ShowcaseDetailsPanel({
               </span>
             </div>
 
-            <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
-              Property Details
-            </p>
-            <ListingHeader
-              parts="meta"
-              mlsId={listing.mlsId}
-              status={listing.status}
-              address={listing.address}
-              propertyType={listing.propertyType}
-              style={listing.style}
-              beds={listing.beds}
-              baths={listing.baths}
-              sqft={listing.sqft}
-              yearBuilt={listing.yearBuilt}
-              modificationTimestamp={listing.modificationTimestamp}
-              price={primaryListingPrice(listing)}
-              priceIsClosed={primaryListingPriceIsClosed(listing)}
-              bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
-              shareHref={listingShareHref(listing.mlsId)}
-              compact
-              {...listingHeaderScoreProps({
-                goldilocksScore,
-                goldilocksBreakdown,
-                insight,
-                title: street,
-                subtitle: city,
-                propertyType: listing.propertyType,
-              })}
-            />
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+              <div className="min-w-0 flex-1">
+                <p className="mb-1.5 font-mono text-[10px] tracking-[0.2em] uppercase text-gold">
+                  Property Details
+                </p>
+                <ListingHeader
+                  parts="meta"
+                  mlsId={listing.mlsId}
+                  status={listing.status}
+                  address={listing.address}
+                  propertyType={listing.propertyType}
+                  style={listing.style}
+                  beds={listing.beds}
+                  baths={listing.baths}
+                  sqft={listing.sqft}
+                  yearBuilt={listing.yearBuilt}
+                  modificationTimestamp={listing.modificationTimestamp}
+                  price={primaryListingPrice(listing)}
+                  priceIsClosed={primaryListingPriceIsClosed(listing)}
+                  bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
+                  shareHref={listingShareHref(listing.mlsId)}
+                  compact
+                  {...listingHeaderScoreProps({
+                    goldilocksScore,
+                    goldilocksBreakdown,
+                    insight,
+                    title: street,
+                    subtitle: city,
+                    propertyType: listing.propertyType,
+                  })}
+                />
+              </div>
 
-          {/*
+              {/* Production places Insight beside Property Details on desktop. */}
+              {insight ? (
+                <aside
+                  className="hidden min-w-0 lg:block lg:max-w-sm"
+                  aria-label="Listing insight"
+                >
+                  <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold lg:text-center">
+                    Insight
+                  </p>
+                  <ListingInsightCopy
+                    text={insight}
+                    className="text-left text-[11px] leading-snug text-white/70 break-words"
+                  />
+                </aside>
+              ) : null}
+            </div>
+
+            {/*
             Desktop keeps History in the dashboard deck, so its tab toggles the
             card and lights up with it — the same wiring ListingHeroPanels uses.
             Null on mobile, where the tab falls through to the stacked section.
           */}
-          <div className="mt-3 pb-3">
-            <ListingSubnav
-              mlsId={listing.mlsId}
-              active={activeTab}
-              addressHint={street || addressHint}
+            <div className="mt-3 pb-3">
+              <ListingSubnav
+                mlsId={listing.mlsId}
+                active={activeTab}
+                addressHint={street || addressHint}
                 townHint={city}
                 isRental={isRental}
-              compact
-              onTabSelect={handleTabSelect}
-              onMapToggle={() => scrollToShowcaseSection("map")}
-              historyElevated={activeDeckCard === "history"}
-              onHistoryToggle={
-                isDesktop
-                  ? () =>
-                      setActiveDeckCard((cur) =>
-                        cur === "history" ? null : "history",
-                      )
-                  : null
-              }
-            />
+                compact
+                onTabSelect={handleTabSelect}
+                onMapToggle={() => scrollToShowcaseSection("map")}
+                historyElevated={activeDeckCard === "history"}
+                onHistoryToggle={
+                  isDesktop
+                    ? () =>
+                        setActiveDeckCard((cur) =>
+                          cur === "history" ? null : "history",
+                        )
+                    : null
+                }
+              />
             </div>
           </div>
 
@@ -371,50 +389,58 @@ export default function ShowcaseDetailsPanel({
                 </Section>
               </div>
 
-          {/* Self-contained gallery: the full-bleed hero is the viewer, so a
+              {/* Self-contained gallery: the full-bleed hero is the viewer, so a
               thumbnail jumps it rather than opening the /photos route. */}
-          <Section id={SHOWCASE_SECTION_IDS.photos} title="Photos">
-            {photoCount > 0 ? (
-              <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 lg:grid-cols-5">
-                {Array.from({ length: Math.min(photoCount, 40) }, (_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => onSelectPhoto(i)}
-                    aria-label={`Show photo ${i + 1} of ${photoCount}`}
-                    className="relative aspect-[4/3] overflow-hidden transition-opacity hover:opacity-80"
-                  >
-                    <ListingThumbImage
-                      src={listingPhotoProxyUrl(listing.mlsId, i)}
-                      alt=""
-                      priority={i < 10}
-                    />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-white/50">No photos on this listing.</p>
-            )}
-          </Section>
+              <Section id={SHOWCASE_SECTION_IDS.photos} title="Photos">
+                {photoCount > 0 ? (
+                  <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 lg:grid-cols-5">
+                    {Array.from(
+                      { length: Math.min(photoCount, 40) },
+                      (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => onSelectPhoto(i)}
+                          aria-label={`Show photo ${i + 1} of ${photoCount}`}
+                          className="relative aspect-[4/3] overflow-hidden transition-opacity hover:opacity-80"
+                        >
+                          <ListingThumbImage
+                            src={listingPhotoProxyUrl(listing.mlsId, i)}
+                            alt=""
+                            priority={i < 10}
+                          />
+                        </button>
+                      ),
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/50">
+                    No photos on this listing.
+                  </p>
+                )}
+              </Section>
 
-          <Section id={SHOWCASE_SECTION_IDS.comps} title={TRANSACTION_TITLES[txTab]}>
-            {/* Same bodies the Overview slide panel and the dedicated
+              <Section
+                id={SHOWCASE_SECTION_IDS.comps}
+                title={TRANSACTION_TITLES[txTab]}
+              >
+                {/* Same bodies the Overview slide panel and the dedicated
                 /comparables and /uag routes render. */}
-            {txTab === "uag" ? (
-              <ListingUagPageContent
-                mlsId={listing.mlsId}
-                townHint={city}
-                suppressPageChrome
-              />
-            ) : (
-              <ListingComparablesPageContent
-                mlsId={listing.mlsId}
-                townHint={city}
-                kind={txTab === "comparable-rentals" ? "rental" : "sale"}
-                suppressPageChrome
-              />
-            )}
-          </Section>
+                {txTab === "uag" ? (
+                  <ListingUagPageContent
+                    mlsId={listing.mlsId}
+                    townHint={city}
+                    suppressPageChrome
+                  />
+                ) : (
+                  <ListingComparablesPageContent
+                    mlsId={listing.mlsId}
+                    townHint={city}
+                    kind={txTab === "comparable-rentals" ? "rental" : "sale"}
+                    suppressPageChrome
+                  />
+                )}
+              </Section>
 
               <Section id={SHOWCASE_SECTION_IDS.if} title="What if">
                 <ListingIfPageContent
@@ -456,16 +482,16 @@ export default function ShowcaseDetailsPanel({
               className="hidden min-w-0 lg:col-start-2 lg:block lg:self-stretch"
               aria-label="Listing dashboard"
             >
-          <div className="sticky flex flex-col gap-4 lg:top-[var(--showcase-sticky-offset,12rem)]">
-            {/* Anchors the column width above the deck, as on production. */}
-            {detailsPanelProps.isClosed ? null : (
-              <ListingInterestButton
-                mlsId={listing.mlsId}
-                address={street}
-                city={city}
-              />
-            )}
-            <div className="flex min-w-0 flex-col">
+              <div className="sticky flex flex-col gap-4 lg:top-[var(--showcase-sticky-offset,12rem)]">
+                {/* Anchors the column width above the deck, as on production. */}
+                {detailsPanelProps.isClosed ? null : (
+                  <ListingInterestButton
+                    mlsId={listing.mlsId}
+                    address={street}
+                    city={city}
+                  />
+                )}
+                <div className="flex min-w-0 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
                       remarks={remarks || null}

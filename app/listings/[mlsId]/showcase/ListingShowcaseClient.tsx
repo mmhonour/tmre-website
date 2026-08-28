@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ListingDetailClient from "@/app/listings/[mlsId]/ListingDetailClient";
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
@@ -92,10 +93,13 @@ export default function ListingShowcaseClient({
   mlsId,
   addressHint,
   townHint,
+  productionPanel = false,
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
+  /** `?panel=production` — render the real Overview page below the photo. */
+  productionPanel?: boolean;
 }) {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
@@ -378,6 +382,21 @@ export default function ListingShowcaseClient({
         </div>
       </section>
 
+      {productionPanel ? (
+        /*
+         * `?panel=production` drops the real Overview page in under the photo,
+         * unmodified. Zero divergence by construction — it is the same
+         * component tree `/listings/[mlsId]` renders, so Insight, Rented, Under
+         * Agreement and the deck all behave exactly as they do in production.
+         */
+        <div className="border-t border-white/10">
+          <ListingDetailClient
+            mlsId={mlsId}
+            addressHint={street || addressHint}
+            townHint={city}
+          />
+        </div>
+      ) : (
       <ShowcaseDetailsPanel
         listing={listing}
         street={street}
@@ -395,6 +414,7 @@ export default function ListingShowcaseClient({
         }}
         score={data ?? {}}
       />
+      )}
     </div>
   );
 }
