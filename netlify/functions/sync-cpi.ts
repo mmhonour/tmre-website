@@ -7,7 +7,6 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfEventBridgeOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
@@ -19,10 +18,6 @@ import {
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfEventBridgeOwns('cpi-sync')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('cpi-sync')) {
       return thinCronSkipped('cpi-sync scheduled sync paused by admin')
     }

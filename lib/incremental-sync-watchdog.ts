@@ -17,6 +17,11 @@ import {
 import {
   INCREMENTAL_SYNC_STALE_MS,
 } from '@/lib/incremental-sync-health'
+import {
+  SYNC_QUEUE_PRIORITY_MANUAL,
+  isSyncQueueRunnerJob,
+  syncQueueItemForJob,
+} from '@/lib/sync-queue-shared'
 
 export { INCREMENTAL_SYNC_STALE_MS }
 /** Don't re-queue watchdog more often than this (avoids stampede). */
@@ -28,7 +33,6 @@ export type IncrementalWatchdogResult = {
   action:
     | 'fresh'
     | 'paused'
-    | 'skipped_provider'
     | 'queued'
     | 'queue_failed'
     | 'cooldown'
@@ -54,8 +58,8 @@ function parseAgeMs(iso: string | null, nowMs: number): number | null {
  * job is not paused, queue the background worker with source=watchdog (bypasses
  * Next-override defer) so inventory keeps moving without Admin button clicks.
  *
- * Also heals when Scheduler is EventBridge — EB owns the alarm clock, but a
- * queued-with-no-End / wiped-End failure still needs this Netlify 15m backstop.
+ * The sync queue is consulted first: a claimed row is a child mid-pull, so the
+ * watchdog leaves it alone rather than starting a duplicate somewhere else.
  *
  * Dead "Queued…" hops (worker never reached town pulls) are cleared so a fresh
  * queue can land — cron 202 acks must not forever look "in progress".
@@ -91,30 +95,38 @@ export async function runIncrementalSyncWatchdog(
     }
   }
 
-  {
-    const { readSyncScheduleConfigFresh, resolveJobScheduler } = await import(
-      '@/lib/sync-schedule-config'
+  // The sync runner owns RETS. Ask the queue what it is doing before reaching
+  // for a Netlify worker: a claimed row means a child is pulling right now, and
+  // a waiting row with a live runner means it is about to. Only a silent runner
+  // sends us down the Netlify path — that is the automatic version of what the
+  // Configure Scheduler radio used to make somebody do by hand.
+  if (isSyncQueueRunnerJob('incremental')) {
+    const { enqueueSyncJob, readSyncQueueSnapshot } = await import(
+      '@/lib/sync-queue'
     )
-    const config = await readSyncScheduleConfigFresh()
-    if (resolveJobScheduler(config.jobs.incremental) === 'railway') {
-      // Railway owns RETS — never queue a Netlify worker. If End is stale,
-      // nudge POST /run (same as Admin Sync now) so a dead interval / bad
-      // MLS_SYNC_SERVICE_URL does not leave inventory pink forever.
-      const startIso = await getSyncMetaFresh('last_incremental_sync_started')
-      const startAgeMs = parseAgeMs(startIso, nowMs)
-      const openStart =
-        startAgeMs != null &&
-        (ageMs == null ||
-          (startIso != null &&
-            lastIncrementalSync != null &&
-            Date.parse(startIso) > Date.parse(lastIncrementalSync))) &&
-        startAgeMs < 45 * 60 * 1000
-      if (openStart) {
+    const snapshot = await readSyncQueueSnapshot(1)
+    const queueItem = syncQueueItemForJob(snapshot, 'incremental')
+
+    if (queueItem?.state === 'running') {
+      const since = queueItem.claimedAt ?? queueItem.requestedAt
+      const runningForMin = Math.round(
+        Math.max(0, nowMs - Date.parse(since)) / 60_000,
+      )
+      return {
+        action: 'in_progress',
+        lastIncrementalSync,
+        ageMs,
+        detail: `sync runner child pulling (claimed ${runningForMin}m ago)`,
+      }
+    }
+
+    if (!snapshot.runnerStale) {
+      if (queueItem?.state === 'queued') {
         return {
           action: 'in_progress',
           lastIncrementalSync,
           ageMs,
-          detail: `Railway pull in flight (Start ${Math.round((startAgeMs ?? 0) / 60_000)}m ago)`,
+          detail: `already queued for the sync runner since ${queueItem.requestedAt}`,
         }
       }
 
@@ -129,37 +141,41 @@ export async function runIncrementalSyncWatchdog(
             action: 'cooldown',
             lastIncrementalSync,
             ageMs,
-            detail: `Railway watchdog cooldown (${Math.round(watchdogAge / 60_000)}m ago)`,
+            detail: `watchdog cooldown (${Math.round(watchdogAge / 60_000)}m ago)`,
           }
         }
       }
 
       const startedAt = new Date().toISOString()
       await setSyncMetaDurable(LAST_WATCHDOG_AT_KEY, startedAt)
-      const { queueMlsSyncServiceRun } = await import(
-        '@/lib/mls-sync-service-client'
-      )
-      const queued = await queueMlsSyncServiceRun({
-        startedAt,
-        source: 'watchdog',
+      const enqueued = await enqueueSyncJob({
+        jobId: 'incremental',
+        trigger: 'watchdog',
+        priority: SYNC_QUEUE_PRIORITY_MANUAL,
+        requestedAt: startedAt,
+        ignoreCooldown: options.force === true,
       })
-      if (queued.ok) {
+      if (enqueued.ok) {
         return {
           action: 'queued',
           lastIncrementalSync,
           ageMs,
-          detail: `Railway /run accepted (HTTP ${queued.status ?? '?'})`,
+          detail: enqueued.enqueued
+            ? 'queued on the sync runner'
+            : (enqueued.reason ?? 'already on the queue'),
         }
       }
       return {
         action: 'queue_failed',
         lastIncrementalSync,
         ageMs,
-        detail:
-          queued.error ??
-          'Railway /run failed — check MLS_SYNC_SERVICE_URL (needs https://) + SYNC_CRON_SECRET',
+        detail: enqueued.reason ?? 'could not enqueue incremental',
       }
     }
+
+    console.warn(
+      '[incremental-watchdog] sync runner heartbeat is stale — falling back to the Netlify worker',
+    )
   }
 
   // End is already stale (>70m or never) when we get here. A Queued breadcrumb

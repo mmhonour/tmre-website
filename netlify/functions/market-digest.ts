@@ -8,14 +8,18 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfEventBridgeOwns,
+  thinCronHandOffToQueue,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin market-digest trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start time gate the work
- * (default weekly Mon 08:00 ET). Queues market-digest-worker.
+ * (default weekly Mon 08:00 ET).
+ *
+ * A due send goes on the sync queue for the always-on runner, which is awake to
+ * retry through the day; market-digest-worker is queued here only when that row
+ * is stranded.
  *
  * After a successful send, also skip on the week watermark so a long-running
  * worker cannot be re-queued every half hour for the rest of the day.
@@ -23,10 +27,6 @@ import {
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfEventBridgeOwns('market-digest')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('market-digest')) {
       return thinCronSkipped('market-digest scheduled sync paused by admin')
     }
@@ -40,6 +40,10 @@ export default async function handler() {
     }
     if (await isMarketDigestAlreadySentThisWeek()) {
       return thinCronSkipped('already sent for this ET week — once-per-week watermark')
+    }
+    {
+      const handedOff = await thinCronHandOffToQueue('market-digest')
+      if (handedOff) return handedOff
     }
     const startedAt = new Date().toISOString()
     const queued = await queueNetlifyMarketDigest()

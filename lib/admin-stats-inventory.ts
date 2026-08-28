@@ -706,6 +706,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'sync_runs' },
   },
   {
+    id: 'sync-queue',
+    name: 'Sync job queue',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'sync_queue',
+    keyPattern: 'table rows (queued | running | terminal)',
+    owner: 'lib/sync-queue.ts',
+    notes:
+      'Every job request — admin Sync now, Netlify cron, EventBridge ingress, runner sweep — lands here first. The Railway runner claims a row, forks a child, and writes back the outcome (done / failed / timeout / crashed / cancelled). Old terminal rows are pruned by the runner.',
+    live: { kind: 'postgres_table', table: 'sync_queue' },
+  },
+  {
     id: 'chunked-resync-progress',
     name: 'Chunked full-resync progress',
     category: 'sync-control',

@@ -15,8 +15,8 @@ import { adminSectionHref, adminSyncsHref } from "@/lib/admin-nav";
 import {
   SYNC_SCHEDULE_WEEKDAYS,
   frequencyLabel,
-  resolveJobScheduler,
-  schedulerProviderLabel,
+  resolveJobBudgetMinutes,
+  syncJobHostLabel,
   weekdayEtLabel,
   type SyncScheduleConfig,
   type SyncScheduleWeekdayEt,
@@ -27,7 +27,8 @@ type PanelMessage = { text: string; tone: "ok" | "error" };
 /** Read-only mirror of the shared market-digest row on Syncs → Configure. */
 type DigestJobFacts = {
   frequency: string;
-  scheduler: string;
+  runsOn: string;
+  budgetMinutes: number;
   nextRunAt: string | null;
 };
 
@@ -160,7 +161,7 @@ export default function AdminMarketDigestPanel({
     }
   }, [applyConfig]);
 
-  /** Frequency / scheduler / Next are owned by Syncs → Configure — mirror them. */
+  /** Frequency / budget / Next are owned by Syncs → Configure — mirror them. */
   const refreshJobFacts = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/sync-schedule", {
@@ -175,7 +176,8 @@ export default function AdminMarketDigestPanel({
       if (!job) return;
       setJobFacts({
         frequency: frequencyLabel(job.frequency),
-        scheduler: schedulerProviderLabel(resolveJobScheduler(job)),
+        runsOn: syncJobHostLabel("market-digest"),
+        budgetMinutes: resolveJobBudgetMinutes("market-digest", job),
         nextRunAt: body.nextRuns?.["market-digest"] ?? null,
       });
     } catch {
@@ -459,9 +461,15 @@ export default function AdminMarketDigestPanel({
             </span>
             <span className="font-mono text-[10px] text-charcoal/60">
               <span className="text-charcoal/35 uppercase tracking-wide mr-1">
-                Scheduler
+                Runs on
               </span>
-              {jobFacts.scheduler}
+              {jobFacts.runsOn}
+            </span>
+            <span className="font-mono text-[10px] text-charcoal/60">
+              <span className="text-charcoal/35 uppercase tracking-wide mr-1">
+                Budget
+              </span>
+              {jobFacts.budgetMinutes}m
             </span>
             <span className="font-mono text-[10px] text-charcoal/60">
               <span className="text-charcoal/35 uppercase tracking-wide mr-1">

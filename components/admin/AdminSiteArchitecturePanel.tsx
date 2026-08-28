@@ -286,7 +286,7 @@ export default function AdminSiteArchitecturePanel() {
                 label="Netlify"
                 role="Lane 3 · site · warm · digests"
                 kind="core"
-                title="Netlify — Next.js site, serverless functions, Blobs. Lane 3: sideWorkOnly warm (latest feeds, deal board, stats, digests) after Railway handoff. Not the preferred Incremental RETS puller."
+                title="Netlify — Next.js site, serverless functions, Blobs. Lane 3: sideWorkOnly warm (latest feeds, deal board, stats, digests) after the runner's handoff. Its crons enqueue long jobs on sync_queue and only run one themselves when a row has sat unclaimed long enough to prove the runner is gone."
               />
               <Box
                 id="railway"
@@ -295,9 +295,9 @@ export default function AdminSiteArchitecturePanel() {
                 w={300}
                 h={72}
                 label="Railway mls-sync"
-                role="Lane 1 · RETS → Neon only"
+                role="Lane 1 · sync_queue runner"
                 kind="core"
-                title="Railway mls-sync — always-on Incremental puller. MLS_SYNC_SERVICE=1 forces postHooks:false. Writes Neon End/heartbeat (Lane 2), then queues Netlify sideWorkOnly for warm (Lane 3)."
+                title="Railway mls-sync — always-on runner. Claims jobs off sync_queue and forks a child per run, killing it at its budget. MLS_SYNC_SERVICE=1 forces postHooks:false. Writes Neon End/heartbeat (Lane 2), then queues Netlify sideWorkOnly for warm (Lane 3)."
               />
               <Box
                 id="eventbridge"
@@ -306,9 +306,9 @@ export default function AdminSiteArchitecturePanel() {
                 w={260}
                 h={72}
                 label="AWS EventBridge"
-                role="Legacy optional alarm"
+                role="Optional extra alarm"
                 kind="optional"
-                title="AWS EventBridge Scheduler — legacy side-by-side with Netlify cron. Prefer Configure → Incremental → Railway."
+                title="AWS EventBridge Scheduler — optional side-by-side with Netlify cron. Its ingress enqueues on sync_queue like everyone else, so running both only means a job is asked for twice and deduplicated once."
               />
 
               {/* Data plane */}
@@ -321,7 +321,7 @@ export default function AdminSiteArchitecturePanel() {
                 label="Neon"
                 role="Lane 2 · inventory truth"
                 kind="core"
-                title="Neon Postgres — Lane 2 handoff. listings + sync_meta End/heartbeat. Shared by Netlify + local + Railway when DATABASE_URL points here. Website never needs Railway up to know what’s listed."
+                title="Neon Postgres — Lane 2 handoff. listings + sync_meta End/heartbeat, plus sync_queue, which is where every job request lands and where its outcome is recorded. Shared by Netlify + local + Railway when DATABASE_URL points here. Website never needs Railway up to know what’s listed."
               />
               <Box
                 id="rets"
@@ -332,7 +332,7 @@ export default function AdminSiteArchitecturePanel() {
                 label="SmartMLS RETS"
                 role="MLS · pulled by Railway"
                 kind="core"
-                title="SmartMLS RETS — pulled by Railway mls-sync (preferred). Netlify worker RETS is legacy/fallback."
+                title="SmartMLS RETS — pulled by the Railway mls-sync runner. Netlify worker RETS is the rescue path when the runner is gone."
               />
               <Box
                 id="r2"
@@ -459,7 +459,7 @@ export default function AdminSiteArchitecturePanel() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <NoteCard
               title="Lane split (Incremental)"
-              body="Lane 1 Railway mls-sync: RETS → Neon only (postHooks:false). Lane 2 Neon: End/heartbeat is inventory truth — the site never needs Railway up to know what’s listed. Lane 3 Netlify: sideWorkOnly warm (feeds, deal board, stats, digests) after the handoff."
+              body="Lane 1 Railway mls-sync: claims sync_queue and pulls RETS → Neon in a forked child (postHooks:false). Lane 2 Neon: End/heartbeat is inventory truth — the site never needs Railway up to know what’s listed. Lane 3 Netlify: sideWorkOnly warm (feeds, deal board, stats, digests) after the handoff."
             />
             <NoteCard
               title="Nameservers / DNS"
@@ -467,7 +467,7 @@ export default function AdminSiteArchitecturePanel() {
             />
             <NoteCard
               title="In your list"
-              body="Netlify (site + Lane 3 warm + DNS), Railway mls-sync (Lane 1 pull), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (outbound email). Optional inbound mail forwarder for fred@. SmartMLS RETS, Census, OSM, Blobs, Twilio, EventBridge (legacy), ipapi / Vision / GreatSchools / OpenAI as before."
+              body="Netlify (site + Lane 3 warm + DNS), Railway mls-sync (Lane 1 queue runner), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (outbound email). Optional inbound mail forwarder for fred@. SmartMLS RETS, Census, OSM, Blobs, Twilio, EventBridge (optional), ipapi / Vision / GreatSchools / OpenAI as before."
             />
           </div>
 

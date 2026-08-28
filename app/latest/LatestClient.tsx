@@ -668,7 +668,7 @@ export default function LatestClient({
   const syncLabel = formatSync(lastSync);
   const newestMlsLabel = formatSync(newestModification(visibleListings));
   const pullHealth = evaluateIncrementalHealth({
-    scheduler: lastHeartbeat ? "railway" : "netlify",
+    host: lastHeartbeat ? "runner" : "netlify",
     heartbeatAt: lastHeartbeat,
     finishedAt: lastSync,
   });

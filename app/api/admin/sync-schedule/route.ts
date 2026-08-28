@@ -6,12 +6,16 @@ import { isScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   isSyncScheduleFrequencyId,
   isSyncScheduleWeekdayEt,
-  isSyncSchedulerProvider,
   normalizeStartTimeEt,
   readSyncScheduleConfigFresh,
   writeSyncScheduleConfig,
   type SyncScheduleConfig,
 } from '@/lib/sync-schedule-config'
+import {
+  clampJobBudgetMinutes,
+  SYNC_JOB_BUDGET_MAX_MINUTES,
+  SYNC_JOB_BUDGET_MIN_MINUTES,
+} from '@/lib/sync-queue-shared'
 import { buildAdminSyncNextRuns } from '@/lib/admin-sync-schedule'
 import { readListingsDbStats } from '@/lib/db/listings-repo'
 import { getSyncMeta } from '@/lib/db/sync-meta-store'
@@ -61,7 +65,7 @@ export async function GET(req: NextRequest) {
  *   { jobId, frequency }
  *   { jobId, startTimeEt: "HH:MM" }
  *   { jobId, weekdayEt: 0-6 }  // weekly send day (ET)
- *   { jobId, scheduler: "netlify" | "eventbridge" }
+ *   { jobId, budgetMinutes: number }  // runner kills the child at this deadline
  *   { order: ScheduledSyncJobId[] }
  *   { moveJobId, direction: "up" | "down" }
  */
@@ -82,7 +86,7 @@ export async function PATCH(req: NextRequest) {
     frequency?: unknown
     startTimeEt?: unknown
     weekdayEt?: unknown
-    scheduler?: unknown
+    budgetMinutes?: unknown
     order?: unknown
     moveJobId?: unknown
     direction?: unknown
@@ -120,23 +124,28 @@ export async function PATCH(req: NextRequest) {
     const hasFrequency = typeof raw.frequency === 'string'
     const hasStart = typeof raw.startTimeEt === 'string'
     const hasWeekday = raw.weekdayEt !== undefined && raw.weekdayEt !== null
-    const hasScheduler = raw.scheduler !== undefined && raw.scheduler !== null
+    const hasBudget = raw.budgetMinutes !== undefined && raw.budgetMinutes !== null
 
-    if (!hasFrequency && !hasStart && !hasWeekday && !hasScheduler) {
+    if (!hasFrequency && !hasStart && !hasWeekday && !hasBudget) {
       return NextResponse.json(
         {
           error:
-            'Provide frequency, startTimeEt, weekdayEt, and/or scheduler',
+            'Provide frequency, startTimeEt, weekdayEt, and/or budgetMinutes',
         },
         { status: 400 },
       )
     }
 
-    if (hasScheduler && !isSyncSchedulerProvider(raw.scheduler)) {
-      return NextResponse.json(
-        { error: 'scheduler must be netlify or eventbridge' },
-        { status: 400 },
-      )
+    if (hasBudget) {
+      const minutes = Number(raw.budgetMinutes)
+      if (!Number.isFinite(minutes) || minutes < SYNC_JOB_BUDGET_MIN_MINUTES) {
+        return NextResponse.json(
+          {
+            error: `budgetMinutes must be ${SYNC_JOB_BUDGET_MIN_MINUTES}–${SYNC_JOB_BUDGET_MAX_MINUTES} minutes`,
+          },
+          { status: 400 },
+        )
+      }
     }
 
     if (hasWeekday) {
@@ -168,7 +177,7 @@ export async function PATCH(req: NextRequest) {
 
     if (
       hasFrequency ||
-      hasScheduler ||
+      hasBudget ||
       (raw.jobId !== 'market-digest' && (hasStart || hasWeekday))
     ) {
       const job = { ...config.jobs[raw.jobId] }
@@ -178,8 +187,8 @@ export async function PATCH(req: NextRequest) {
         }
         job.frequency = raw.frequency as typeof job.frequency
       }
-      if (hasScheduler && isSyncSchedulerProvider(raw.scheduler)) {
-        job.scheduler = raw.scheduler
+      if (hasBudget) {
+        job.budgetMinutes = clampJobBudgetMinutes(Number(raw.budgetMinutes))
       }
       if (raw.jobId !== 'market-digest') {
         if (hasStart) {
@@ -205,7 +214,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Provide { jobId, frequency|startTimeEt|weekdayEt|scheduler }, { order }, or { moveJobId, direction }',
+          'Provide { jobId, frequency|startTimeEt|weekdayEt|budgetMinutes }, { order }, or { moveJobId, direction }',
       },
       { status: 400 },
     )

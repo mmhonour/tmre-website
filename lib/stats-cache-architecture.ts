@@ -10,8 +10,8 @@ import { TMRE_TOWNS } from '@/lib/tmre-towns'
 //   * lib/db/listings-repo.ts   — statsChanged on upsert (what marks a town)
 //   * lib/stats-dirty-towns.ts  — the marks, the backstop, the run summary
 //   * lib/stats-cache.ts        — rebuildStatsCache / …ForTowns, projection reads
-//   * services/mls-sync/server.ts — Railway sweep (default host)
-//   * netlify/functions/sync-stats-cache*.ts — Netlify half of the radio
+//   * services/mls-sync/server.ts — Railway sweep (enqueues) + job-runner (claims)
+//   * netlify/functions/sync-stats-cache*.ts — the other enqueuer, and the rescue
 // ---------------------------------------------------------------------------
 
 export type StatsCacheStageStatus = 'live' | 'guard' | 'fallback' | 'retired'
@@ -102,22 +102,32 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
         stages: [
           {
             id: 'sweep',
-            title: `Railway sweep every ${sweepMinutes} min`,
+            title: `Railway sweep every ${sweepMinutes} min → sync_queue`,
             host: 'Railway mls-sync',
-            source: 'services/mls-sync/server.ts → statsRebuildPlan',
-            detail: `One small sync_meta read. It rebuilds only the towns that are dirty, never-built, or past the ${backstopHours}h backstop, and it stands down entirely when Configure → Stats cache → Scheduler names Netlify, when the job is paused, or while an incremental pull is in flight.`,
+            source: 'services/mls-sync/server.ts → sweepTick',
+            detail: `One small sync_meta read. It enqueues only when a town is dirty, never-built, or past the ${backstopHours}h backstop and the Configure slot has come round, and it enqueues nothing when the job is paused. Enqueueing rather than running means a rebuild asked for while an incremental pull is in flight waits its turn instead of being dropped.`,
             status: 'live',
-            statusLabel: 'Default host',
+            statusLabel: 'Enqueues',
+          },
+          {
+            id: 'claim',
+            title: 'Runner claims the row and forks a child',
+            host: 'Railway mls-sync',
+            source: 'services/mls-sync/job-runner.ts → drainSyncQueueOnce',
+            detail:
+              'One job at a time, highest priority first, oldest first within a band. The rebuild runs in its own process with its own heap, held to Configure → Stats cache → Budget: over budget is a kill recorded as timeout, and a child that dies silently is recorded as crashed. Either way the row reaches a terminal state, so the next sweep is not blocked by a ghost.',
+            status: 'live',
+            statusLabel: 'Runs it',
           },
           {
             id: 'netlify',
-            title: 'Netlify thin cron */30 → background worker',
+            title: 'Netlify thin cron */30 → enqueue, or rescue',
             host: 'Netlify',
             source: 'netlify/functions/sync-stats-cache.ts',
             detail:
-              'The other half of the Configure radio. It now checks for dirty towns before spending a background invocation — that hop is what Netlify began refusing with HTTP 429 — and the worker rebuilds the same dirty set. Admin "Sync now" sends source=admin, which rebuilds all towns.',
+              'The second enqueuer. It still checks for dirty towns before spending anything — the background hop is what Netlify began refusing with HTTP 429 — and normally just puts a row on the queue. It only queues its own background worker when that row has sat unclaimed past the rescue grace, which is how a dead runner stops meaning stale stats. Admin "Sync now" sends source=admin, which rebuilds all towns.',
             status: 'fallback',
-            statusLabel: 'Radio option',
+            statusLabel: 'Enqueue + rescue',
           },
           {
             id: 'ttl',
@@ -132,11 +142,21 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
           },
           {
             id: 'cooldown',
-            title: 'Unfinished-start cooldown (30 min)',
-            host: 'Railway mls-sync',
-            source: 'services/mls-sync/server.ts → STATS_RETRY_COOLDOWN_MS',
+            title: 'Post-failure cooldown (30 min)',
+            host: 'Neon Postgres',
+            source: 'lib/sync-queue.ts → SYNC_QUEUE_FAILURE_COOLDOWN_MS',
             detail:
-              'An OOM takes the whole container with it, so last_stats_cache_started with no later last_stats_cache means the previous attempt died. Without this guard the sweep would relaunch the same fatal rebuild on every boot and starve the incremental pull.',
+              'A run that timed out or crashed holds the job back for 30 minutes. Without it, a rebuild fatal enough to kill its child would be re-enqueued on every sweep and starve everything behind it. An honest failure — a real error, an empty result — is not cooled down; it retries on the next slot like it always did. Admin "Sync now" skips the cooldown, because somebody pressed the button precisely because they did not believe it.',
+            status: 'guard',
+            statusLabel: 'Guard',
+          },
+          {
+            id: 'reaper',
+            title: 'Abandoned running rows are reaped',
+            host: 'Neon Postgres',
+            source: 'lib/sync-queue.ts → reapAbandonedSyncQueueItems',
+            detail:
+              'The runner heartbeats its claimed row every minute. A row that has gone five minutes without one is closed as crashed — the case where the parent itself died mid-run. Otherwise the unique index on running rows would block that job forever, which is the in-memory wedge again with a longer memory.',
             status: 'guard',
             statusLabel: 'Guard',
           },
@@ -153,7 +173,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Neon Postgres',
             source: 'lib/db/listings-repo.ts → readStatsListingsFromDb',
             detail:
-              'The rebuild used to load every listing\'s full raw RETS payload into Node — that JSON.parse is what hit the heap limit on Railway. Stats reads now build a minimal raw object in SQL (close date/price, MLS status, and the four rental hints) and drop the rest.',
+              'The rebuild used to load every listing\'s full raw RETS payload into Node — that JSON.parse is what hit the heap limit on Railway. Stats reads now build a minimal raw object in SQL (close date/price, MLS status, and the four rental hints) and drop the rest. The forked child means the heap it does use is its own: MLS_SYNC_CHILD_MAX_OLD_SPACE_MB caps it, and hitting that cap fails one job instead of the service.',
             status: 'live',
             statusLabel: 'Live',
           },
@@ -192,7 +212,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Neon Postgres',
             source: 'lib/stats-cache.ts → STATS_CACHE_REBUILD_LOCK_KEY',
             detail:
-              'Cross-host lock with a heartbeat, so two hosts cannot rebuild at once and a frozen Lambda cannot hold it forever. Admin "Sync now" and the sweep both steal a stale lock.',
+              'Cross-host lock with a heartbeat, so two hosts cannot rebuild at once and a frozen Lambda cannot hold it forever. Admin "Sync now" and the sweep both steal a stale lock. The queue makes double-rebuilds unlikely rather than impossible — a Netlify rescue and a returning runner can still overlap, which is what this lock is for.',
             status: 'guard',
             statusLabel: 'Guard',
           },
@@ -230,6 +250,16 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             source: 'lib/db/listings-repo.ts → recordDashboardSyncAudit',
             detail:
               'Unchanged: every rebuild still writes a durable history row, now including the town scope and trigger in its detail line.',
+            status: 'live',
+            statusLabel: 'Live',
+          },
+          {
+            id: 'queue-row',
+            title: 'Queue column on Syncs → Dashboard',
+            host: 'Admin → Syncs',
+            source: 'lib/sync-queue.ts → readSyncQueueSnapshot',
+            detail:
+              'The sync_queue row itself: waiting with its position and who asked, running with the minutes left on its budget, or the terminal outcome — done, failed, timeout, crashed, cancelled. This is the thing the old in-memory pending slot could never show, and it is why a rebuild that was asked for is no longer indistinguishable from one that was dropped.',
             status: 'live',
             statusLabel: 'Live',
           },

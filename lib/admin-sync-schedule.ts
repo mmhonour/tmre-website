@@ -15,7 +15,6 @@ import {
   defaultSyncScheduleConfig,
   frequencyIntervalMs,
   parseStartTimeEt,
-  resolveJobScheduler,
   resolveWeekdayEt,
   type SyncJobScheduleConfig,
   type SyncScheduleConfig,
@@ -547,13 +546,10 @@ export function buildAdminSyncNextRuns(
   const naturalFor = (jobId: ScheduledSyncJobId): string => {
     const job = config.jobs[jobId]
     let lastAnchor = lastFinishedForJob(jobId, input)
-    // EventBridge Incremental: Next is a real wall clock from the AWS fire
-    // cadence (ingress), not a vague “AWS · ~30m”. Prefer the newer of End vs
-    // last ingress so a queued-but-unfinished hop still advances Next.
-    if (
-      jobId === 'incremental' &&
-      resolveJobScheduler(job) === 'eventbridge'
-    ) {
+    // EventBridge Incremental: an AWS fire that only enqueued still moves the
+    // clock forward, so prefer the newer of End vs last ingress — otherwise Next
+    // sits in the past for the whole time the queue row is waiting.
+    if (jobId === 'incremental') {
       const ingressAt =
         input.lastEventbridgeIngressAt ??
         getSyncMeta('last_eventbridge_ingress_at_incremental')
