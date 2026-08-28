@@ -1457,13 +1457,7 @@ export default function WeeklyBriefContent({
         ) : (
         <div className="space-y-6">
           <>
-        {/*
-         * The rail stands beside the first panel only, and stretches to it, so
-         * every panel below reclaims the width rather than being indented past
-         * a control that is not there — as the stacked view already does.
-         */}
-        <div className="flex items-stretch gap-2 sm:gap-3">
-          <div className="min-w-0 flex-1">
+        {/* Lookback drives neither of these, so they take the full width. */}
         <BarChart
           title="Active inventory"
           rows={inventoryRows}
@@ -1477,31 +1471,6 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.activeCountCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "inventory")}
-        />
-          </div>
-          {onLookbackIdChange ? (
-            <ClosedLookbackSlider
-              lookbackId={lookbackId}
-              onChange={onLookbackIdChange}
-              pending={closedPending}
-              fill
-            />
-          ) : null}
-        </div>
-
-        <BarChart
-          title="Months supply"
-          rows={inventoryRows}
-          valueOf={(r) => r.monthsSupply}
-          valueKind="mos"
-          emptyMessage="No months-supply rows in cache yet."
-          townHref={monthsSupplyTownHref ?? townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.monthsSupplyCalc}
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
         />
 
         <BarChart
@@ -1519,31 +1488,63 @@ export default function WeeklyBriefContent({
           favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
         />
 
-        <BarChart
-          title={`${closedNoun.title} — trailing ${closedLookbackLabel}`}
-          rows={closedRows}
-          valueOf={(r) => r.count}
-          valueKind="int"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "closed")}
-          emptyMessage={
-            closedPending
-              ? `Loading ${closedNoun.lower} for this lookback…`
-              : `No ${closedNoun.lower} in this lookback window (or the count request failed — try another period).`
-          }
-          townHref={closedSalesTownHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.calc}
-          scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
-          formatValue={(_row, display) =>
-            formatClosedCountWithLookback(
-              closedLookbackLabel,
-              formatMetricValue("int", display),
-            )
-          }
-        />
+        {/*
+         * Lookback sets the window behind both months supply and closed, so the
+         * rail stands beside the pair it governs and spans them, rather than
+         * beside a panel it has nothing to do with.
+         */}
+        <div className="flex items-stretch gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1 space-y-6">
+          <BarChart
+            title="Months supply"
+            rows={inventoryRows}
+            valueOf={(r) => r.monthsSupply}
+            valueKind="mos"
+            emptyMessage="No months-supply rows in cache yet."
+            townHref={monthsSupplyTownHref ?? townHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => r.monthsSupplyCalc}
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
+          />
+
+          <BarChart
+            title={`${closedNoun.title} — trailing ${closedLookbackLabel}`}
+            rows={closedRows}
+            valueOf={(r) => r.count}
+            valueKind="int"
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "closed")}
+            emptyMessage={
+              closedPending
+                ? `Loading ${closedNoun.lower} for this lookback…`
+                : `No ${closedNoun.lower} in this lookback window (or the count request failed — try another period).`
+            }
+            townHref={closedSalesTownHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => r.calc}
+            scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
+            formatValue={(_row, display) =>
+              formatClosedCountWithLookback(
+                closedLookbackLabel,
+                formatMetricValue("int", display),
+              )
+            }
+          />
+          </div>
+          {onLookbackIdChange ? (
+            <ClosedLookbackSlider
+              lookbackId={lookbackId}
+              onChange={onLookbackIdChange}
+              pending={closedPending}
+              fill
+            />
+          ) : null}
+        </div>
 
         <UnstackedPricePanel
           rows={combinedRows}
