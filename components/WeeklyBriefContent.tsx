@@ -8,17 +8,14 @@ import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
 import { marketPulseTownScale } from "@/lib/market-pulse-town-scale";
 import {
-  BAR_ASIDE_LABEL_CLASS,
-  BAR_EXTERIOR_LANE,
-  BAR_VALUE_ON_EMPTY,
-  barAsidePlacement,
+  PANEL_SURFACE,
+  PANEL_TITLE,
+  PanelBarRow,
   fmtActive,
   fmtDom,
   fmtMos,
   formatMetricValue,
   type MetricValueKind,
-  BarValueOverlay,
-  METRIC_COLORS,
 } from "@/components/market-pulse-bar";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import type { ListingKind } from "@/lib/listing-kind";
@@ -465,7 +462,6 @@ function BarChart<Row extends { city: string }>({
   rows,
   valueOf,
   valueKind,
-  barClassName,
   emptyMessage,
   townHref,
   settle,
@@ -486,7 +482,6 @@ function BarChart<Row extends { city: string }>({
   rows: Row[];
   valueOf: (row: Row) => number | null;
   valueKind: MetricValueKind;
-  barClassName: string;
   emptyMessage: string;
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
@@ -540,8 +535,8 @@ function BarChart<Row extends { city: string }>({
   }, [rows, sortable, effectiveSort, rankOf]);
 
   const titleRow = (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <p className="min-w-0 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)]">
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <p className={`min-w-0 ${PANEL_TITLE}`}>
         {explainDelta ? (
           <>
             <MarketPulseDeltaLabel />
@@ -564,9 +559,7 @@ function BarChart<Row extends { city: string }>({
             title="Ascending"
             onClick={() => setSortDir("asc")}
             className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
-              effectiveSort === "asc"
-                ? "text-[var(--mp-accent)]"
-                : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
+              effectiveSort === "asc" ? "text-gold" : "text-white/35 hover:text-white/70"
             }`}
           >
             ▲
@@ -578,9 +571,7 @@ function BarChart<Row extends { city: string }>({
             title="Descending"
             onClick={() => setSortDir("desc")}
             className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
-              effectiveSort === "desc"
-                ? "text-[var(--mp-accent)]"
-                : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
+              effectiveSort === "desc" ? "text-gold" : "text-white/35 hover:text-white/70"
             }`}
           >
             ▼
@@ -592,15 +583,9 @@ function BarChart<Row extends { city: string }>({
 
   if (rows.length === 0) {
     return (
-      <section>
-        {sortable ? (
-          titleRow
-        ) : (
-          <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
-            {title}
-          </p>
-        )}
-        <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
+      <section className={PANEL_SURFACE}>
+        {sortable ? titleRow : <p className={PANEL_TITLE}>{title}</p>}
+        <p className="mt-2 [font-family:var(--mp-mono-font)] text-[10px] text-white/45">
           {emptyMessage}
         </p>
       </section>
@@ -631,9 +616,9 @@ function BarChart<Row extends { city: string }>({
         : "duration-150";
 
   return (
-    <section>
+    <section className={PANEL_SURFACE}>
       {titleRow}
-      <ul className="space-y-2.5">
+      <ul>
         {visibleRows.map((row, index) => {
           const v = valueOf(row);
           const settled =
@@ -683,11 +668,6 @@ function BarChart<Row extends { city: string }>({
                     ? title.split(" —")[0]
                     : "Active inventory";
           const asideText = formatValueAside?.(row, index);
-          const asidePlacement = barAsidePlacement(
-            aligned.leftPct,
-            aligned.widthPct,
-            asideNegative?.(row) ?? false,
-          );
           const townName = onAllTownsToggle ? (
             <TownName
               city={row.city ?? label}
@@ -701,63 +681,37 @@ function BarChart<Row extends { city: string }>({
           ) : href ? (
             <Link
               href={href}
-              className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
+              className="truncate underline decoration-white/25 underline-offset-2 transition-colors hover:text-gold"
             >
               {label}
             </Link>
           ) : (
-            <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
-              {label}
-            </span>
+            label
           );
           return (
-            <li
-              key={`${row.city}-${title}`}
-              data-mp-town={row.city}
-              className="grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"
-            >
-              {asidePlacement === "label" && asideText ? (
-                <span className="flex min-w-0 items-baseline gap-1">
-                  <span className="min-w-0 truncate">{townName}</span>
-                  <span className={BAR_ASIDE_LABEL_CLASS}>{asideText}</span>
-                </span>
-              ) : (
-                townName
-              )}
-              <div
-                className={`group relative h-4 rounded-sm bg-[var(--mp-track,rgba(0,0,0,0.10))] overflow-visible ${BAR_EXTERIOR_LANE}`}
-              >
-                <div className="h-full overflow-hidden rounded-sm">
+            <li key={`${row.city}-${title}`} data-mp-town={row.city}>
+              <PanelBarRow
+                label={townName}
+                valueText={valueText}
+                leftPct={aligned.leftPct}
+                widthPct={aligned.widthPct}
+                aside={asideText}
+                asideNegative={asideNegative?.(row) ?? false}
+                widthTransition={widthTransition}
+                tooltip={
                   <div
-                    className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${barClassName}`}
-                    style={{
-                      marginLeft: `${aligned.leftPct}%`,
-                      width: `${aligned.widthPct}%`,
-                    }}
-                  />
-                </div>
-                <BarValueOverlay
-                  value={valueText}
-                  aside={asideText}
-                  asidePlacement={asidePlacement}
-                  leftPct={aligned.leftPct}
-                  widthPct={aligned.widthPct}
-                  // Gold months-supply fill reads fine under the standard text,
-                  // so it keeps it instead of flipping to cream.
-                  colorClass={valueKind === "mos" ? BAR_VALUE_ON_EMPTY : undefined}
-                />
-                <div
-                  className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                  role="tooltip"
-                >
-                  <StatsCalcTooltipShell
-                    label={label}
-                    valueLine={`${valueText} · ${metricLabel}`}
-                    calc={calc}
-                    theme="light"
-                  />
-                </div>
-              </div>
+                    className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                    role="tooltip"
+                  >
+                    <StatsCalcTooltipShell
+                      label={label}
+                      valueLine={`${valueText} · ${metricLabel}`}
+                      calc={calc}
+                      theme="light"
+                    />
+                  </div>
+                }
+              />
             </li>
           );
         })}
@@ -1341,7 +1295,6 @@ export default function WeeklyBriefContent({
           rows={inventoryRows}
           valueOf={(r) => r.activeCount}
           valueKind="int"
-          barClassName={METRIC_COLORS.inventory}
           emptyMessage="No inventory rows in cache yet."
           townHref={townHref}
           settle={settle}
@@ -1357,7 +1310,6 @@ export default function WeeklyBriefContent({
           rows={inventoryRows}
           valueOf={(r) => r.monthsSupply}
           valueKind="mos"
-          barClassName={METRIC_COLORS.monthsSupply}
           emptyMessage="No months-supply rows in cache yet."
           townHref={monthsSupplyTownHref ?? townHref}
           settle={settle}
@@ -1373,7 +1325,6 @@ export default function WeeklyBriefContent({
           rows={domRows}
           valueOf={(r) => r.avgDaysOnMarket}
           valueKind="dom"
-          barClassName={METRIC_COLORS.avgDom}
           emptyMessage="No days-on-market rows in cache yet."
           townHref={avgDomTownHref ?? townHref}
           settle={settle}
@@ -1391,7 +1342,6 @@ export default function WeeklyBriefContent({
           valueKind="int"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "closed")}
-          barClassName={METRIC_COLORS.closed}
           emptyMessage={
             closedPending
               ? `Loading ${closedNoun.lower} for this lookback…`
@@ -1418,7 +1368,6 @@ export default function WeeklyBriefContent({
           valueKind="money"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "medianPrice")}
-          barClassName={METRIC_COLORS.medianPrice}
           emptyMessage="No median price rows in cache yet (rebuild market stats)."
           townHref={townHref}
           settle={settle}
@@ -1461,7 +1410,6 @@ export default function WeeklyBriefContent({
           valueKind="int"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
-          barClassName={METRIC_COLORS.priceDelta}
           emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
           townHref={townHref}
           settle={settle}
@@ -1487,7 +1435,6 @@ export default function WeeklyBriefContent({
           valueKind="money"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
-          barClassName={METRIC_COLORS.averagePrice}
           emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
           townHref={townHref}
           settle={settle}
@@ -1517,7 +1464,6 @@ export default function WeeklyBriefContent({
           valueKind="int"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "saleToAsk")}
-          barClassName={METRIC_COLORS.saleToAsk}
           emptyMessage="No close-vs-original-ask pool yet — run a stats rebuild."
           townHref={saleToAskTownHref ?? townHref}
           settle={settle}

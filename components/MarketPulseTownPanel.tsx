@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 import {
-  barAsidePlacement,
   formatMetricValue,
+  PANEL_SURFACE,
+  PanelBarRow,
 } from "@/components/market-pulse-bar";
 import type { ListingKind } from "@/lib/listing-kind";
 import {
@@ -44,8 +45,6 @@ import {
 } from "@/components/market-pulse-metrics";
 
 /** Panel surface, lifted from the listing showcase tile. */
-const PANEL_SURFACE = "rounded-xl bg-[#26374F] px-4 py-3";
-
 /**
  * Buyer ↔ seller spectrum in the showcase's treatment: a coral-to-sage gradient
  * with a white marker, captioned at both ends.
@@ -129,6 +128,12 @@ export default function MarketPulseTownPanel({
   const barScramble = scramble?.values ?? null;
   const rowIndex = scramble?.rowIndex ?? 0;
   const townCount = scramble?.townCount ?? 1;
+  const widthTransition =
+    settle.phase === "scramble"
+      ? "duration-300"
+      : settle.phase === "countup"
+        ? "duration-75"
+        : "duration-150";
   const heat = scale.heatByCity.get(row.city) ?? null;
   // The composite is the towns summed and averaged, so ranking it against a
   // count of them reads as nonsense. The spectrum still places it.
@@ -247,22 +252,11 @@ export default function MarketPulseTownPanel({
               : m.id === "saleToAsk"
                 ? formatSaleToAskPct(row.saleToAskPct)
                 : null;
-          const placement = asideText
-            ? barAsidePlacement(
-                aligned.leftPct,
-                aligned.widthPct,
-                m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0,
-              )
-            : null;
-          const fillRight = Math.min(100, aligned.leftPct + aligned.widthPct);
-
           return (
-            <div
+            <PanelBarRow
               key={m.id}
-              className="grid h-6 grid-cols-[7.75rem_1fr_auto] items-center gap-2"
-            >
-              <span className="truncate text-right [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-white/45">
-                {m.id === "saleToAsk" && saleToAskHref ? (
+              label={
+                m.id === "saleToAsk" && saleToAskHref ? (
                   <Link
                     href={saleToAskHref}
                     title={`${m.label} on Stats — chart and data table`}
@@ -272,49 +266,17 @@ export default function MarketPulseTownPanel({
                   </Link>
                 ) : (
                   m.label
-                )}
-                {placement === "label" && asideText ? (
-                  <span className="ml-1 tabular-nums text-white/80">
-                    {asideText}
-                  </span>
-                ) : null}
-              </span>
-              {/*
-               * The percent is absolutely placed against the fill, the way the
-               * brief places it, rather than sitting in the label. The track is
-               * too thin to hold it, so it centres on the bar and overhangs.
-               */}
-              <span className="relative block h-1.5 w-full">
-                <span className="block h-full w-full overflow-hidden rounded-full bg-white/10">
-                  <span
-                    className="block h-full rounded-full bg-gold/70"
-                    style={{
-                      marginLeft: `${aligned.leftPct}%`,
-                      width: `${aligned.widthPct}%`,
-                    }}
-                  />
-                </span>
-                {asideText && placement && placement !== "label" ? (
-                  <span
-                    className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70 ${
-                      placement === "left" ? "text-right" : ""
-                    }`}
-                    style={
-                      placement === "left"
-                        ? { right: `${100 - aligned.leftPct}%`, marginRight: 4 }
-                        : placement === "outside-right"
-                          ? { left: "100%", marginLeft: 6 }
-                          : { left: `${fillRight}%`, marginLeft: 4 }
-                    }
-                  >
-                    {asideText}
-                  </span>
-                ) : null}
-              </span>
-              <span className="text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-white/90">
-                {valueText}
-              </span>
-            </div>
+                )
+              }
+              valueText={valueText}
+              leftPct={aligned.leftPct}
+              widthPct={aligned.widthPct}
+              aside={asideText}
+              asideNegative={
+                m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0
+              }
+              widthTransition={widthTransition}
+            />
           );
         })}
       </div>
