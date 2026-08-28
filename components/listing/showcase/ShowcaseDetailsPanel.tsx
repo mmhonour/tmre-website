@@ -7,10 +7,12 @@ import {
   type ListingDesktopDeckCardId,
 } from "@/components/listing/ListingDesktopDeckContext";
 import ListingHistorySidePanel from "@/components/listing/ListingHistorySidePanel";
+import ListingInterestButton from "@/components/listing/ListingInterestButton";
 import ListingRemarksSidePanel, {
   useListingRemarksExpand,
 } from "@/components/listing/ListingRemarksSidePanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
+import ListingThumbImage from "@/components/ListingThumbImage";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
@@ -44,7 +46,11 @@ import {
   primaryListingPriceIsClosed,
 } from "@/lib/listing-history";
 import { listingHeaderScoreProps } from "@/lib/listing-header-score-props";
-import { listingSectionHref, listingShareHref } from "@/lib/listing-url";
+import {
+  listingPhotoProxyUrl,
+  listingSectionHref,
+  listingShareHref,
+} from "@/lib/listing-url";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -85,6 +91,8 @@ export default function ShowcaseDetailsPanel({
   remarks,
   detailRows,
   isRental,
+  photoCount,
+  onSelectPhoto,
   score,
 }: {
   listing: ShowcaseListing;
@@ -95,6 +103,9 @@ export default function ShowcaseDetailsPanel({
   remarks: string;
   detailRows: ShowcaseDetailRow[];
   isRental: boolean;
+  photoCount: number;
+  /** Sends the hero back to a chosen photo — keeps Photos on this page. */
+  onSelectPhoto: (index: number) => void;
   /** Score + median-band fields straight off the listing chrome API. */
   score: ListingScoreApiFields;
 }) {
@@ -170,8 +181,10 @@ export default function ShowcaseDetailsPanel({
     child: React.ReactNode,
     cardId: ListingDesktopDeckCardId,
   ) => (
+    // `w-full` matters: without it the Details card sizes to its own content
+    // and ends up a different width from Remarks and History.
     <div
-      className={`relative shrink-0 transition-[box-shadow] duration-300 ${
+      className={`relative w-full min-w-0 shrink-0 transition-[box-shadow] duration-300 ${
         activeDeckCard === cardId
           ? "z-30 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.65)]"
           : "z-10"
@@ -334,8 +347,34 @@ export default function ShowcaseDetailsPanel({
                 </Section>
               </div>
 
-              <Section
-                id={SHOWCASE_SECTION_IDS.comps}
+          {/* Self-contained gallery: the full-bleed hero is the viewer, so a
+              thumbnail jumps it rather than opening the /photos route. */}
+          <Section id={SHOWCASE_SECTION_IDS.photos} title="Photos">
+            {photoCount > 0 ? (
+              <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 lg:grid-cols-5">
+                {Array.from({ length: Math.min(photoCount, 40) }, (_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onSelectPhoto(i)}
+                    aria-label={`Show photo ${i + 1} of ${photoCount}`}
+                    className="relative aspect-[4/3] overflow-hidden transition-opacity hover:opacity-80"
+                  >
+                    <ListingThumbImage
+                      src={listingPhotoProxyUrl(listing.mlsId, i)}
+                      alt=""
+                      priority={i < 10}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-white/50">No photos on this listing.</p>
+            )}
+          </Section>
+
+          <Section
+            id={SHOWCASE_SECTION_IDS.comps}
                 title={isRental ? "Rented comparables" : "Sold comparables"}
               >
                 {/* Same body the Overview slide panel and the dedicated
@@ -388,8 +427,16 @@ export default function ShowcaseDetailsPanel({
               className="hidden min-w-0 lg:col-start-2 lg:block lg:self-stretch"
               aria-label="Listing dashboard"
             >
-              <div className="sticky flex flex-col gap-4 lg:top-[var(--showcase-sticky-offset,12rem)]">
-                <div className="flex min-w-0 flex-col">
+          <div className="sticky flex flex-col gap-4 lg:top-[var(--showcase-sticky-offset,12rem)]">
+            {/* Anchors the column width above the deck, as on production. */}
+            {detailsPanelProps.isClosed ? null : (
+              <ListingInterestButton
+                mlsId={listing.mlsId}
+                address={street}
+                city={city}
+              />
+            )}
+            <div className="flex min-w-0 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
                       remarks={remarks || null}

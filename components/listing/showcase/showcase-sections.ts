@@ -9,6 +9,7 @@ export const SHOWCASE_SECTION_IDS = {
   overview: "showcase-overview",
   insight: "showcase-insight",
   details: "showcase-details",
+  photos: "showcase-photos",
   comps: "showcase-comps",
   if: "showcase-if",
   history: "showcase-history",
@@ -18,11 +19,15 @@ export const SHOWCASE_SECTION_IDS = {
 export type ShowcaseSection = keyof typeof SHOWCASE_SECTION_IDS;
 
 /** Tabs with a section in the panel; anything else still navigates to its route. */
+/** Every tab resolves to a section here — nothing on this page navigates away. */
 const TAB_TO_SECTION: Partial<Record<ListingTab, ShowcaseSection>> = {
   overview: "overview",
-  // Sold and Rented share one section; the comps body picks its own kind.
+  photos: "photos",
+  // Sold, Rented and Under Agreement share one section; the comps body picks
+  // its own kind.
   comparables: "comps",
   "comparable-rentals": "comps",
+  uag: "comps",
   if: "if",
   history: "history",
   map: "map",

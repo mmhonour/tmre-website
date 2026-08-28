@@ -19,7 +19,6 @@ import { isRentalListing } from "@/lib/listing-kind";
 import {
   listingDetailHref,
   listingPhotoProxyUrlsFromCount,
-  listingPhotosHref,
 } from "@/lib/listing-url";
 import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
 
@@ -351,13 +350,14 @@ export default function ListingShowcaseClient({
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 sm:justify-end">
-              <Link
-                href={listingPhotosHref(listing.mlsId, street, city)}
-                className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
-              >
-                See all photos
-              </Link>
+              <div className="flex flex-wrap items-center gap-4 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => scrollToShowcaseSection("photos")}
+                  className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+                >
+                  See all photos
+                </button>
               <Link
                 href={listingDetailHref(listing.mlsId, street, city)}
                 className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
@@ -387,6 +387,12 @@ export default function ListingShowcaseClient({
         remarks={remarks}
         detailRows={detailRows}
         isRental={isRental}
+        photoCount={total}
+        onSelectPhoto={(photoIndex) => {
+          setIndex(photoIndex);
+          setPaused(true);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         score={data ?? {}}
       />
     </div>
