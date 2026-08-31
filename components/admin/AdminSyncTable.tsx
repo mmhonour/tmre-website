@@ -689,6 +689,8 @@ export type PanelStatus = {
   lastMlsSyncHeartbeat?: string | null;
   /** Durable `sync_queue` — what is waiting, what is running, how the last runs ended. */
   syncQueue?: SyncQueueSnapshot;
+  /** Towns that failed on the last finished incremental run, if any. */
+  incrementalPartial?: { at: string; towns: string[] } | null;
   propertyAddressesSyncedAt?: string | null;
   visionAddressesSyncedAt?: string | null;
   /** Temporal Vision GIS parcel progress (CLI / Admin / worker). */
@@ -3411,6 +3413,7 @@ export default function AdminSyncTable({
                       startedAt: timing.started,
                       nowMs,
                       liveInFlight: incrementalRunningNow,
+                      partialTowns: status?.incrementalPartial?.towns,
                     })
                   : null;
               const incrementalEndBroken = Boolean(

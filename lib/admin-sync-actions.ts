@@ -222,6 +222,14 @@ export type AdminSyncActionOptions = {
    * and a second Monday email to the whole list.
    */
   force?: boolean
+  /**
+   * Market brief only: move the once-per-week watermark on a successful send.
+   *
+   * Defaults to true. The Communications tab's test send passes false, because
+   * a test that consumed the watermark would silently cancel the real Monday
+   * brief — and the only symptom would be an email nobody received.
+   */
+  stampWeek?: boolean
 }
 
 function shouldQueueOnServerless(options: AdminSyncActionOptions): boolean {
@@ -1401,11 +1409,16 @@ async function runAdminSyncActionImpl(
       }
       const { sendMarketDigestEmail } = await import('@/lib/market-digest-notify')
       const force = options.force !== false
+      const stampWeek = options.stampWeek !== false
       const result = await sendMarketDigestEmail({
         force,
-        stampWeek: true,
+        stampWeek,
         startedAt,
-        trigger: force ? 'admin-sync-now' : 'sync-queue-sweep',
+        trigger: !stampWeek
+          ? 'admin-test'
+          : force
+            ? 'admin-sync-now'
+            : 'sync-queue-sweep',
       })
       const finishedAt = new Date().toISOString()
       return {
