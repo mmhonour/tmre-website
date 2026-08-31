@@ -35,6 +35,7 @@ export type MarketPulseCombinedTownRow = {
   medianPriceCalc?: StatsValueCalc
   averagePriceCalc?: StatsValueCalc
   saleToAskCalc?: StatsValueCalc
+  priceDeltaCalc?: StatsValueCalc
 }
 
 function cityKey(city: string): string {
@@ -76,7 +77,13 @@ export function buildMarketPulseCombinedTownRows(
     const dom = domBy.get(key)
     const closed = closedBy.get(key)
     const price = priceBy.get(key)
-    const delta = meanMinusMedian(price?.averagePrice, price?.medianPrice)
+    // Cached at rebuild. The subtraction stays only as a fallback for a row
+    // written before the cache carried it, so a stale entry still shows a delta
+    // rather than a blank.
+    const delta =
+      price?.priceDelta != null || price?.priceDeltaPct != null
+        ? { dollars: price.priceDelta ?? null, pct: price.priceDeltaPct ?? null }
+        : meanMinusMedian(price?.averagePrice, price?.medianPrice)
     return {
       city: row.city,
       activeCount: row.activeCount ?? null,
@@ -96,6 +103,7 @@ export function buildMarketPulseCombinedTownRows(
       medianPriceCalc: price?.medianPriceCalc,
       averagePriceCalc: price?.averagePriceCalc,
       saleToAskCalc: price?.saleToAskCalc,
+      priceDeltaCalc: price?.priceDeltaCalc,
     }
   })
 }

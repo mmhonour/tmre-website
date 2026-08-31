@@ -49,6 +49,19 @@ export function statsSalesTrendHref(options: {
   return `/stats?${params.toString()}`;
 }
 
+/** Deep link to Stats → median, average and delta by town. */
+export function statsPriceSpreadHref(options: {
+  city: string;
+  kind?: "sale" | "rental";
+}): string {
+  const params = new URLSearchParams({
+    city: options.city,
+    kind: options.kind ?? "sale",
+    chart: "price-spread",
+  });
+  return `/stats?${params.toString()}`;
+}
+
 /** Deep link to Stats → active listings by month for a town (or All). */
 export function statsActiveByMonthHref(options: {
   city: string;

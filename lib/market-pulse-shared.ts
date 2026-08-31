@@ -4,6 +4,7 @@ import {
   statsAvgDomHref,
   statsListToAskHref,
   statsMedianByTownHref,
+  statsPriceSpreadHref,
   statsMonthsSupplyHref,
   statsSalesTrendHref,
 } from '@/lib/stats-url'
@@ -151,6 +152,9 @@ export function marketPulseTownMetricStatsHref(
       return statsSalesTrendHref(options)
     case 'medianPrice':
       return statsMedianByTownHref(options)
+    case 'priceDelta':
+    case 'averagePrice':
+      return statsPriceSpreadHref(options)
     case 'saleToAsk':
       return statsListToAskHref(options)
     default:

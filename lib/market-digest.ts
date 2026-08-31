@@ -251,6 +251,16 @@ async function priceByTownFromStats(
           city: String(city),
           medianPrice: median,
           averagePrice: average,
+          priceDelta:
+            market.priceDelta != null && Number.isFinite(market.priceDelta)
+              ? market.priceDelta
+              : null,
+          priceDeltaPct:
+            market.priceDeltaPct != null &&
+            Number.isFinite(market.priceDeltaPct)
+              ? market.priceDeltaPct
+              : null,
+          priceDeltaCalc: market.priceDeltaCalc,
           medianPriceCalc: market.medianPriceCalc,
           averagePriceCalc: market.averagePriceCalc,
           saleToAskPct,
