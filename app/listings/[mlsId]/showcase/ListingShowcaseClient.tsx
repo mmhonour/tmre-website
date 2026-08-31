@@ -19,6 +19,7 @@ import {
   primaryListingPriceIsClosed,
 } from "@/lib/listing-history";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import { isRentalListing } from "@/lib/listing-kind";
 import {
   listingDetailHref,
@@ -30,7 +31,11 @@ const HOLD_MS = 6500;
 const MAX_PHOTOS = 40;
 const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
 
-type ApiResponse = ListingScoreApiFields & { listing: ShowcaseListing };
+type ApiResponse = ListingScoreApiFields & {
+  listing: ShowcaseListing;
+  /** VGSI parcel pairing — feeds the Admin deck card when unlocked. */
+  vision?: ListingVisionLink | null;
+};
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
 
@@ -468,6 +473,7 @@ export default function ListingShowcaseClient({
         isRental={isRental}
         photoCount={total}
         detailsPanelProps={detailsPanelProps}
+        vision={data?.vision ?? null}
         onSelectPhoto={(photoIndex) => {
           setIndex(photoIndex);
           setPaused(true);

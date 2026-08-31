@@ -16,6 +16,7 @@ import ListingThumbImage from "@/components/ListingThumbImage";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
@@ -24,6 +25,9 @@ import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
+import ListingAdminAgentPanel from "@/components/listing/ListingAdminAgentPanel";
+import { extractListingAgentContact } from "@/lib/listing-agent-contact";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
@@ -119,6 +123,7 @@ export default function ShowcaseDetailsPanel({
   isRental,
   photoCount,
   detailsPanelProps,
+  vision = null,
   onSelectPhoto,
   score,
 }: {
@@ -133,6 +138,8 @@ export default function ShowcaseDetailsPanel({
   photoCount: number;
   /** Built once by the host so the hero rail and this deck cannot drift. */
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
+  /** VGSI parcel pairing — Admin deck card only. */
+  vision?: ListingVisionLink | null;
   /** Sends the hero back to a chosen photo — keeps Photos on this page. */
   onSelectPhoto: (index: number) => void;
   /** Score + median-band fields straight off the listing chrome API. */
@@ -144,6 +151,8 @@ export default function ShowcaseDetailsPanel({
     useState<ListingDesktopDeckCardId | null>("remarks");
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
+  const siteUnlocked = useSiteUnlocked();
+  const adminContact = extractListingAgentContact(listing.raw);
   /**
    * Sold / Rented / Under Agreement share one section, so the tab has to pick
    * which body renders — otherwise Rented and UAG scroll to a section still
@@ -338,7 +347,17 @@ export default function ShowcaseDetailsPanel({
                 compact
                 onTabSelect={handleTabSelect}
                 onMapToggle={() => scrollToShowcaseSection("map")}
-                historyElevated={activeDeckCard === "history"}
+                showAdminTab={siteUnlocked}
+              adminVisible={activeDeckCard === "admin"}
+              onAdminToggle={
+                siteUnlocked && isDesktop
+                  ? () =>
+                      setActiveDeckCard((cur) =>
+                        cur === "admin" ? null : "admin",
+                      )
+                  : null
+              }
+              historyElevated={activeDeckCard === "history"}
                 onHistoryToggle={
                   isDesktop
                     ? () =>
@@ -545,6 +564,19 @@ export default function ShowcaseDetailsPanel({
                       "history",
                     )}
                   </div>
+                  {siteUnlocked ? (
+                    <div className="-mt-2">
+                      {deckCard(
+                        <ListingAdminAgentPanel
+                          contact={adminContact}
+                          vision={vision}
+                          mlsId={listing.mlsId}
+                          deckMode
+                        />,
+                        "admin",
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </aside>
