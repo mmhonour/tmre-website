@@ -343,7 +343,7 @@ export default function ShowcaseSectionRail({
               onClick={() => scrollToId(LISTING_SALE_ON_MARKET_PANEL_ID)}
             />
             <CountChip
-              label={`Sold ${counts.soldMonths} mo`}
+              label={`Sold ${counts.soldMonths} in mos`}
               count={counts.sold}
               onClick={() => scrollToId(LISTING_RECENTLY_SOLD_PANEL_ID)}
             />
