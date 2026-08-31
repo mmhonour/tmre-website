@@ -147,7 +147,7 @@ export default function MarketPulseTownPanel({
        * labels rather than carrying its own heading type.
        */}
       <div className="flex items-center gap-3">
-        <span className="shrink-0 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
+        <span className="shrink-0 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.1em] text-gold">
           {heading ?? townLabel}
         </span>
         <div className="min-w-0 flex-1">

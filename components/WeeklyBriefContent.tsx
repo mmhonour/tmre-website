@@ -20,7 +20,6 @@ import {
   formatMetricValue,
   type MetricValueKind,
 } from "@/components/market-pulse-bar";
-import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import type { ListingKind } from "@/lib/listing-kind";
 import { fmtMoney } from "@/lib/listing-history";
 import { type MarketDigestSnapshot } from "@/lib/market-digest-types";
@@ -190,25 +189,32 @@ function ClosedLookbackSlider({
   );
 }
 
+/** What the two layouts are, which the ordering explanation never said. */
+function marketPulseLayoutExplain(chartLayout: ChartLayout): string {
+  return chartLayout === "stacked"
+    ? "Stacked gives each town one card with all of its metrics on it, so you read a town top to bottom and compare towns by scrolling."
+    : "Unstacked gives each metric one card with every town on it, so you read a metric across the towns and compare towns at a glance on that one measure.";
+}
+
 function marketPulseSortExplain(
   chartLayout: ChartLayout,
   favorSort: FavorSort,
 ): string {
   if (favorSort === "default") {
-    return "Towns stay in default town order. All towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
+    return "Towns stay in default town order. All Towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
   }
   if (chartLayout === "stacked") {
-    return `Sorted by buyer/seller friendly composite (months supply, avg days on market, closed, median, delta, average — ${
+    return `Ordered by a buyer/seller composite of months supply, avg days on market, closed, median, delta and average, in the ${
       favorSort === "sellers"
         ? "seller-friendly direction"
         : "buyer-friendly direction"
-    }). All towns stays on top.`;
+    }. All Towns stays on top.`;
   }
-  return `Each unstacked chart sorts on its own metric (${
+  return `Each card orders the towns on its own metric (${
     favorSort === "sellers"
-      ? "Seller: MOS↓, DOM↓, closed↑, median/delta/avg↑"
-      : "Buyer: MOS↑, DOM↑, closed↓, median/delta/avg↓"
-  }). All towns stays on top.`;
+      ? "seller: months supply and days on market lowest first, closed and prices highest first"
+      : "buyer: months supply and days on market highest first, closed and prices lowest first"
+  }). All Towns stays on top.`;
 }
 
 /** Town minus All-towns. Positive means the town is higher than the market. */
@@ -235,7 +241,7 @@ function fmtSignedDelta(
 
 function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || "—";
-  if (city.toLowerCase() === "all") return "All towns";
+  if (city.toLowerCase() === "all") return "All Towns";
   return city;
 }
 
@@ -397,10 +403,10 @@ function TownName({
 /**
  * Which side the town order favours, as a balance rather than a sentence.
  *
- * The beam tips toward the side the list is ordered for and that pan takes the
- * spectrum's colour for that end — coral for sellers, sage for buyers — so it
- * speaks the same language as the heat bar on every panel. The words live in
- * the title and the accessible name, since the state is a picture of itself.
+ * The beam tips toward the side the list is ordered for, and the pans say who
+ * those sides are: a money bag for the seller, a house and key for the buyer.
+ * Words live in the title and the accessible name, since the state is a
+ * picture of itself.
  */
 function FavorSortToggle({
   favorSort,
@@ -415,46 +421,58 @@ function FavorSortToggle({
       ? marketPulseFavorSortLabel(favorSort)
       : marketPulseFavorSortLabel("sellers");
   const next = buyers ? "Seller Friendly" : "Buyer Friendly";
+  const seller = buyers ? 0.35 : 1;
+  const buyer = buyers ? 1 : 0.35;
   return (
     <button
       type="button"
       onClick={onToggle}
       title={`${current} — switch to ${next}`}
       aria-label={`Towns ordered ${current}. Switch to ${next}.`}
-      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <svg viewBox="0 0 18 16" className="h-4 w-4" aria-hidden>
+      <svg viewBox="0 0 36 30" className="h-9 w-9" aria-hidden>
         <path
-          d="M9 3.4v7"
+          d="M18 7v16"
           stroke="currentColor"
-          strokeWidth="1.1"
+          strokeWidth="1.6"
           strokeLinecap="round"
         />
-        <path d="M6.4 13.6h5.2L9 10.4z" fill="currentColor" />
+        <path d="M13 27h10l-5-5z" fill="currentColor" />
         <g
-          transform={buyers ? "rotate(9 9 4.4)" : "rotate(-9 9 4.4)"}
+          transform={buyers ? "rotate(8 18 9)" : "rotate(-8 18 9)"}
           className="transition-transform duration-200"
         >
           <path
-            d="M2.4 4.4h13.2"
+            d="M4 9h28"
             stroke="currentColor"
-            strokeWidth="1.1"
+            strokeWidth="1.6"
             strokeLinecap="round"
           />
-          <circle
-            cx="2.6"
-            cy="4.4"
-            r="2"
-            fill="var(--color-coral, #C85A3A)"
-            opacity={buyers ? 0.3 : 1}
-          />
-          <circle
-            cx="15.4"
-            cy="4.4"
-            r="2"
-            fill="var(--color-sage, #4A7C6F)"
-            opacity={buyers ? 1 : 0.3}
-          />
+          {/* Seller: a money bag, tied at the neck, with its dollar mark. */}
+          <g opacity={seller} fill="var(--color-coral, #C85A3A)">
+            <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
+            <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
+          </g>
+          <text
+            x="5"
+            y="17.4"
+            textAnchor="middle"
+            fontSize="6"
+            fontWeight="700"
+            fill="#fff"
+            opacity={seller}
+          >
+            $
+          </text>
+          {/* Buyer: a house with a key hung beside the door. */}
+          <g opacity={buyer} fill="var(--color-sage, #4A7C6F)">
+            <path d="M31 10.4l5 4.4h-1.7V19.6h-6.6V14.8H26z" />
+          </g>
+          <g opacity={buyer} fill="#fff">
+            <circle cx="30.4" cy="16" r="1.25" />
+            <path d="M31.4 16h2.2v.85h-.8v.85h-.75V16.85h-.65z" />
+          </g>
         </g>
       </svg>
     </button>
@@ -1266,7 +1284,6 @@ export default function WeeklyBriefContent({
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
   const [townsExpanded, setTownsExpanded] = useState(false);
-  const [sortExplainOpen, setSortExplainOpen] = useState(false);
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
   const [kpisPinned, setKpisPinned] = useState(false);
@@ -1457,14 +1474,35 @@ export default function WeeklyBriefContent({
           setChartLayout(next);
         }}
       />
-      <button
-        type="button"
-        className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)] underline decoration-[var(--mp-muted-text)]/40 underline-offset-2 hover:text-[var(--mp-accent)]"
-        aria-label="How towns are sorted"
-        onClick={() => setSortExplainOpen(true)}
-      >
-        Why
-      </button>
+      {/*
+       * Hover rather than a click through to a dialog — it is one paragraph of
+       * context, not a destination, and asking for a modal to read two
+       * sentences was more ceremony than the answer is worth.
+       */}
+      <span className="group/why relative inline-flex">
+        <span
+          tabIndex={0}
+          role="note"
+          aria-label="How the town metrics are laid out and ordered"
+          className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[var(--mp-muted-text)]/40 [font-family:var(--mp-mono-font)] text-[9px] text-[var(--mp-muted-text)] transition-colors hover:border-[var(--mp-accent)] hover:text-[var(--mp-accent)]"
+        >
+          ?
+        </span>
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute right-0 top-[calc(100%+6px)] z-30 w-[min(20rem,75vw)] rounded-xl border border-black/10 bg-white px-3 py-2.5 text-left opacity-0 shadow-lg shadow-black/15 transition-opacity duration-150 group-hover/why:opacity-100 group-focus-within/why:opacity-100"
+        >
+          <span className="block font-mono text-[10px] tracking-[0.15em] uppercase text-[var(--mp-accent,#C8A951)]">
+            Town metrics
+          </span>
+          <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-black/65">
+            {marketPulseLayoutExplain(chartLayout)}
+          </span>
+          <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-black/65">
+            {marketPulseSortExplain(chartLayout, favorSort)}
+          </span>
+        </span>
+      </span>
     </div>
   );
 
@@ -1473,7 +1511,7 @@ export default function WeeklyBriefContent({
       ? cityLabel({ city: compareCity })
       : null;
 
-  const kpiTownLabel = comparingTown ?? "All towns";
+  const kpiTownLabel = comparingTown ?? "All Towns";
 
   const kpiStrip = (
     <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -1561,7 +1599,6 @@ export default function WeeklyBriefContent({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {categoryFilter}
           <div className="flex items-center gap-2">
-          {townMetricsControls}
           <FavorSortToggle
             favorSort={favorSort}
             onToggle={() =>
@@ -1570,6 +1607,7 @@ export default function WeeklyBriefContent({
               )
             }
           />
+          {townMetricsControls}
           </div>
         </div>
 
@@ -1875,30 +1913,6 @@ export default function WeeklyBriefContent({
         </p>
       </div>
 
-      {sortExplainOpen ? (
-        <ModalPortal
-          open
-          onClose={() => setSortExplainOpen(false)}
-          ariaLabel="How towns are sorted"
-        >
-          <div className={MODAL_PANEL_CLASS} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <h2 className="font-serif text-2xl text-navy">Town metrics</h2>
-              <button
-                type="button"
-                onClick={() => setSortExplainOpen(false)}
-                className="text-slate hover:text-navy transition-colors font-mono text-lg leading-none mt-1"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="text-sm text-charcoal leading-relaxed">
-              {marketPulseSortExplain(chartLayout, favorSort)}
-            </p>
-          </div>
-        </ModalPortal>
-      ) : null}
     </article>
   );
 }
