@@ -83,9 +83,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-24 border-t border-white/10 pt-8">
+    <section id={id} className="scroll-mt-24 border-t border-white/10 pt-5">
       <SectionHeading>{title}</SectionHeading>
-      <div className="mt-5">{children}</div>
+      <div className="mt-3">{children}</div>
     </section>
   );
 }
@@ -313,13 +313,14 @@ export default function ShowcaseDetailsPanel({
             card and lights up with it — the same wiring ListingHeroPanels uses.
             Null on mobile, where the tab falls through to the stacked section.
           */}
-            <div className="mt-3 pb-3">
+            <div className="mt-2">
               <ListingSubnav
                 mlsId={listing.mlsId}
                 active={activeTab}
                 addressHint={street || addressHint}
                 townHint={city}
                 isRental={isRental}
+                embedded
                 compact
                 onTabSelect={handleTabSelect}
                 onMapToggle={() => scrollToShowcaseSection("map")}
@@ -342,8 +343,8 @@ export default function ShowcaseDetailsPanel({
           dashboard there; below `lg` they stay as stacked sections, since the
           mobile layout is being reviewed separately.
         */}
-          <div className="mt-8 grid grid-cols-1 items-start gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)]">
-            <div className="flex min-w-0 flex-col gap-8 lg:col-start-1">
+          <div className="mt-6 grid grid-cols-1 items-start gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)]">
+            <div className="flex min-w-0 flex-col gap-6 lg:col-start-1">
               <section
                 id={SHOWCASE_SECTION_IDS.overview}
                 className="scroll-mt-24 lg:hidden"

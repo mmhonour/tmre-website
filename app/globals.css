@@ -915,7 +915,13 @@ html.listing-split-test body {
 /* Showcase details panel — desktop pins the summary + tab strip so the tabs
    act as a nav rail for the panels below. Mobile is left static for now. */
 @media (min-width: 1024px) {
+  /* Negative margin widens the panel past the content column, and the matching
+     padding puts the type back on the column's edge — otherwise the summary
+     butts straight against the panel it sits on. */
   .showcase-sticky-chrome {
+    margin-inline: -1.25rem;
+    padding: 1rem 1.25rem 0.75rem;
+    border-radius: 1rem;
     background: rgba(19, 31, 56, 0.97);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
