@@ -310,9 +310,9 @@ function TownMetricsLayoutToggle({
       aria-label={`Showing ${layout} town metrics. Switch to ${next}.`}
       title={`Switch to ${next}`}
       onClick={() => onSelect(next)}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 hover:text-[var(--mp-text)]"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 hover:text-[var(--mp-text)]"
     >
-      <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" aria-hidden>
+      <svg viewBox="0 0 14 14" className="h-7 w-7" aria-hidden>
         {stacked ? (
           <>
             <rect x="1" y="3" width="12" height="2" rx="1" fill="currentColor" />
@@ -429,9 +429,9 @@ function FavorSortToggle({
       onClick={onToggle}
       title={`${current} — switch to ${next}`}
       aria-label={`Towns ordered ${current}. Switch to ${next}.`}
-      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <svg viewBox="0 0 36 30" className="h-9 w-9" aria-hidden>
+      <svg viewBox="0 0 36 30" className="h-14 w-14" aria-hidden>
         <path
           d="M18 7v16"
           stroke="currentColor"
@@ -1484,7 +1484,7 @@ export default function WeeklyBriefContent({
           tabIndex={0}
           role="note"
           aria-label="How the town metrics are laid out and ordered"
-          className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[var(--mp-muted-text)]/40 [font-family:var(--mp-mono-font)] text-[9px] text-[var(--mp-muted-text)] transition-colors hover:border-[var(--mp-accent)] hover:text-[var(--mp-accent)]"
+          className="inline-flex h-10 w-10 cursor-help items-center justify-center rounded-full border border-[var(--mp-muted-text)]/40 [font-family:var(--mp-mono-font)] text-[15px] text-[var(--mp-muted-text)] transition-colors hover:border-[var(--mp-accent)] hover:text-[var(--mp-accent)]"
         >
           ?
         </span>
@@ -1588,7 +1588,7 @@ export default function WeeklyBriefContent({
         </div>
       ) : null}
 
-      <div className="rounded-b-2xl border border-t-0 border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-8 shadow-sm shadow-black/5">
+      <div className="rounded-b-2xl border border-t-0 border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-4 shadow-sm shadow-black/5">
         <div
           ref={kpiSentinelRef}
           className={kpisPinned ? "invisible" : undefined}
@@ -1601,11 +1601,14 @@ export default function WeeklyBriefContent({
           <div className="flex items-center gap-2">
           <FavorSortToggle
             favorSort={favorSort}
-            onToggle={() =>
+            onToggle={() => {
+              // Reordering a list of one says nothing, so asking for an order
+              // is also asking to see the towns it applies to.
+              setTownsExpanded(true);
               setFavorSort((current) =>
                 current === "buyers" ? "sellers" : "buyers",
-              )
-            }
+              );
+            }}
           />
           {townMetricsControls}
           </div>
@@ -1776,7 +1779,7 @@ export default function WeeklyBriefContent({
         </div>
 
         {deal ? (
-          <section className="rounded-xl bg-[var(--mp-surface-deep)] overflow-hidden">
+          <section className="mt-8 rounded-xl bg-[var(--mp-surface-deep)] overflow-hidden">
             <div className="px-5 pt-5 pb-3 sm:px-6">
               <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-gold mb-1">
                 {dealHeading}
@@ -1877,7 +1880,7 @@ export default function WeeklyBriefContent({
             </div>
           </section>
         ) : showDealOfTheWeek ? (
-          <section>
+          <section className="mt-8">
             <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-2">
               {dealHeading}
             </p>
@@ -1887,7 +1890,7 @@ export default function WeeklyBriefContent({
           </section>
         ) : null}
 
-        <div className="space-y-2 [font-family:var(--mp-mono-font)] text-[10px] leading-relaxed text-[var(--mp-muted-text)]">
+        <div className="mt-8 space-y-2 [font-family:var(--mp-mono-font)] text-[10px] leading-relaxed text-[var(--mp-muted-text)]">
           <p className="tracking-[0.12em] uppercase text-[var(--mp-text)]">
             How Seller / Buyer Friendly is scored
           </p>
