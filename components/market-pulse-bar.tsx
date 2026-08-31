@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
 
@@ -114,6 +115,7 @@ export function PanelBarRow({
   widthTransition = "",
   tooltip,
   dense = false,
+  href,
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -125,8 +127,11 @@ export function PanelBarRow({
   tooltip?: ReactNode;
   /** Closes the rows up where a group reads as one figure rather than a list. */
   dense?: boolean;
+  /** Stats chart standing behind this bar, if there is one. */
+  href?: string | null;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
+  const Bar = (href ? Link : "span") as React.ElementType;
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
   return (
     <div
@@ -140,10 +145,26 @@ export function PanelBarRow({
           <span className="ml-1 tabular-nums text-white/80">{aside}</span>
         ) : null}
       </span>
-      <span className="relative block h-1.5 w-full">
-        <span className="block h-full w-full overflow-hidden rounded-full bg-white/10">
+      {/*
+       * The bar is the link, not the label: a label may already hold its own
+       * control — Delta's explainer, List to ask's chart link — and one
+       * interactive element cannot sit inside another.
+       */}
+      <Bar
+        {...(href ? { href } : {})}
+        className={`relative block h-1.5 w-full ${
+          href ? "cursor-pointer" : ""
+        }`}
+      >
+        <span
+          className={`block h-full w-full overflow-hidden rounded-full bg-white/10 ${
+            href ? "transition-colors group-hover:bg-white/20" : ""
+          }`}
+        >
           <span
-            className={`block h-full rounded-full bg-gold/70 transition-[width,margin-left] ease-out ${widthTransition}`}
+            className={`block h-full rounded-full bg-gold/70 transition-[width,margin-left] ease-out ${widthTransition} ${
+              href ? "group-hover:bg-gold" : ""
+            }`}
             style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
           />
         </span>
@@ -161,7 +182,7 @@ export function PanelBarRow({
             {aside}
           </span>
         ) : null}
-      </span>
+      </Bar>
       <span className="text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-white/90">
         {valueText}
       </span>

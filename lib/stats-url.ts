@@ -49,6 +49,32 @@ export function statsSalesTrendHref(options: {
   return `/stats?${params.toString()}`;
 }
 
+/** Deep link to Stats → active listings by month for a town (or All). */
+export function statsActiveByMonthHref(options: {
+  city: string;
+  kind?: "sale" | "rental";
+}): string {
+  const params = new URLSearchParams({
+    city: options.city,
+    kind: options.kind ?? "sale",
+    chart: "active-by-month",
+  });
+  return `/stats?${params.toString()}`;
+}
+
+/** Deep link to Stats → median closed price by town. */
+export function statsMedianByTownHref(options: {
+  city: string;
+  kind?: "sale" | "rental";
+}): string {
+  const params = new URLSearchParams({
+    city: options.city,
+    kind: options.kind ?? "sale",
+    chart: "median-by-town",
+  });
+  return `/stats?${params.toString()}`;
+}
+
 /** Deep link to Stats → list-to-ask chart for a town (or All). */
 export function statsListToAskHref(options: {
   city: string;

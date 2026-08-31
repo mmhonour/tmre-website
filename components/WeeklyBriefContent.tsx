@@ -767,6 +767,7 @@ function BarChart<Row extends { city: string }>({
                 aside={asideText}
                 asideNegative={asideNegative?.(row) ?? false}
                 widthTransition={widthTransition}
+                href={href}
                 tooltip={
                   <div
                     className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -1032,6 +1033,7 @@ function CombinedMetricsChart({
   townsExpanded,
   onAllTownsToggle,
   saleToAskTownHref,
+  metricStatsHref,
   kind,
   lookbackRail,
 }: {
@@ -1040,6 +1042,8 @@ function CombinedMetricsChart({
   townHref?: (cityLabel: string) => string;
   /** Turns the List to ask row label into a link to its Stats chart. */
   saleToAskTownHref?: (cityLabel: string) => string;
+  /** Stats chart behind each bar, by metric and town. */
+  metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
   kind: ListingKind;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
@@ -1105,6 +1109,7 @@ function CombinedMetricsChart({
               kind={kind}
               townLabel={label}
               saleToAskHref={saleToAskTownHref?.(label)}
+              metricHref={(id) => metricStatsHref?.(id, label) ?? null}
               closedPending={closedPending}
               settle={settle}
               scramble={{
@@ -1236,6 +1241,7 @@ export default function WeeklyBriefContent({
   closedSalesTownHref,
   avgDomTownHref,
   saleToAskTownHref,
+  metricStatsHref,
   kind = "sale",
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
@@ -1265,6 +1271,8 @@ export default function WeeklyBriefContent({
   avgDomTownHref?: (cityLabel: string) => string;
   /** List to ask → Stats list-to-ask chart (its own graph and data table). */
   saleToAskTownHref?: (cityLabel: string) => string;
+  /** Stats chart behind each bar, by metric and town. */
+  metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
   /** Rentals are leased rather than closed, and the labels follow. */
   kind?: ListingKind;
   /** Shared settle clock from Market Pulse (scramble → count-up). */
@@ -1641,6 +1649,7 @@ export default function WeeklyBriefContent({
             townsExpanded={townsExpanded}
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
             saleToAskTownHref={saleToAskTownHref}
+            metricStatsHref={metricStatsHref}
             kind={kind}
             lookbackRail={
               onLookbackIdChange ? (
