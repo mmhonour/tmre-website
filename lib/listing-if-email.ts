@@ -13,6 +13,7 @@ import {
 } from '@/lib/contact-notify-config'
 import { fmtAcres, fmtSqft } from '@/lib/listing-comparables-shared'
 import { fetchListingIfPayload } from '@/lib/listing-if-cache'
+import { resendFrom } from '@/lib/resend-from'
 import {
   ensureMidpointAggregates,
   fmtIfRentMoney,
@@ -658,9 +659,7 @@ export async function sendListingIfEmail(
       scenarios,
     })
 
-    const from =
-      process.env.CONTACT_FROM_EMAIL?.trim() ||
-      'TMRE Website <notifications@tmrebuilder.com>'
+    const from = resendFrom('TMRE Website')
     const subject = `What if — ${addressLabel}`
 
     const bcc =

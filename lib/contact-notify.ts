@@ -1,4 +1,5 @@
 import { getContactNotifyEmailFresh } from '@/lib/contact-notify-config'
+import { resendFrom } from '@/lib/resend-from'
 
 // Hard cap so a slow/unreachable Resend endpoint can never hang the request
 // (and therefore the submitting form) indefinitely.
@@ -29,8 +30,7 @@ export async function notifyContactByEmail(
     return false
   }
 
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() || 'TMRE Website <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE Website')
   const subject = payload.listingInfo
     ? `Listing inquiry — ${payload.listingInfo}`
     : payload.source === 'list-with-me'

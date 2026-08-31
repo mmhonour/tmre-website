@@ -14,6 +14,7 @@ import {
   formatMarketDigestEmail,
 } from '@/lib/market-digest'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
+import { resendFrom } from '@/lib/resend-from'
 import {
   releaseTimedLock,
   setSyncMetaDurable,
@@ -232,9 +233,7 @@ async function runMarketDigestSend(
       includeSocialProfiles: config.includeSocialProfiles,
       weekdayEt: config.weekdayEt,
     })
-    const from =
-      process.env.CONTACT_FROM_EMAIL?.trim() ||
-      'TMRE Market Brief <notifications@tmre-website.com>'
+    const from = resendFrom('TMRE Market Brief')
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
