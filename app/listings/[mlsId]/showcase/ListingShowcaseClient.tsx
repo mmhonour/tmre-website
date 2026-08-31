@@ -107,6 +107,7 @@ export default function ListingShowcaseClient({
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const [mapState, setMapState] = useState({ open: false, expanded: false });
   const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
@@ -293,6 +294,7 @@ export default function ListingShowcaseClient({
               : null
           }
           onNext={() => step(1)}
+          onMapStateChange={setMapState}
         />
 
         <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
@@ -312,7 +314,17 @@ export default function ListingShowcaseClient({
             </div>
 
             {headerPrice ? (
-              <div className="shrink-0 text-right">
+              /* Steps left of the map column while it is open, so the price is
+                 never sitting underneath it. */
+              <div
+                className={`shrink-0 text-right transition-[margin] duration-300 ${
+                  mapState.open
+                    ? mapState.expanded
+                      ? "lg:mr-[min(50vw,44rem)]"
+                      : "lg:mr-96"
+                    : ""
+                }`}
+              >
                 <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
                   {priceIsClosed ? "Closed at" : "Offered at"}
                 </p>

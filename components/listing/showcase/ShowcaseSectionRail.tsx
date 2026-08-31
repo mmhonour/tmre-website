@@ -66,6 +66,24 @@ function CountChip({
   );
 }
 
+function MapGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z" />
+      <path d="M9 4v13M15 6.5v13" />
+    </svg>
+  );
+}
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <span aria-hidden className="ml-3 font-mono text-white/60">
@@ -110,6 +128,7 @@ export default function ShowcaseSectionRail({
   townHint,
   postalCode,
   onNext,
+  onMapStateChange,
 }: {
   mlsId: string;
   insight: string | null;
@@ -118,10 +137,21 @@ export default function ShowcaseSectionRail({
   townHint?: string | null;
   postalCode?: string | null;
   onNext: () => void;
+  /** Lets the hero shift its price clear of the map column. */
+  onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
+
+  const openMap = (open: boolean) => {
+    setMapOpen(open);
+    onMapStateChange?.({ open, expanded: open && mapExpanded });
+  };
+  const setExpanded = (expanded: boolean) => {
+    setMapExpanded(expanded);
+    onMapStateChange?.({ open: mapOpen, expanded });
+  };
   const [revealed, setRevealed] = useState<string | null>(null);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
   const [amounts, setAmounts] = useState<IfAmounts | null>(null);
@@ -250,7 +280,7 @@ export default function ShowcaseSectionRail({
     >
       <button
         type="button"
-        onClick={() => setMapOpen(false)}
+        onClick={() => openMap(false)}
         aria-expanded
         className={`${pillClass(true, true)} shrink-0`}
       >
@@ -264,8 +294,8 @@ export default function ShowcaseSectionRail({
           townHint={townHint}
           postalCode={postalCode}
           expanded={mapExpanded}
-          onToggleExpanded={() => setMapExpanded((on) => !on)}
-          onExit={() => setMapOpen(false)}
+          onToggleExpanded={() => setExpanded(!mapExpanded)}
+          onExit={() => openMap(false)}
         />
       </div>
     </div>
@@ -379,14 +409,17 @@ export default function ShowcaseSectionRail({
           () => scrollToShowcaseSection("if"),
         )}
 
+        {/* Icon rather than a tile: the map is a mode you enter, not a
+            summary line like the others. */}
         <button
           type="button"
-          onClick={() => setMapOpen(true)}
+          onClick={() => openMap(true)}
           aria-expanded={false}
-          className={pillClass(false)}
+          aria-label="Open map"
+          title="Map"
+          className="mt-1 inline-flex h-11 w-11 items-center justify-center bg-[#0d1424]/85 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors hover:bg-navy hover:text-white"
         >
-          <span className="flex-1">Map</span>
-          <Chevron open={false} />
+          <MapGlyph />
         </button>
       </div>
     </>
