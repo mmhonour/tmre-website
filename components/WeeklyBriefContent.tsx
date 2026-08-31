@@ -429,7 +429,7 @@ function FavorSortToggle({
       aria-label={`Towns ordered ${current}. Switch to ${next}.`}
       className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <svg viewBox="0 0 36 30" className="h-14 w-14" aria-hidden>
+      <svg viewBox="-3 -2.5 42 35" className="h-14 w-14" aria-hidden>
         <path
           d="M18 7v16"
           stroke="currentColor"
@@ -462,26 +462,23 @@ function FavorSortToggle({
           >
             $
           </text>
-          {/* Buyer: the house, with the key to its right turned towards it. */}
+          {/* Buyer: the house, and to its right a key turned back towards it. */}
           <g>
             <path
-              d="M26.5 10.4l4 3.9h-1.4v5.3h-5.2v-5.3h-1.4z"
+              d="M25.8 10.4l4 3.9h-1.4v5.3h-5.2v-5.3h-1.4z"
               fill="var(--color-sage, #4A7C6F)"
             />
-            <circle
-              cx="34.3"
-              cy="15.2"
-              r="1.7"
-              fill="none"
-              stroke="#000"
-              strokeWidth="1.1"
-            />
-            <path
-              d="M32.6 15.2h-1.5M32.2 15.2v1.5M31.3 15.2v1.1"
-              stroke="#000"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-            />
+            <g fill="#000">
+              <rect x="30.2" y="14.75" width="3.1" height="0.9" rx="0.3" />
+              <rect x="30.3" y="15.6" width="0.55" height="1.65" rx="0.15" />
+              <rect x="31.25" y="15.6" width="0.5" height="1.15" rx="0.15" />
+              <path
+                d="M33.1 13.4L35.9 15.2L33.1 17z"
+                stroke="#000"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            </g>
           </g>
         </g>
       </svg>
