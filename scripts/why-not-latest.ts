@@ -28,11 +28,16 @@ if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
 }
 
-function parseMls(argv: string[]): string | null {
+function parseMls(argv: string[]): string[] {
+  const out: string[] = []
   for (const raw of argv) {
-    if (raw.startsWith('--mls=')) return raw.slice('--mls='.length).trim()
+    if (!raw.startsWith('--mls=')) continue
+    for (const part of raw.slice('--mls='.length).split(',')) {
+      const id = part.trim()
+      if (id) out.push(id)
+    }
   }
-  return null
+  return out
 }
 
 function ageLabel(iso: unknown): string {
@@ -51,13 +56,12 @@ function money(v: unknown): string {
   return Number.isFinite(n) ? `$${n.toLocaleString()}` : String(v ?? 'null')
 }
 
-async function main() {
-  const mls = parseMls(process.argv.slice(2))
-  if (!mls) {
-    console.error('Usage: npm run why:latest -- --mls=24197539')
-    process.exit(1)
-  }
-
+/** Returns true when this listing is eligible; false when it is not. */
+async function inspect(
+  mls: string,
+  liveFeedIds: Set<string>,
+  cachedFeedIds: Set<string> | null,
+): Promise<boolean> {
   const rows = await query<{ row: Record<string, unknown> }>(
     `SELECT to_jsonb(l) AS row FROM listings l WHERE mls_id = $1`,
     [mls],
@@ -72,7 +76,7 @@ async function main() {
       'town\'s recent incremental outcomes — a RETS 20513 on one town drops that',
       "town's listings silently while the run still records an End.",
     )
-    process.exit(1)
+    return false
   }
 
   const town = String(row.town ?? row.city ?? '?')
@@ -123,26 +127,69 @@ async function main() {
     )
   }
 
-  // The real feed, not a reimplementation of it — the point is to agree with
-  // the page rather than to have a second opinion about it.
-  const feed = await fetchLatestUpdatedListings({ limit: 300 })
-  const hit = feed.find((r) => r.mlsId === mls)
-  console.info(`\nin /latest feed (top 300)? ${hit ? 'YES' : 'NO'}`)
-  if (hit) {
-    console.info(`  badge ${hit.status} · town ${hit.town}`)
+  // Live and cached are separate answers. The page reads a warm snapshot when
+  // it passes its freshness gates, so "eligible in the database but absent from
+  // the cache" is a real and otherwise invisible state.
+  const live = liveFeedIds.has(mls)
+  console.info(`\neligible now (live query)?  ${live ? 'YES' : 'NO'}`)
+  if (cachedFeedIds) {
     console.info(
-      '  It is in the feed. If the page is not showing it, the page is filtering:',
-      'a town or zip selection, a status pill, or a collapsed day group.',
+      `present in warm feed cache? ${cachedFeedIds.has(mls) ? 'YES' : 'NO'}`,
+    )
+  } else {
+    console.info('present in warm feed cache? (no cache stored)')
+  }
+
+  if (live && cachedFeedIds && !cachedFeedIds.has(mls)) {
+    console.info(
+      '  Eligible but missing from the warm cache — the page will show it only',
+      'once that cache is rebuilt, or immediately if the cache fails its',
+      'freshness gates. Rebuild: Admin → Syncs → Sync now on Stats cache.',
+    )
+  } else if (live) {
+    console.info(
+      '  In the feed. If the page still hides it, the page is filtering: a town',
+      'or zip selection, a status pill, or a collapsed day group.',
     )
   } else {
     console.info(
-      '  Not feed-eligible. Most likely: our copy predates the change',
-      '(compare price above against MLS), or price_change_timestamp is stale,',
-      'or the listing is Pending / under contract, which never appears.',
+      '  Not feed-eligible. Compare the price and timestamps above against MLS:',
+      'if they lag, our copy predates the change and this is a sync problem,',
+      'not a feed problem.',
     )
   }
+  return live
+}
 
-  console.info(`\nlast incremental End  ${ageLabel(await getSyncMeta('last_incremental_sync'))}`)
+async function main() {
+  const ids = parseMls(process.argv.slice(2))
+  if (ids.length === 0) {
+    console.error('Usage: npm run why:latest -- --mls=24197539,24201368')
+    process.exit(1)
+  }
+
+  // Bypass the warm cache so the live answer reflects the database, then read
+  // the cache separately to compare.
+  const [liveFeed, cachedFeed] = await Promise.all([
+    fetchLatestUpdatedListings({ limit: 400, bypassGlobalFeedCache: true }),
+    import('@/lib/latest-feed-cache')
+      .then((m) => m.readLatestGlobalFeedCache(400))
+      .catch(() => null),
+  ])
+  const liveIds = new Set(liveFeed.map((r) => r.mlsId))
+  const cachedIds = cachedFeed ? new Set(cachedFeed.map((r) => r.mlsId)) : null
+
+  console.info(
+    `live feed rows ${liveFeed.length} · warm cache rows ${cachedFeed?.length ?? '(none)'}`,
+  )
+  console.info(
+    `last incremental End ${ageLabel(await getSyncMeta('last_incremental_sync'))}`,
+  )
+
+  let missing = 0
+  for (const mls of ids) {
+    if (!(await inspect(mls, liveIds, cachedIds))) missing += 1
+  }
 
   const failures = await query<{ finished_at: string; detail: string | null }>(
     `SELECT finished_at::text, detail FROM sync_queue
@@ -150,16 +197,18 @@ async function main() {
       ORDER BY finished_at DESC LIMIT 3`,
   ).catch(() => [])
   if (failures.length > 0) {
-    console.info('recent incremental failures:')
+    console.info('\nrecent incremental failures:')
     for (const f of failures) {
       console.info(`  ${f.finished_at} — ${f.detail ?? ''}`)
     }
     console.info(
-      `\nIf ${town} appears in those errors, that is your answer: that town's`,
-      'listings are not being pulled.',
+      'If a town above appears in these errors, that is the answer for that',
+      "listing: the town's inventory is not being pulled.",
     )
   }
-  process.exit(0)
+
+  console.info(`\n${ids.length - missing}/${ids.length} eligible`)
+  process.exit(missing > 0 ? 1 : 0)
 }
 
 void main().catch((err) => {
