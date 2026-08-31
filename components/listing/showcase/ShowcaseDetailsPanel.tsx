@@ -529,23 +529,22 @@ export default function ShowcaseDetailsPanel({
                 />
               </div>
 
-              {/* Public listing-agent attribution. Plain text, deliberately
-                  unlinked — no mailto/tel. Distinct from the unlock-gated
-                  Admin deck card, which also carries showing-contact fields. */}
+              {/*
+                Public listing-agent attribution, served as a PNG so it reads
+                normally but cannot be selected or copied. Rendering it
+                server-side also means these fields can later be dropped from
+                the listing API without changing anything here.
+              */}
               {agentRows.length > 0 ? (
-                <dl className="mt-6 max-w-md divide-y divide-white/10 border-y border-white/10">
-                  {agentRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex items-baseline justify-between gap-6 py-2"
-                    >
-                      <dt className="text-sm text-white/50">{row.label}</dt>
-                      <dd className="text-right text-sm text-white/85">
-                        {row.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/listings/${encodeURIComponent(listing.mlsId)}/agent-card`}
+                  alt={`Listing courtesy of ${adminContact?.listOfficeName ?? "the listing office"}`}
+                  width={460}
+                  height={140}
+                  className="mt-6 h-auto w-full max-w-[460px] select-none"
+                  draggable={false}
+                />
               ) : null}
             </Section>
             </div>
