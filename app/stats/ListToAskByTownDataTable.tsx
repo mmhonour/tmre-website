@@ -65,7 +65,7 @@ export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) 
         {rows.length === 0 ? (
           <StatsChartDataRow>
             <StatsChartDataTd colSpan={5} muted>
-              {loading ? "Loading…" : "No list-to-ask pool yet."}
+              {loading ? "Loading…" : "No closings with a published asking price yet."}
             </StatsChartDataTd>
           </StatsChartDataRow>
         ) : (

@@ -1016,7 +1016,7 @@ function CombinedMetricsChart({
           <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p>
         ) : null}
         <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
-          No town rows in cache yet.
+          No town figures yet.
         </p>
       </section>
     );
@@ -1574,7 +1574,7 @@ export default function WeeklyBriefContent({
           rows={inventoryRows}
           valueOf={(r) => r.activeCount}
           valueKind="int"
-          emptyMessage="No inventory rows in cache yet."
+          emptyMessage="No active listings for these towns yet."
           townHref={townHref}
           settle={settle}
           townsExpanded={townsExpanded}
@@ -1589,7 +1589,7 @@ export default function WeeklyBriefContent({
           rows={domRows}
           valueOf={(r) => r.avgDaysOnMarket}
           valueKind="dom"
-          emptyMessage="No days-on-market rows in cache yet."
+          emptyMessage="No days-on-market figures for these towns yet."
           townHref={avgDomTownHref ?? townHref}
           settle={settle}
           townsExpanded={townsExpanded}
@@ -1611,7 +1611,7 @@ export default function WeeklyBriefContent({
             rows={inventoryRows}
             valueOf={(r) => r.monthsSupply}
             valueKind="mos"
-            emptyMessage="No months-supply rows in cache yet."
+            emptyMessage="No months-supply figures for these towns yet."
             townHref={monthsSupplyTownHref ?? townHref}
             settle={settle}
             townsExpanded={townsExpanded}
@@ -1687,7 +1687,7 @@ export default function WeeklyBriefContent({
           valueKind="int"
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "saleToAsk")}
-          emptyMessage="No close-vs-original-ask pool yet — run a stats rebuild."
+          emptyMessage="No closings with a published asking price yet."
           townHref={saleToAskTownHref ?? townHref}
           settle={settle}
           townsExpanded={townsExpanded}
@@ -1806,8 +1806,7 @@ export default function WeeklyBriefContent({
               {dealHeading}
             </p>
             <p className="font-serif text-sm text-slate">
-              No featured deal in cache for this category yet — check homepage /
-              stats rebuild.
+              No featured deal for this category yet.
             </p>
           </section>
         ) : null}

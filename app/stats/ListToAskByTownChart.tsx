@@ -82,7 +82,7 @@ export default function ListToAskByTownChart({
         ) : rows.length === 0 ? (
           <div className="h-72 flex items-center justify-center">
             <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/30">
-              No list-to-ask pool yet — run a stats rebuild
+              No closings with a published asking price yet
             </span>
           </div>
         ) : (
