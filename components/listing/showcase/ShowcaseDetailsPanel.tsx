@@ -507,7 +507,9 @@ export default function ShowcaseDetailsPanel({
               className="hidden min-w-0 lg:col-start-2 lg:block lg:self-stretch"
               aria-label="Listing dashboard"
             >
-              <div className="sticky flex flex-col gap-4 lg:top-[var(--showcase-sticky-offset,12rem)]">
+              {/* Capped to the space under the pinned chrome so a tall expanded
+              card scrolls on the wheel instead of running off-screen. */}
+          <div className="showcase-hide-scrollbar sticky flex max-h-[calc(100dvh-var(--showcase-sticky-offset,12rem)-1.5rem)] flex-col gap-4 overflow-y-auto overscroll-contain lg:top-[var(--showcase-sticky-offset,12rem)]">
                 {/* Anchors the column width above the deck, as on production. */}
                 {detailsPanelProps.isClosed ? null : (
                   <ListingInterestButton

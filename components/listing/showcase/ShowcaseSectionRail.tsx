@@ -303,6 +303,16 @@ export default function ShowcaseSectionRail({
     <div className="mt-1 flex items-center gap-1">
       <button
         type="button"
+        onClick={() => openMap(true)}
+        aria-expanded={false}
+        aria-label="Open map"
+        title="Map"
+        className={railIconClass(false)}
+      >
+        <MapGlyph />
+      </button>
+      <button
+        type="button"
         onClick={() =>
           setDetailsOnly((on) => {
             onDetailsOnlyChange?.(!on);
@@ -315,16 +325,6 @@ export default function ShowcaseSectionRail({
         className={railIconClass(detailsOnly)}
       >
         <DetailsGlyph />
-      </button>
-      <button
-        type="button"
-        onClick={() => openMap(true)}
-        aria-expanded={false}
-        aria-label="Open map"
-        title="Map"
-        className={railIconClass(false)}
-      >
-        <MapGlyph />
       </button>
     </div>
   );

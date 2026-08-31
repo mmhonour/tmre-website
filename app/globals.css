@@ -942,6 +942,19 @@ html.listing-split-test body {
   }
 }
 
+/* Wheel-scrollable without the bar — used by the sticky dashboard deck, whose
+   expanded cards can run past the bottom of the viewport. */
+.showcase-hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.showcase-hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Second line of defence for type sitting over a busy or blown-out photo. */
 .listing-showcase-type {
   text-shadow:
