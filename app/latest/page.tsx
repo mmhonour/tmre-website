@@ -1,6 +1,7 @@
 import { preload } from "react-dom";
 import LatestClient from "./LatestClient";
 import { readLatestGlobalFeedCache } from "@/lib/latest-feed-cache";
+import { getLatestFeedSizeFresh } from "@/lib/latest-feed-size-config";
 import { readAllLatestTownFeedCaches } from "@/lib/latest-town-feed-cache";
 import {
   feedHasUpdateWithinWindow,
@@ -36,15 +37,19 @@ function heroPhotoPreloadUrls(rows: LatestListingRow[], limit = 12): string[] {
 export default async function LatestPage() {
   // Prefer warm cache only when it still contains last-24h MLS activity;
   // otherwise hit Postgres so brand-new / freshly modified rows are not buried.
-  const cached = await readLatestGlobalFeedCache(30);
+  const feedSize = await getLatestFeedSizeFresh();
+  const cached = await readLatestGlobalFeedCache(feedSize);
   const initialListings =
     cached &&
+    // A cache built while the size was smaller is not wrong, just short — fall
+    // through to the live query rather than serving a truncated feed forever.
+    cached.length >= feedSize &&
     feedIsTmreOnly(cached) &&
     feedCoversAllTmreTowns(cached) &&
     feedHasUpdateWithinWindow(cached)
       ? cached
       : await fetchLatestUpdatedListings({
-          limit: 30,
+          limit: feedSize,
           bypassGlobalFeedCache: true,
           bypassTownFeedCache: true,
         });

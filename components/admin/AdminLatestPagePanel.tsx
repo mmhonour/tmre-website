@@ -313,7 +313,7 @@ export default function AdminLatestPagePanel() {
             </li>
             <li>
               A follow-up step rebuilds the /latest feed cache from those
-              listings — event badges and ranking (Architecture → Latest rules)
+              listings — event badges and ranking (Web server → Latest rules)
               are applied then.
             </li>
             <li>
@@ -330,7 +330,7 @@ export default function AdminLatestPagePanel() {
             href={adminArchitectureHref("status-logic")}
             className="text-navy underline-offset-2 hover:underline"
           >
-            Architecture → Latest rules
+            Web server → Latest rules
           </Link>
           .
         </p>
