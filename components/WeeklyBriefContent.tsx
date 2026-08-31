@@ -727,6 +727,7 @@ function BarChart<Row extends { city: string }>({
 
 /** Median, Delta and Average for one town, on the shared dollar axis. */
 const PRICE_METRIC_IDS = ["medianPrice", "priceDelta", "averagePrice"] as const;
+type PriceMetricId = (typeof PRICE_METRIC_IDS)[number];
 
 /**
  * The price trio, grouped by town rather than by metric.
@@ -736,6 +737,53 @@ const PRICE_METRIC_IDS = ["medianPrice", "priceDelta", "averagePrice"] as const;
  * separate town rankings broke that apart, and one card per metric broke it
  * apart three times over.
  */
+/**
+ * Sort control for one of the price metrics.
+ *
+ * The arrow is the switch, not the label: Delta's label is already a button
+ * that opens the explainer, and one cannot sit inside another. The arrow is
+ * also the state — dim until this metric is the one ordering the towns, then
+ * solid and pointing the way it has put them.
+ */
+function PriceSortLabel({
+  id,
+  name,
+  label,
+  sort,
+  onSort,
+}: {
+  id: PriceMetricId;
+  /** Plain name for the control's accessible label. */
+  name: string;
+  label: ReactNode;
+  sort: { id: PriceMetricId; dir: MetricSortDir } | null;
+  onSort: (next: { id: PriceMetricId; dir: MetricSortDir }) => void;
+}) {
+  const active = sort?.id === id;
+  const ascending = active && sort.dir === "asc";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${PANEL_TITLE} ${
+        active ? "" : "text-white/45"
+      }`}
+    >
+      {label}
+      <button
+        type="button"
+        aria-label={`Sort towns by ${name}, ${
+          ascending ? "highest" : "lowest"
+        } first`}
+        onClick={() => onSort({ id, dir: ascending ? "desc" : "asc" })}
+        className={`font-mono text-[9px] leading-none transition-colors ${
+          active ? "text-gold" : "text-white/30 hover:text-gold"
+        }`}
+      >
+        {ascending ? "▲" : "▼"}
+      </button>
+    </span>
+  );
+}
+
 function UnstackedPricePanel({
   rows,
   scale,
@@ -756,6 +804,20 @@ function UnstackedPricePanel({
   const priceMetrics = PRICE_METRIC_IDS.map((id) =>
     metrics.find((m) => m.id === id),
   ).filter((m): m is (typeof metrics)[number] => m != null);
+  const [sort, setSort] = useState<{
+    id: PriceMetricId;
+    dir: MetricSortDir;
+  } | null>(null);
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const valueOf = (r: CombinedTownRow) =>
+      sort.id === "medianPrice"
+        ? r.medianPrice
+        : sort.id === "averagePrice"
+          ? r.averagePrice
+          : r.priceDelta;
+    return sortRowsByMetricValue(rows, valueOf, sort.dir);
+  }, [rows, sort]);
   const rotateNames = rotatingTownNames(rows);
   const widthTransition =
     settle.phase === "scramble"
@@ -768,9 +830,36 @@ function UnstackedPricePanel({
 
   return (
     <section className={PANEL_SURFACE}>
-      <p className={PANEL_TITLE}>Median, delta, average</p>
+      {/*
+       * The three metrics head the panel rather than titling it, spread across
+       * its width so each sits over roughly the stretch of bar it governs, and
+       * each one orders the towns below.
+       */}
+      <div className="flex items-center justify-between gap-2">
+        <PriceSortLabel
+          id="medianPrice"
+          name="median"
+          label="Median"
+          sort={sort}
+          onSort={setSort}
+        />
+        <PriceSortLabel
+          id="priceDelta"
+          name="delta"
+          label={<MarketPulseDeltaLabel />}
+          sort={sort}
+          onSort={setSort}
+        />
+        <PriceSortLabel
+          id="averagePrice"
+          name="average"
+          label="Average"
+          sort={sort}
+          onSort={setSort}
+        />
+      </div>
       <ul className="mt-2 space-y-3">
-        {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
+        {visibleTownRows(sorted, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
           return (
             <li key={`price-${row.city}`} data-mp-town={row.city}>
