@@ -421,8 +421,6 @@ function FavorSortToggle({
       ? marketPulseFavorSortLabel(favorSort)
       : marketPulseFavorSortLabel("sellers");
   const next = buyers ? "Seller Friendly" : "Buyer Friendly";
-  const seller = buyers ? 0.35 : 1;
-  const buyer = buyers ? 1 : 0.35;
   return (
     <button
       type="button"
@@ -450,7 +448,7 @@ function FavorSortToggle({
             strokeLinecap="round"
           />
           {/* Seller: a money bag, tied at the neck, with its dollar mark. */}
-          <g opacity={seller} fill="var(--color-coral, #C85A3A)">
+          <g fill="var(--color-coral, #C85A3A)">
             <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
             <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
           </g>
@@ -461,29 +459,28 @@ function FavorSortToggle({
             fontSize="6"
             fontWeight="700"
             fill="#fff"
-            opacity={seller}
           >
             $
           </text>
-          {/* Buyer: a key held beside the house rather than laid across it. */}
-          <g opacity={buyer}>
+          {/* Buyer: the house, with the key to its right turned towards it. */}
+          <g>
+            <path
+              d="M26.5 10.4l4 3.9h-1.4v5.3h-5.2v-5.3h-1.4z"
+              fill="var(--color-sage, #4A7C6F)"
+            />
             <circle
-              cx="24.5"
+              cx="34.3"
               cy="15.2"
               r="1.7"
               fill="none"
-              stroke="var(--color-sage, #4A7C6F)"
+              stroke="#000"
               strokeWidth="1.1"
             />
             <path
-              d="M26.2 15.2h2.5M27.5 15.2v1.5M28.5 15.2v1.1"
-              stroke="var(--color-sage, #4A7C6F)"
+              d="M32.6 15.2h-1.5M32.2 15.2v1.5M31.3 15.2v1.1"
+              stroke="#000"
               strokeWidth="1.1"
               strokeLinecap="round"
-            />
-            <path
-              d="M32.6 10.4l4 3.9h-1.4v5.3h-5.2v-5.3h-1.4z"
-              fill="var(--color-sage, #4A7C6F)"
             />
           </g>
         </g>
