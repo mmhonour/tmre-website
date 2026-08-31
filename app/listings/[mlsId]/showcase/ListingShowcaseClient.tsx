@@ -8,6 +8,7 @@ import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
+import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
 import { formatListingHeaderPrice } from "@/lib/listing-header-price";
 import {
@@ -109,6 +110,7 @@ export default function ListingShowcaseClient({
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [mapState, setMapState] = useState({ open: false, expanded: false });
   const reducedMotion = usePrefersReducedMotion();
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     let cancelled = false;
@@ -314,16 +316,24 @@ export default function ListingShowcaseClient({
             </div>
 
             {headerPrice ? (
-              /* Steps left of the map column while it is open, so the price is
-                 never sitting underneath it. */
+              /*
+               * Sits just left of the map's edge while it is open. The map is
+               * anchored to the viewport but the price lives in a centred
+               * max-w-7xl row, so the shift is the gap between those two right
+               * edges — a flat margin of the map's width overshoots by half the
+               * page gutter.
+               */
               <div
-                className={`shrink-0 text-right transition-[margin] duration-300 ${
-                  mapState.open
-                    ? mapState.expanded
-                      ? "lg:mr-[min(50vw,44rem)]"
-                      : "lg:mr-96"
-                    : ""
-                }`}
+                className="shrink-0 text-right transition-[margin] duration-300"
+                style={
+                  isDesktop && mapState.open
+                    ? {
+                        marginRight: `max(0rem, calc(${
+                          mapState.expanded ? "min(50vw, 44rem)" : "24rem"
+                        } + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
+                      }
+                    : undefined
+                }
               >
                 <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
                   {priceIsClosed ? "Closed at" : "Offered at"}
