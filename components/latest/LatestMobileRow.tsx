@@ -49,16 +49,57 @@ function readableDay(date: Date): string {
   }).format(date);
 }
 
-function formatMobileClosedDate(iso: string | null): { label: string; title: string } {
-  const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return { label: "—", title: "Closed —" };
-  const date = new Date(t);
-  return { label: compactDayStamp(date), title: `Closed ${readableDay(date)}` };
+type MobileStamp = {
+  label: string;
+  /** Second line, used when the clock and the calendar day are both worth room. */
+  sub: string | null;
+  title: string;
+};
+
+/**
+ * MLS CloseDate is a bare calendar day, so a clock read off it would be a
+ * midnight this listing never saw. The record's own stamp is the only real time
+ * on a closed row.
+ */
+function hasClockTime(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  if (!/\d{2}:\d{2}/.test(iso)) return false;
+  return !/[T ]00:00(:00)?(\.0+)?Z?$/.test(iso);
 }
 
-function formatMobileUpdatedAt(iso: string | null): { label: string; title: string } {
+function formatMobileClosedDate(
+  closeIso: string | null,
+  stampIso?: string | null,
+): MobileStamp {
+  const closeMs = mlsTimestampMs(closeIso);
+  if (Number.isNaN(closeMs)) return { label: "—", sub: null, title: "Closed —" };
+  const closeDate = new Date(closeMs);
+  const closedDay = `Closed ${readableDay(closeDate)}`;
+
+  const stampMs = hasClockTime(stampIso) ? mlsTimestampMs(stampIso) : Number.NaN;
+  if (Number.isNaN(stampMs)) {
+    return { label: compactDayStamp(closeDate), sub: null, title: closedDay };
+  }
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(stampMs));
+  const title = `${closedDay} · MLS stamped ${time} (your local time)`;
+  // Closings are rarely same-day, so the Latest trick of hiding the clock in the
+  // tooltip on any other day would hide it always. Both stamps get a line, and
+  // the column stays one label wide because they stack.
+  return {
+    label: time,
+    sub: isSameLocalDay(closeDate, new Date())
+      ? null
+      : compactDayStamp(closeDate),
+    title,
+  };
+}
+
+function formatMobileUpdatedAt(iso: string | null): MobileStamp {
   const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return { label: "—", title: "MLS updated —" };
+  if (Number.isNaN(t)) return { label: "—", sub: null, title: "MLS updated —" };
   const date = new Date(t);
   const time = new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
@@ -66,11 +107,12 @@ function formatMobileUpdatedAt(iso: string | null): { label: string; title: stri
   }).format(date);
   const today = new Date();
   if (isSameLocalDay(date, today)) {
-    return { label: time, title: `MLS updated ${time} (your local time)` };
+    return { label: time, sub: null, title: `MLS updated ${time} (your local time)` };
   }
   // Clock time moves to the tooltip — it is what pushed this past the column.
   return {
     label: compactDayStamp(date),
+    sub: null,
     title: `MLS updated ${readableDay(date)} · ${time} (your local time)`,
   };
 }
@@ -115,7 +157,7 @@ function LatestMobileRow({
   const detailHref = listingDetailHref(l, returnPath);
   const clockIso = latestRowActivityIso(l);
   const updatedAt = dateOnlyClock
-    ? formatMobileClosedDate(clockIso)
+    ? formatMobileClosedDate(clockIso, l.modificationTimestamp)
     : formatMobileUpdatedAt(clockIso);
   const ppsf =
     !l.isRental && l.pricePerSqft != null
@@ -150,6 +192,9 @@ function LatestMobileRow({
           title={updatedAt.title}
         >
           {updatedAt.label}
+          {updatedAt.sub ? (
+            <span className="block text-navy/45">{updatedAt.sub}</span>
+          ) : null}
         </span>
         <DealBoardPrimaryPhoto
           listing={l}
