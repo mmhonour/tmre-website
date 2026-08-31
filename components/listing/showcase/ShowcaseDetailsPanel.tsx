@@ -208,10 +208,12 @@ export default function ShowcaseDetailsPanel({
     // Overview content *is* the remarks, which live in the dashboard deck on
     // desktop — open that card rather than scrolling to an empty anchor.
     if (isDesktop) {
-      // Overview shows the remarks in the main column, so the deck card that
-      // duplicates them minimises rather than competing with it.
+      // Overview shows the remarks in the main column, so the deck moves to
+      // Details — one card is open at a time, which minimises Remarks and puts
+      // the property facts alongside the copy instead of duplicating it.
+      // Desktop only: mobile has no deck and no room for a second column.
       setShowOverviewSection(tab === "overview");
-      if (tab === "overview") setActiveDeckCard(null);
+      if (tab === "overview") setActiveDeckCard("details");
     }
     const section = showcaseSectionForTab(tab);
     if (section) {
