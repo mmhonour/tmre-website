@@ -465,13 +465,26 @@ function FavorSortToggle({
           >
             $
           </text>
-          {/* Buyer: a house with a key hung beside the door. */}
-          <g opacity={buyer} fill="var(--color-sage, #4A7C6F)">
-            <path d="M31 10.4l5 4.4h-1.7V19.6h-6.6V14.8H26z" />
-          </g>
-          <g opacity={buyer} fill="#fff">
-            <circle cx="30.4" cy="16" r="1.25" />
-            <path d="M31.4 16h2.2v.85h-.8v.85h-.75V16.85h-.65z" />
+          {/* Buyer: a key held beside the house rather than laid across it. */}
+          <g opacity={buyer}>
+            <circle
+              cx="24.5"
+              cy="15.2"
+              r="1.7"
+              fill="none"
+              stroke="var(--color-sage, #4A7C6F)"
+              strokeWidth="1.1"
+            />
+            <path
+              d="M26.2 15.2h2.5M27.5 15.2v1.5M28.5 15.2v1.1"
+              stroke="var(--color-sage, #4A7C6F)"
+              strokeWidth="1.1"
+              strokeLinecap="round"
+            />
+            <path
+              d="M32.6 10.4l4 3.9h-1.4v5.3h-5.2v-5.3h-1.4z"
+              fill="var(--color-sage, #4A7C6F)"
+            />
           </g>
         </g>
       </svg>
