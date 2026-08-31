@@ -394,6 +394,14 @@ function TownName({
   return <span className="truncate text-inherit">{label}</span>;
 }
 
+/**
+ * Which side the town order favours, as a balance rather than a sentence.
+ *
+ * The beam tips toward the side the list is ordered for and that pan takes the
+ * spectrum's colour for that end — coral for sellers, sage for buyers — so it
+ * speaks the same language as the heat bar on every panel. The words live in
+ * the title and the accessible name, since the state is a picture of itself.
+ */
 function FavorSortToggle({
   favorSort,
   onToggle,
@@ -411,14 +419,44 @@ function FavorSortToggle({
     <button
       type="button"
       onClick={onToggle}
-      title={`Flip to ${next}`}
-      aria-label={`Sort by ${current}. Flip to ${next}`}
-      className="inline-flex min-w-0 items-baseline gap-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-text)] hover:text-[var(--mp-accent)]"
+      title={`${current} — switch to ${next}`}
+      aria-label={`Towns ordered ${current}. Switch to ${next}.`}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <span className="text-[var(--mp-muted-text)]">Sort</span>
-      <span className="underline decoration-[var(--mp-text)]/35 underline-offset-2">
-        {current}
-      </span>
+      <svg viewBox="0 0 18 16" className="h-4 w-4" aria-hidden>
+        <path
+          d="M9 3.4v7"
+          stroke="currentColor"
+          strokeWidth="1.1"
+          strokeLinecap="round"
+        />
+        <path d="M6.4 13.6h5.2L9 10.4z" fill="currentColor" />
+        <g
+          transform={buyers ? "rotate(9 9 4.4)" : "rotate(-9 9 4.4)"}
+          className="transition-transform duration-200"
+        >
+          <path
+            d="M2.4 4.4h13.2"
+            stroke="currentColor"
+            strokeWidth="1.1"
+            strokeLinecap="round"
+          />
+          <circle
+            cx="2.6"
+            cy="4.4"
+            r="2"
+            fill="var(--color-coral, #C85A3A)"
+            opacity={buyers ? 0.3 : 1}
+          />
+          <circle
+            cx="15.4"
+            cy="4.4"
+            r="2"
+            fill="var(--color-sage, #4A7C6F)"
+            opacity={buyers ? 1 : 0.3}
+          />
+        </g>
+      </svg>
     </button>
   );
 }
@@ -1522,7 +1560,7 @@ export default function WeeklyBriefContent({
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {categoryFilter}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
           {townMetricsControls}
           <FavorSortToggle
             favorSort={favorSort}
