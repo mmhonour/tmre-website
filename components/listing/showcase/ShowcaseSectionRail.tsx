@@ -156,7 +156,6 @@ export default function ShowcaseSectionRail({
   townHint,
   postalCode,
   detailsPanelProps,
-  onPrev,
   onNext,
   onMapStateChange,
   onDetailsOnlyChange,
@@ -168,7 +167,6 @@ export default function ShowcaseSectionRail({
   townHint?: string | null;
   postalCode?: string | null;
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
-  onPrev: () => void;
   onNext: () => void;
   /** Lets the hero drop its edge arrow while the rail carries the pair. */
   onDetailsOnlyChange?: (on: boolean) => void;
@@ -300,6 +298,37 @@ export default function ShowcaseSectionRail({
     );
   };
 
+  /* Switches what the rail is showing rather than summarising a section. */
+  const iconRow = (
+    <div className="mt-1 flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() =>
+          setDetailsOnly((on) => {
+            onDetailsOnlyChange?.(!on);
+            return !on;
+          })
+        }
+        aria-pressed={detailsOnly}
+        aria-label={detailsOnly ? "Close details" : "Show details"}
+        title={detailsOnly ? "Close details" : "Details"}
+        className={railIconClass(detailsOnly)}
+      >
+        <DetailsGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => openMap(true)}
+        aria-expanded={false}
+        aria-label="Open map"
+        title="Map"
+        className={railIconClass(false)}
+      >
+        <MapGlyph />
+      </button>
+    </div>
+  );
+
   const mapOverlay = mapOpen ? (
     /*
      * Phone: true full screen, over the site header, like the Intelligence
@@ -403,23 +432,12 @@ export default function ShowcaseSectionRail({
       >
         {detailsOnly ? (
           <>
-            {/* The stack's own next arrow is hidden in this mode, so the pair
-                moves here rather than leaving the photo unpageable. */}
-            <div className="mb-1 flex items-center gap-1">
-              <ShowcaseStepArrow
-                direction="prev"
-                label="Previous photo"
-                onClick={onPrev}
-              />
-              <ShowcaseStepArrow
-                direction="next"
-                label="Next photo"
-                onClick={onNext}
-              />
-            </div>
+            {/* Icons first in this mode: the card can run to 70vh, which would
+                push the only way out below the fold. */}
+            {iconRow}
             {/* The dashboard's own Details card, not a second summary — same
                 component the deck below the photo renders. */}
-            <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+            <div className="mt-1 max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
               <ListingSidebar details={detailsPanelProps} />
             </div>
           </>
@@ -473,35 +491,7 @@ export default function ShowcaseSectionRail({
           </>
         )}
 
-        {/* Icons rather than tiles: these switch what the rail is showing
-            rather than summarising a section. */}
-        <div className="mt-1 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() =>
-              setDetailsOnly((on) => {
-                onDetailsOnlyChange?.(!on);
-                return !on;
-              })
-            }
-            aria-pressed={detailsOnly}
-            aria-label={detailsOnly ? "Show listing tiles" : "Show details summary"}
-            title="Details"
-            className={railIconClass(detailsOnly)}
-          >
-            <DetailsGlyph />
-          </button>
-          <button
-            type="button"
-            onClick={() => openMap(true)}
-            aria-expanded={false}
-            aria-label="Open map"
-            title="Map"
-            className={railIconClass(false)}
-          >
-            <MapGlyph />
-          </button>
-        </div>
+        {detailsOnly ? null : iconRow}
       </div>
     </>
   );

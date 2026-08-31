@@ -283,14 +283,29 @@ export default function ListingShowcaseClient({
         <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
 
-        {railDetailsOnly ? null : (
+        {/*
+         * Both arrows stay pinned to opposite edges. With the Details card
+         * showing they lift clear of it — the rail's own next arrow is inside
+         * the tile stack, which that mode hides, so the hero supplies it.
+         */}
+        <ShowcaseStepArrow
+          direction="prev"
+          label="Previous photo"
+          onClick={() => step(-1)}
+          className={`absolute left-3 z-20 sm:left-6 ${
+            railDetailsOnly
+              ? "top-[calc(50%-14rem)]"
+              : "top-1/2 -translate-y-1/2"
+          }`}
+        />
+        {railDetailsOnly ? (
           <ShowcaseStepArrow
-            direction="prev"
-            label="Previous photo"
-            onClick={() => step(-1)}
-            className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
+            direction="next"
+            label="Next photo"
+            onClick={() => step(1)}
+            className="absolute right-3 top-[calc(50%-14rem)] z-20 sm:right-6"
           />
-        )}
+        ) : null}
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
           insight={insight}
@@ -316,7 +331,6 @@ export default function ListingShowcaseClient({
               : null
           }
           detailsPanelProps={detailsPanelProps}
-          onPrev={() => step(-1)}
           onNext={() => step(1)}
           onMapStateChange={setMapState}
           onDetailsOnlyChange={setRailDetailsOnly}
