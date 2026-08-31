@@ -32,6 +32,9 @@ export default function AdminServerPanel({
   uiKit,
   intelDescriptorSizes,
   apiCosts,
+  map,
+  statusLogic,
+  docs,
 }: {
   apiRoutes: ReactNode;
   siteMenu: ReactNode;
@@ -39,6 +42,9 @@ export default function AdminServerPanel({
   uiKit: ReactNode;
   intelDescriptorSizes: ReactNode;
   apiCosts: ReactNode;
+  map: ReactNode;
+  statusLogic: ReactNode;
+  docs: ReactNode;
 }) {
   const [panel, setPanel] = useState<AdminServerPanelId>("api-routes");
 
@@ -69,6 +75,9 @@ export default function AdminServerPanel({
     "ui-kit": uiKit,
     "intel-descriptor-sizes": intelDescriptorSizes,
     "api-costs": apiCosts,
+    map,
+    "status-logic": statusLogic,
+    docs,
   };
   const active = ADMIN_SERVER_PANELS.find((item) => item.id === panel);
 

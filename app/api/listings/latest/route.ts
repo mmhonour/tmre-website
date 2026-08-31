@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import { getSyncMeta, hydrateSyncMetaStore } from '@/lib/db/sync-meta-store'
 import { fetchLatestUpdatedListings, fetchTownUpdateStats } from '@/lib/latest-listings'
+import { getLatestFeedSizeFresh } from '@/lib/latest-feed-size-config'
 import { syncListingsSmart } from '@/lib/listings-sync'
 
 export const runtime = 'nodejs'
@@ -11,13 +12,18 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const since = searchParams.get('since')?.trim() || null
   const town = searchParams.get('town')?.trim() || null
-  const limitRaw = Number(searchParams.get('limit') ?? '30')
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 250) : 30
+  const limitParam = searchParams.get('limit')
 
   // Latest listings are served from Postgres / feed cache only. RETS pulls happen
   // on Incremental (Admin / */30 cron), never per page request.
   try {
     await hydrateSyncMetaStore()
+    // An explicit ?limit wins (town expands ask for their own size); otherwise
+    // use whatever Admin → Web server → Latest rules has the feed set to.
+    const limitRaw = Number(limitParam ?? '')
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 250)
+      : await getLatestFeedSizeFresh()
     const listings = await fetchLatestUpdatedListings({ since, limit, town })
     // Town-expand requests only need listings; townStats runs a heavy aggregate
     // and has caused 502s that blocked the whole response.
@@ -59,7 +65,9 @@ export async function GET(req: NextRequest) {
 export async function POST() {
   try {
     const result = await syncListingsSmart()
-    const listings = await fetchLatestUpdatedListings({ limit: 30 })
+    const listings = await fetchLatestUpdatedListings({
+      limit: await getLatestFeedSizeFresh(),
+    })
     return NextResponse.json({
       ok: result.towns.every((row) => row.ok),
       sync: result,

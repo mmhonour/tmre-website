@@ -1,7 +1,7 @@
 import { WESTPORT_VISION_GIS_HOME } from "@/lib/vision-gis-towns";
 
 /**
- * Visual inventory for Admin → Architecture → Site architecture.
+ * Visual inventory for Admin → Web server → Site architecture.
  * DNS truth (checked 10 Aug 2026): authoritative nameservers are Netlify DNS
  * (NS1: dns*.p08.nsone.net). Cloudflare is R2 photos — not the DNS host.
  * Cloudflare Email Routing cannot receive while NS stay on Netlify.

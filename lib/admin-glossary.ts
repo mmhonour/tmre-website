@@ -1081,7 +1081,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Latest',
     category: 'product',
     definition:
-      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h and use the most recent ask→ask move (stats_cache key listing-price-change:v1:{id}, $ + %; a later move overwrites). New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Architecture → Latest rules). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
+      'Public /latest (“30 on 30”): up to 30 event rows only — Coming Soon, New, Back on Market (Active after Coming Soon / UC / UC-CTS / Temp off market), Reduced, or Increased. Reduced/Increased require MLS PriceChangeTimestamp within 36h and use the most recent ask→ask move (stats_cache key listing-price-change:v1:{id}, $ + %; a later move overwrites). New ranks by list date; CS/BOM by status-change. ModificationTimestamp bumps never earn a slot or move a row into “today.” Under Contract / UC-CTS and Pending never appear. Fills today’s Eastern-day events first (event clock desc), then the prior day. Rules live in lib/latest-status-rules.ts (Admin → Web server → Latest rules). Does not call RETS on page view — reads Postgres / a prebuilt feed cache (max ~45m) rebuilt after Incremental. Signup for listing alerts also lives on /latest.',
   },
   {
     term: 'Closed (page)',
@@ -1187,7 +1187,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Netlify DNS',
     category: 'product',
     definition:
-      'Authoritative nameservers for tmrebuilder.com (live check 10 Aug 2026: dns1–4.p08.nsone.net / NS1). This is where apex A/CNAME, Resend SPF/DKIM TXT, and inbound MX for a mail forwarder are published. Distinct from Netlify the app host (site + Lane 3). Not Cloudflare — a Cloudflare zone may exist for R2/Email Routing UI, but the public internet does not use Cloudflare as DNS while NS stay here. See Admin → Architecture → Site architecture.',
+      'Authoritative nameservers for tmrebuilder.com (live check 10 Aug 2026: dns1–4.p08.nsone.net / NS1). This is where apex A/CNAME, Resend SPF/DKIM TXT, and inbound MX for a mail forwarder are published. Distinct from Netlify the app host (site + Lane 3). Not Cloudflare — a Cloudflare zone may exist for R2/Email Routing UI, but the public internet does not use Cloudflare as DNS while NS stay here. See Admin → Web server → Site architecture.',
   },
   {
     term: 'MX (Mail Exchanger)',

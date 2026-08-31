@@ -43,8 +43,10 @@ function tabFromLocation(): AdminTabId {
     }
     return "syncs";
   }
+  // Architecture was folded into Web server; its panels kept their ids.
+  if (queryTab === "architecture") return "server";
   if (queryTab && LEGACY_ADMIN_TAB_TO_ARCHITECTURE[queryTab]) {
-    return "architecture";
+    return "server";
   }
   if (queryTab && VALID_TABS.has(queryTab)) return queryTab as AdminTabId;
   const hash = window.location.hash.replace(/^#/, "");
@@ -252,7 +254,6 @@ export default function AdminTabbedLayout({
   dataControls,
   communications,
   cookies,
-  architecture,
   syncs,
   r2,
   server,
@@ -266,7 +267,6 @@ export default function AdminTabbedLayout({
   dataControls: ReactNode;
   communications: ReactNode;
   cookies: ReactNode;
-  architecture: ReactNode;
   syncs: ReactNode;
   r2: ReactNode;
   server: ReactNode;
@@ -319,10 +319,6 @@ export default function AdminTabbedLayout({
       if (!isAdminPostgresPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "schema");
       }
-    } else if (next === "architecture") {
-      if (!isAdminArchitecturePanelId(url.searchParams.get("panel"))) {
-        url.searchParams.set("panel", "map");
-      }
     } else if (next === "communications") {
       if (!isAdminCommunicationsPanelId(url.searchParams.get("panel"))) {
         url.searchParams.set("panel", "market-digest");
@@ -351,7 +347,6 @@ export default function AdminTabbedLayout({
     "data-controls": dataControls,
     communications,
     cookies,
-    architecture,
     r2,
     server,
     glossary,
