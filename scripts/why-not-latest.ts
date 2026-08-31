@@ -17,6 +17,7 @@ import { existsSync } from 'node:fs'
 
 import { query } from '../lib/db/postgres'
 import { getSyncMeta } from '../lib/db/sync-meta'
+import { LATEST_GLOBAL_FEED_LIMIT } from '../lib/latest-feed-cache'
 import { fetchLatestUpdatedListings } from '../lib/latest-listings'
 import {
   NEW_LISTING_MAX_DOM,
@@ -59,8 +60,9 @@ function money(v: unknown): string {
 /** Returns true when this listing is eligible; false when it is not. */
 async function inspect(
   mls: string,
-  liveFeedIds: Set<string>,
+  liveFeedIds: Map<string, number>,
   cachedFeedIds: Set<string> | null,
+  pageLimit: number,
 ): Promise<boolean> {
   const rows = await query<{ row: Record<string, unknown> }>(
     `SELECT to_jsonb(l) AS row FROM listings l WHERE mls_id = $1`,
@@ -130,8 +132,11 @@ async function inspect(
   // Live and cached are separate answers. The page reads a warm snapshot when
   // it passes its freshness gates, so "eligible in the database but absent from
   // the cache" is a real and otherwise invisible state.
-  const live = liveFeedIds.has(mls)
-  console.info(`\neligible now (live query)?  ${live ? 'YES' : 'NO'}`)
+  const rank = liveFeedIds.get(mls) ?? null
+  const live = rank != null
+  console.info(
+    `\neligible now (live query)?  ${live ? `YES — ranked #${rank} of ${liveFeedIds.size}` : 'NO'}`,
+  )
   if (cachedFeedIds) {
     console.info(
       `present in warm feed cache? ${cachedFeedIds.has(mls) ? 'YES' : 'NO'}`,
@@ -140,16 +145,23 @@ async function inspect(
     console.info('present in warm feed cache? (no cache stored)')
   }
 
-  if (live && cachedFeedIds && !cachedFeedIds.has(mls)) {
+  // The most boring cause and the easiest to miss: the listing is eligible,
+  // current, and simply below the cut. /latest renders a fixed number of rows.
+  if (rank != null && rank > pageLimit) {
     console.info(
-      '  Eligible but missing from the warm cache — the page will show it only',
-      'once that cache is rebuilt, or immediately if the cache fails its',
-      'freshness gates. Rebuild: Admin → Syncs → Sync now on Stats cache.',
+      `  BELOW THE CUT. /latest renders the top ${pageLimit}; this is #${rank}.`,
+      'Nothing is broken — the page is just shorter than the news. Select its',
+      'town in the right-hand stats panel to see it, or raise the feed size.',
+    )
+  } else if (live && cachedFeedIds && !cachedFeedIds.has(mls)) {
+    console.info(
+      '  Eligible and inside the cut, but missing from the warm cache — the page',
+      'will show it once that cache is rebuilt.',
     )
   } else if (live) {
     console.info(
-      '  In the feed. If the page still hides it, the page is filtering: a town',
-      'or zip selection, a status pill, or a collapsed day group.',
+      '  In the feed and inside the cut. If the page still hides it, the page is',
+      'filtering: a town or zip selection, a status pill, or a collapsed group.',
     )
   } else {
     console.info(
@@ -176,12 +188,17 @@ async function main() {
       .then((m) => m.readLatestGlobalFeedCache(400))
       .catch(() => null),
   ])
-  const liveIds = new Set(liveFeed.map((r) => r.mlsId))
+  const liveIds = new Map(liveFeed.map((r, i) => [r.mlsId, i + 1]))
   const cachedIds = cachedFeed ? new Set(cachedFeed.map((r) => r.mlsId)) : null
 
   console.info(
-    `live feed rows ${liveFeed.length} · warm cache rows ${cachedFeed?.length ?? '(none)'}`,
+    `live feed rows ${liveFeed.length} · warm cache rows ${cachedFeed?.length ?? '(none)'} · /latest renders ${LATEST_GLOBAL_FEED_LIMIT}`,
   )
+  if (liveFeed.length > LATEST_GLOBAL_FEED_LIMIT) {
+    console.info(
+      `${liveFeed.length - LATEST_GLOBAL_FEED_LIMIT} eligible listings are below the cut and cannot appear on the default view.`,
+    )
+  }
   console.info(
     `last incremental End ${ageLabel(await getSyncMeta('last_incremental_sync'))}`,
   )
@@ -199,7 +216,7 @@ async function main() {
 
   let missing = 0
   for (const mls of ids) {
-    if (!(await inspect(mls, liveIds, cachedIds))) missing += 1
+    if (!(await inspect(mls, liveIds, cachedIds, LATEST_GLOBAL_FEED_LIMIT))) missing += 1
   }
 
   const failures = await query<{ finished_at: string; detail: string | null }>(
