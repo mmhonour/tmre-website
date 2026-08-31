@@ -31,6 +31,8 @@ import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ListingSubnav, {
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
+import { listingCriteriaLinkSlotId } from "@/components/listing/ListingCriteriaSideLayout";
+import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import {
   SHOWCASE_SECTION_IDS,
   scrollToShowcaseSection,
@@ -76,15 +78,27 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 function Section({
   id,
   title,
+  criteriaSlotId,
   children,
 }: {
   id: string;
   title: string;
+  /**
+   * Portal target for the section's Criteria toggle. Production renders this
+   * beside its section H2; without it `ListingCriteriaSideLayout` falls back to
+   * a full-width row above the body, which pushes everything down.
+   */
+  criteriaSlotId?: string;
   children: React.ReactNode;
 }) {
   return (
     <section id={id} className="scroll-mt-24 border-t border-white/10 pt-5">
-      <SectionHeading>{title}</SectionHeading>
+      <div className="flex items-baseline justify-between gap-4">
+        <SectionHeading>{title}</SectionHeading>
+        {criteriaSlotId ? (
+          <div id={criteriaSlotId} className="flex shrink-0 justify-end" />
+        ) : null}
+      </div>
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -135,6 +149,8 @@ export default function ShowcaseDetailsPanel({
    */
   const [txTab, setTxTab] = useState<TransactionTab>("comparables");
   const [activeTab, setActiveTab] = useState<ListingTab>("overview");
+  /** Desktop only — the Overview tab reveals the remarks as a full-width block. */
+  const [showOverviewSection, setShowOverviewSection] = useState(false);
   const { goldilocksScore, goldilocksBreakdown } = score;
   const status = formatMlsStatus(listing.status);
 
@@ -191,7 +207,12 @@ export default function ShowcaseDetailsPanel({
     if (isTransactionTab(tab)) setTxTab(tab);
     // Overview content *is* the remarks, which live in the dashboard deck on
     // desktop — open that card rather than scrolling to an empty anchor.
-    if (tab === "overview" && isDesktop) setActiveDeckCard("remarks");
+    if (isDesktop) {
+      // Overview shows the remarks in the main column, so the deck card that
+      // duplicates them minimises rather than competing with it.
+      setShowOverviewSection(tab === "overview");
+      if (tab === "overview") setActiveDeckCard(null);
+    }
     const section = showcaseSectionForTab(tab);
     if (section) {
       setActiveTab(tab);
@@ -352,7 +373,7 @@ export default function ShowcaseDetailsPanel({
 
           <div className="mt-6 grid grid-cols-1 items-start gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)]">
             <div className="flex min-w-0 flex-col gap-6 lg:col-start-1">
-              <section className="lg:hidden">
+              <section className={showOverviewSection ? undefined : "lg:hidden"}>
                 {remarks ? (
                   <p className="whitespace-pre-line text-base leading-relaxed text-white/80">
                     {remarks}
@@ -428,6 +449,9 @@ export default function ShowcaseDetailsPanel({
               <Section
                 id={SHOWCASE_SECTION_IDS.comps}
                 title={TRANSACTION_TITLES[txTab]}
+                criteriaSlotId={listingCriteriaLinkSlotId(
+                  LISTING_SECTION_IDS[txTab],
+                )}
               >
                 {/* Same bodies the Overview slide panel and the dedicated
                 /comparables and /uag routes render. */}
@@ -447,7 +471,13 @@ export default function ShowcaseDetailsPanel({
                 )}
               </Section>
 
-              <Section id={SHOWCASE_SECTION_IDS.if} title="What if">
+              <Section
+                id={SHOWCASE_SECTION_IDS.if}
+                title="What if"
+                criteriaSlotId={listingCriteriaLinkSlotId(
+                  LISTING_SECTION_IDS.if,
+                )}
+              >
                 <ListingIfPageContent
                   mlsId={listing.mlsId}
                   addressHint={street || addressHint}
