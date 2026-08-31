@@ -30,7 +30,10 @@ export default function MarketPulseDeltaLabel({
   }, [open]);
 
   return (
-    <span ref={rootRef} className="relative inline-flex min-w-0 items-baseline gap-1">
+    <span
+      ref={rootRef}
+      className="group/delta relative inline-flex min-w-0 items-baseline gap-1"
+    >
       <button
         type="button"
         aria-expanded={open}
@@ -45,20 +48,28 @@ export default function MarketPulseDeltaLabel({
           {pctLabel}
         </span>
       ) : null}
-      {open ? (
-        <span
-          id={popupId}
-          role="tooltip"
-          className="absolute left-0 top-[calc(100%+6px)] z-30 w-[min(16.5rem,70vw)] rounded-xl border border-black/10 bg-white px-3 py-2.5 text-left font-normal normal-case tracking-normal shadow-lg shadow-black/15"
-        >
-          <span className="block font-mono text-[10px] tracking-[0.15em] uppercase text-[var(--mp-accent,#C8A951)]">
-            Why average runs high
-          </span>
-          <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-black/65">
-            {PRICE_DELTA_EXPLAIN}
-          </span>
+      {/*
+       * Always mounted so a pointer can reveal it without a click. Clicking
+       * pins it, which is what a touch device gets and what keeps it readable
+       * while you move onto the text. Tailwind compiles hover to
+       * `(hover: hover)`, so a touch device never triggers it on tap.
+       */}
+      <span
+        id={popupId}
+        role="tooltip"
+        className={`absolute left-0 top-[calc(100%+6px)] z-30 w-[min(16.5rem,70vw)] rounded-xl border border-black/10 bg-white px-3 py-2.5 text-left font-normal normal-case tracking-normal shadow-lg shadow-black/15 transition-opacity duration-150 ${
+          open
+            ? "opacity-100"
+            : "pointer-events-none opacity-0 group-hover/delta:opacity-100 group-focus-within/delta:opacity-100"
+        }`}
+      >
+        <span className="block font-mono text-[10px] tracking-[0.15em] uppercase text-[var(--mp-accent,#C8A951)]">
+          Why average runs high
         </span>
-      ) : null}
+        <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-black/65">
+          {PRICE_DELTA_EXPLAIN}
+        </span>
+      </span>
     </span>
   );
 }
