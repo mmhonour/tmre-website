@@ -189,6 +189,9 @@ export default function ShowcaseDetailsPanel({
   const handleTabSelect = (tab: ListingTab) => {
     if (tab === "admin") return;
     if (isTransactionTab(tab)) setTxTab(tab);
+    // Overview content *is* the remarks, which live in the dashboard deck on
+    // desktop — open that card rather than scrolling to an empty anchor.
+    if (tab === "overview" && isDesktop) setActiveDeckCard("remarks");
     const section = showcaseSectionForTab(tab);
     if (section) {
       setActiveTab(tab);
@@ -245,7 +248,7 @@ export default function ShowcaseDetailsPanel({
         */}
           <div
             ref={stickyRef}
-            className="showcase-sticky-chrome z-30 lg:sticky lg:top-24"
+            className="showcase-sticky-chrome sticky top-20 z-30 lg:top-24"
           >
             <div className="mb-2 flex items-start justify-between gap-3">
               <ListingBackLink className="mb-0" />
@@ -343,12 +346,13 @@ export default function ShowcaseDetailsPanel({
           dashboard there; below `lg` they stay as stacked sections, since the
           mobile layout is being reviewed separately.
         */}
+          {/* Always-present anchor: the mobile remarks block below is display:
+              none at `lg`, and you cannot scroll to a hidden element. */}
+          <div id={SHOWCASE_SECTION_IDS.overview} aria-hidden />
+
           <div className="mt-6 grid grid-cols-1 items-start gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_min(22rem,32vw)]">
             <div className="flex min-w-0 flex-col gap-6 lg:col-start-1">
-              <section
-                id={SHOWCASE_SECTION_IDS.overview}
-                className="scroll-mt-24 lg:hidden"
-              >
+              <section className="lg:hidden">
                 {remarks ? (
                   <p className="whitespace-pre-line text-base leading-relaxed text-white/80">
                     {remarks}
