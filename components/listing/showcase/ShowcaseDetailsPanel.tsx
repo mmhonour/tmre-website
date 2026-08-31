@@ -15,8 +15,7 @@ import ListingSidebar from "@/components/listing/ListingSidebar";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { listingPanelCompactClass } from "@/components/listing/listing-frame";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
-import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
-import { fmtMoney } from "@/lib/listing-history";
+import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import { DealBoardStatusBadge } from "@/components/intelligence/deal-board/deal-board-shared";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
@@ -119,6 +118,7 @@ export default function ShowcaseDetailsPanel({
   detailRows,
   isRental,
   photoCount,
+  detailsPanelProps,
   onSelectPhoto,
   score,
 }: {
@@ -131,6 +131,8 @@ export default function ShowcaseDetailsPanel({
   detailRows: ShowcaseDetailRow[];
   isRental: boolean;
   photoCount: number;
+  /** Built once by the host so the hero rail and this deck cannot drift. */
+  detailsPanelProps: ListingDetailsSchoolsPanelProps;
   /** Sends the hero back to a chosen photo — keeps Photos on this page. */
   onSelectPhoto: (index: number) => void;
   /** Score + median-band fields straight off the listing chrome API. */
@@ -240,20 +242,6 @@ export default function ShowcaseDetailsPanel({
     >
       {child}
     </div>
-  );
-
-  const detailsPanelProps = buildListingDetailsPanelProps(
-    { ...listing, townHint: city },
-    fmtMoney,
-    {
-      listingId: listing.mlsId,
-      addressHint: street || addressHint,
-      townHint: city,
-      cityMedianPpsf: score.cityMedianPpsf,
-      listingPricePerSqft: score.pricePerSqft,
-      medianPpsfBand: score.medianPpsfBand,
-      marketBandLabel: score.marketBandLabel,
-    },
   );
 
   return (

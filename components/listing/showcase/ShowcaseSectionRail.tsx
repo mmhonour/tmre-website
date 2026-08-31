@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
+import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import ListingSidebar from "@/components/listing/ListingSidebar";
 import {
   LISTING_RECENTLY_SOLD_PANEL_ID,
   LISTING_SALE_ON_MARKET_PANEL_ID,
@@ -153,6 +155,7 @@ export default function ShowcaseSectionRail({
   subject,
   townHint,
   postalCode,
+  detailsPanelProps,
   onNext,
   onMapStateChange,
 }: {
@@ -162,6 +165,7 @@ export default function ShowcaseSectionRail({
   subject: DealBoardMapListing | null;
   townHint?: string | null;
   postalCode?: string | null;
+  detailsPanelProps: ListingDetailsSchoolsPanelProps;
   onNext: () => void;
   /** Lets the hero shift its price clear of the map column. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
@@ -393,23 +397,10 @@ export default function ShowcaseSectionRail({
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
         {detailsOnly ? (
-          <div className="w-full bg-[#0d1424]/85 p-4 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
-              Details
-            </p>
-            <dl className="divide-y divide-white/10">
-              {detailRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-baseline justify-between gap-4 py-2"
-                >
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
-                    {row.label}
-                  </dt>
-                  <dd className="text-right text-sm text-white/90">{row.value}</dd>
-                </div>
-              ))}
-            </dl>
+          /* The dashboard's own Details card, not a second summary — same
+             component the deck below the photo renders. */
+          <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+            <ListingSidebar details={detailsPanelProps} />
           </div>
         ) : (
           <>

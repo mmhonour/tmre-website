@@ -10,8 +10,10 @@ import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
+import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
 import { formatListingHeaderPrice } from "@/lib/listing-header-price";
 import {
+  fmtMoney,
   formatMlsStatus,
   primaryListingPrice,
   primaryListingPriceIsClosed,
@@ -227,6 +229,20 @@ export default function ListingShowcaseClient({
       ? formatListingHeaderPrice(primaryPrice)
       : null;
   const isRental = isRentalListing(listing);
+  // Built once here so the hero rail and the dashboard deck below cannot drift.
+  const detailsPanelProps = buildListingDetailsPanelProps(
+    { ...listing, townHint: city },
+    fmtMoney,
+    {
+      listingId: listing.mlsId,
+      addressHint: street || addressHint,
+      townHint: city,
+      cityMedianPpsf: data?.cityMedianPpsf,
+      listingPricePerSqft: data?.pricePerSqft,
+      medianPpsfBand: data?.medianPpsfBand,
+      marketBandLabel: data?.marketBandLabel,
+    },
+  );
   const remarks =
     listing.remarks?.trim() ||
     REMARKS_KEYS.map((k) => listing.raw?.[k])
@@ -295,6 +311,7 @@ export default function ListingShowcaseClient({
                 }
               : null
           }
+          detailsPanelProps={detailsPanelProps}
           onNext={() => step(1)}
           onMapStateChange={setMapState}
         />
@@ -430,6 +447,7 @@ export default function ListingShowcaseClient({
         detailRows={detailRows}
         isRental={isRental}
         photoCount={total}
+        detailsPanelProps={detailsPanelProps}
         onSelectPhoto={(photoIndex) => {
           setIndex(photoIndex);
           setPaused(true);
