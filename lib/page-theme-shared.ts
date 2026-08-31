@@ -323,8 +323,25 @@ export function normalizeMarketPulseTheme(
   return { ok: true, theme };
 }
 
+/** Rough relative luminance, enough to tell a dark card from a light one. */
+function isDarkHex(hex: string): boolean {
+  const v = hex.replace("#", "");
+  if (v.length !== 6) return false;
+  const r = parseInt(v.slice(0, 2), 16) / 255;
+  const g = parseInt(v.slice(2, 4), 16) / 255;
+  const b = parseInt(v.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5;
+}
+
 export function marketPulseThemeCssVars(theme: MarketPulseTheme) {
+  // Hairlines and empty bar tracks were black-tinted everywhere, which vanishes
+  // the moment a theme puts a dark colour behind them. Deriving them from the
+  // card means every preset — including ones saved in the admin — gets the
+  // right tint without anyone restating it.
+  const onDark = isDarkHex(theme.cardBackground);
   return {
+    "--mp-hairline": onDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+    "--mp-track": onDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)",
     "--mp-page-bg": theme.pageBackground,
     "--mp-card-bg": theme.cardBackground,
     "--mp-surface": theme.surface,

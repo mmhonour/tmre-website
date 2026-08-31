@@ -9,17 +9,11 @@ import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
  * panel does not have to import the whole brief to draw one bar.
  */
 
-/** Value sits on the fill (cream) vs the empty track (navy). */
-export const BAR_VALUE_ON_FILL = "text-[#F6F1E8]";
-export const BAR_VALUE_ON_EMPTY = "text-[var(--mp-text)]";
-
 /**
  * Rough share of the track the 10px mono percent needs. The overlay is placed
  * off the fill, which is itself a percentage, so the reserve has to be one too.
  */
-const ASIDE_SPAN_PCT = 16;
-/** The dollar value right-aligns across the whole track and must stay clear. */
-const VALUE_SPAN_PCT = 14;
+const ASIDE_SPAN_PCT = 24;
 /**
  * Strip held clear past the right edge of every track. A percent with no room
  * left beside its fill moves out here instead of covering the fill or the
@@ -37,10 +31,10 @@ export const BAR_EXTERIOR_LANE = "mr-8 sm:mr-10";
 export type BarAsidePlacement = "right" | "outside-right" | "left" | "label";
 
 /**
- * A positive percent reads off the fill's right edge, then hops the track's
- * right border once the fill reaches it or crowds the right-aligned dollars.
- * A negative one mirrors that to the left, where the row label holds the only
- * space outside the track.
+ * A positive percent reads off the fill's right edge, and once the fill runs
+ * to the end of the track it leaves the panel entirely rather than climbing
+ * over the value beside it. A negative one mirrors that to the left, where the
+ * row label holds the only space outside the track.
  */
 export function barAsidePlacement(
   leftPct: number,
@@ -52,63 +46,8 @@ export function barAsidePlacement(
   if (negative) {
     return fillLeft >= ASIDE_SPAN_PCT ? "left" : "label";
   }
-  return 100 - fillRight >= ASIDE_SPAN_PCT + VALUE_SPAN_PCT
-    ? "right"
-    : "outside-right";
+  return 100 - fillRight >= ASIDE_SPAN_PCT ? "right" : "outside-right";
 }
-
-export function BarValueOverlay({
-  value,
-  aside,
-  asidePlacement = "right",
-  leftPct,
-  widthPct,
-  colorClass,
-}: {
-  value: ReactNode;
-  aside?: ReactNode;
-  asidePlacement?: BarAsidePlacement;
-  leftPct: number;
-  widthPct: number;
-  colorClass?: string;
-}) {
-  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
-  const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
-  const fontClass = "[font-family:var(--mp-mono-font)]";
-  const base = `pointer-events-none absolute inset-y-0 z-[1] flex items-center text-[10px] tabular-nums whitespace-nowrap ${fontClass}`;
-  // Every value right-aligns in the grey track; only a full bar puts it on the fill.
-  const valueColor =
-    colorClass ?? (fillRight >= 95 ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
-  // `label` puts the percent next to the row label instead of on the track.
-  const showAside = aside != null && asidePlacement !== "label";
-  const asideClass =
-    asidePlacement === "left"
-      ? `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`
-      : `justify-start pl-1 ${BAR_VALUE_ON_EMPTY}`;
-  const asideStyle =
-    asidePlacement === "left"
-      ? { left: 0, right: `${100 - fillLeft}%` }
-      : asidePlacement === "outside-right"
-        ? { left: "100%" }
-        : { left: `${fillRight}%`, right: 0 };
-
-  return (
-    <>
-      {showAside ? (
-        <span className={`${base} ${asideClass}`} style={asideStyle}>
-          {aside}
-        </span>
-      ) : null}
-      <span className={`${base} inset-x-0 justify-end pr-1 ${valueColor}`}>
-        {value}
-      </span>
-    </>
-  );
-}
-
-/** Percent shown beside a row label when it cannot fit around its own bar. */
-export const BAR_ASIDE_LABEL_CLASS =
-  "shrink-0 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums text-[var(--mp-text)]";
 
 export const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",
@@ -146,4 +85,98 @@ export function formatMetricValue(
   if (kind === "dom") return fmtDom(display);
   if (kind === "money") return formatMarketPulseMoney(display);
   return fmtActive(display);
+}
+
+/** Denim card the town panels and the unstacked charts both sit on. */
+export const PANEL_SURFACE = "rounded-xl bg-[#26374F] py-3 pl-4 pr-11";
+export const PANEL_TITLE =
+  "[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold";
+export const PANEL_LABEL =
+  "truncate text-right [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-white/45";
+
+/**
+ * One labelled bar on a denim panel, shared so a town's stacked metrics and an
+ * unstacked chart's towns are drawn by the same code rather than two that drift.
+ *
+ * The label right-aligns to its bar, every row is the same height so nothing
+ * wraps, and the value keeps its own column. The percent follows the brief's
+ * placement — beside the fill, or past the track's right border once the fill
+ * reaches the end — which the 6px track is too thin to hold, so it centres on
+ * the bar and overhangs it.
+ */
+export function PanelBarRow({
+  label,
+  valueText,
+  leftPct,
+  widthPct,
+  aside,
+  asideNegative = false,
+  widthTransition = "",
+  tooltip,
+  dense = false,
+}: {
+  label: ReactNode;
+  valueText: ReactNode;
+  leftPct: number;
+  widthPct: number;
+  aside?: string | null;
+  asideNegative?: boolean;
+  widthTransition?: string;
+  tooltip?: ReactNode;
+  /** Closes the rows up where a group reads as one figure rather than a list. */
+  dense?: boolean;
+}) {
+  const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
+  const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
+  return (
+    <div
+      className={`group relative grid grid-cols-[7.75rem_1fr_auto] items-center gap-2 ${
+        dense ? "h-[18px]" : "h-6"
+      }`}
+    >
+      <span className={PANEL_LABEL}>
+        {label}
+        {placement === "label" && aside ? (
+          <span className="ml-1 tabular-nums text-white/80">{aside}</span>
+        ) : null}
+      </span>
+      <span className="relative block h-1.5 w-full">
+        <span className="block h-full w-full overflow-hidden rounded-full bg-white/10">
+          <span
+            className={`block h-full rounded-full bg-gold/70 transition-[width,margin-left] ease-out ${widthTransition}`}
+            style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
+          />
+        </span>
+        {aside && (placement === "left" || placement === "right") ? (
+          <span
+            className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70 ${
+              placement === "left" ? "text-right" : ""
+            }`}
+            style={
+              placement === "left"
+                ? { right: `${100 - leftPct}%`, marginRight: 4 }
+                : { left: `${fillRight}%`, marginLeft: 4 }
+            }
+          >
+            {aside}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-white/90">
+        {valueText}
+      </span>
+      {/*
+       * A fill that runs to the end of the track leaves the percent nowhere on
+       * it, and the space immediately right belongs to the value. It steps out
+       * of the row into the panel's own gutter, clearing both — kept inside the
+       * panel so it cannot land on the lookback rail beside the first card.
+       */}
+      {aside && placement === "outside-right" ? (
+        <span className="pointer-events-none absolute top-1/2 left-full ml-2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70">
+          {aside}
+        </span>
+      ) : null}
+      {tooltip}
+    </div>
+  );
 }
