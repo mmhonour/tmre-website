@@ -52,16 +52,7 @@ export function marketPulseTownMetrics(
     priceDelta: {
       barClassName: METRIC_COLORS.priceDelta,
       valueKind: "money",
-      calcOf: (r) =>
-        r.priceDelta == null
-          ? undefined
-          : {
-              summary:
-                "Average minus median on the same closed pool — a high-end tail pulls the average above the typical sale.",
-              detail: [
-                `Average ${r.averagePrice ?? "—"} − median ${r.medianPrice ?? "—"}`,
-              ],
-            },
+      calcOf: (r) => r.priceDeltaCalc,
     },
     averagePrice: {
       barClassName: METRIC_COLORS.averagePrice,

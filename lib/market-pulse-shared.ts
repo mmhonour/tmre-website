@@ -1,7 +1,10 @@
 import { buildIntelligenceShareHref } from '@/lib/intelligence-search-url'
 import {
+  statsActiveByMonthHref,
   statsAvgDomHref,
   statsListToAskHref,
+  statsMedianByTownHref,
+  statsPriceSpreadHref,
   statsMonthsSupplyHref,
   statsSalesTrendHref,
 } from '@/lib/stats-url'
@@ -119,4 +122,42 @@ export function marketPulseTownListToAskStatsHref(
     city: marketPulseTownLabelToStatsCity(cityLabel),
     kind: filters.tx === 'rental' ? 'rental' : 'sale',
   })
+}
+
+/**
+ * The Stats chart that stands behind one Market Pulse bar, or null where none
+ * does. Delta and Average have no chart of their own on Stats — Delta is a gap
+ * between two figures rather than a series, and Average is only ever shown
+ * beside the median — so those bars stay unlinked rather than pointing
+ * somewhere that does not answer the question they raise.
+ */
+export function marketPulseTownMetricStatsHref(
+  metricId: string,
+  cityLabel: string,
+  categoryId: MarketPulseCategoryId,
+): string | null {
+  const filters = marketPulseCategoryToIntelligenceFilters(categoryId)
+  const options = {
+    city: marketPulseTownLabelToStatsCity(cityLabel),
+    kind: (filters.tx === 'rental' ? 'rental' : 'sale') as 'rental' | 'sale',
+  }
+  switch (metricId) {
+    case 'inventory':
+      return statsActiveByMonthHref(options)
+    case 'monthsSupply':
+      return statsMonthsSupplyHref(options)
+    case 'avgDom':
+      return statsAvgDomHref(options)
+    case 'closed':
+      return statsSalesTrendHref(options)
+    case 'medianPrice':
+      return statsMedianByTownHref(options)
+    case 'priceDelta':
+    case 'averagePrice':
+      return statsPriceSpreadHref(options)
+    case 'saleToAsk':
+      return statsListToAskHref(options)
+    default:
+      return null
+  }
 }

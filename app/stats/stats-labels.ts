@@ -71,3 +71,9 @@ export function statsListToAskTitle(kind: StatsKind): string {
     ? 'List to ask · rentals · by town'
     : 'List to ask · by town'
 }
+
+export function statsPriceSpreadTitle(kind: StatsKind): string {
+  return kind === 'rental'
+    ? 'Median, average and delta · rentals · by town'
+    : 'Median, average and delta · by town'
+}

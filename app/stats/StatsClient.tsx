@@ -32,6 +32,7 @@ import SalesByTownDataTable from "./SalesByTownDataTable";
 import VintageSalesDataTable from "./VintageSalesDataTable";
 import PriceSalesByTownDataTable from "./PriceSalesByTownDataTable";
 import ListToAskByTownDataTable from "./ListToAskByTownDataTable";
+import PriceSpreadByTownDataTable from "./PriceSpreadByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
 import {
@@ -48,6 +49,7 @@ import {
   statsByPriceTownTitle,
   statsByVintageTitle,
   statsListToAskTitle,
+  statsPriceSpreadTitle,
   statsMonthsSupplyByMonthTitle,
   statsMonthsSupplyByMonthTownTitle,
 } from "./stats-labels";
@@ -72,6 +74,10 @@ const MedianPriceBarChart = dynamic(() => import("./MedianPriceBarChart"), { ssr
 const ListToAskByTownChart = dynamic(() => import("./ListToAskByTownChart"), {
   ssr: false,
 });
+const PriceSpreadByTownChart = dynamic(
+  () => import("./PriceSpreadByTownChart"),
+  { ssr: false },
+);
 const AvgDomLineChart = dynamic(() => import("./AvgDomLineChart"), { ssr: false });
 
 export type { StatsCity, StatsKind, Town } from "./stats-towns";
@@ -596,6 +602,7 @@ export default function StatsClient() {
             ? statsByPriceTownTitle(statsKind)
             : statsByPriceTitle(statsKind),
       },
+      { id: "stats-chart-price-spread", label: statsPriceSpreadTitle(statsKind) },
       { id: "stats-chart-list-to-ask", label: statsListToAskTitle(statsKind) },
     );
     if (selectedCity === "All") {
@@ -1118,6 +1125,31 @@ export default function StatsClient() {
                * means anything next to its neighbours, and Market Pulse links
                * here per town, which would land on nothing if it were hidden.
                */}
+              {/*
+               * Median and average with the gap between them — the chart Market
+               * Pulse's Delta and Average bars point at. Shown for every town
+               * selection for the same reason as list to ask: those links are
+               * per town and would land on nothing if it were All-only.
+               */}
+              <StatsChartLazyMount eager={urlChart === "price-spread"}>
+                <StatsChartPrintFrame
+                  chartId="price-spread"
+                  title={statsPriceSpreadTitle(statsKind)}
+                  dataPanel={
+                    <PriceSpreadByTownDataTable
+                      key={`price-spread-data-${statsKind}${chartVersionSuffix}`}
+                      kind={statsKind}
+                    />
+                  }
+                >
+                  <PriceSpreadByTownChart
+                    key={`price-spread-${statsKind}${chartVersionSuffix}`}
+                    kind={statsKind}
+                    selectedCity={selectedCity}
+                  />
+                </StatsChartPrintFrame>
+              </StatsChartLazyMount>
+
               <StatsChartLazyMount eager={urlChart === "list-to-ask"}>
                 <StatsChartPrintFrame
                   chartId="list-to-ask"

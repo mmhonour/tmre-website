@@ -10,24 +10,28 @@ import {
   StatsChartDataTh,
 } from "./StatsChartDataTable";
 import {
-  fetchListToAskRows,
-  formatAskGap,
-  formatVsAsk,
-  type ListToAskRow,
-} from "./list-to-ask-data";
-import { statsListToAskTitle } from "./stats-labels";
+  fetchPriceSpreadRows,
+  formatSpreadMoney,
+  formatSpreadPct,
+  type PriceSpreadRow,
+} from "./price-spread-data";
+import { statsPriceSpreadTitle } from "./stats-labels";
 import { STATS_TOWN_COLOR } from "./stats-town-colors";
 import type { StatsKind } from "./stats-towns";
 
-export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) {
+export default function PriceSpreadByTownDataTable({
+  kind,
+}: {
+  kind: StatsKind;
+}) {
   const [loaded, setLoaded] = useState<{
     kind: StatsKind;
-    rows: ListToAskRow[];
+    rows: PriceSpreadRow[];
   } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchListToAskRows(kind).then((rows) => {
+    fetchPriceSpreadRows(kind).then((rows) => {
       if (!cancelled) setLoaded({ kind, rows });
     });
     return () => {
@@ -41,31 +45,32 @@ export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) 
 
   return (
     <StatsChartDataTable
-      title={statsListToAskTitle(kind)}
+      title={statsPriceSpreadTitle(kind)}
       subtitle={
-        loading ? "Loading…" : `Closed ${noun} against their first asking price`
+        loading ? "Loading…" : `Closed ${noun} · median, average and the gap`
       }
       footer={
         <p className="font-mono text-[10px] text-charcoal/45">
-          Total close prices ÷ total original asks, so larger {noun} carry the
-          weight they should. Closings since 2024 that published both prices.
+          Delta is average minus median on the same pool of {noun}. A few
+          high-end {noun} pull the average above the typical one, so the gap
+          says how top-heavy a town&apos;s market is.
         </p>
       }
     >
       <StatsChartDataHead>
         <StatsChartDataRow>
           <StatsChartDataTh>Town</StatsChartDataTh>
-          <StatsChartDataTh align="right">List to ask</StatsChartDataTh>
-          <StatsChartDataTh align="right">Vs ask</StatsChartDataTh>
-          <StatsChartDataTh align="right">Avg gap</StatsChartDataTh>
-          <StatsChartDataTh align="right">Closings</StatsChartDataTh>
+          <StatsChartDataTh align="right">Median</StatsChartDataTh>
+          <StatsChartDataTh align="right">Average</StatsChartDataTh>
+          <StatsChartDataTh align="right">Delta</StatsChartDataTh>
+          <StatsChartDataTh align="right">Vs median</StatsChartDataTh>
         </StatsChartDataRow>
       </StatsChartDataHead>
       <StatsChartDataBody>
         {rows.length === 0 ? (
           <StatsChartDataRow>
             <StatsChartDataTd colSpan={5} muted>
-              {loading ? "Loading…" : "No closings with a published asking price yet."}
+              {loading ? "Loading…" : "No closed prices for these towns yet."}
             </StatsChartDataTd>
           </StatsChartDataRow>
         ) : (
@@ -77,16 +82,16 @@ export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) 
                 </span>
               </StatsChartDataTd>
               <StatsChartDataTd align="right" bold>
-                {row.pct.toFixed(1)}%
+                {formatSpreadMoney(row.medianPrice)}
               </StatsChartDataTd>
               <StatsChartDataTd align="right">
-                {formatVsAsk(row.vsAsk)}
+                {formatSpreadMoney(row.averagePrice)}
               </StatsChartDataTd>
               <StatsChartDataTd align="right">
-                {formatAskGap(row.dollars)}
+                {formatSpreadMoney(row.priceDelta)}
               </StatsChartDataTd>
               <StatsChartDataTd align="right" muted>
-                {row.count.toLocaleString()}
+                {formatSpreadPct(row.priceDeltaPct)}
               </StatsChartDataTd>
             </StatsChartDataRow>
           ))

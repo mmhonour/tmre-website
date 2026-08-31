@@ -20,6 +20,7 @@ import {
   marketPulseCategoryToIntelligenceFilters,
   marketPulseTownAvgDomStatsHref,
   marketPulseTownListToAskStatsHref,
+  marketPulseTownMetricStatsHref,
   marketPulseTownClosedSalesStatsHref,
   marketPulseTownIntelligenceHref,
   marketPulseTownMonthsSupplyStatsHref,
@@ -320,6 +321,8 @@ export default function MarketPulseContent({
     marketPulseTownAvgDomStatsHref(cityLabel, category);
   const saleToAskTownHref = (cityLabel: string) =>
     marketPulseTownListToAskStatsHref(cityLabel, category);
+  const metricStatsHref = (metricId: string, cityLabel: string) =>
+    marketPulseTownMetricStatsHref(metricId, cityLabel, category);
   const categoryFilter = (
     <div
       className="flex min-w-0 flex-wrap gap-1"
@@ -364,6 +367,7 @@ export default function MarketPulseContent({
       closedSalesTownHref={closedSalesTownHref}
       avgDomTownHref={avgDomTownHref}
       saleToAskTownHref={saleToAskTownHref}
+      metricStatsHref={metricStatsHref}
       kind={
         marketPulseCategoryToIntelligenceFilters(category).tx === "rental"
           ? "rental"

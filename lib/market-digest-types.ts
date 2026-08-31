@@ -49,6 +49,10 @@ export type MarketDigestPriceTownCount = {
   saleToAskPct?: number | null
   /** Average dollar gap on the same pool (negative = closed under ask). */
   saleToAskDollars?: number | null
+  /** Average minus median, cached at rebuild rather than subtracted on read. */
+  priceDelta?: number | null
+  priceDeltaPct?: number | null
+  priceDeltaCalc?: StatsValueCalc
   saleToAskCalc?: StatsValueCalc
 }
 

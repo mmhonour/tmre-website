@@ -100,6 +100,14 @@ export type MarketStatsPayload = {
   /** Closings behind {@link saleToAskPct} — 0 means the metric has no pool. */
   saleToAskCount: number
   saleToAskCalc?: StatsValueCalc
+  /**
+   * Average minus median on the same price pool, in dollars and as a share of
+   * the median. Cached rather than subtracted wherever it is shown, so the page,
+   * the email and any panel that borrows them read one number.
+   */
+  priceDelta: number | null
+  priceDeltaPct: number | null
+  priceDeltaCalc?: StatsValueCalc
   avgBeds: number | null
   sampleSize: number
 }
@@ -358,6 +366,14 @@ export function marketStatsFromPools(
       pools.saleToAskCount
     : null
 
+  // A high-end tail pulls the mean above the typical sale; this is that gap.
+  const priceDelta =
+    medianPrice != null && averagePrice != null ? averagePrice - medianPrice : null
+  const priceDeltaPct =
+    priceDelta != null && medianPrice != null && medianPrice !== 0
+      ? (priceDelta / medianPrice) * 100
+      : null
+
   return {
     city,
     kind,
@@ -425,6 +441,32 @@ export function marketStatsFromPools(
               city,
               kind,
               avgPricePerSqft,
+            },
+          }
+        : undefined,
+    priceDelta,
+    priceDeltaPct,
+    priceDeltaCalc:
+      priceDelta != null
+        ? {
+            summary: `The mean ${
+              hasClosed ? 'close' : 'list'
+            } price in ${city} runs ${priceDeltaPct != null ? `${priceDeltaPct >= 0 ? '' : '-'}${Math.abs(priceDeltaPct).toFixed(1)}%` : '—'} ${
+              priceDelta >= 0 ? 'above' : 'below'
+            } the median across ${pricePoolSize.toLocaleString()} ${
+              kind === 'rental' ? 'leases' : 'sales'
+            }.`,
+            detail: [
+              'Average minus median on the same price pool — a few high-end sales pull the mean above the typical one.',
+              'The percent is that gap as a share of the median, not a month-over-month change.',
+            ],
+            inputs: {
+              source: 'price-mean-minus-median',
+              sampleSize: pricePoolSize,
+              city,
+              kind,
+              priceDelta,
+              priceDeltaPct,
             },
           }
         : undefined,

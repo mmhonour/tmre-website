@@ -5,8 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,36 +13,41 @@ import {
 import { StatsCalcTooltipShell } from "./StatsCalcTooltip";
 import { useStatsChartReady } from "./stats-chart-frame-context";
 import {
-  fetchListToAskRows,
-  formatAskGap,
-  formatVsAsk,
-  type ListToAskRow,
-} from "./list-to-ask-data";
-import { statsListToAskTitle } from "./stats-labels";
+  fetchPriceSpreadRows,
+  formatSpreadMoney,
+  formatSpreadPct,
+  type PriceSpreadRow,
+} from "./price-spread-data";
+import { statsPriceSpreadTitle } from "./stats-labels";
 import type { StatsCity, StatsKind } from "./stats-towns";
 
-/** Closed over the first ask reads as the seller's end, under it as the buyer's. */
-const OVER_ASK = "#5ba08a";
-const UNDER_ASK = "#c45c4a";
+const MEDIAN_FILL = "#6B7C9B";
+const DELTA_FILL = "#7A6A8A";
 
-export default function ListToAskByTownChart({
+/**
+ * Median, average and the gap between them, per town.
+ *
+ * Drawn as one stacked bar rather than two: the median is the base, the delta
+ * sits on top of it, and the two together reach the average. That way the gap
+ * is a length you can compare across towns instead of a subtraction you do in
+ * your head from two separate bars.
+ */
+export default function PriceSpreadByTownChart({
   kind,
   selectedCity = "All",
 }: {
   kind: StatsKind;
-  /** Town in focus, dimmed against the rest when one is picked. */
+  /** Town in focus, held at full strength while the rest dim. */
   selectedCity?: StatsCity;
 }) {
-  // Held with the kind it was fetched for, so switching tabs reads as loading
-  // without an extra setState on the way in.
   const [loaded, setLoaded] = useState<{
     kind: StatsKind;
-    rows: ListToAskRow[];
+    rows: PriceSpreadRow[];
   } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchListToAskRows(kind).then((rows) => {
+    fetchPriceSpreadRows(kind).then((rows) => {
       if (!cancelled) setLoaded({ kind, rows });
     });
     return () => {
@@ -64,10 +67,10 @@ export default function ListToAskByTownChart({
       {chartReady ? (
         <div className="bg-[#0f1628] px-6 pt-6 pb-2">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-white/40 mb-1">
-            {statsListToAskTitle(kind)}
+            {statsPriceSpreadTitle(kind)}
           </p>
           <p className="font-serif text-xl text-white">
-            Closed {noun} · against the first asking price
+            Closed {noun} · how far the average runs above the typical one
           </p>
         </div>
       ) : null}
@@ -82,11 +85,11 @@ export default function ListToAskByTownChart({
         ) : rows.length === 0 ? (
           <div className="h-72 flex items-center justify-center">
             <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/30">
-              No closings with a published asking price yet
+              No closed prices for these towns yet
             </span>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={320}>
             <BarChart
               data={rows}
               margin={{ top: 16, right: 16, bottom: 8, left: 8 }}
@@ -108,13 +111,8 @@ export default function ListToAskByTownChart({
                 axisLine={false}
                 tickLine={false}
               />
-              {/*
-               * Ratios cluster in the high 90s to low 100s, so a bar drawn from
-               * zero would make every town look identical. Bars run from the
-               * asking price instead, which is the line that actually matters.
-               */}
               <YAxis
-                tickFormatter={(v: number) => formatVsAsk(v)}
+                tickFormatter={(v: number) => formatSpreadMoney(v)}
                 tick={{
                   fontFamily: "monospace",
                   fontSize: 10,
@@ -122,63 +120,72 @@ export default function ListToAskByTownChart({
                 }}
                 axisLine={false}
                 tickLine={false}
-                width={52}
-              />
-              <ReferenceLine
-                y={0}
-                stroke="rgba(255,255,255,0.35)"
-                strokeDasharray="4 4"
-                label={{
-                  value: "First ask",
-                  position: "insideTopLeft",
-                  fill: "rgba(255,255,255,0.35)",
-                  fontSize: 9,
-                  fontFamily: "monospace",
-                }}
+                width={56}
               />
               <Tooltip
                 cursor={{ fill: "rgba(255,255,255,0.04)" }}
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null;
-                  const row = payload[0]?.payload as ListToAskRow | undefined;
+                  const row = payload[0]?.payload as PriceSpreadRow | undefined;
                   if (!row) return null;
                   return (
                     <StatsCalcTooltipShell
                       label={String(label ?? row.town)}
-                      valueLine={`${row.pct.toFixed(1)}% of ask · ${formatVsAsk(
-                        row.vsAsk,
-                      )} · ${formatAskGap(row.dollars)} per ${
-                        kind === "rental" ? "lease" : "sale"
-                      }`}
-                      calc={row.calc}
+                      valueLine={`${formatSpreadMoney(
+                        row.medianPrice,
+                      )} median · ${formatSpreadMoney(
+                        row.averagePrice,
+                      )} average · ${formatSpreadMoney(
+                        row.priceDelta,
+                      )} delta (${formatSpreadPct(row.priceDeltaPct)})`}
+                      calc={row.deltaCalc}
                     />
                   );
                 }}
               />
-              <Bar dataKey="vsAsk" radius={[4, 4, 4, 4]} maxBarSize={72}>
-                {rows.map((row) => {
-                  const dimmed =
-                    selectedCity !== "All" && selectedCity !== row.town;
-                  return (
-                    <Cell
-                      key={row.town}
-                      fill={row.vsAsk >= 0 ? OVER_ASK : UNDER_ASK}
-                      fillOpacity={dimmed ? 0.3 : 1}
-                    />
-                  );
-                })}
-              </Bar>
+              <Bar
+                dataKey="medianPrice"
+                stackId="price"
+                fill={MEDIAN_FILL}
+                radius={[0, 0, 4, 4]}
+                maxBarSize={72}
+              />
+              <Bar
+                dataKey="priceDelta"
+                stackId="price"
+                fill={DELTA_FILL}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={72}
+              />
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
 
       {chartReady ? (
-        <div className="bg-[#0a1020] px-6 py-3">
+        <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <p className="font-mono text-[9px] tracking-wide text-white/20">
-            Total close prices ÷ total original asks since 2024 · sorted furthest
-            under ask → furthest over · above the line favours sellers
+            Sorted lowest median → highest ·{" "}
+            {selectedCity === "All" ? "all towns" : selectedCity}
           </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: MEDIAN_FILL }}
+              />
+              <span className="font-mono text-[9px] text-white/45">Median</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: DELTA_FILL }}
+              />
+              <span className="font-mono text-[9px] text-white/45">
+                Delta to average
+              </span>
+            </span>
+          </div>
         </div>
       ) : null}
     </div>

@@ -97,6 +97,7 @@ export default function MarketPulseTownPanel({
   townLabel,
   heading,
   saleToAskHref,
+  metricHref,
   metrics: metricsProp,
   closedPending = false,
   settle = MARKET_PULSE_SETTLE_IDLE,
@@ -113,6 +114,8 @@ export default function MarketPulseTownPanel({
   heading?: ReactNode;
   /** Makes the List to ask row label a link to its Stats chart. */
   saleToAskHref?: string;
+  /** Stats chart behind each bar, by metric id. Null where none exists. */
+  metricHref?: (metricId: string) => string | null;
   metrics?: MarketPulseTownMetric[];
   closedPending?: boolean;
   settle?: MarketPulseSettleState;
@@ -147,7 +150,7 @@ export default function MarketPulseTownPanel({
        * labels rather than carrying its own heading type.
        */}
       <div className="flex items-center gap-3">
-        <span className="shrink-0 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
+        <span className="shrink-0 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.1em] text-gold">
           {heading ?? townLabel}
         </span>
         <div className="min-w-0 flex-1">
@@ -276,6 +279,7 @@ export default function MarketPulseTownPanel({
                 m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0
               }
               widthTransition={widthTransition}
+              href={metricHref?.(m.id)}
             />
           );
         })}
