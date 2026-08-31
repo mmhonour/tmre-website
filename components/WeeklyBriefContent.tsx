@@ -1016,11 +1016,7 @@ function Kpi({
   compareValue?: number | null;
 }) {
   const comparing = Boolean(compareCity && !isAllTownsCity(compareCity));
-  // Reads as one phrase — "Westport months inventory" — so the strip says which
-  // town it is reporting on even when it is floating away from that town.
-  const shownLabel = `${townLabel} ${
-    comparing && kind === "mos" ? "Months Inventory" : label
-  }`;
+  const metricLabel = comparing && kind === "mos" ? "Months Inventory" : label;
   const value = comparing ? compareValue : final;
   const display =
     comparing
@@ -1040,8 +1036,19 @@ function Kpi({
 
   return (
     <div className="rounded-lg border border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
+      {/*
+       * The strip pins and follows you down the page, so the town it reports on
+       * changes under you. It gets its own line in the accent colour, keyed so
+       * it fades on each change — the one thing here that moves, marked as such.
+       */}
       <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
-        {shownLabel}
+        <span
+          key={townLabel}
+          className="block animate-[fadeIn_0.22s_ease-out] text-[var(--mp-accent)]"
+        >
+          {townLabel}
+        </span>
+        {metricLabel}
       </p>
       <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
         {text}
