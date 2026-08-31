@@ -156,8 +156,10 @@ export default function ShowcaseSectionRail({
   townHint,
   postalCode,
   detailsPanelProps,
+  onPrev,
   onNext,
   onMapStateChange,
+  onDetailsOnlyChange,
 }: {
   mlsId: string;
   insight: string | null;
@@ -166,7 +168,10 @@ export default function ShowcaseSectionRail({
   townHint?: string | null;
   postalCode?: string | null;
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
+  onPrev: () => void;
   onNext: () => void;
+  /** Lets the hero drop its edge arrow while the rail carries the pair. */
+  onDetailsOnlyChange?: (on: boolean) => void;
   /** Lets the hero shift its price clear of the map column. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
 }) {
@@ -397,11 +402,27 @@ export default function ShowcaseSectionRail({
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
         {detailsOnly ? (
-          /* The dashboard's own Details card, not a second summary — same
-             component the deck below the photo renders. */
-          <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
-            <ListingSidebar details={detailsPanelProps} />
-          </div>
+          <>
+            {/* The stack's own next arrow is hidden in this mode, so the pair
+                moves here rather than leaving the photo unpageable. */}
+            <div className="mb-1 flex items-center gap-1">
+              <ShowcaseStepArrow
+                direction="prev"
+                label="Previous photo"
+                onClick={onPrev}
+              />
+              <ShowcaseStepArrow
+                direction="next"
+                label="Next photo"
+                onClick={onNext}
+              />
+            </div>
+            {/* The dashboard's own Details card, not a second summary — same
+                component the deck below the photo renders. */}
+            <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+              <ListingSidebar details={detailsPanelProps} />
+            </div>
+          </>
         ) : (
           <>
         {cardPill(
@@ -457,7 +478,12 @@ export default function ShowcaseSectionRail({
         <div className="mt-1 flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setDetailsOnly((on) => !on)}
+            onClick={() =>
+              setDetailsOnly((on) => {
+                onDetailsOnlyChange?.(!on);
+                return !on;
+              })
+            }
             aria-pressed={detailsOnly}
             aria-label={detailsOnly ? "Show listing tiles" : "Show details summary"}
             title="Details"

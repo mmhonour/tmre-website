@@ -111,6 +111,8 @@ export default function ListingShowcaseClient({
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [mapState, setMapState] = useState({ open: false, expanded: false });
+  /** Rail is showing the Details card, which carries its own arrow pair. */
+  const [railDetailsOnly, setRailDetailsOnly] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const isDesktop = useIsDesktop();
 
@@ -281,12 +283,14 @@ export default function ListingShowcaseClient({
         <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
 
-        <ShowcaseStepArrow
-          direction="prev"
-          label="Previous photo"
-          onClick={() => step(-1)}
-          className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
-        />
+        {railDetailsOnly ? null : (
+          <ShowcaseStepArrow
+            direction="prev"
+            label="Previous photo"
+            onClick={() => step(-1)}
+            className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
+          />
+        )}
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
           insight={insight}
@@ -312,8 +316,10 @@ export default function ListingShowcaseClient({
               : null
           }
           detailsPanelProps={detailsPanelProps}
+          onPrev={() => step(-1)}
           onNext={() => step(1)}
           onMapStateChange={setMapState}
+          onDetailsOnlyChange={setRailDetailsOnly}
         />
 
         <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
