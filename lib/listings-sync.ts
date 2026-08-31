@@ -9,6 +9,7 @@ import {
   upsertTownListings,
 } from '@/lib/db/listings-repo'
 import { deleteSyncMeta, getSyncMeta, setSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
+import { recordIncrementalPartialRun } from '@/lib/incremental-partial-run'
 import {
   clearIncrementalSyncLive,
   stampIncrementalSyncLive,
@@ -438,15 +439,23 @@ export async function syncIncrementalListings(
     const totalUpserted = towns.reduce((sum, row) => sum + row.count, 0)
     const totalInserted = towns.reduce((sum, row) => sum + (row.inserted ?? 0), 0)
     const totalUpdated = towns.reduce((sum, row) => sum + (row.updated ?? 0), 0)
-    const allOk = towns.every((row) => row.ok)
+    const failedTowns = towns.filter((row) => !row.ok).map((row) => row.town)
+    const everyTownSucceeded = failedTowns.length === 0
 
     // Durable stamp — serverless freezes before fire-and-forget write-through.
+    //
+    // This advances even on a partial run, and deliberately so: the sweep asks
+    // "is the job due" by comparing this stamp against the 30-minute grid, so
+    // freezing it during an upstream outage would make Incremental permanently
+    // due and re-enqueue a seven-town RETS pull every sixty seconds. The run
+    // being incomplete is recorded separately, below.
     await setSyncMetaDurable('last_incremental_sync', finishedAt)
+    await recordIncrementalPartialRun(failedTowns, finishedAt)
     await appendIncrementalStep(
       'rets-done',
-      `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) allOk=${allOk}`,
+      `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) everyTownSucceeded=${everyTownSucceeded}`,
     )
-    if (allOk && postHooks) {
+    if (everyTownSucceeded && postHooks) {
       await stampIncrementalSyncLive({
         phase: 'post-hooks',
         town: null,
@@ -520,7 +529,7 @@ export async function syncIncrementalListings(
       startedAt,
       modifiedAfter,
       durationMs: Date.now() - t0,
-      ok: allOk,
+      ok: everyTownSucceeded,
       upserted: totalUpserted,
       inserted: totalInserted,
       updated: totalUpdated,
@@ -536,7 +545,7 @@ export async function syncIncrementalListings(
     })
 
     await finishIncrementalStepLog(
-      `ok=${allOk} upserts=${totalUpserted} (${totalInserted} new, ${totalUpdated} updated) ${Date.now() - t0}ms`,
+      `ok=${everyTownSucceeded} upserts=${totalUpserted} (${totalInserted} new, ${totalUpdated} updated) ${Date.now() - t0}ms`,
     )
 
     return {
@@ -1128,9 +1137,9 @@ export async function syncAllTownListings(): Promise<FullSyncResult> {
 
   const finishedAt = new Date().toISOString()
   const totalUpserted = towns.reduce((sum, row) => sum + row.count, 0)
-  const allOk = towns.every((row) => row.ok)
+  const everyTownSucceeded = towns.every((row) => row.ok)
 
-  if (allOk) {
+  if (everyTownSucceeded) {
     await applyFullSyncPostamble(finishedAt)
     const { markPostDeployFullResyncComplete } = await import('@/lib/deploy-full-resync-schedule')
     markPostDeployFullResyncComplete()

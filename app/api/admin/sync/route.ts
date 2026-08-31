@@ -22,6 +22,7 @@ import {
 } from '@/lib/db/listings-repo'
 import { collectAdminDatabaseSyncStats } from '@/lib/sqlite-sync-stats'
 import { readSyncQueueSnapshot } from '@/lib/sync-queue'
+import { readIncrementalPartialRun } from '@/lib/incremental-partial-run'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -109,6 +110,7 @@ export async function GET(req: NextRequest) {
     statsCacheQueueStatus,
     statsCacheLastRunError,
     rets,
+    incrementalPartial: await readIncrementalPartialRun(),
     syncQueue: await readSyncQueueSnapshot(),
     syncFailures: await readRecentSyncFailures(8),
     databaseStats: await collectAdminDatabaseSyncStats(),
