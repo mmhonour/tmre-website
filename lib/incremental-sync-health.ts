@@ -47,7 +47,12 @@ export type IncrementalHealthHost = 'runner' | 'netlify'
 export type IncrementalProcessHealth = 'running' | 'alive' | 'dead' | 'unknown'
 export type IncrementalInventoryHealth = 'fresh' | 'stale' | 'missing'
 export type IncrementalHealthRow = 'running' | 'ok' | 'alert' | 'idle'
-export type IncrementalHealthPrefix = 'RUNNING' | 'BROKEN' | 'STALE' | null
+export type IncrementalHealthPrefix =
+  | 'RUNNING'
+  | 'BROKEN'
+  | 'STALE'
+  | 'PARTIAL'
+  | null
 
 export type IncrementalHealth = {
   process: IncrementalProcessHealth
@@ -57,6 +62,12 @@ export type IncrementalHealth = {
   processAlive: boolean
   inPull: boolean
   inventoryStale: boolean
+  /**
+   * Towns whose RETS pull failed on the most recent run. A run where two towns
+   * error still finishes and still stamps End, so without this the row reads
+   * green while that inventory quietly goes cold.
+   */
+  partialTowns: string[]
 }
 
 function parseIsoMs(iso: string | null | undefined): number | null {
@@ -74,6 +85,8 @@ export function evaluateIncrementalHealth(input: {
   /** Open Start without End still counts as in-pull under this age. */
   openStartMaxMs?: number
   liveInFlight?: boolean
+  /** Towns that failed on the last finished run (see `partialTowns`). */
+  partialTowns?: readonly string[] | null
 }): IncrementalHealth {
   const nowMs = input.nowMs ?? Date.now()
   const openStartMaxMs =
@@ -133,6 +146,17 @@ export function evaluateIncrementalHealth(input: {
     row = 'ok'
   }
 
+  // A run that finished with towns missing is not healthy, however fresh End
+  // looks. It ranks below BROKEN and STALE, which describe worse states, but it
+  // must never be allowed to read as plain OK.
+  const partialTowns = [...(input.partialTowns ?? [])].filter(
+    (town): town is string => typeof town === 'string' && town.length > 0,
+  )
+  if (partialTowns.length > 0 && prefix == null) {
+    row = 'alert'
+    prefix = 'PARTIAL'
+  }
+
   return {
     process,
     inventory,
@@ -141,6 +165,7 @@ export function evaluateIncrementalHealth(input: {
     processAlive,
     inPull,
     inventoryStale,
+    partialTowns,
   }
 }
 
@@ -169,6 +194,11 @@ export function formatRunnerHealthStrip(options: {
     `End ${options.endLabel}`,
   ]
   if (options.upsertLabel?.trim()) bits.push(options.upsertLabel.trim())
+  // Name the towns: "PARTIAL" alone tells an operator to go digging, and the
+  // digging is the part that did not happen for three days.
+  if (options.health.partialTowns.length > 0) {
+    bits.push(`no data: ${options.health.partialTowns.join(', ')}`)
+  }
   if (options.health.prefix) bits.unshift(options.health.prefix)
   if (options.liveStatus && options.health.inPull) {
     bits.push(options.liveStatus)

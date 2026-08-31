@@ -186,6 +186,17 @@ async function main() {
     `last incremental End ${ageLabel(await getSyncMeta('last_incremental_sync'))}`,
   )
 
+  // The single most common answer, and the one the Dashboard used to hide.
+  const { readIncrementalPartialRun } = await import(
+    '../lib/incremental-partial-run'
+  )
+  const partial = await readIncrementalPartialRun()
+  if (partial) {
+    console.info(
+      `PARTIAL last run — no data for: ${partial.towns.join(', ')} (${ageLabel(partial.at)})`,
+    )
+  }
+
   let missing = 0
   for (const mls of ids) {
     if (!(await inspect(mls, liveIds, cachedIds))) missing += 1
