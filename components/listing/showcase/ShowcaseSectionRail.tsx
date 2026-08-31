@@ -84,6 +84,32 @@ function MapGlyph() {
   );
 }
 
+function DetailsGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M4 7h10M4 12h16M4 17h12" />
+      <circle cx="19" cy="7" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="17" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Icon-only rail control — same translucent navy as the tiles. */
+const railIconClass = (on: boolean) =>
+  `inline-flex h-11 w-11 items-center justify-center shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors ${
+    on
+      ? "bg-navy text-white"
+      : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
+  }`;
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <span aria-hidden className="ml-3 font-mono text-white/60">
@@ -141,6 +167,8 @@ export default function ShowcaseSectionRail({
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
+  /** Swaps the tile stack for a standalone Details summary over the photo. */
+  const [detailsOnly, setDetailsOnly] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
 
@@ -364,6 +392,27 @@ export default function ShowcaseSectionRail({
       <div
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
+        {detailsOnly ? (
+          <div className="w-full bg-[#0d1424]/85 p-4 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
+              Details
+            </p>
+            <dl className="divide-y divide-white/10">
+              {detailRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="flex items-baseline justify-between gap-4 py-2"
+                >
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
+                    {row.label}
+                  </dt>
+                  <dd className="text-right text-sm text-white/90">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : (
+          <>
         {cardPill(
           "pulse",
           "Town pulse",
@@ -409,18 +458,33 @@ export default function ShowcaseSectionRail({
           () => scrollToShowcaseSection("if"),
         )}
 
-        {/* Icon rather than a tile: the map is a mode you enter, not a
-            summary line like the others. */}
-        <button
-          type="button"
-          onClick={() => openMap(true)}
-          aria-expanded={false}
-          aria-label="Open map"
-          title="Map"
-          className="mt-1 inline-flex h-11 w-11 items-center justify-center bg-[#0d1424]/85 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors hover:bg-navy hover:text-white"
-        >
-          <MapGlyph />
-        </button>
+          </>
+        )}
+
+        {/* Icons rather than tiles: these switch what the rail is showing
+            rather than summarising a section. */}
+        <div className="mt-1 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setDetailsOnly((on) => !on)}
+            aria-pressed={detailsOnly}
+            aria-label={detailsOnly ? "Show listing tiles" : "Show details summary"}
+            title="Details"
+            className={railIconClass(detailsOnly)}
+          >
+            <DetailsGlyph />
+          </button>
+          <button
+            type="button"
+            onClick={() => openMap(true)}
+            aria-expanded={false}
+            aria-label="Open map"
+            title="Map"
+            className={railIconClass(false)}
+          >
+            <MapGlyph />
+          </button>
+        </div>
       </div>
     </>
   );
