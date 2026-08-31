@@ -268,6 +268,17 @@ export default function LatestClient({
   const [groupByZip, setGroupByZip] = useState(false);
   const [townStatsOpen, setTownStatsOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  /**
+   * False means "nobody has opened or closed anything yet", which reads as every
+   * group closed. Latest opens as a summary — day and town headers with counts —
+   * so a week of listings is a page you scan rather than one you scroll.
+   *
+   * This is a flag rather than a pre-filled `collapsedGroups`, because the keys
+   * come from the feed and the feed arrives after first paint. Seeding the set
+   * from an effect would mean a frame of everything open, and a setState inside
+   * an effect on every refresh.
+   */
+  const [collapseTouched, setCollapseTouched] = useState(false);
   const [selectedTown, setSelectedTown] = useState<string | null>(null);
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [townListings, setTownListings] = useState<LatestListingRow[]>([]);
@@ -315,6 +326,7 @@ export default function LatestClient({
         setSelectedTown(stored.selectedTown);
         setSelectedZip(stored.selectedZip);
         setCollapsedGroups(new Set(stored.collapsedGroups));
+        setCollapseTouched(stored.collapseTouched);
         setExpandedGroups(new Set(stored.expandedGroups));
         setGroupStatusFilter(stored.groupStatusFilter);
         pendingScrollY.current = stored.scrollY;
@@ -358,6 +370,7 @@ export default function LatestClient({
       selectedZip,
       townStatsOpen,
       collapsedGroups: [...collapsedGroups],
+      collapseTouched,
       expandedGroups: [...expandedGroups],
       groupStatusFilter,
       scrollY:
@@ -373,6 +386,7 @@ export default function LatestClient({
     selectedZip,
     townStatsOpen,
     collapsedGroups,
+    collapseTouched,
     expandedGroups,
     groupStatusFilter,
   ]);
@@ -775,14 +789,40 @@ export default function LatestClient({
     [applyTownSelection, selectedTown, selectedZip],
   );
 
-  const toggleGroupCollapsed = useCallback((label: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  }, []);
+  /** Keys of every group currently on screen, in whichever mode is active. */
+  const currentGroupKeys = useMemo(
+    () =>
+      groupByTown
+        ? feedGroups.map((group) => group.label)
+        : byTimeDayGroups.map((day) => day.collapseKey),
+    [groupByTown, feedGroups, byTimeDayGroups],
+  );
+
+  const groupIsCollapsed = useCallback(
+    (label: string) => (collapseTouched ? collapsedGroups.has(label) : true),
+    [collapseTouched, collapsedGroups],
+  );
+
+  const toggleGroupCollapsed = useCallback(
+    (label: string) => {
+      // The first click has to write down what the default was implying,
+      // otherwise opening one day would open all of them.
+      if (!collapseTouched) {
+        setCollapsedGroups(
+          new Set(currentGroupKeys.filter((key) => key !== label)),
+        );
+        setCollapseTouched(true);
+        return;
+      }
+      setCollapsedGroups((prev) => {
+        const next = new Set(prev);
+        if (next.has(label)) next.delete(label);
+        else next.add(label);
+        return next;
+      });
+    },
+    [collapseTouched, currentGroupKeys],
+  );
 
   const toggleGroupExpanded = useCallback((label: string) => {
     setExpandedGroups((prev) => {
@@ -803,6 +843,14 @@ export default function LatestClient({
         }
         return { ...prev, [label]: status };
       });
+      // Filtering a group is asking to look inside it, so open it either way.
+      if (!collapseTouched) {
+        setCollapsedGroups(
+          new Set(currentGroupKeys.filter((key) => key !== label)),
+        );
+        setCollapseTouched(true);
+        return;
+      }
       setCollapsedGroups((prev) => {
         if (!prev.has(label)) return prev;
         const next = new Set(prev);
@@ -810,11 +858,14 @@ export default function LatestClient({
         return next;
       });
     },
-    [],
+    [collapseTouched, currentGroupKeys],
   );
 
   const resetGroupUi = useCallback(() => {
     setCollapsedGroups(new Set());
+    // Back to the closed summary — switching between by-time and by-town is a
+    // new way of looking at the feed, not a continuation of the old one.
+    setCollapseTouched(false);
     setExpandedGroups(new Set());
     setGroupStatusFilter({});
   }, []);
@@ -1119,7 +1170,7 @@ export default function LatestClient({
                 <div>
                   {isGrouped
                     ? feedGroups.map((group) => {
-                        const collapsed = collapsedGroups.has(group.label);
+                        const collapsed = groupIsCollapsed(group.label);
                         const statusCounts = summarizeTownStatuses(group.rows);
                         const activeStatus = groupStatusFilter[group.label] ?? null;
                         const filteredRows = activeStatus
@@ -1423,7 +1474,7 @@ export default function LatestClient({
                             </div>
                           ) : (
                             byTimeDayGroups.map((day) => {
-                              const dayCollapsed = collapsedGroups.has(
+                              const dayCollapsed = groupIsCollapsed(
                                 day.collapseKey,
                               );
                               return (
