@@ -7,22 +7,20 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfAnotherHostOwns,
+  thinCronHandOffToQueue,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin Goldilocks / listing-scores trigger (NO background) — Sync 3a.
  * Dense every-30m cron; Configure Frequency/Start gate the work.
- * Queues sync-listing-scores-worker.
+ *
+ * A due rebuild goes on the sync queue for the always-on runner; this function
+ * only queues sync-listing-scores-worker when that row is stranded.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfAnotherHostOwns('listing-scores')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('listing-scores')) {
       return thinCronSkipped('listing-scores scheduled sync paused by admin')
     }
@@ -33,6 +31,10 @@ export default async function handler() {
     }
     if (shouldSkipScheduledJobNotDue('listing-scores')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
+    }
+    {
+      const handedOff = await thinCronHandOffToQueue('listing-scores')
+      if (handedOff) return handedOff
     }
     const queued = await queueNetlifyListingScoresSync()
     if (!queued.ok) {

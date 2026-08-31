@@ -7,7 +7,6 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfEventBridgeOwns,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 import { isFullResyncRetired, FULL_RESYNC_RETIRED_MESSAGE } from '../../lib/scheduled-sync-jobs-shared'
@@ -26,10 +25,6 @@ export default async function handler() {
     await hydrateSyncMetaStore()
     if (isFullResyncRetired()) {
       return thinCronSkipped(FULL_RESYNC_RETIRED_MESSAGE)
-    }
-    {
-      const owned = await thinCronSkipIfEventBridgeOwns('full-resync')
-      if (owned) return owned
     }
     if (await isScheduledSyncJobPausedFresh('full-resync')) {
       return thinCronSkipped('full-resync scheduled sync paused by admin')

@@ -12,10 +12,9 @@ import {
 import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   mergeSyncScheduleConfig,
-  resolveJobScheduler,
   type SyncScheduleConfig,
-  type SyncSchedulerProvider,
 } from '@/lib/sync-schedule-config-shared'
+import { resolveJobBudgetMs } from '@/lib/sync-schedule-config-shared'
 import {
   isJobDueBySchedule,
 } from '@/lib/admin-sync-schedule'
@@ -31,26 +30,24 @@ export type {
   SyncScheduleConfig,
   SyncScheduleFrequencyId,
   SyncScheduleWeekdayEt,
-  SyncSchedulerProvider,
 } from '@/lib/sync-schedule-config-shared'
 
 export {
   SYNC_SCHEDULE_FREQUENCIES,
   SYNC_SCHEDULE_WEEKDAYS,
-  SYNC_SCHEDULER_PROVIDERS,
   defaultSyncScheduleConfig,
   frequencyLabel,
   frequencyIntervalMs,
   isSyncScheduleFrequencyId,
   isSyncScheduleWeekdayEt,
-  isSyncSchedulerProvider,
   isValidStartTimeEt,
   normalizeStartTimeEt,
   orderNumberByJob,
   orderNumberByRow,
-  resolveJobScheduler,
+  resolveJobBudgetMinutes,
+  resolveJobBudgetMs,
   resolveWeekdayEt,
-  schedulerProviderLabel,
+  syncJobHostLabel,
   syncAllClientStepsFromConfig,
   mergeSyncScheduleConfig,
   parseStartTimeEt,
@@ -188,24 +185,17 @@ export function shouldSkipListingEdgeScoresNotDue(now = new Date()): boolean {
   return !isListingEdgeScoresDue(now)
 }
 
-/**
- * True when this alarm clock must not start the job (Configure radio points
- * at another provider). Netlify thin crons pass `'netlify'`; EventBridge
- * ingress passes `'eventbridge'`. Railway mls-sync is never these callers —
- * when Scheduler is railway, both Netlify and EB skip.
- */
-export function shouldSkipScheduledJobWrongProvider(
+/** Kill budget for a job, straight from Configure. */
+export function readJobBudgetMs(
   jobId: ScheduledSyncJobId,
-  caller: SyncSchedulerProvider,
   config = readSyncScheduleConfig(),
-): boolean {
-  return resolveJobScheduler(config.jobs[jobId]) !== caller
+): number {
+  return resolveJobBudgetMs(jobId, config.jobs[jobId])
 }
 
-export async function shouldSkipScheduledJobWrongProviderFresh(
+export async function readJobBudgetMsFresh(
   jobId: ScheduledSyncJobId,
-  caller: SyncSchedulerProvider,
-): Promise<boolean> {
+): Promise<number> {
   const config = await readSyncScheduleConfigFresh()
-  return resolveJobScheduler(config.jobs[jobId]) !== caller
+  return resolveJobBudgetMs(jobId, config.jobs[jobId])
 }

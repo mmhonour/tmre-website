@@ -1019,7 +1019,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "eventbridge-sync-ingress",
     detail:
-      "AWS EventBridge Scheduler HTTP target — Bearer SYNC_CRON_SECRET + JSON { job }. Queues the matching *-worker when Configure Scheduler is EventBridge. No Netlify schedule.",
+      "AWS EventBridge Scheduler HTTP target — Bearer SYNC_CRON_SECRET + JSON { job }. Enqueues the job on sync_queue for the runner (legacy *-worker handoff only for jobs the runner does not own). No Netlify schedule.",
     schedule: "On invoke (EventBridge)",
   },
 ];

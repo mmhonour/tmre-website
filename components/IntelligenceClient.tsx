@@ -53,11 +53,13 @@ import {
   DEAL_BOARD_MAP_LAYOUT_DEFAULT,
   DEAL_BOARD_MAP_LAYOUT_LABELS,
   DEAL_BOARD_MAP_LAYOUT_PREF_KEY,
+  DEAL_BOARD_MAP_LAYOUT_SHORT_LABELS,
   DEAL_BOARD_MAP_LAYOUT_VALUES,
   DEAL_BOARD_MAP_ON_PREF_KEY,
   DEAL_BOARD_VIEW_DEFAULT,
   DEAL_BOARD_VIEW_PREF_KEY,
   dealBoardCardView,
+  dealBoardMapLayoutFromStored,
   dealBoardViewDefaultForViewport,
   type DealBoardCardView,
   type DealBoardMapLayout,
@@ -2187,7 +2189,14 @@ export default function IntelligenceClient({
     DEAL_BOARD_MAP_LAYOUT_PREF_KEY,
     DEAL_BOARD_MAP_LAYOUT_DEFAULT,
     DEAL_BOARD_MAP_LAYOUT_VALUES,
+    false,
+    () =>
+      dealBoardMapLayoutFromStored(
+        readClientPref(DEAL_BOARD_MAP_LAYOUT_PREF_KEY),
+      ),
   );
+  /** Left / Right both put the map in its own column next to the cards. */
+  const mapBeside = mapLayout !== "top";
   /** Pin ↔ card selection for the Map view. */
   const [mapActiveKey, setMapActiveKey] = useState<string | null>(null);
   /** Phone: map takes the whole viewport, keeping its own pagination + pills. */
@@ -5017,7 +5026,7 @@ export default function IntelligenceClient({
   /**
    * "Map on top" on desktop: the map pins under the nav and the cards scroll
    * beneath it. Phones already run the map full-bleed with the cards hidden,
-   * and "Map beside" is its own sticky column, so neither pins here.
+   * and Left / Right give the map its own sticky column, so neither pins here.
    */
   const stickyTopMapActive =
     showMap && mapLayout === "top" && !mapFullscreen && !isMobileViewport;
@@ -5043,7 +5052,7 @@ export default function IntelligenceClient({
   /**
    * Desktop map layouts: the results toolbar (count, sort, status pills, view /
    * map icons, reset) leaves the listings card and spans the full width above
-   * the map — full-bleed for "Map on top", across both columns for "Map beside".
+   * the map — full-bleed for Map on Top, across both columns for Left / Right.
    */
   const hoistBoardToolbar = showMap && !mapFullscreen && !isMobileViewport;
   const [boardToolbarHost, setBoardToolbarHost] =
@@ -6418,8 +6427,11 @@ export default function IntelligenceClient({
           <div
             className={
               showMap
-                ? mapLayout === "side"
-                  ? "flex flex-col gap-2 lg:flex lg:flex-row-reverse lg:items-start lg:gap-4"
+                ? mapBeside
+                  ? // The map is first in the DOM, so Right reverses the row.
+                    `flex flex-col gap-2 lg:flex lg:items-start lg:gap-4 ${
+                      mapLayout === "left" ? "lg:flex-row" : "lg:flex-row-reverse"
+                    }`
                   : "flex flex-col gap-2 md:gap-4"
                 : "contents"
             }
@@ -6430,14 +6442,14 @@ export default function IntelligenceClient({
                 className={
                   mapFullscreen
                     ? "fixed inset-0 z-[70] bg-navy"
-                    : mapLayout === "side"
+                    : mapBeside
                       ? "relative lg:sticky lg:top-[var(--intel-map-top,6rem)] lg:w-[min(48vw,40rem)] lg:shrink-0"
                       : stickyTopMapActive
                         ? "sticky z-30 w-full"
                         : "relative w-full"
                 }
                 style={
-                  mapLayout === "side"
+                  mapBeside
                     ? ({
                         "--intel-map-top": `${stickyTopMapOffsetPx}px`,
                       } as CSSProperties)
@@ -6474,7 +6486,7 @@ export default function IntelligenceClient({
                   heightClass={
                     mapFullscreen
                       ? "h-[100dvh]"
-                      : mapLayout === "side"
+                      : mapBeside
                         ? "h-[min(44vh,22rem)] md:h-[70vh] lg:h-[calc(100dvh_-_var(--intel-map-top,6rem)_-_0.5rem)]"
                         : "h-[min(44vh,22rem)] md:h-[26rem]"
                   }
@@ -6512,20 +6524,34 @@ export default function IntelligenceClient({
                   }}
                 />
                 <div className="absolute right-2 top-2 z-20 hidden items-center gap-1 rounded-md border border-white/15 bg-navy/80 px-1 py-0.5 shadow-lg backdrop-blur-sm md:flex">
-                  {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setMapLayout(option)}
-                      aria-pressed={mapLayout === option}
-                      className={`rounded px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors ${
-                        mapLayout === option
-                          ? "bg-white/15 text-white"
-                          : "text-white/55 hover:text-gold"
-                      }`}
-                    >
-                      {DEAL_BOARD_MAP_LAYOUT_LABELS[option]}
-                    </button>
+                  <span className="pl-0.5 font-mono text-[9px] tracking-wide text-white/45">
+                    Map on
+                  </span>
+                  {DEAL_BOARD_MAP_LAYOUT_VALUES.map((option, index) => (
+                    <Fragment key={option}>
+                      {index > 0 ? (
+                        <span
+                          aria-hidden
+                          className="font-mono text-[9px] leading-none text-white/25"
+                        >
+                          |
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setMapLayout(option)}
+                        aria-pressed={mapLayout === option}
+                        aria-label={DEAL_BOARD_MAP_LAYOUT_LABELS[option]}
+                        title={DEAL_BOARD_MAP_LAYOUT_LABELS[option]}
+                        className={`rounded px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors ${
+                          mapLayout === option
+                            ? "bg-white/15 text-white"
+                            : "text-white/55 hover:text-gold"
+                        }`}
+                      >
+                        {DEAL_BOARD_MAP_LAYOUT_SHORT_LABELS[option]}
+                      </button>
+                    </Fragment>
                   ))}
                 </div>
               </div>

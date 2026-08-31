@@ -74,8 +74,10 @@ function isSyntheticAuditTown(town: string | null | undefined): boolean {
 }
 
 /**
- * Intentional Configure / scheduler skips (not RETS failures). Older rows were
+ * Intentional Configure / queue skips (not RETS failures). Older rows were
  * written with ok=false; treat the message as Skipped in History either way.
+ * `scheduler is eventbridge` is a retired message kept so old rows still read
+ * as Skipped rather than Failed.
  */
 export function isSyncHistorySkipMessage(
   error: string | null | undefined,
@@ -90,6 +92,8 @@ export function isSyncHistorySkipMessage(
     e.includes('not due yet') ||
     e.includes('deferred —') ||
     e.includes('prior queue still waiting') ||
+    e.includes('netlify cron stood down') ||
+    e.includes('cooling down after a killed run') ||
     e.includes('http 429') ||
     e.includes('rate limited') ||
     e === 'skipped' ||

@@ -90,7 +90,7 @@ export type ParsedIntelligenceSearch = {
   /** Map is a layer; not exclusive of Large / Grid / Line. */
   mapOn: boolean
   /** Desktop map arrangement when the map layer is on. */
-  mapLayout: 'top' | 'side' | null
+  mapLayout: 'top' | 'left' | 'right' | null
   furnished: string | null
   /** Include plain "Under Contract" rows (Continue to Show always shows). */
   underContract: boolean
@@ -124,7 +124,7 @@ export type IntelligenceShareState = {
   dir?: 'asc' | 'desc'
   view?: 'large' | 'grid' | 'line' | 'map'
   mapOn?: boolean
-  mapLayout?: 'top' | 'side'
+  mapLayout?: 'top' | 'left' | 'right'
   furnished?: string | null
   /** Include plain "Under Contract" rows (Continue to Show always shows). */
   underContract?: boolean
@@ -203,11 +203,17 @@ const VIEW_TO_SHORT: Record<'large' | 'grid' | 'line' | 'map', string> = {
   map: 'mp',
 }
 
-const MAP_LAYOUT_SHORT: Record<string, 'top' | 'side'> = {
+const MAP_LAYOUT_SHORT: Record<string, 'top' | 'left' | 'right'> = {
   t: 'top',
-  s: 'side',
+  l: 'left',
+  r: 'right',
   top: 'top',
-  side: 'side',
+  left: 'left',
+  right: 'right',
+  // Links shared before Left / Right split the beside-the-cards option encoded
+  // `s`, which rendered to the right of the listings.
+  s: 'right',
+  side: 'right',
 }
 
 function parseRange(
@@ -282,7 +288,8 @@ export function buildIntelligenceShareHref(state: IntelligenceShareState): strin
   const mapOn = state.mapOn === true || view === 'map'
   if (mapOn) {
     params.set('map', '1')
-    if (state.mapLayout === 'side') params.set('ml', 's')
+    if (state.mapLayout === 'left') params.set('ml', 'l')
+    else if (state.mapLayout === 'right') params.set('ml', 'r')
   }
 
   if (state.furnished && state.furnished !== 'all') {

@@ -10,22 +10,22 @@ const LANE_STYLES: Record<
     bg: "bg-navy/[0.04]",
   },
   railway: {
-    label: "Lane 1 — Railway mls-sync (RETS → Neon)",
+    label: "Lane 1 — Railway mls-sync runner (claims the queue, forks a child)",
     border: "border-coral/35",
     bg: "bg-coral/[0.07]",
   },
   cron: {
-    label: "Legacy schedule (Netlify / EventBridge)",
+    label: "Alarms that enqueue (Netlify cron / EventBridge / watchdog)",
     border: "border-gold/40",
     bg: "bg-gold/[0.08]",
   },
   worker: {
-    label: "Lane 3 — Netlify warm / legacy RETS worker",
+    label: "Lane 3 — Netlify warm / rescue RETS worker",
     border: "border-sage/35",
     bg: "bg-sage/[0.08]",
   },
   data: {
-    label: "Lane 2 — Neon Postgres (handoff / truth)",
+    label: "Lane 2 — Neon Postgres (queue / handoff / truth)",
     border: "border-sky/35",
     bg: "bg-sky/[0.08]",
   },
@@ -37,7 +37,8 @@ const LANE_STYLES: Record<
 };
 
 /**
- * Syncs → Dashboard diagram: Railway lean pull, Neon handoff, Netlify warm.
+ * Syncs → Dashboard diagram: queue claim, lean pull in a forked child, Neon
+ * handoff, Netlify warm.
  */
 export default function AdminIncrementalArchitectureDiagram() {
   const arch = describeIncrementalSyncArchitecture();

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import ClosedLookbackRangeSlider from "@/components/closed/ClosedLookbackRangeSlider";
+import FeedCollapseSign from "@/components/latest/FeedCollapseSign";
+import FeedDayGroupHeader from "@/components/latest/FeedDayGroupHeader";
 import LatestLineRow from "@/components/latest/LatestLineRow";
 import LatestSmoothScrollList from "@/components/latest/LatestSmoothScrollList";
 import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
@@ -24,9 +26,9 @@ import {
   type ClosedDailyCachePayload,
   type ClosedTownStat,
 } from "@/lib/closed-shared";
-import { latestRowActivityIso, latestRowActivityMs } from "@/lib/latest-activity";
+import { latestRowActivityMs } from "@/lib/latest-activity";
+import { groupRowsByDay } from "@/lib/latest-day-groups";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
-import { mlsTimestampMs } from "@/lib/mls-time";
 import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
 type ClosedApiResponse = {
@@ -40,36 +42,6 @@ type ClosedApiResponse = {
 /** Listing column + town-stats rail. Shared so the Lookback control can match
  * the listing column exactly instead of hard-coding the rail width twice. */
 const CLOSED_COLUMNS = "lg:grid lg:grid-cols-[minmax(0,1fr)_292px] lg:gap-5";
-
-const LOCAL_DATE_KEY_FMT = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "numeric",
-});
-
-const LOCAL_DATE_LABEL_FMT = new Intl.DateTimeFormat(undefined, {
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
-
-function localDateKey(iso: string | null | undefined): string {
-  const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return "unknown";
-  return LOCAL_DATE_KEY_FMT.format(new Date(t));
-}
-
-function localDateLabel(iso: string | null | undefined): string {
-  const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return "Undated";
-  const fullDate = LOCAL_DATE_LABEL_FMT.format(new Date(t));
-  const todayKey = LOCAL_DATE_KEY_FMT.format(new Date());
-  const key = localDateKey(iso);
-  if (key === todayKey) return "Today";
-  const yesterday = new Date(Date.now() - 86_400_000);
-  if (key === LOCAL_DATE_KEY_FMT.format(yesterday)) return `Yesterday, ${fullDate}`;
-  return fullDate;
-}
 
 function viewChipClass(on: boolean): string {
   return on
@@ -321,6 +293,12 @@ export default function ClosedClient({
     });
   }, [visibleListings, isGrouped, groupByZip, selectedZip]);
 
+  /** Close-date buckets so a long lookback can be skimmed a day at a time. */
+  const dayGroups = useMemo(
+    () => (isGrouped ? [] : groupRowsByDay(visibleListings)),
+    [isGrouped, visibleListings],
+  );
+
   const addressColumnCh = useMemo(() => {
     const rows = isGrouped ? feedGroups.flatMap((g) => g.rows) : visibleListings;
     let max = 16;
@@ -570,8 +548,15 @@ export default function ClosedClient({
                           <button
                             type="button"
                             onClick={() => toggleGroupCollapsed(group.label)}
-                            className="flex min-w-0 items-center gap-2 text-left"
+                            aria-expanded={!collapsed}
+                            aria-label={
+                              collapsed
+                                ? `Expand ${group.label} closings`
+                                : `Collapse ${group.label} closings`
+                            }
+                            className="group flex min-w-0 items-center gap-2 text-left transition-colors hover:text-navy"
                           >
+                            <FeedCollapseSign collapsed={collapsed} />
                             {selectedTown ? null : (
                               <LatestTownMapHover
                                 townName={group.label}
@@ -586,22 +571,21 @@ export default function ClosedClient({
                     );
                   })
                 ) : (
-                  visibleListings.map((l, i) => {
-                    const activityIso = latestRowActivityIso(l);
-                    const key = localDateKey(activityIso);
-                    const prevKey =
-                      i > 0 ? localDateKey(latestRowActivityIso(visibleListings[i - 1])) : null;
+                  dayGroups.map((day) => {
+                    const dayCollapsed = collapsedGroups.has(day.collapseKey);
                     return (
-                      <div key={l.key}>
-                        {key !== prevKey ? (
-                          <div className="flex w-full items-center gap-2 border-b border-charcoal/[0.08] bg-cream/60 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-charcoal/55 sm:px-4">
-                            <span className="h-1 w-1 shrink-0 rounded-full bg-gold" aria-hidden />
-                            <span className="font-semibold text-navy/70">
-                              {localDateLabel(activityIso)}
-                            </span>
-                          </div>
-                        ) : null}
-                        {renderRow(l)}
+                      <div key={day.collapseKey}>
+                        <FeedDayGroupHeader
+                          label={day.label}
+                          count={day.rows.length}
+                          collapsed={dayCollapsed}
+                          onToggle={() => toggleGroupCollapsed(day.collapseKey)}
+                        />
+                        {dayCollapsed
+                          ? null
+                          : day.rows.map((l) => (
+                              <div key={l.key}>{renderRow(l)}</div>
+                            ))}
                       </div>
                     );
                   })

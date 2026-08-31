@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import { formatStatusBadgeLabel } from "@/components/intelligence/deal-board/deal-board-shared";
+import FeedCollapseSign from "@/components/latest/FeedCollapseSign";
+import FeedDayGroupHeader from "@/components/latest/FeedDayGroupHeader";
 import LatestLineRow from "@/components/latest/LatestLineRow";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import LatestSmoothScrollList from "@/components/latest/LatestSmoothScrollList";
@@ -15,11 +17,11 @@ import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
 import type { LatestListingRow, TownUpdateStat } from "@/lib/latest-listings";
 import { LATEST_DB_REFRESH_MS } from "@/lib/latest-refresh";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
-import { mlsTimestampMs } from "@/lib/mls-time";
 import {
   latestRowActivityIso,
   latestRowActivityMs,
 } from "@/lib/latest-activity";
+import { groupRowsByDay } from "@/lib/latest-day-groups";
 import {
   ensureMinOneListingPerTmreTown,
   feedCoversAllTmreTowns,
@@ -159,18 +161,6 @@ function newestModification(listings: LatestListingRow[]): string | null {
 }
 
 // Formatters use the viewer's local timezone (no explicit timeZone option).
-const LOCAL_DATE_KEY_FMT = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "numeric",
-});
-
-const LOCAL_DATE_LABEL_FMT = new Intl.DateTimeFormat(undefined, {
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
-
 const LOCAL_SYNC_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -183,24 +173,6 @@ function formatSync(iso: string | null): string | null {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return null;
   return LOCAL_SYNC_FMT.format(new Date(t));
-}
-
-function localDateKey(iso: string | null | undefined): string {
-  const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return "unknown";
-  return LOCAL_DATE_KEY_FMT.format(new Date(t));
-}
-
-function localDateLabel(iso: string | null | undefined): string {
-  const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) return "Undated";
-  const fullDate = LOCAL_DATE_LABEL_FMT.format(new Date(t));
-  const todayKey = LOCAL_DATE_KEY_FMT.format(new Date());
-  const key = localDateKey(iso);
-  if (key === todayKey) return "Today";
-  const yesterday = new Date(Date.now() - 86_400_000);
-  if (key === LOCAL_DATE_KEY_FMT.format(yesterday)) return `Yesterday, ${fullDate}`;
-  return fullDate;
 }
 
 type FeedSubGroup = {
@@ -627,6 +599,11 @@ export default function LatestClient({
     if (!byTimeActiveStatus) return visibleListings;
     return visibleListings.filter((row) => row.status === byTimeActiveStatus);
   }, [visibleListings, byTimeActiveStatus]);
+  /** Today / Yesterday / older buckets so the ungrouped feed can be skipped. */
+  const byTimeDayGroups = useMemo(
+    () => groupRowsByDay(byTimeFilteredListings),
+    [byTimeFilteredListings],
+  );
 
   // Preload all town market snapshots from SQLite so sidebar clicks are instant.
   useEffect(() => {
@@ -668,7 +645,7 @@ export default function LatestClient({
   const syncLabel = formatSync(lastSync);
   const newestMlsLabel = formatSync(newestModification(visibleListings));
   const pullHealth = evaluateIncrementalHealth({
-    scheduler: lastHeartbeat ? "railway" : "netlify",
+    host: lastHeartbeat ? "runner" : "netlify",
     heartbeatAt: lastHeartbeat,
     finishedAt: lastSync,
   });
@@ -1306,26 +1283,10 @@ export default function LatestClient({
                                   }
                                   className="group flex min-w-0 items-center gap-2 text-left transition-colors hover:text-navy"
                                 >
-                                  <span
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-charcoal/20 bg-white text-navy/75 shadow-sm"
-                                    aria-hidden
-                                  >
-                                    <svg
-                                      viewBox="0 0 16 16"
-                                      className="h-3.5 w-3.5"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      {collapsed ? (
-                                        <path d="M3 6l5 5 5-5" />
-                                      ) : (
-                                        <path d="M3 10l5-5 5 5" />
-                                      )}
-                                    </svg>
-                                  </span>
+                                  <FeedCollapseSign
+                                    collapsed={collapsed}
+                                    size="md"
+                                  />
                                   {selectedTown ? null : (
                                     <LatestTownMapHover
                                       townName={group.label}
@@ -1370,26 +1331,7 @@ export default function LatestClient({
                                 }
                                 className="group flex min-w-0 shrink-0 items-center gap-2 text-left transition-colors hover:text-navy"
                               >
-                                <span
-                                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-charcoal/20 bg-white text-navy/75 shadow-sm transition-colors group-hover:border-gold/40 group-hover:text-navy"
-                                  aria-hidden
-                                >
-                                  <svg
-                                    viewBox="0 0 16 16"
-                                    className="h-3.5 w-3.5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    {collapsed ? (
-                                      <path d="M3 6l5 5 5-5" />
-                                    ) : (
-                                      <path d="M3 10l5-5 5 5" />
-                                    )}
-                                  </svg>
-                                </span>
+                                <FeedCollapseSign collapsed={collapsed} />
                                 {selectedTown ? null : (
                                   <LatestTownMapHover
                                     townName={group.label}
@@ -1480,42 +1422,39 @@ export default function LatestClient({
                                 : "No recent updates."}
                             </div>
                           ) : (
-                            byTimeFilteredListings.map((l, i) => {
-                              const activityIso = latestRowActivityIso(l);
-                              const key = localDateKey(activityIso);
-                              const prevKey =
-                                i > 0
-                                  ? localDateKey(
-                                      latestRowActivityIso(
-                                        byTimeFilteredListings[i - 1],
-                                      ),
-                                    )
-                                  : null;
-                              const showHeader = key !== prevKey;
+                            byTimeDayGroups.map((day) => {
+                              const dayCollapsed = collapsedGroups.has(
+                                day.collapseKey,
+                              );
                               return (
-                                <div key={l.key}>
-                                  {showHeader ? (
-                                    <div className="flex w-full items-center gap-2 border-b border-charcoal/[0.08] bg-cream/60 px-3 py-1.5 font-mono text-[11px] tracking-[0.14em] uppercase text-charcoal/55 sm:px-4 lg:px-4">
-                                      <span
-                                        className="h-1 w-1 shrink-0 rounded-full bg-gold"
-                                        aria-hidden
-                                      />
-                                      <span className="font-semibold text-navy/70">
-                                        {localDateLabel(activityIso)}
-                                      </span>
-                                    </div>
-                                  ) : null}
-                                  {/* Same fixed desktop slot height as group-by-town ticker rows. */}
-                                  <div className="latest-feed-row latest-ticker-row-slot">
-                                    <LatestLineRow
-                                      listing={l}
-                                      isLive
-                                      isNew={newKeys.has(l.key)}
-                                      hideTown={Boolean(selectedTown)}
-                                      hideZip={Boolean(selectedZip)}
-                                      addressColumnCh={addressColumnCh}
-                                    />
-                                  </div>
+                                <div key={day.collapseKey}>
+                                  <FeedDayGroupHeader
+                                    label={day.label}
+                                    count={day.rows.length}
+                                    collapsed={dayCollapsed}
+                                    onToggle={() =>
+                                      toggleGroupCollapsed(day.collapseKey)
+                                    }
+                                  />
+                                  {dayCollapsed
+                                    ? null
+                                    : day.rows.map((l) => (
+                                        // Same fixed desktop slot height as the
+                                        // group-by-town ticker rows.
+                                        <div
+                                          key={l.key}
+                                          className="latest-feed-row latest-ticker-row-slot"
+                                        >
+                                          <LatestLineRow
+                                            listing={l}
+                                            isLive
+                                            isNew={newKeys.has(l.key)}
+                                            hideTown={Boolean(selectedTown)}
+                                            hideZip={Boolean(selectedZip)}
+                                            addressColumnCh={addressColumnCh}
+                                          />
+                                        </div>
+                                      ))}
                                 </div>
                               );
                             })

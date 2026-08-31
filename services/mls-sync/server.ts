@@ -1,32 +1,44 @@
 /**
- * Railway mls-sync — always-on RETS → Neon Incremental puller.
+ * Railway mls-sync — the always-on sync runner.
  *
- * Netlify is not in the pull path. This process:
- *   - schedules pulls every MLS_SYNC_INTERVAL_MS (default 30m)
- *   - accepts POST /run (Bearer SYNC_CRON_SECRET) for Admin Sync now
- *   - stamps last_incremental_sync / heartbeat in Neon
- *   - owns the stats_cache rebuild: self-scheduled dirty-town sweep + POST
- *     /stats. A full rebuild takes minutes, so no Netlify function can host it,
- *     and Netlify is refusing background invocations for the site (HTTP 429).
- *   - owns Goldilocks scores (POST /scores), Deal of the Day (POST
- *     /deal-of-the-day) and the property address directory (POST
- *     /property-addresses) for the same reason: each runs for minutes.
+ * This process does two things and nothing else:
+ *   1. Sweeps: notice a job's Configure slot has come round and put a row on
+ *      `sync_queue`.
+ *   2. Drain: claim the next queued row, fork a child to do the work under a
+ *      kill budget, and write the outcome back.
  *
- * Which host owns a job is declared per job in Admin → Configure → Scheduler.
- * The sweeps here honour that radio, so pointing a job back at Netlify cron
- * makes this process stand down without a deploy.
+ * No job runs in this heap. Holding two towns' inventory at once is what
+ * OOM-killed this container, and an OOM took the in-memory queue with it — five
+ * `pending*` variables that nobody could see and a restart silently emptied.
+ * Now the waiting line is a table, and a job that blows up blows up alone.
+ *
+ * There is no per-job Scheduler radio any more either. The queue is the
+ * handoff: Admin, the Netlify crons, EventBridge and these sweeps all enqueue,
+ * this process claims, and Netlify only runs a job itself when a row has been
+ * stranded long enough to prove this process is gone.
  *
  * Start (repo root):
  *   npm run start:mls-sync
  *
- * Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, PORT, optional MLS_SYNC_INTERVAL_MS
+ * Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, PORT,
+ *      optional MLS_SYNC_INTERVAL_MS, MLS_SYNC_CHILD_MAX_OLD_SPACE_MB
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { existsSync } from 'node:fs'
 
-import type { StatsRebuildReason } from '../../lib/stats-dirty-towns'
-import type { TmreTown } from '../../lib/tmre-towns'
+import {
+  SYNC_QUEUE_PRIORITY_MANUAL,
+  SYNC_QUEUE_PRIORITY_SWEEP,
+  SYNC_QUEUE_RUNNER_JOBS,
+} from '../../lib/sync-queue-shared'
+import type { ScheduledSyncJobId } from '../../lib/scheduled-sync-jobs-shared'
+import {
+  drainSyncQueueOnce,
+  readRunnerState,
+  startSyncQueueDrain,
+  stopCurrentChild,
+} from './job-runner'
 
 if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
@@ -46,194 +58,50 @@ const INTERVAL_MS = Math.max(
     30 * 60_000,
 )
 
-/** Stats sweep cadence — one small sync_meta read, rebuild only dirty towns. */
-const STATS_SWEEP_MS = 10 * 60 * 1000
-const STATS_SWEEP_DELAY_MS = 2 * 60 * 1000
-
 /**
- * Goldilocks sweep cadence. Both sweeps only *check*; Configure's Start time is
- * the wall-clock grid that decides whether a run is allowed, so a tighter check
- * interval just means the job starts nearer its configured minute.
+ * Sweep cadences. A sweep only *checks* and enqueues — the drain decides when
+ * the work actually starts, and Configure's Start time is the wall-clock grid
+ * that decides whether a run is allowed at all. Boot delays are staggered so a
+ * deploy does not put six rows on the queue in the same second.
  */
-const SCORES_SWEEP_MS = 5 * 60 * 1000
-const SCORES_SWEEP_DELAY_MS = 3 * 60 * 1000
-
-/**
- * Deal of the Day and the property-address directory are weekly, so a 10-minute
- * check lands them within ten minutes of their Configure slot. Boot delays are
- * staggered so a deploy does not fire every lane at once into one heap.
- */
-const DOTD_SWEEP_MS = 10 * 60 * 1000
-const DOTD_SWEEP_DELAY_MS = 4 * 60 * 1000
-const ADDRESSES_SWEEP_MS = 10 * 60 * 1000
-const ADDRESSES_SWEEP_DELAY_MS = 5 * 60 * 1000
-
-/**
- * Monday brief sweep. The point of hosting the digest here is the retry: a
- * five-minute check lands the send within five minutes of its Configure slot and
- * keeps checking for the rest of the day if the first attempt fails. Netlify's
- * weekly cron gave it one attempt and no second chance, so a queue 502 or a
- * Resend blip at that minute lost the whole week with nothing to look at.
- */
-const DIGEST_SWEEP_MS = 5 * 60 * 1000
-const DIGEST_SWEEP_DELAY_MS = 6 * 60 * 1000
-
-/**
- * Property-address attempt stamp, read only by this service. The dashboard shows
- * that row as a single End timestamp, so the job has no public Start key to
- * compare against — but the restart guard still needs to know an attempt died
- * mid-flight, and an in-process flag does not survive the container going down.
- */
-const ADDRESSES_ATTEMPT_KEY = 'property_addresses_railway_attempt'
-/** Sync now that arrived while another lane was running — survive a restart. */
-const ADDRESSES_PENDING_KEY = 'property_addresses_railway_pending'
-
-/**
- * How long to wait before retrying a rebuild whose start never finished. An OOM
- * takes the whole container with it, so without this the sweep would relaunch
- * the same fatal rebuild on every boot and starve the incremental pull.
- */
-const STATS_RETRY_COOLDOWN_MS = 30 * 60 * 1000
-
-type StatsRebuildPlan = {
-  towns: TmreTown[]
-  reasons: Record<string, StatsRebuildReason>
-  /** Where the request came from: railway-sweep | manual. */
-  trigger: string
-}
-
-let runInFlight: Promise<void> | null = null
-let lastRunStartedAt: string | null = null
-let lastRunFinishedAt: string | null = null
-let lastRunOk: boolean | null = null
-let lastRunError: string | null = null
-
-let statsInFlight: Promise<void> | null = null
-let lastStatsStartedAt: string | null = null
-let lastStatsFinishedAt: string | null = null
-let lastStatsOk: boolean | null = null
-let lastStatsWritten: number | null = null
-let lastStatsError: string | null = null
-let lastStatsPlan: StatsRebuildPlan | null = null
-
-let scoresInFlight: Promise<void> | null = null
-let lastScoresStartedAt: string | null = null
-let lastScoresFinishedAt: string | null = null
-let lastScoresOk: boolean | null = null
-let lastScoresScored: number | null = null
-let lastScoresError: string | null = null
-let lastScoresTrigger: string | null = null
-
-let dotdInFlight: Promise<void> | null = null
-let lastDotdStartedAt: string | null = null
-let lastDotdFinishedAt: string | null = null
-let lastDotdOk: boolean | null = null
-let lastDotdWritten: number | null = null
-let lastDotdError: string | null = null
-let lastDotdTrigger: string | null = null
-
-let addressesInFlight: Promise<void> | null = null
-let lastAddressesStartedAt: string | null = null
-let lastAddressesFinishedAt: string | null = null
-let lastAddressesOk: boolean | null = null
-let lastAddressesRows: number | null = null
-let lastAddressesError: string | null = null
-let lastAddressesTrigger: string | null = null
-
-let digestInFlight: Promise<void> | null = null
-let lastDigestStartedAt: string | null = null
-let lastDigestFinishedAt: string | null = null
-let lastDigestOk: boolean | null = null
-let lastDigestDetail: string | null = null
-let lastDigestError: string | null = null
-let lastDigestTrigger: string | null = null
-
-type PendingRebuild = { startedAt: string; trigger: string }
-
-let pendingAddresses: PendingRebuild | null = null
-let pendingDotd: PendingRebuild | null = null
-let pendingScores: PendingRebuild | null = null
-let pendingDigest: PendingRebuild | null = null
-let pendingStats: { startedAt: string; plan: StatsRebuildPlan } | null = null
-
-/**
- * Every lane in this process shares one heap, and holding two towns' inventory at
- * once is what OOM-killed the container before. One job at a time, whichever
- * asked first; the losing Sync now is kept and started when the current lane
- * finishes — 409 used to drop it while Admin still painted Queued.
- */
-function anyJobInFlight(): boolean {
-  return (
-    runInFlight != null ||
-    statsInFlight != null ||
-    scoresInFlight != null ||
-    dotdInFlight != null ||
-    addressesInFlight != null ||
-    digestInFlight != null
-  )
-}
-
-function persistAddressesPending(startedAt: string): void {
-  void import('../../lib/db/sync-meta-store')
-    .then(({ hydrateSyncMetaStore, setSyncMetaDurable }) =>
-      hydrateSyncMetaStore().then(() =>
-        setSyncMetaDurable(ADDRESSES_PENDING_KEY, startedAt),
-      ),
-    )
-    .catch((err) => {
-      console.warn('[mls-sync] could not persist property-addresses pending', err)
-    })
-}
-
-function clearAddressesPending(): void {
-  pendingAddresses = null
-  void import('../../lib/db/sync-meta-store')
-    .then(({ deleteSyncMetaDurable }) =>
-      deleteSyncMetaDurable(ADDRESSES_PENDING_KEY),
-    )
-    .catch(() => {})
-}
-
-/** Start the next Sync now that was parked while another lane ran. */
-function drainPendingJobs(): void {
-  if (anyJobInFlight()) return
-  // Digest first: seconds of work against an already-built stats cache, and the
-  // only lane whose value depends on landing near a wall-clock time.
-  if (pendingDigest) {
-    const next = pendingDigest
-    pendingDigest = null
-    console.info('[mls-sync] starting queued market digest')
-    startDigestSend(next.startedAt, next.trigger)
-    return
-  }
-  if (pendingAddresses) {
-    const next = pendingAddresses
-    pendingAddresses = null
-    console.info('[mls-sync] starting queued property addresses')
-    startAddressesSync(next.startedAt, next.trigger)
-    return
-  }
-  if (pendingDotd) {
-    const next = pendingDotd
-    pendingDotd = null
-    console.info('[mls-sync] starting queued Deal of the Day')
-    startDotdRebuild(next.startedAt, next.trigger)
-    return
-  }
-  if (pendingScores) {
-    const next = pendingScores
-    pendingScores = null
-    console.info('[mls-sync] starting queued Goldilocks')
-    startScoresRebuild(next.startedAt, next.trigger)
-    return
-  }
-  if (pendingStats) {
-    const next = pendingStats
-    pendingStats = null
-    console.info('[mls-sync] starting queued stats rebuild')
-    startStatsRebuild(next.startedAt, next.plan)
-  }
-}
+const SWEEPS: {
+  jobId: ScheduledSyncJobId
+  everyMs: number
+  bootDelayMs: number
+  label: string
+}[] = [
+  { jobId: 'incremental', everyMs: 60_000, bootDelayMs: 15_000, label: 'incremental' },
+  {
+    jobId: 'stats-cache',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 2 * 60_000,
+    label: 'stats cache',
+  },
+  {
+    jobId: 'listing-scores',
+    everyMs: 5 * 60_000,
+    bootDelayMs: 3 * 60_000,
+    label: 'goldilocks',
+  },
+  {
+    jobId: 'deal-of-the-day',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 4 * 60_000,
+    label: 'deal of the day',
+  },
+  {
+    jobId: 'property-addresses',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 5 * 60_000,
+    label: 'property addresses',
+  },
+  {
+    jobId: 'market-digest',
+    everyMs: 5 * 60_000,
+    bootDelayMs: 6 * 60_000,
+    label: 'market digest',
+  },
+]
 
 function readBearer(req: IncomingMessage): string | null {
   const h = req.headers.authorization?.trim() ?? ''
@@ -286,973 +154,191 @@ async function stampHeartbeat(at: string): Promise<void> {
   await setSyncMetaDurable('last_mls_sync_heartbeat', at)
 }
 
-async function executeIncremental(options: {
-  startedAt: string
-  source: 'admin' | 'railway' | 'watchdog'
-  towns?: string[]
-  statusScope?: 'all' | 'active' | 'closed'
-}): Promise<void> {
-  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
-  const { runIncrementalSyncListingsWork } = await import(
-    '../../lib/netlify-sync-listings-work'
-  )
-
-  await hydrateSyncMetaStore()
-  await stampHeartbeat(options.startedAt)
-  // Keep Neon heartbeat fresh during long RETS pulls so Admin does not flash
-  // BROKEN while the run is still in flight (idle pulse is paused then).
-  const pulse = setInterval(() => {
-    void stampHeartbeat(new Date().toISOString()).catch((err) => {
-      console.warn('[mls-sync] heartbeat pulse failed', err)
-    })
-  }, 60_000)
-
-  try {
-    const result = await runIncrementalSyncListingsWork(options.startedAt, {
-      source: options.source,
-      ...(options.towns?.length ? { towns: options.towns } : {}),
-      ...(options.statusScope && options.statusScope !== 'all'
-        ? { statusScope: options.statusScope }
-        : {}),
-    })
-
-    lastRunFinishedAt = new Date().toISOString()
-    lastRunOk = result.status >= 200 && result.status < 300
-    lastRunError = lastRunOk
-      ? null
-      : typeof result.body?.reason === 'string'
-        ? result.body.reason
-        : `HTTP ${result.status}`
-
-    await stampHeartbeat(lastRunFinishedAt)
-    console.info(
-      `[mls-sync] run finished ok=${lastRunOk} status=${result.status} at=${lastRunFinishedAt}`,
-    )
-  } finally {
-    clearInterval(pulse)
-  }
-}
-
-function startRun(options: {
-  startedAt: string
-  source: 'admin' | 'railway' | 'watchdog'
-  towns?: string[]
-  statusScope?: 'all' | 'active' | 'closed'
-}): { accepted: boolean; alreadyRunning: boolean } {
-  if (runInFlight) {
-    return { accepted: true, alreadyRunning: true }
-  }
-  lastRunStartedAt = options.startedAt
-  lastRunFinishedAt = null
-  lastRunOk = null
-  lastRunError = null
-  runInFlight = executeIncremental(options)
-    .catch((err) => {
-      lastRunFinishedAt = new Date().toISOString()
-      lastRunOk = false
-      lastRunError = err instanceof Error ? err.message : String(err)
-      console.error('[mls-sync] run failed', err)
-      void stampHeartbeat(lastRunFinishedAt).catch(() => {})
-    })
-    .finally(() => {
-      runInFlight = null
-      drainPendingJobs()
-    })
-  return { accepted: true, alreadyRunning: false }
-}
-
 /**
- * stats_cache rebuild for the towns in `plan`, hosted here.
+ * Common gates before a sweep enqueues: Pause, the Admin Next override, and
+ * Configure's Frequency/Start grid.
  *
- * A full rebuild reads every town's Active/Closed/Expired inventory and rewrites
- * ~570 payloads; it does not fit a Netlify scheduled function (seconds) and
- * Netlify is refusing background invocations for the site (HTTP 429), so no
- * serverless slot can finish one. This process is always on, which makes it the
- * only host that can. `force` steals the rebuild lock a frozen Lambda may have
- * left armed.
+ * There is no restart guard here any more. `sync_queue` records how the last
+ * attempt ended and refuses to re-queue a job for 30 minutes after a timeout or
+ * a crash, which is the same protection the old `last_*_started` stamps gave —
+ * except it also covers the honest failures and it says so in Admin.
  */
-async function executeStatsRebuild(
-  startedAt: string,
-  plan: StatsRebuildPlan,
-): Promise<void> {
-  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
-  const { rebuildStatsCacheForTowns } = await import('../../lib/stats-cache')
-  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
-
-  await hydrateSyncMetaStore()
-  // Passing every town here lands in the full-cache path (rebuildStatsCache).
-  const result = await rebuildStatsCacheForTowns(plan.towns, {
-    trackRefresh: true,
-    force: true,
-    trigger: plan.trigger,
-    reasons: plan.reasons,
-  })
-  const finishedAt = new Date().toISOString()
-  const ok = result.skipped !== true && result.written > 0
-
-  lastStatsFinishedAt = finishedAt
-  lastStatsOk = ok
-  lastStatsWritten = result.written
-  lastStatsError = ok ? null : (result.skipReason ?? 'wrote 0 entries')
-
-  const scope = plan.towns.join(', ')
-  console.info(
-    `[mls-sync] stats rebuild towns=${scope} written=${result.written} skipped=${result.skipped ?? false} reason=${result.skipReason ?? '—'} in ${result.durationMs}ms`,
-  )
-
-  // Sync History needs the Done|Failed row — nothing else writes it for stats.
-  await recordDashboardSyncAudit({
-    startedAt,
-    finishedAt,
-    syncSuffix: 'stats',
-    listingsCount: result.written,
-    ok,
-    detail: result.skipped
-      ? `Stats cache skipped — ${result.skipReason ?? 'unknown'}`
-      : ok
-        ? `Stats cache rebuilt on Railway (${plan.trigger}: ${scope}) — ${result.written.toLocaleString()} entries`
-        : 'Stats cache rebuilt — 0 entries (check listings inventory / Neon)',
-  })
-}
-
-/**
- * Never overlap a rebuild with a RETS pull: holding both towns' inventory and
- * the stats payloads in one heap is what OOM-killed this service before.
- */
-function startStatsRebuild(
-  startedAt: string,
-  plan: StatsRebuildPlan,
-): {
-  accepted: boolean
-  alreadyRunning: boolean
-  otherJobInFlight: boolean
-  queuedBehind?: boolean
-} {
-  if (statsInFlight) {
-    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
-  }
-  if (anyJobInFlight()) {
-    pendingStats = { startedAt, plan }
-    console.info('[mls-sync] stats rebuild queued behind the current job')
-    return {
-      accepted: true,
-      alreadyRunning: false,
-      otherJobInFlight: false,
-      queuedBehind: true,
-    }
-  }
-
-  lastStatsStartedAt = startedAt
-  lastStatsFinishedAt = null
-  lastStatsOk = null
-  lastStatsError = null
-  lastStatsWritten = null
-  lastStatsPlan = plan
-  statsInFlight = executeStatsRebuild(startedAt, plan)
-    .catch((err) => {
-      lastStatsFinishedAt = new Date().toISOString()
-      lastStatsOk = false
-      lastStatsError = err instanceof Error ? err.message : String(err)
-      console.error('[mls-sync] stats rebuild failed', err)
-    })
-    .finally(() => {
-      statsInFlight = null
-      drainPendingJobs()
-    })
-  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
-}
-
-/**
- * Which towns to rebuild and why. Empty `towns` means nothing to do.
- *
- * There is no clock in here any more: the sweep rebuilds towns the incremental
- * pull marked dirty, plus any town whose last rebuild is older than
- * STATS_TOWN_MAX_AGE_MS. The old hourly TTL recomputed all seven towns whether
- * or not a number had moved.
- */
-async function statsRebuildPlan(): Promise<StatsRebuildPlan | null> {
-  // Configure decides the host. If it says Netlify, this process stays out.
+async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
   const { readSyncScheduleConfigFresh } = await import(
     '../../lib/sync-schedule-config'
   )
-  const { resolveJobScheduler } = await import(
-    '../../lib/sync-schedule-config-shared'
-  )
-  const config = await readSyncScheduleConfigFresh()
-  if (resolveJobScheduler(config.jobs['stats-cache']) !== 'railway') return null
-
   const { isScheduledSyncJobPausedFresh } = await import(
     '../../lib/scheduled-sync-toggle'
   )
-  if (await isScheduledSyncJobPausedFresh('stats-cache')) return null
-
-  const { getSyncMeta } = await import('../../lib/db/sync-meta')
-
-  // A rebuild that dies mid-flight (an OOM kills the whole process) leaves
-  // last_stats_cache_started behind with no later last_stats_cache. That stamp
-  // is the only guard that survives the restart, so honour it: without it the
-  // sweep reruns the same fatal rebuild every time the container boots.
-  const [startedAt, finishedAt] = await Promise.all([
-    getSyncMeta('last_stats_cache_started'),
-    getSyncMeta('last_stats_cache'),
-  ])
-  const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN
-  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
-  const startWentUnfinished =
-    Number.isFinite(startedMs) &&
-    (!Number.isFinite(finishedMs) || finishedMs < startedMs)
-  if (startWentUnfinished && Date.now() - startedMs < STATS_RETRY_COOLDOWN_MS) {
-    return null
-  }
-
-  // Configure's Start time is a wall-clock grid, not "an hour after whatever ran
-  // last": the jobs are staggered onto separate minutes so they cannot collide
-  // and so Start reads as pass/fail at a glance. Dirtiness decides whether there
-  // is work; the slot decides when we are allowed to do it.
-  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-  const { statsCacheRunClocks, readStatsCacheLastRun, statsTownsDueForRebuild } =
-    await import('../../lib/stats-dirty-towns')
-  const lastRun = await readStatsCacheLastRun().catch(() => null)
-  const lastStatsEnd = statsCacheRunClocks(lastRun).finishedAt ?? finishedAt
-  if (!isJobDueBySchedule(config.jobs['stats-cache'], lastStatsEnd)) return null
-
-  const { towns, reasons } = await statsTownsDueForRebuild()
-  if (towns.length === 0) return null
-  return { towns, reasons, trigger: 'railway-sweep' }
-}
-
-/**
- * Self-scheduled stats sweep.
- *
- * Deliberately not dependent on a Netlify cron reaching us: the thin crons can
- * only ask, and their background-worker hop is being refused site-wide. This
- * process already owns its own pull interval, so it owns the stats sweep too.
- */
-function scheduleStatsSweep(): void {
-  const tick = async () => {
-    if (anyJobInFlight()) return
-    const plan = await statsRebuildPlan()
-    if (!plan) return
-    const why = plan.towns
-      .map((town) => `${town}=${plan.reasons[town] ?? 'dirty'}`)
-      .join(' ')
-    console.info(`[mls-sync] stats rebuild due — ${why}`)
-    startStatsRebuild(new Date().toISOString(), plan)
-  }
-  const run = () => {
-    void tick().catch((err) => {
-      console.warn('[mls-sync] stats sweep failed', err)
-    })
-  }
-  setTimeout(run, STATS_SWEEP_DELAY_MS)
-  setInterval(run, STATS_SWEEP_MS)
-  console.info(
-    `[mls-sync] stats sweep every ${Math.round(STATS_SWEEP_MS / 60_000)}m (rebuilds dirty towns; 24h backstop per town)`,
-  )
-}
-
-/**
- * Goldilocks / listing-scores rebuild, hosted here.
- *
- * Scores every Active listing against its town peer pool. One town at a time —
- * the same discipline the stats rebuild needed, since holding several towns'
- * inventory in one heap is what OOM-killed this container before.
- */
-async function executeScoresRebuild(
-  startedAt: string,
-  trigger: string,
-): Promise<void> {
-  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
-  const { rebuildAllListingScores } = await import(
-    '../../lib/listing-scores-rebuild'
-  )
-  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
-
-  await hydrateSyncMetaStore()
-  const result = await rebuildAllListingScores()
-  const finishedAt = new Date().toISOString()
-  const failed = result.towns.filter((town) => !town.ok)
-  const ok = failed.length === 0 && result.totalScored > 0
-
-  lastScoresFinishedAt = finishedAt
-  lastScoresOk = ok
-  lastScoresScored = result.totalScored
-  lastScoresError = ok
-    ? null
-    : failed.length > 0
-      ? failed.map((town) => `${town.town}: ${town.error ?? 'failed'}`).join('; ')
-      : 'scored 0 listings'
-
-  console.info(
-    `[mls-sync] goldilocks rebuild scored=${result.totalScored} failed=${failed.length} in ${result.durationMs}ms`,
-  )
-
-  await recordDashboardSyncAudit({
-    startedAt,
-    finishedAt,
-    syncSuffix: 'goldilocks',
-    listingsCount: result.totalScored,
-    ok,
-    detail: ok
-      ? `Goldilocks rescored on Railway (${trigger}) — ${result.totalScored.toLocaleString()} listings`
-      : failed.length > 0
-        ? `Goldilocks failed on ${failed.length} town(s): ${lastScoresError}`
-        : 'Goldilocks scored 0 listings (check Active inventory)',
-  })
-}
-
-/** Never overlap Goldilocks with a RETS pull or a stats rebuild (heap). */
-function startScoresRebuild(
-  startedAt: string,
-  trigger: string,
-): {
-  accepted: boolean
-  alreadyRunning: boolean
-  otherJobInFlight: boolean
-  queuedBehind?: boolean
-} {
-  if (scoresInFlight) {
-    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
-  }
-  if (anyJobInFlight()) {
-    pendingScores = { startedAt, trigger }
-    console.info('[mls-sync] Goldilocks queued behind the current job')
-    return {
-      accepted: true,
-      alreadyRunning: false,
-      otherJobInFlight: false,
-      queuedBehind: true,
-    }
-  }
-
-  lastScoresStartedAt = startedAt
-  lastScoresFinishedAt = null
-  lastScoresOk = null
-  lastScoresError = null
-  lastScoresScored = null
-  lastScoresTrigger = trigger
-  scoresInFlight = executeScoresRebuild(startedAt, trigger)
-    .catch((err) => {
-      lastScoresFinishedAt = new Date().toISOString()
-      lastScoresOk = false
-      lastScoresError = err instanceof Error ? err.message : String(err)
-      console.error('[mls-sync] goldilocks rebuild failed', err)
-    })
-    .finally(() => {
-      scoresInFlight = null
-      drainPendingJobs()
-    })
-  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
-}
-
-/** True when Configure points Goldilocks here and its slot has come round. */
-async function scoresRebuildIsDue(): Promise<boolean> {
-  const { readSyncScheduleConfigFresh } = await import(
-    '../../lib/sync-schedule-config'
-  )
-  const { resolveJobScheduler } = await import(
-    '../../lib/sync-schedule-config-shared'
-  )
-  const config = await readSyncScheduleConfigFresh()
-  if (resolveJobScheduler(config.jobs['listing-scores']) !== 'railway') {
-    return false
-  }
-
-  const { isScheduledSyncJobPausedFresh } = await import(
-    '../../lib/scheduled-sync-toggle'
-  )
-  if (await isScheduledSyncJobPausedFresh('listing-scores')) return false
-
-  const { getSyncMeta } = await import('../../lib/db/sync-meta')
-  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-  const [startedAt, finishedAt] = await Promise.all([
-    getSyncMeta('last_listing_scores_started'),
-    getSyncMeta('last_listing_scores'),
-  ])
-  // Same restart guard the stats lane needs: a start with no later finish means
-  // the last attempt died mid-flight, so hold off rather than loop on it.
-  const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN
-  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
-  if (
-    Number.isFinite(startedMs) &&
-    (!Number.isFinite(finishedMs) || finishedMs < startedMs) &&
-    Date.now() - startedMs < STATS_RETRY_COOLDOWN_MS
-  ) {
-    return false
-  }
-
-  return isJobDueBySchedule(config.jobs['listing-scores'], finishedAt)
-}
-
-/**
- * Deal of the Day rebuild, hosted here.
- *
- * Recomputes 42 picks (7 towns × sale/rental × property class) by scoring each
- * town's Active inventory, then fills photo gaps. Minutes of work, so no
- * serverless slot can finish one.
- */
-async function executeDotdRebuild(
-  startedAt: string,
-  trigger: string,
-): Promise<void> {
-  const { hydrateSyncMetaStore, setSyncMetaDurable } = await import(
-    '../../lib/db/sync-meta-store'
-  )
-  const { rebuildDealOfTheDayCache } = await import(
-    '../../lib/deal-of-the-day-cache'
-  )
-  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
-
-  await hydrateSyncMetaStore()
-  const result = await rebuildDealOfTheDayCache()
-  const finishedAt = new Date().toISOString()
-  const ok = result.written > 0
-
-  lastDotdFinishedAt = finishedAt
-  lastDotdOk = ok
-  lastDotdWritten = result.written
-  lastDotdError = ok ? null : 'wrote 0 entries'
-
-  // rebuildDealOfTheDayCache() stamps its own finish key, but only on the path
-  // that writes entries: an empty-inventory run returns early having stamped
-  // Start alone. Stamp it here so a Start never dangles without an End, which is
-  // exactly the shape the dashboard reports as a hung job.
-  await setSyncMetaDurable('last_deal_of_the_day_cache', finishedAt)
-
-  console.info(
-    `[mls-sync] deal-of-the-day rebuild written=${result.written} in ${result.durationMs}ms`,
-  )
-
-  await recordDashboardSyncAudit({
-    startedAt,
-    finishedAt,
-    syncSuffix: 'deal-day',
-    listingsCount: result.written,
-    ok,
-    detail: ok
-      ? `Deal of the Day rebuilt on Railway (${trigger}) — ${result.written.toLocaleString()} entries`
-      : 'Deal of the Day rebuilt — 0 entries (check Active inventory)',
-  })
-}
-
-function startDotdRebuild(
-  startedAt: string,
-  trigger: string,
-): {
-  accepted: boolean
-  alreadyRunning: boolean
-  otherJobInFlight: boolean
-  queuedBehind?: boolean
-} {
-  if (dotdInFlight) {
-    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
-  }
-  if (anyJobInFlight()) {
-    pendingDotd = { startedAt, trigger }
-    console.info('[mls-sync] Deal of the Day queued behind the current job')
-    return {
-      accepted: true,
-      alreadyRunning: false,
-      otherJobInFlight: false,
-      queuedBehind: true,
-    }
-  }
-
-  lastDotdStartedAt = startedAt
-  lastDotdFinishedAt = null
-  lastDotdOk = null
-  lastDotdError = null
-  lastDotdWritten = null
-  lastDotdTrigger = trigger
-  dotdInFlight = executeDotdRebuild(startedAt, trigger)
-    .catch((err) => {
-      lastDotdFinishedAt = new Date().toISOString()
-      lastDotdOk = false
-      lastDotdError = err instanceof Error ? err.message : String(err)
-      console.error('[mls-sync] deal-of-the-day rebuild failed', err)
-    })
-    .finally(() => {
-      dotdInFlight = null
-      drainPendingJobs()
-    })
-  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
-}
-
-/** True when Configure points Deal of the Day here and its slot has come round. */
-async function dotdRebuildIsDue(): Promise<boolean> {
-  const { readSyncScheduleConfigFresh } = await import(
-    '../../lib/sync-schedule-config'
-  )
-  const { resolveJobScheduler } = await import(
-    '../../lib/sync-schedule-config-shared'
-  )
-  const config = await readSyncScheduleConfigFresh()
-  if (resolveJobScheduler(config.jobs['deal-of-the-day']) !== 'railway') {
-    return false
-  }
-
-  const { isScheduledSyncJobPausedFresh } = await import(
-    '../../lib/scheduled-sync-toggle'
-  )
-  if (await isScheduledSyncJobPausedFresh('deal-of-the-day')) return false
-
-  const { getSyncMeta } = await import('../../lib/db/sync-meta')
-  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-  const [startedAt, finishedAt] = await Promise.all([
-    getSyncMeta('last_deal_of_the_day_cache_started'),
-    getSyncMeta('last_deal_of_the_day_cache'),
-  ])
-  // Same restart guard as stats / Goldilocks: a start with no later finish means
-  // the last attempt died mid-flight, so hold off rather than loop on it.
-  const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN
-  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
-  if (
-    Number.isFinite(startedMs) &&
-    (!Number.isFinite(finishedMs) || finishedMs < startedMs) &&
-    Date.now() - startedMs < STATS_RETRY_COOLDOWN_MS
-  ) {
-    return false
-  }
-
-  return isJobDueBySchedule(config.jobs['deal-of-the-day'], finishedAt)
-}
-
-/**
- * Property address directory sync, hosted here.
- *
- * One upsert per property across every town's MLS rows plus Vision recent sales,
- * sequentially — long enough that a serverless slot cannot see it through.
- */
-async function executeAddressesSync(
-  startedAt: string,
-  trigger: string,
-): Promise<void> {
-  const { hydrateSyncMetaStore, setSyncMetaDurable } = await import(
-    '../../lib/db/sync-meta-store'
-  )
-  const { formatPropertyAddressSyncSummary, syncPropertyAddresses } =
-    await import('../../lib/property-address-sync')
-  const { recordDashboardSyncAudit } = await import('../../lib/db/listings-repo')
-
-  await hydrateSyncMetaStore()
-  clearAddressesPending()
-  console.info(`[mls-sync] property addresses starting (${trigger})`)
-  // Recorded before the work, so a container death mid-run leaves evidence the
-  // restart guard can see.
-  await setSyncMetaDurable(ADDRESSES_ATTEMPT_KEY, startedAt)
-  const result = await syncPropertyAddresses()
-  const finishedAt = new Date().toISOString()
-  const ok = result.ok && result.totalRows > 0
-
-  lastAddressesFinishedAt = finishedAt
-  lastAddressesOk = ok
-  lastAddressesRows = result.totalRows
-  lastAddressesError = ok ? null : 'verified 0 addresses'
-
-  console.info(
-    `[mls-sync] property addresses verified ${formatPropertyAddressSyncSummary(result)} in ${result.durationMs}ms`,
-  )
-
-  await recordDashboardSyncAudit({
-    startedAt,
-    finishedAt,
-    syncSuffix: 'addresses',
-    listingsCount: result.totalRows,
-    ok,
-    detail: ok
-      ? `Property addresses verified on Railway (${trigger}) — ${formatPropertyAddressSyncSummary(result)}`
-      : 'Property addresses verified — 0 rows (check listings inventory / Vision)',
-  })
-}
-
-function startAddressesSync(
-  startedAt: string,
-  trigger: string,
-): {
-  accepted: boolean
-  alreadyRunning: boolean
-  otherJobInFlight: boolean
-  queuedBehind?: boolean
-} {
-  if (addressesInFlight) {
-    return { accepted: false, alreadyRunning: true, otherJobInFlight: false }
-  }
-  if (anyJobInFlight()) {
-    pendingAddresses = { startedAt, trigger }
-    persistAddressesPending(startedAt)
-    console.info('[mls-sync] property addresses queued behind the current job')
-    return {
-      accepted: true,
-      alreadyRunning: false,
-      otherJobInFlight: false,
-      queuedBehind: true,
-    }
-  }
-
-  lastAddressesStartedAt = startedAt
-  lastAddressesFinishedAt = null
-  lastAddressesOk = null
-  lastAddressesError = null
-  lastAddressesRows = null
-  lastAddressesTrigger = trigger
-  addressesInFlight = executeAddressesSync(startedAt, trigger)
-    .catch((err) => {
-      lastAddressesFinishedAt = new Date().toISOString()
-      lastAddressesOk = false
-      lastAddressesError = err instanceof Error ? err.message : String(err)
-      console.error('[mls-sync] property address sync failed', err)
-    })
-    .finally(() => {
-      addressesInFlight = null
-      drainPendingJobs()
-    })
-  return { accepted: true, alreadyRunning: false, otherJobInFlight: false }
-}
-
-/** True when Configure points the address directory here and its slot is up. */
-async function addressesSyncIsDue(): Promise<boolean> {
-  const { readSyncScheduleConfigFresh } = await import(
-    '../../lib/sync-schedule-config'
-  )
-  const { resolveJobScheduler } = await import(
-    '../../lib/sync-schedule-config-shared'
-  )
-  const config = await readSyncScheduleConfigFresh()
-  if (resolveJobScheduler(config.jobs['property-addresses']) !== 'railway') {
-    return false
-  }
-
-  const { isScheduledSyncJobPausedFresh } = await import(
-    '../../lib/scheduled-sync-toggle'
-  )
-  if (await isScheduledSyncJobPausedFresh('property-addresses')) return false
-
-  const { getSyncMeta } = await import('../../lib/db/sync-meta')
-  const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-  const [attemptAt, finishedAt, pendingAt] = await Promise.all([
-    getSyncMeta(ADDRESSES_ATTEMPT_KEY),
-    getSyncMeta('property_addresses_synced_at'),
-    getSyncMeta(ADDRESSES_PENDING_KEY),
-  ])
-  if (pendingAt || pendingAddresses) {
-    if (!pendingAddresses && pendingAt) {
-      pendingAddresses = { startedAt: pendingAt, trigger: 'manual' }
-    }
-    return true
-  }
-  const attemptMs = attemptAt ? Date.parse(attemptAt) : Number.NaN
-  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
-  if (
-    Number.isFinite(attemptMs) &&
-    (!Number.isFinite(finishedMs) || finishedMs < attemptMs) &&
-    Date.now() - attemptMs < STATS_RETRY_COOLDOWN_MS
-  ) {
-    return false
-  }
-
-  return isJobDueBySchedule(config.jobs['property-addresses'], finishedAt)
-}
-
-/**
- * Should a RETS pull start now?
- *
- * Pulls land on Configure's wall-clock grid (Frequency + Start time), not
- * "INTERVAL_MS after boot" — a deploy used to re-phase the whole schedule, which
- * is exactly what made Start times untrustworthy as a pass/fail signal. The
- * scheduler radio and Pause are honoured here too, so Railway stops pulling when
- * Configure hands Incremental to another host.
- *
- * `liveness` is the backstop: if the config read fails or the grid ever wedges,
- * a pull still happens once End is older than twice the interval. Stale listings
- * are the one outcome worse than an off-minute pull.
- */
-async function incrementalRunIsDue(): Promise<boolean> {
-  const { getSyncMeta } = await import('../../lib/db/sync-meta')
-  const finishedAt = await getSyncMeta('last_incremental_sync').catch(() => null)
-  const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
-  const liveness =
-    !Number.isFinite(finishedMs) || Date.now() - finishedMs >= INTERVAL_MS * 2
-
-  try {
-    const { readSyncScheduleConfigFresh } = await import(
-      '../../lib/sync-schedule-config'
-    )
-    const { resolveJobScheduler } = await import(
-      '../../lib/sync-schedule-config-shared'
-    )
-    const config = await readSyncScheduleConfigFresh()
-    if (resolveJobScheduler(config.jobs.incremental) !== 'railway') return false
-
-    const { isScheduledSyncJobPausedFresh } = await import(
-      '../../lib/scheduled-sync-toggle'
-    )
-    if (await isScheduledSyncJobPausedFresh('incremental')) return false
-
-    const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-    return isJobDueBySchedule(config.jobs.incremental, finishedAt)
-  } catch (err) {
-    console.warn(
-      `[mls-sync] schedule read failed — falling back to interval liveness (due=${liveness})`,
-      err,
-    )
-    return liveness
-  }
-}
-
-/** Minute tick that starts a pull at its configured slot. */
-function scheduleIncrementalSweep(): void {
-  const tick = async () => {
-    if (anyJobInFlight()) return
-    if (!(await incrementalRunIsDue())) return
-    console.info('[mls-sync] incremental due — configured slot reached')
-    startRun({ startedAt: new Date().toISOString(), source: 'railway' })
-  }
-  const run = () => {
-    void tick().catch((err) => {
-      console.warn('[mls-sync] incremental sweep failed', err)
-    })
-  }
-  setTimeout(run, 15_000)
-  setInterval(run, 60_000)
-}
-
-/** Self-scheduled Goldilocks sweep — same reasoning as the stats sweep. */
-function scheduleScoresSweep(): void {
-  const tick = async () => {
-    if (anyJobInFlight()) return
-    if (!(await scoresRebuildIsDue())) return
-    console.info('[mls-sync] goldilocks due — configured slot reached')
-    startScoresRebuild(new Date().toISOString(), 'railway-sweep')
-  }
-  const run = () => {
-    void tick().catch((err) => {
-      console.warn('[mls-sync] goldilocks sweep failed', err)
-    })
-  }
-  setTimeout(run, SCORES_SWEEP_DELAY_MS)
-  setInterval(run, SCORES_SWEEP_MS)
-  console.info(
-    `[mls-sync] goldilocks sweep every ${Math.round(SCORES_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
-  )
-}
-
-/** Self-scheduled Deal of the Day sweep. */
-function scheduleDotdSweep(): void {
-  const tick = async () => {
-    if (anyJobInFlight()) return
-    if (!(await dotdRebuildIsDue())) return
-    console.info('[mls-sync] deal-of-the-day due — configured slot reached')
-    startDotdRebuild(new Date().toISOString(), 'railway-sweep')
-  }
-  const run = () => {
-    void tick().catch((err) => {
-      console.warn('[mls-sync] deal-of-the-day sweep failed', err)
-    })
-  }
-  setTimeout(run, DOTD_SWEEP_DELAY_MS)
-  setInterval(run, DOTD_SWEEP_MS)
-  console.info(
-    `[mls-sync] deal-of-the-day sweep every ${Math.round(DOTD_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
-  )
-}
-
-/** Self-scheduled property address directory sweep. */
-function scheduleAddressesSweep(): void {
-  const tick = async () => {
-    if (anyJobInFlight()) return
-    if (!(await addressesSyncIsDue())) return
-    const pending = pendingAddresses
-    const startedAt = pending?.startedAt ?? new Date().toISOString()
-    const trigger = pending?.trigger ?? 'railway-sweep'
-    console.info(
-      pending
-        ? '[mls-sync] property addresses due — Sync now was waiting'
-        : '[mls-sync] property addresses due — configured slot reached',
-    )
-    startAddressesSync(startedAt, trigger)
-  }
-  const run = () => {
-    void tick().catch((err) => {
-      console.warn('[mls-sync] property address sweep failed', err)
-    })
-  }
-  setTimeout(run, ADDRESSES_SWEEP_DELAY_MS)
-  setInterval(run, ADDRESSES_SWEEP_MS)
-  console.info(
-    `[mls-sync] property address sweep every ${Math.round(ADDRESSES_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
-  )
-}
-
-/**
- * Monday market brief send, hosted here.
- *
- * Seconds of work — read the stats cache, format, hand to Resend — so this lane
- * exists for the clock, not the runtime. `sendMarketDigestEmail` owns the week
- * watermark, the durable attempt/result stamps, and the History row, so both
- * hosts record a send identically and neither can send twice.
- */
-async function executeDigestSend(
-  startedAt: string,
-  trigger: string,
-  opts: { force: boolean; stampWeek: boolean },
-): Promise<void> {
-  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
-  const { sendMarketDigestEmail } = await import('../../lib/market-digest-notify')
-
-  await hydrateSyncMetaStore()
-  console.info(`[mls-sync] market digest starting (${trigger})`)
-  const result = await sendMarketDigestEmail({
-    force: opts.force,
-    stampWeek: opts.stampWeek,
-    startedAt,
-    trigger: `railway-${trigger}`,
-  })
-  const finishedAt = new Date().toISOString()
-
-  lastDigestFinishedAt = finishedAt
-  lastDigestOk = result.ok && !result.skipped
-  lastDigestError = result.ok ? null : (result.reason ?? 'market digest failed')
-  lastDigestDetail = result.skipped
-    ? `skipped — ${result.reason ?? 'no reason given'}`
-    : result.ok
-      ? `sent to ${result.to ?? 'recipient'} (week ${result.weekKey ?? 'unknown'})`
-      : (result.reason ?? 'market digest failed')
-
-  console.info(`[mls-sync] market digest ${lastDigestDetail}`)
-}
-
-function startDigestSend(
-  startedAt: string,
-  trigger: string,
-  opts: { force: boolean; stampWeek: boolean } = { force: false, stampWeek: true },
-): {
-  accepted: boolean
-  alreadyRunning: boolean
-  queuedBehind?: boolean
-} {
-  if (digestInFlight) {
-    return { accepted: false, alreadyRunning: true }
-  }
-  if (anyJobInFlight()) {
-    pendingDigest = { startedAt, trigger }
-    console.info('[mls-sync] market digest queued behind the current job')
-    return { accepted: true, alreadyRunning: false, queuedBehind: true }
-  }
-
-  lastDigestStartedAt = startedAt
-  lastDigestFinishedAt = null
-  lastDigestOk = null
-  lastDigestError = null
-  lastDigestDetail = null
-  lastDigestTrigger = trigger
-  digestInFlight = executeDigestSend(startedAt, trigger, opts)
-    .catch((err) => {
-      lastDigestFinishedAt = new Date().toISOString()
-      lastDigestOk = false
-      lastDigestError = err instanceof Error ? err.message : String(err)
-      console.error('[mls-sync] market digest failed', err)
-    })
-    .finally(() => {
-      digestInFlight = null
-      drainPendingJobs()
-    })
-  return { accepted: true, alreadyRunning: false }
-}
-
-/**
- * True when Configure points the brief here and its weekly slot has come round.
- *
- * No mid-flight restart guard: the send takes a durable 20-minute lock of its own
- * and refuses to send twice for one ET week, so retrying after a container death
- * is the behaviour we want rather than something to hold off.
- */
-async function marketDigestIsDue(): Promise<boolean> {
-  const { hydrateSyncMetaStore } = await import('../../lib/db/sync-meta-store')
-  await hydrateSyncMetaStore()
-
-  const { readSyncScheduleConfigFresh } = await import(
-    '../../lib/sync-schedule-config'
-  )
-  const { resolveJobScheduler } = await import(
-    '../../lib/sync-schedule-config-shared'
-  )
-  const config = await readSyncScheduleConfigFresh()
-  if (resolveJobScheduler(config.jobs['market-digest']) !== 'railway') {
-    return false
-  }
-
-  const { isScheduledSyncJobPausedFresh } = await import(
-    '../../lib/scheduled-sync-toggle'
-  )
-  if (await isScheduledSyncJobPausedFresh('market-digest')) return false
-
   const { shouldDeferScheduledJob } = await import('../../lib/sync-next-override')
-  if (shouldDeferScheduledJob('market-digest')) return false
-
-  const { isMarketDigestAlreadySentThisWeek } = await import(
-    '../../lib/market-digest-config'
-  )
-  if (await isMarketDigestAlreadySentThisWeek()) return false
-
-  const { getSyncMeta } = await import('../../lib/db/sync-meta')
   const { isJobDueBySchedule } = await import('../../lib/admin-sync-schedule')
-  const lastSentAt = await getSyncMeta('market_digest_last_sent_at')
-  return isJobDueBySchedule(config.jobs['market-digest'], lastSentAt)
+  const { getSyncMeta } = await import('../../lib/db/sync-meta')
+  const { lastFinishedMetaKey } = await import('../../lib/sync-schedule-config')
+
+  if (await isScheduledSyncJobPausedFresh(jobId)) return false
+  if (shouldDeferScheduledJob(jobId)) return false
+
+  const config = await readSyncScheduleConfigFresh()
+  const lastFinishedAt = await getSyncMeta(lastFinishedMetaKey(jobId))
+  return isJobDueBySchedule(config.jobs[jobId], lastFinishedAt)
 }
 
-/** Self-scheduled Monday brief sweep. */
-function scheduleDigestSweep(): void {
-  const tick = async () => {
-    if (anyJobInFlight()) return
-    if (!(await marketDigestIsDue())) return
-    console.info('[mls-sync] market digest due — configured slot reached')
-    startDigestSend(new Date().toISOString(), 'railway-sweep', {
-      force: false,
-      stampWeek: true,
-    })
+/** Extra per-job conditions on top of the schedule grid. */
+async function jobHasWork(jobId: ScheduledSyncJobId): Promise<boolean> {
+  if (jobId === 'stats-cache') {
+    // Dirtiness decides whether there is work; the slot decides when we may do
+    // it. The old hourly TTL recomputed all seven towns whether or not a number
+    // had moved.
+    const { statsTownsDueForRebuild } = await import(
+      '../../lib/stats-dirty-towns'
+    )
+    const { towns } = await statsTownsDueForRebuild()
+    return towns.length > 0
   }
-  const run = () => {
-    void tick().catch((err) => {
-      console.warn('[mls-sync] market digest sweep failed', err)
-    })
+  if (jobId === 'market-digest') {
+    const { isMarketDigestAlreadySentThisWeek } = await import(
+      '../../lib/market-digest-config'
+    )
+    return !(await isMarketDigestAlreadySentThisWeek())
   }
-  setTimeout(run, DIGEST_SWEEP_DELAY_MS)
-  setInterval(run, DIGEST_SWEEP_MS)
+  return true
+}
+
+/**
+ * Incremental has a liveness backstop the others do not need: stale listings are
+ * the one outcome worse than an off-minute pull, so if the config read wedges or
+ * the grid ever misfires, pull anyway once End is older than twice the interval.
+ */
+async function incrementalLivenessOverride(): Promise<boolean> {
+  try {
+    const { getSyncMeta } = await import('../../lib/db/sync-meta')
+    const finishedAt = await getSyncMeta('last_incremental_sync')
+    const finishedMs = finishedAt ? Date.parse(finishedAt) : Number.NaN
+    return !Number.isFinite(finishedMs) || Date.now() - finishedMs >= INTERVAL_MS * 2
+  } catch {
+    return false
+  }
+}
+
+async function sweepTick(jobId: ScheduledSyncJobId, label: string): Promise<void> {
+  const { enqueueSyncJob } = await import('../../lib/sync-queue')
+
+  let due = false
+  try {
+    due = await jobIsDue(jobId)
+  } catch (err) {
+    if (jobId !== 'incremental') throw err
+    console.warn('[mls-sync] schedule read failed — falling back to liveness', err)
+    due = await incrementalLivenessOverride()
+  }
+  if (!due) return
+  if (!(await jobHasWork(jobId))) return
+
+  const enqueued = await enqueueSyncJob({
+    jobId,
+    trigger: 'railway-sweep',
+    priority: SYNC_QUEUE_PRIORITY_SWEEP,
+    ...(jobId === 'market-digest' ? { payload: { force: false } } : {}),
+  })
+  if (enqueued.enqueued) {
+    console.info(`[mls-sync] ${label} due — queued`)
+  } else if (enqueued.coolingDown) {
+    console.warn(`[mls-sync] ${label} due but held: ${enqueued.reason}`)
+  }
+}
+
+function scheduleSweeps(): void {
+  for (const sweep of SWEEPS) {
+    const run = () => {
+      void sweepTick(sweep.jobId, sweep.label).catch((err) => {
+        console.warn(`[mls-sync] ${sweep.label} sweep failed`, err)
+      })
+    }
+    setTimeout(run, sweep.bootDelayMs)
+    setInterval(run, sweep.everyMs)
+  }
   console.info(
-    `[mls-sync] market digest sweep every ${Math.round(DIGEST_SWEEP_MS / 60_000)}m (runs only at the Configure slot)`,
+    `[mls-sync] sweeps armed: ${SWEEPS.map(
+      (s) => `${s.label} every ${Math.round(s.everyMs / 60_000) || 1}m`,
+    ).join(' · ')}`,
   )
   // Said at boot, not at 08:00 on the one morning of the week that matters.
   if (!process.env.RESEND_API_KEY?.trim()) {
     console.error(
-      '[mls-sync] RESEND_API_KEY is not set on this service — if Configure points the Monday brief here, every send will skip with "RESEND_API_KEY not set"',
+      '[mls-sync] RESEND_API_KEY is not set on this service — every Monday brief claimed off the queue here will skip with "RESEND_API_KEY not set"',
     )
   }
 }
 
-/** Configured owner of the brief, for /health. Never fails the probe. */
-async function resolvedDigestSchedulerSafe(): Promise<string | null> {
-  try {
-    const { readSyncScheduleConfigFresh } = await import(
-      '../../lib/sync-schedule-config'
-    )
-    const { resolveJobScheduler } = await import(
-      '../../lib/sync-schedule-config-shared'
-    )
-    const config = await readSyncScheduleConfigFresh()
-    return resolveJobScheduler(config.jobs['market-digest'])
-  } catch {
-    return null
+/**
+ * Enqueue from an HTTP request (Admin Sync now, the watchdog, a manual curl).
+ * Manual priority, and past the failure cooldown: somebody pressed the button
+ * because they did not believe the cooldown.
+ */
+async function enqueueFromRequest(
+  jobId: ScheduledSyncJobId,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { enqueueSyncJob } = await import('../../lib/sync-queue')
+  const startedAt =
+    typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
+      ? body.startedAt
+      : new Date().toISOString()
+
+  const towns = Array.isArray(body.towns)
+    ? body.towns.filter(
+        (t): t is string => typeof t === 'string' && t.trim().length > 0,
+      )
+    : undefined
+  const statusScope =
+    body.statusScope === 'active' || body.statusScope === 'closed'
+      ? body.statusScope
+      : undefined
+
+  const payload: Record<string, unknown> = {}
+  if (jobId === 'incremental') {
+    if (towns?.length) payload.towns = towns
+    if (statusScope) payload.statusScope = statusScope
+  }
+  if (jobId === 'market-digest') {
+    payload.force = body.force === false ? false : true
+  }
+
+  const enqueued = await enqueueSyncJob({
+    jobId,
+    trigger: typeof body.source === 'string' ? body.source : 'manual',
+    priority: SYNC_QUEUE_PRIORITY_MANUAL,
+    requestedAt: startedAt,
+    payload,
+    ignoreCooldown: true,
+  })
+
+  // Do not make the caller wait a poll interval for something they asked for.
+  void drainSyncQueueOnce().catch(() => {})
+
+  return {
+    ok: enqueued.ok,
+    accepted: enqueued.ok,
+    jobId,
+    startedAt,
+    queued: enqueued.enqueued,
+    alreadyQueued: enqueued.alreadyQueued,
+    alreadyRunning: enqueued.alreadyRunning,
+    queueId: enqueued.item?.id ?? null,
+    message: enqueued.enqueued
+      ? `${jobId} queued on the sync runner`
+      : (enqueued.reason ?? `${jobId} was already on the queue`),
   }
 }
 
-/** Per-town dirty / last-built rows for /health. Never fails the probe. */
-async function readStatsTownStatusesSafe(): Promise<unknown> {
-  try {
-    const { readStatsTownStatuses } = await import('../../lib/stats-dirty-towns')
-    return await readStatsTownStatuses()
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
-  }
+/** Legacy per-job endpoints, kept so an old caller still reaches the queue. */
+const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
+  '/run': 'incremental',
+  '/stats': 'stats-cache',
+  '/scores': 'listing-scores',
+  '/deal-of-the-day': 'deal-of-the-day',
+  '/property-addresses': 'property-addresses',
+  '/market-digest': 'market-digest',
 }
 
 async function handleRequest(
@@ -1264,288 +350,121 @@ async function handleRequest(
 
   if (req.method === 'GET' && (path === '/health' || path === '/')) {
     const { getSyncMeta } = await import('../../lib/db/sync-meta')
-    const end = await getSyncMeta('last_incremental_sync')
-    const start = await getSyncMeta('last_incremental_sync_started')
-    const heartbeat = await getSyncMeta('last_mls_sync_heartbeat')
+    const { readSyncQueueSnapshot } = await import('../../lib/sync-queue')
+    const runner = readRunnerState()
+    const queue = await readSyncQueueSnapshot(8)
     sendJson(res, 200, {
       ok: true,
       service: 'mls-sync',
       host: 'railway',
+      role: 'sync-queue runner',
       intervalMs: INTERVAL_MS,
-      inFlight: runInFlight != null,
-      lastRunStartedAt,
-      lastRunFinishedAt,
-      lastRunOk,
-      lastRunError,
-      stats: {
-        inFlight: statsInFlight != null,
-        lastStatsStartedAt,
-        lastStatsFinishedAt,
-        lastStatsOk,
-        lastStatsWritten,
-        lastStatsError,
-        lastStatsPlan,
+      claims: SYNC_QUEUE_RUNNER_JOBS,
+      childHeapCapMb: process.env.MLS_SYNC_CHILD_MAX_OLD_SPACE_MB ?? null,
+      resendConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
+      runner: {
+        busy: runner.current != null,
+        currentJob: runner.current?.jobId ?? null,
+        currentQueueId: runner.current?.id ?? null,
+        deadlineAt: runner.current?.deadlineAt ?? null,
+        childPid: runner.childPid,
+        childStartedAt: runner.childStartedAt,
+        lastOutcome: runner.lastOutcome,
+      },
+      queue: {
+        drainHeartbeatAt: queue.drainHeartbeatAt,
+        runnerStale: queue.runnerStale,
+        waiting: queue.waiting.map((item) => ({
+          id: item.id,
+          jobId: item.jobId,
+          trigger: item.trigger,
+          requestedAt: item.requestedAt,
+        })),
+        running: queue.running.map((item) => ({
+          id: item.id,
+          jobId: item.jobId,
+          claimedBy: item.claimedBy,
+          claimedAt: item.claimedAt,
+          deadlineAt: item.deadlineAt,
+        })),
+        recent: queue.recent.map((item) => ({
+          id: item.id,
+          jobId: item.jobId,
+          outcome: item.outcome,
+          ok: item.ok,
+          finishedAt: item.finishedAt,
+          detail: item.detail,
+        })),
+      },
+      neon: {
+        last_incremental_sync: await getSyncMeta('last_incremental_sync'),
+        last_incremental_sync_started: await getSyncMeta(
+          'last_incremental_sync_started',
+        ),
+        last_mls_sync_heartbeat: await getSyncMeta('last_mls_sync_heartbeat'),
         last_stats_cache: await getSyncMeta('last_stats_cache'),
-        towns: await readStatsTownStatusesSafe(),
-      },
-      goldilocks: {
-        inFlight: scoresInFlight != null,
-        lastScoresStartedAt,
-        lastScoresFinishedAt,
-        lastScoresOk,
-        lastScoresScored,
-        lastScoresError,
-        lastScoresTrigger,
         last_listing_scores: await getSyncMeta('last_listing_scores'),
-      },
-      dealOfTheDay: {
-        inFlight: dotdInFlight != null,
-        lastDotdStartedAt,
-        lastDotdFinishedAt,
-        lastDotdOk,
-        lastDotdWritten,
-        lastDotdError,
-        lastDotdTrigger,
         last_deal_of_the_day_cache: await getSyncMeta(
           'last_deal_of_the_day_cache',
         ),
-      },
-      propertyAddresses: {
-        inFlight: addressesInFlight != null,
-        pending: pendingAddresses != null,
-        lastAddressesStartedAt,
-        lastAddressesFinishedAt,
-        lastAddressesOk,
-        lastAddressesRows,
-        lastAddressesError,
-        lastAddressesTrigger,
         property_addresses_synced_at: await getSyncMeta(
           'property_addresses_synced_at',
         ),
-      },
-      marketDigest: {
-        // Owner + key readiness answer "will Monday work?" before Monday. Health
-        // used to report only the stamps, so a box that could never reach Resend
-        // still looked fine and the miss only surfaced as another silent week.
-        scheduler: await resolvedDigestSchedulerSafe(),
-        resendConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
-        inFlight: digestInFlight != null,
-        pending: pendingDigest != null,
-        lastDigestStartedAt,
-        lastDigestFinishedAt,
-        lastDigestOk,
-        lastDigestDetail,
-        lastDigestError,
-        lastDigestTrigger,
         market_digest_last_sent_at: await getSyncMeta(
           'market_digest_last_sent_at',
         ),
-        market_digest_last_week_key: await getSyncMeta(
-          'market_digest_last_week_key',
-        ),
-        market_digest_last_attempt_at: await getSyncMeta(
-          'market_digest_last_attempt_at',
-        ),
-        market_digest_last_result: await getSyncMeta('market_digest_last_result'),
-      },
-      neon: {
-        last_incremental_sync: end,
-        last_incremental_sync_started: start,
-        last_mls_sync_heartbeat: heartbeat,
       },
     })
     return
   }
 
-  if (req.method === 'POST' && path === '/run') {
+  if (req.method === 'POST' && path === '/drain') {
     if (!assertAuth(req)) {
       sendJson(res, 401, { ok: false, error: 'unauthorized' })
       return
     }
-    const body = await readJson(req)
-    const startedAt =
-      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
-        ? body.startedAt
-        : new Date().toISOString()
-    const source =
-      body.source === 'admin' || body.source === 'watchdog'
-        ? body.source
-        : 'railway'
-    const towns = Array.isArray(body.towns)
-      ? body.towns.filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-      : undefined
-    const statusScope =
-      body.statusScope === 'active' || body.statusScope === 'closed'
-        ? body.statusScope
-        : undefined
-
-    const { alreadyRunning } = startRun({
-      startedAt,
-      source,
-      ...(towns?.length ? { towns } : {}),
-      ...(statusScope ? { statusScope } : {}),
-    })
-
+    await readJson(req)
+    void drainSyncQueueOnce().catch(() => {})
     sendJson(res, 202, {
       ok: true,
       accepted: true,
-      alreadyRunning,
-      startedAt,
-      message: alreadyRunning
-        ? 'Incremental already running on mls-sync'
-        : 'Incremental accepted on mls-sync (Railway)',
+      busy: readRunnerState().current != null,
+      message: 'drain poked',
     })
     return
   }
 
-  if (req.method === 'POST' && path === '/stats') {
+  if (req.method === 'POST' && path === '/enqueue') {
     if (!assertAuth(req)) {
       sendJson(res, 401, { ok: false, error: 'unauthorized' })
       return
     }
     const body = await readJson(req)
-    const startedAt =
-      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
-        ? body.startedAt
-        : new Date().toISOString()
-
-    // Manual runs (Admin "Sync now") rebuild everything — the operator pressed
-    // the button because they do not trust the dirty marks.
-    const { TMRE_TOWNS } = await import('../../lib/tmre-towns')
-    const requested = Array.isArray(body.towns)
-      ? TMRE_TOWNS.filter((town) => (body.towns as unknown[]).includes(town))
-      : TMRE_TOWNS
-    const plan: StatsRebuildPlan = {
-      towns: [...(requested.length > 0 ? requested : TMRE_TOWNS)],
-      reasons: {},
-      trigger: 'manual',
+    const jobId = typeof body.jobId === 'string' ? body.jobId : ''
+    if (!(SYNC_QUEUE_RUNNER_JOBS as readonly string[]).includes(jobId)) {
+      sendJson(res, 400, {
+        ok: false,
+        error: `"${jobId}" is not a job this runner claims`,
+        claims: SYNC_QUEUE_RUNNER_JOBS,
+      })
+      return
     }
-
-    const started = startStatsRebuild(startedAt, plan)
-    sendJson(res, 202, {
-      ok: true,
-      accepted: started.accepted,
-      alreadyRunning: started.alreadyRunning,
-      startedAt,
-      message: started.alreadyRunning
-        ? 'Stats rebuild already running on mls-sync'
-        : started.queuedBehind
-          ? 'Stats rebuild queued behind the current Railway job'
-          : 'Stats rebuild accepted on mls-sync (Railway)',
-    })
+    sendJson(
+      res,
+      202,
+      await enqueueFromRequest(jobId as ScheduledSyncJobId, body),
+    )
     return
   }
 
-  if (req.method === 'POST' && path === '/scores') {
+  const legacyJob = LEGACY_ENDPOINTS[path]
+  if (req.method === 'POST' && legacyJob) {
     if (!assertAuth(req)) {
       sendJson(res, 401, { ok: false, error: 'unauthorized' })
       return
     }
     const body = await readJson(req)
-    const startedAt =
-      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
-        ? body.startedAt
-        : new Date().toISOString()
-
-    const started = startScoresRebuild(startedAt, 'manual')
-    sendJson(res, 202, {
-      ok: true,
-      accepted: started.accepted,
-      alreadyRunning: started.alreadyRunning,
-      startedAt,
-      message: started.alreadyRunning
-        ? 'Goldilocks already running on mls-sync'
-        : started.queuedBehind
-          ? 'Goldilocks queued behind the current Railway job'
-          : 'Goldilocks accepted on mls-sync (Railway)',
-    })
-    return
-  }
-
-  if (req.method === 'POST' && path === '/deal-of-the-day') {
-    if (!assertAuth(req)) {
-      sendJson(res, 401, { ok: false, error: 'unauthorized' })
-      return
-    }
-    const body = await readJson(req)
-    const startedAt =
-      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
-        ? body.startedAt
-        : new Date().toISOString()
-
-    const started = startDotdRebuild(startedAt, 'manual')
-    sendJson(res, 202, {
-      ok: true,
-      accepted: started.accepted,
-      alreadyRunning: started.alreadyRunning,
-      startedAt,
-      message: started.alreadyRunning
-        ? 'Deal of the Day already running on mls-sync'
-        : started.queuedBehind
-          ? 'Deal of the Day queued behind the current Railway job'
-          : 'Deal of the Day accepted on mls-sync (Railway)',
-    })
-    return
-  }
-
-  if (req.method === 'POST' && path === '/property-addresses') {
-    if (!assertAuth(req)) {
-      sendJson(res, 401, { ok: false, error: 'unauthorized' })
-      return
-    }
-    const body = await readJson(req)
-    const startedAt =
-      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
-        ? body.startedAt
-        : new Date().toISOString()
-
-    const started = startAddressesSync(startedAt, 'manual')
-    sendJson(res, 202, {
-      ok: true,
-      accepted: started.accepted,
-      alreadyRunning: started.alreadyRunning,
-      startedAt,
-      queuedBehind: started.queuedBehind === true,
-      message: started.alreadyRunning
-        ? 'Property addresses already running on mls-sync'
-        : started.queuedBehind
-          ? 'Property addresses queued behind the current Railway job — it starts when that job finishes'
-          : 'Property addresses accepted on mls-sync (Railway)',
-    })
-    return
-  }
-
-  if (req.method === 'POST' && path === '/market-digest') {
-    if (!assertAuth(req)) {
-      sendJson(res, 401, { ok: false, error: 'unauthorized' })
-      return
-    }
-    const body = await readJson(req)
-    const startedAt =
-      typeof body.startedAt === 'string' && !Number.isNaN(Date.parse(body.startedAt))
-        ? body.startedAt
-        : new Date().toISOString()
-
-    // Only Admin and the watchdog POST here, so an inbound request means someone
-    // asked for the brief now: force past the week watermark and advance it, the
-    // same contract as Admin Syncs Run on Netlify. `stampWeek: false` is the
-    // Admin "Send test" case, which must not consume this week's send.
-    const force = body.force === false ? false : true
-    const stampWeek = body.stampWeek === false ? false : true
-
-    const started = startDigestSend(startedAt, 'manual', { force, stampWeek })
-    sendJson(res, 202, {
-      ok: true,
-      accepted: started.accepted,
-      alreadyRunning: started.alreadyRunning,
-      startedAt,
-      queuedBehind: started.queuedBehind === true,
-      message: started.alreadyRunning
-        ? 'Market digest already sending on mls-sync'
-        : started.queuedBehind
-          ? 'Market digest queued behind the current Railway job — it sends when that job finishes'
-          : 'Market digest accepted on mls-sync (Railway)',
-    })
+    sendJson(res, 202, await enqueueFromRequest(legacyJob, body))
     return
   }
 
@@ -1566,22 +485,40 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.info(
-    `[mls-sync] listening on :${PORT} · pulls on the Configure slot (interval backstop ${Math.round(INTERVAL_MS / 60_000)}m) · RETS→Neon (no Netlify pull)`,
+    `[mls-sync] listening on :${PORT} · sync-queue runner (interval backstop ${Math.round(INTERVAL_MS / 60_000)}m) · RETS→Neon in forked children`,
   )
-  // No boot pull: a deploy must not re-phase the schedule. The sweep starts one
+  // No boot pull: a deploy must not re-phase the schedule. The sweep queues one
   // within a minute if a slot is already owed.
-  scheduleIncrementalSweep()
-  // Process-alive signal between pulls. In-run pulse already stamps ~60s;
-  // skip while a pull is in flight so we do not double-write.
-  setInterval(() => {
-    if (runInFlight) return
+  scheduleSweeps()
+  startSyncQueueDrain()
+
+  // Process-alive signal. Admin and the Netlify rescue path both read this to
+  // decide whether this runner still exists, so it must keep beating while a
+  // child works — the parent is idle then, which is the whole idea.
+  const beat = () => {
     void stampHeartbeat(new Date().toISOString()).catch((err) => {
-      console.warn('[mls-sync] idle heartbeat failed', err)
+      console.warn('[mls-sync] heartbeat failed', err)
     })
-  }, 60_000)
-  scheduleStatsSweep()
-  scheduleScoresSweep()
-  scheduleDotdSweep()
-  scheduleAddressesSweep()
-  scheduleDigestSweep()
+  }
+  beat()
+  setInterval(beat, 60_000)
+
+  // Prune terminal queue rows once a day so the table stays a work list.
+  setInterval(
+    () => {
+      void import('../../lib/sync-queue')
+        .then(({ pruneSyncQueueHistory }) => pruneSyncQueueHistory())
+        .catch(() => {})
+    },
+    6 * 60 * 60 * 1000,
+  )
 })
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    console.info(`[mls-sync] ${signal} — stopping current child`)
+    stopCurrentChild()
+    server.close(() => process.exit(0))
+    setTimeout(() => process.exit(0), 10_000).unref()
+  })
+}
