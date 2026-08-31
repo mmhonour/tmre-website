@@ -427,9 +427,9 @@ function FavorSortToggle({
       onClick={onToggle}
       title={`${current} — switch to ${next}`}
       aria-label={`Towns ordered ${current}. Switch to ${next}.`}
-      className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <svg viewBox="-3 -2.5 42 35" className="h-14 w-14" aria-hidden>
+      <svg viewBox="-4 -3 50 42" className="h-16 w-16" aria-hidden>
         <path
           d="M18 7v16"
           stroke="currentColor"
@@ -442,7 +442,7 @@ function FavorSortToggle({
           className="transition-transform duration-200"
         >
           <path
-            d="M4 9h28"
+            d="M2 9h36"
             stroke="currentColor"
             strokeWidth="1.6"
             strokeLinecap="round"
@@ -465,19 +465,14 @@ function FavorSortToggle({
           {/* Buyer: the house, and to its right a key turned back towards it. */}
           <g>
             <path
-              d="M25.8 10.4l4 3.9h-1.4v5.3h-5.2v-5.3h-1.4z"
+              d="M24.4 10.4l3.6 3.5h-1.25v4.8h-4.7v-4.8h-1.25z"
               fill="var(--color-sage, #4A7C6F)"
             />
             <g fill="#000">
-              <rect x="30.2" y="14.75" width="3.1" height="0.9" rx="0.3" />
-              <rect x="30.3" y="15.6" width="0.55" height="1.65" rx="0.15" />
-              <rect x="31.25" y="15.6" width="0.5" height="1.15" rx="0.15" />
-              <path
-                d="M33.1 13.4L35.9 15.2L33.1 17z"
-                stroke="#000"
-                strokeWidth="1.2"
-                strokeLinejoin="round"
-              />
+              <rect x="29" y="14.75" width="9" height="0.9" rx="0.3" />
+              <rect x="29.1" y="15.6" width="0.55" height="1.7" rx="0.15" />
+              <rect x="30.1" y="15.6" width="0.5" height="1.2" rx="0.15" />
+              <circle cx="39.6" cy="15.2" r="1.9" />
             </g>
           </g>
         </g>
