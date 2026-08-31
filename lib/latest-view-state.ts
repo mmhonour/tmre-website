@@ -20,6 +20,12 @@ export type LatestViewState = {
   selectedZip: string | null;
   townStatsOpen: boolean;
   collapsedGroups: string[];
+  /**
+   * False means the reader never opened or closed a group, so the feed should
+   * come back closed rather than as an empty `collapsedGroups` — which would
+   * read as "every group open" and quietly undo the default on Back.
+   */
+  collapseTouched: boolean;
   expandedGroups: string[];
   groupStatusFilter: Partial<Record<string, LatestStatus>>;
   scrollY: number;
@@ -65,6 +71,7 @@ export function readLatestViewState(): LatestViewState | null {
       selectedZip: selectedTown ? selectedZip : null,
       townStatsOpen: Boolean(parsed.townStatsOpen),
       collapsedGroups: asStringArray(parsed.collapsedGroups),
+      collapseTouched: Boolean(parsed.collapseTouched),
       expandedGroups: asStringArray(parsed.expandedGroups),
       groupStatusFilter,
       scrollY:
@@ -96,6 +103,7 @@ export function patchLatestViewScrollY(scrollY: number): void {
       selectedZip: null,
       townStatsOpen: false,
       collapsedGroups: [],
+      collapseTouched: false,
       expandedGroups: [],
       groupStatusFilter: {},
       scrollY: Math.max(0, scrollY),
