@@ -442,7 +442,7 @@ function FavorSortToggle({
           className="transition-transform duration-200"
         >
           <path
-            d="M2 9h36"
+            d="M2 9h38"
             stroke="currentColor"
             strokeWidth="1.6"
             strokeLinecap="round"
@@ -462,17 +462,24 @@ function FavorSortToggle({
           >
             $
           </text>
-          {/* Buyer: the house, and to its right a key turned back towards it. */}
+          {/*
+           * Buyer: the house stands on the beam and the key hangs beneath it,
+           * so the key has the whole pan to run along rather than sharing it
+           * end to end with the house.
+           */}
           <g>
             <path
-              d="M24.4 10.4l3.6 3.5h-1.25v4.8h-4.7v-4.8h-1.25z"
+              d="M33 1.6l4.2 4.1h-1.45v2.9h-5.5v-2.9h-1.45z"
               fill="var(--color-sage, #4A7C6F)"
             />
             <g fill="#000">
-              <rect x="29" y="14.75" width="9" height="0.9" rx="0.3" />
-              <rect x="29.1" y="15.6" width="0.55" height="1.7" rx="0.15" />
-              <rect x="30.1" y="15.6" width="0.5" height="1.2" rx="0.15" />
-              <circle cx="39.6" cy="15.2" r="1.9" />
+              <rect x="24" y="11.6" width="14" height="0.95" rx="0.3" />
+              <rect x="24.2" y="12.5" width="0.6" height="1.9" rx="0.15" />
+              <rect x="25.2" y="12.5" width="0.45" height="1.1" rx="0.15" />
+              <rect x="26" y="12.5" width="0.7" height="1.6" rx="0.15" />
+              <rect x="27.1" y="12.5" width="0.4" height="0.9" rx="0.15" />
+              <rect x="27.9" y="12.5" width="0.55" height="1.75" rx="0.15" />
+              <circle cx="39.8" cy="12.05" r="1.9" />
             </g>
           </g>
         </g>
