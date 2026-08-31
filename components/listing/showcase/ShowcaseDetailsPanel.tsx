@@ -153,6 +153,15 @@ export default function ShowcaseDetailsPanel({
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
   const adminContact = extractListingAgentContact(listing.raw);
+  const agentRows: { label: string; value: string }[] = (
+    [
+      { label: "List agent", value: adminContact?.listAgentName },
+      { label: "Phone", value: adminContact?.phone },
+      { label: "Email", value: adminContact?.email },
+      { label: "Agent MLS #", value: adminContact?.agentMlsId },
+      { label: "List office", value: adminContact?.listOfficeName },
+    ] satisfies { label: string; value: string | null | undefined }[]
+  ).flatMap((row) => (row.value ? [{ label: row.label, value: row.value }] : []));
   /**
    * Sold / Rented / Under Agreement share one section, so the tab has to pick
    * which body renders — otherwise Rented and UAG scroll to a section still
@@ -512,14 +521,33 @@ export default function ShowcaseDetailsPanel({
                 {/* Same deal-board engine as Intelligence: real pan / wheel zoom
                 and a pin per comparable, with the subject alongside them. */}
                 <div className="h-[20rem] w-full sm:h-[26rem]">
-                  <ShowcaseCompsMap
-                    mlsId={listing.mlsId}
-                    subject={subject}
-                    townHint={city}
-                    postalCode={listing.address.postalCode}
-                  />
-                </div>
-              </Section>
+                <ShowcaseCompsMap
+                  mlsId={listing.mlsId}
+                  subject={subject}
+                  townHint={city}
+                  postalCode={listing.address.postalCode}
+                />
+              </div>
+
+              {/* Public listing-agent attribution. Plain text, deliberately
+                  unlinked — no mailto/tel. Distinct from the unlock-gated
+                  Admin deck card, which also carries showing-contact fields. */}
+              {agentRows.length > 0 ? (
+                <dl className="mt-6 max-w-md divide-y divide-white/10 border-y border-white/10">
+                  {agentRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex items-baseline justify-between gap-6 py-2"
+                    >
+                      <dt className="text-sm text-white/50">{row.label}</dt>
+                      <dd className="text-right text-sm text-white/85">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+            </Section>
             </div>
 
             <aside
