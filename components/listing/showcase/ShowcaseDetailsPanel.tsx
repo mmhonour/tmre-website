@@ -540,9 +540,9 @@ export default function ShowcaseDetailsPanel({
                 <img
                   src={`/api/listings/${encodeURIComponent(listing.mlsId)}/agent-card`}
                   alt={`Listing courtesy of ${adminContact?.listOfficeName ?? "the listing office"}`}
-                  width={460}
-                  height={140}
-                  className="mt-6 h-auto w-full max-w-[460px] select-none"
+                  width={1120}
+                  height={52}
+                  className="mt-6 h-auto w-full max-w-[560px] select-none"
                   draggable={false}
                 />
               ) : null}

@@ -16,9 +16,12 @@ export const dynamic = 'force-dynamic'
  * Fixed canvas: the row count varies by listing, and a fixed size lets callers
  * set width/height up front instead of reflowing once the image decodes.
  */
-const WIDTH = 460
-const HEIGHT = 140
-const ROW_HEIGHT = 24
+// Drawn at 2x and displayed at half width, so the small type stays crisp on
+// retina rather than looking like a resized screenshot.
+const SCALE = 2
+const WIDTH = 560 * SCALE
+const HEIGHT = 26 * SCALE
+const FONT_SIZE = 11 * SCALE
 
 export async function GET(
   _req: Request,
@@ -27,21 +30,20 @@ export async function GET(
   const { mlsId } = await ctx.params
   const id = (mlsId ?? '').trim()
 
-  let rows: { label: string; value: string }[] = []
+  let detail = ''
   try {
     const { listing } = await readListingFromDbByMlsId(id)
     const contact = listing ? extractListingAgentContact(listing.raw) : null
-    rows = (
-      [
-        { label: 'List agent', value: contact?.listAgentName },
-        { label: 'Phone', value: contact?.phone },
-        { label: 'Email', value: contact?.email },
-        { label: 'Agent MLS #', value: contact?.agentMlsId },
-        { label: 'List office', value: contact?.listOfficeName },
-      ] as { label: string; value: string | null | undefined }[]
-    ).flatMap((row) =>
-      row.value ? [{ label: row.label, value: row.value }] : [],
-    )
+    // One label, then every field space-separated on a single line.
+    detail = [
+      contact?.listAgentName,
+      contact?.phone,
+      contact?.email,
+      contact?.agentMlsId,
+      contact?.listOfficeName,
+    ]
+      .filter(Boolean)
+      .join(' ')
   } catch (err) {
     console.error('[/api/listings/[mlsId]/agent-card] failed', err)
   }
@@ -53,27 +55,14 @@ export async function GET(
           width: WIDTH,
           height: HEIGHT,
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-start',
+          alignItems: 'baseline',
+          gap: 6 * SCALE,
           background: 'transparent',
-          fontSize: 13,
+          fontSize: FONT_SIZE,
         }}
       >
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              height: ROW_HEIGHT,
-              width: '100%',
-            }}
-          >
-            <span style={{ color: 'rgba(255,255,255,0.5)' }}>{row.label}</span>
-            <span style={{ color: 'rgba(255,255,255,0.88)' }}>{row.value}</span>
-          </div>
-        ))}
+        <span style={{ color: 'rgba(255,255,255,0.5)' }}>List agent</span>
+        <span style={{ color: 'rgba(255,255,255,0.88)' }}>{detail}</span>
       </div>
     ),
     {
