@@ -37,6 +37,8 @@ import {
 import {
   sortRowsByBuyerFriendlyScore,
   unstackedFavorSortDir,
+  MARKET_PULSE_BUYER_SCORE_COPY,
+  MARKET_PULSE_SELLER_SCORE_COPY,
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
 import {
@@ -204,7 +206,7 @@ function marketPulseSortExplain(
     return "Towns stay in default town order. All Towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
   }
   if (chartLayout === "stacked") {
-    return `Ordered by a buyer/seller composite of months supply, avg days on market, closed, median, delta and average, in the ${
+    return `Ordered by a buyer/seller composite of months supply, avg days on market, closed, median, delta, average and list to ask, in the ${
       favorSort === "sellers"
         ? "seller-friendly direction"
         : "buyer-friendly direction"
@@ -1912,16 +1914,8 @@ export default function WeeklyBriefContent({
           <p className="tracking-[0.12em] uppercase text-[var(--mp-text)]">
             How Seller / Buyer Friendly is scored
           </p>
-          <p>
-            Buyer Friendly ranks a town higher when months supply is larger, avg
-            days on market is larger, closed is smaller, median is smaller,
-            delta is smaller, and average is smaller.
-          </p>
-          <p>
-            Seller Friendly is the opposite of each of those — smaller months
-            supply and avg days on market, larger closed, median, delta, and
-            average.
-          </p>
+          <p>{MARKET_PULSE_BUYER_SCORE_COPY}</p>
+          <p>{MARKET_PULSE_SELLER_SCORE_COPY}</p>
         </div>
         <p className="font-mono text-[11px] leading-relaxed text-slate">
           MOS = active ÷ avg monthly closings (3 prior full months). Scope:{" "}

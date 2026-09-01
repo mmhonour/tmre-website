@@ -24,9 +24,32 @@ Email HTML (`lib/market-digest-html.ts`) and plaintext (`formatMarketDigestEmail
 - `defaultMarketPulseCombinedRows(snapshot)` (Seller Friendly composite order)
 - The **same stacked metric list** via `marketPulseStackedMetrics()` — do not keep a second metric array in the email templates
 
+## Presentation, not just data
+
+The town blocks are a **denim panel (`#26374F`) with one gold ink across every
+bar** — not one colour per metric. The email flattens the web's translucent
+colours to opaque hex at the top of `lib/market-digest-html.ts`, each commented
+with the Tailwind class it stands in for. Change the web treatment and those
+constants move with it.
+
+A bar's percent (Delta, List to ask) is placed by `barAsidePlacement()` in
+`lib/market-pulse-bar-aside.ts` — shared, so the percent lands on the same side
+of the fill in the inbox as on screen. It does **not** belong in the row label;
+`labelOf` on the stacked metrics exists for the **plaintext** digest only, which
+has no bar to put it against.
+
+## Deliberate divergences (leave these alone)
+
+- **Every town, always.** The page opens with only All Towns and a `+`; a static
+  email cannot expand, so it prints them all.
+- **Stepped spectrum.** Mail clients drop CSS gradients, so the seller↔buyer
+  gradient is stepped into table cells and the marker takes a cell.
+- **No per-bar links.** Every bar on the page links to its Stats chart.
+
 ## Checklist in the same PR/change
 
 1. New default filter, KPI, or stacked bar on the page? → HTML + plaintext email.
-2. New stacked metric? → add it only in `lib/market-pulse-stacked-metrics.ts`, then wire web chrome (colors) and email hex colors.
+2. New stacked metric? → add it only in `lib/market-pulse-stacked-metrics.ts`, then wire web chrome (value shape, tooltip) — the bar ink is shared, so there is no per-metric colour to add.
 3. Filter summary sentence changed? → email uses `summarizeMarketPulseFilters`, so keep that helper as the one-liner.
 4. Unstacked-only or in-session Filters (Buyer Friendly, lookback, property type) stay **off** the email unless they become the page-load default.
+5. New factor in the Buyer/Seller composite? → name it in `MARKET_PULSE_BUYER_SCORE_COPY` / `MARKET_PULSE_SELLER_SCORE_COPY`, which both surfaces render.

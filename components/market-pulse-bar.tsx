@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { barAsidePlacement } from "@/lib/market-pulse-bar-aside";
 import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
 
 /**
@@ -11,44 +12,12 @@ import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
  */
 
 /**
- * Rough share of the track the 10px mono percent needs. The overlay is placed
- * off the fill, which is itself a percentage, so the reserve has to be one too.
- */
-const ASIDE_SPAN_PCT = 24;
-/**
  * Strip held clear past the right edge of every track. A percent with no room
  * left beside its fill moves out here instead of covering the fill or the
  * dollars, and reserving the same strip on every bar keeps the shared price
  * axis (Median / Delta / Average) lined up.
  */
 export const BAR_EXTERIOR_LANE = "mr-8 sm:mr-10";
-
-/**
- * Where a bar's percent sits relative to the fill it describes.
- * - `right` / `left`: on the track, just past the near edge of the fill.
- * - `outside-right`: in the exterior lane past the track's right border.
- * - `label`: back beside the row's own label, the only room left of the track.
- */
-export type BarAsidePlacement = "right" | "outside-right" | "left" | "label";
-
-/**
- * A positive percent reads off the fill's right edge, and once the fill runs
- * to the end of the track it leaves the panel entirely rather than climbing
- * over the value beside it. A negative one mirrors that to the left, where the
- * row label holds the only space outside the track.
- */
-export function barAsidePlacement(
-  leftPct: number,
-  widthPct: number,
-  negative: boolean,
-): BarAsidePlacement {
-  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
-  const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
-  if (negative) {
-    return fillLeft >= ASIDE_SPAN_PCT ? "left" : "label";
-  }
-  return 100 - fillRight >= ASIDE_SPAN_PCT ? "right" : "outside-right";
-}
 
 export const METRIC_COLORS = {
   inventory: "bg-[var(--mp-inventory-bar)]",

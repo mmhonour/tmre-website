@@ -21,10 +21,15 @@ import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from 
 import {
   marketPulseHeatByCity,
   marketPulseHeatBand,
-  MARKET_PULSE_HEAT_BAND_IDS,
-  type MarketPulseHeatBandId,
+  MARKET_PULSE_BUYER_SCORE_COPY,
+  MARKET_PULSE_SELLER_SCORE_COPY,
 } from '@/lib/market-pulse-favorability'
 import {
+  barAsidePlacement,
+  type BarAsidePlacement,
+} from '@/lib/market-pulse-bar-aside'
+import {
+  formatSaleToAskPct,
   isMarketPulsePriceScaleMetric,
   marketPulseDeltaBarSpan,
   marketPulsePriceBarMax,
@@ -32,30 +37,36 @@ import {
   marketPulseStackedMetrics,
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
+import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
 
 const NAVY = '#1B2A4A'
 const NAVY_DARK = '#131F38'
 const GOLD = '#C8A951'
 const CREAM = '#F7F5F0'
 const SLATE = '#5A6578'
-const BAR_TRACK = '#E8EBF2'
-const BAR_INVENTORY = '#2A3D6B'
-const BAR_MOS = '#C8A951'
-const BAR_DOM = '#5B8A72'
-const BAR_CLOSED = '#C45C4A'
-const BAR_MEDIAN = '#6B7C9B'
-const BAR_AVERAGE = '#8B6F4E'
-const BAR_DELTA = '#7A6A8A'
-const BAR_SALE_TO_ASK = '#4A7C8A'
 const WHITE = '#FFFFFF'
-/** Seller end → buyer end, one swatch per heat band. */
-const HEAT_SWATCHES: Record<MarketPulseHeatBandId, string> = {
-  'seller-hot': '#C45C4A',
-  'seller-warm': '#D08A63',
-  balanced: '#D8B45C',
-  'buyer-warm': '#7FA0A0',
-  'buyer-hot': '#4A7C8A',
-}
+
+/*
+ * The town panels on /market-pulse are a denim card carrying one gold ink
+ * across every bar. Mail has no alpha to blend with, so each translucent web
+ * colour is flattened over that card once, here, rather than guessed at per
+ * rule. The comment on each names the Tailwind class it stands in for.
+ */
+const PANEL_BG = '#26374F'
+/** `bg-gold/70` — the single ink every bar is filled with. */
+const BAR_INK = '#978750'
+/** `bg-white/10` — the unfilled remainder of a track. */
+const BAR_TRACK = '#3C4B61'
+/** `text-white/45` — row labels and the spectrum's end captions. */
+const PANEL_MUTED = '#88919E'
+/** `text-white/70` — a bar's percent, and the band name. */
+const PANEL_ASIDE = '#BEC3CA'
+/** `text-white/90` — the value column. */
+const PANEL_VALUE = '#E9EBED'
+/** Seller → buyer, the stops the web strip runs its gradient between. */
+const HEAT_FROM = '#C85A3A'
+const HEAT_VIA = '#C8A951'
+const HEAT_TO = '#4A7C6F'
 
 function escapeHtml(value: string): string {
   return value
@@ -83,103 +94,195 @@ function fmtDomShort(n: number | null | undefined): string {
 
 function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || '—'
-  if (city.toLowerCase() === 'all') return 'All towns'
+  // Cased as the page cases it — `cityLabel` in WeeklyBriefContent.
+  if (city.toLowerCase() === 'all') return 'All Towns'
   return city
 }
 
 /** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
 const BAR_INNER_PX = 220
-const BAR_HEIGHT_PX = 12
+/**
+ * The web track is 6px and lets the percent overhang it, which absolute
+ * positioning allows and a table cell does not. Ten leaves the 9px percent room
+ * to sit *inside* the track beside its fill, which is the placement that
+ * matters here; a 6px bar would have forced the percent back out to a lane.
+ */
+const BAR_HEIGHT_PX = 10
+/** The web's `grid-cols-[7.75rem_1fr_auto]`, in the px this table needs. */
+const LABEL_COL_PX = 124
+const VALUE_COL_PX = 70
+/** Stands in for `BAR_EXTERIOR_LANE` — where a full bar's percent goes. */
+const ASIDE_LANE_PX = 34
+/** `divide-white/[0.08]` over the panel. */
+const PANEL_RULE = '#37475D'
 
-function barCellTd(widthPx: number, color: string): string {
+const ASIDE_FONT = `font-family:ui-monospace,Consolas,monospace;font-size:9px;color:${PANEL_ASIDE};white-space:nowrap;`
+
+/**
+ * One cell of a bar track. A percent rides inside the cell on the side of the
+ * fill it belongs to, so the cell takes a real font size where an empty spacer
+ * would rather collapse to none.
+ */
+function barCellTd(
+  widthPx: number,
+  color: string,
+  text?: { value: string; align: 'left' | 'right' },
+): string {
   if (widthPx <= 0) return ''
-  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};font-size:0;line-height:${BAR_HEIGHT_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
+  const inner = text
+    ? `${ASIDE_FONT}line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};padding-${
+        text.align === 'left' ? 'left' : 'right'
+      }:4px;`
+    : `font-size:0;line-height:${BAR_HEIGHT_PX}px;`
+  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};${inner}mso-line-height-rule:exactly;">${
+    text ? escapeHtml(text.value) : '&nbsp;'
+  }</td>`
 }
 
+/**
+ * One labelled bar, drawn to match `PanelBarRow`: label right-aligned against
+ * the track, one gold ink in the fill, the value in its own column, and the
+ * percent placed off the fill by the shared rule rather than folded into the
+ * label the way this email used to.
+ */
 function metricBarRow(
   metricLabel: string,
   valueLabel: string,
   pct: number,
-  barColor: string,
-  opts?: { tight?: boolean; leftPct?: number },
+  opts?: {
+    leftPct?: number
+    aside?: string | null
+    asideNegative?: boolean
+  },
 ): string {
   const leftPct = Math.max(0, Math.min(100, opts?.leftPct ?? 0))
   const widthPct = Math.max(0, Math.min(100 - leftPct, pct))
-  let leftPx = Math.round((leftPct / 100) * BAR_INNER_PX)
+  const leftPx = Math.round((leftPct / 100) * BAR_INNER_PX)
   let filled = Math.round((widthPct / 100) * BAR_INNER_PX)
   if (leftPx + filled > BAR_INNER_PX) filled = BAR_INNER_PX - leftPx
   const empty = BAR_INNER_PX - leftPx - filled
-  const spacer = barCellTd(leftPx, BAR_TRACK)
-  const fill = barCellTd(filled, barColor)
-  const track = barCellTd(empty, BAR_TRACK)
+
+  const asideText = opts?.aside?.trim() ? opts.aside.trim() : null
+  const placement: BarAsidePlacement | null = asideText
+    ? barAsidePlacement(leftPct, widthPct, opts?.asideNegative ?? false)
+    : null
+
+  const spacer = barCellTd(
+    leftPx,
+    BAR_TRACK,
+    placement === 'left' && asideText
+      ? { value: asideText, align: 'right' }
+      : undefined,
+  )
+  const fill = barCellTd(filled, BAR_INK)
+  const track = barCellTd(
+    empty,
+    BAR_TRACK,
+    placement === 'right' && asideText
+      ? { value: asideText, align: 'left' }
+      : undefined,
+  )
   const barCell =
     !spacer && !fill && !track
       ? barCellTd(BAR_INNER_PX, BAR_TRACK)
       : `${spacer}${fill}${track}`
 
-  const padY = opts?.tight ? '0' : '3px'
+  const labelAside =
+    placement === 'label' && asideText
+      ? `<span style="${ASIDE_FONT}padding-left:4px;">${escapeHtml(asideText)}</span>`
+      : ''
+
   return `
     <tr>
-      <td width="120" style="padding:${padY} 8px ${padY} 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${SLATE};white-space:nowrap;width:120px;vertical-align:middle;">${escapeHtml(metricLabel)}</td>
-      <td style="padding:${padY} 6px;vertical-align:middle;">
+      <td width="${LABEL_COL_PX}" style="width:${LABEL_COL_PX}px;padding:5px 8px 5px 0;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${PANEL_MUTED};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(metricLabel)}${labelAside}</td>
+      <td style="padding:5px 0;border-top:1px solid ${PANEL_RULE};vertical-align:middle;">
         <table role="presentation" width="${BAR_INNER_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${BAR_INNER_PX}px;border-collapse:collapse;table-layout:fixed;">
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="128" style="padding:${padY} 0 ${padY} 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${NAVY};text-align:right;white-space:nowrap;width:128px;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="${ASIDE_LANE_PX}" style="width:${ASIDE_LANE_PX}px;padding:5px 0 5px 6px;border-top:1px solid ${PANEL_RULE};${ASIDE_FONT}text-align:left;vertical-align:middle;">${
+        placement === 'outside-right' && asideText ? escapeHtml(asideText) : '&nbsp;'
+      }</td>
     </tr>`
 }
 
+function hexTriplet(hex: string): [number, number, number] {
+  return [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ]
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexTriplet(a)
+  const [br, bg, bb] = hexTriplet(b)
+  const ch = (from: number, to: number) =>
+    Math.round(from + (to - from) * t)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${ch(ar, br)}${ch(ag, bg)}${ch(ab, bb)}`.toUpperCase()
+}
+
+/** A point on the coral → gold → sage run the web strip draws as a gradient. */
+function heatColorAt(t: number): string {
+  if (t <= 0.5) return mixHex(HEAT_FROM, HEAT_VIA, t / 0.5)
+  return mixHex(HEAT_VIA, HEAT_TO, (t - 0.5) / 0.5)
+}
+
+const HEAT_CELL_COUNT = 24
+const HEAT_CELL_PX = 9
+const HEAT_BAR_PX = 8
+const HEAT_STRIP_PX = HEAT_CELL_COUNT * HEAT_CELL_PX
+
 /**
- * Buyer / seller heat beside a town name. Mail clients drop CSS gradients, so
- * the web strip's continuous scale becomes five swatches with the town's band
- * raised and outlined.
+ * Seller ↔ buyer beside a town name, as the web draws it: end captions, the
+ * band named between them, and a marker on a continuous run of colour.
+ *
+ * Mail clients drop CSS gradients, so the run is stepped into cells and the
+ * marker takes the cell it lands on rather than floating over one — near enough
+ * at this width, and it survives everywhere a background colour does.
  */
-function heatStripCell(score: number): string {
-  const band = marketPulseHeatBand(score)
-  const caption =
-    band.id === 'balanced'
-      ? SLATE
-      : band.id.startsWith('seller')
-        ? BAR_CLOSED
-        : BAR_SALE_TO_ASK
-  const swatches = MARKET_PULSE_HEAT_BAND_IDS.map((id) => {
-    const active = id === band.id
-    const height = active ? 10 : 6
-    const border = active ? `border:1px solid ${NAVY};` : ''
-    return `<td width="13" bgcolor="${HEAT_SWATCHES[id]}" height="${height}" style="width:13px;height:${height}px;background-color:${HEAT_SWATCHES[id]};font-size:0;line-height:${height}px;mso-line-height-rule:exactly;${border}">&nbsp;</td>`
+function favorabilityStrip(score: number, peerCount: number | null): string {
+  const clamped = Math.min(1, Math.max(0, score))
+  const band = marketPulseHeatBand(clamped)
+  const markerIndex = Math.round(clamped * (HEAT_CELL_COUNT - 1))
+  const cells = Array.from({ length: HEAT_CELL_COUNT }, (_, i) => {
+    const color =
+      i === markerIndex ? WHITE : heatColorAt(i / (HEAT_CELL_COUNT - 1))
+    return `<td width="${HEAT_CELL_PX}" bgcolor="${color}" height="${HEAT_BAR_PX}" style="width:${HEAT_CELL_PX}px;height:${HEAT_BAR_PX}px;background-color:${color};font-size:0;line-height:${HEAT_BAR_PX}px;mso-line-height-rule:exactly;">&nbsp;</td>`
   }).join('')
+  const caption = `${band.label}${
+    peerCount != null ? ` · vs ${peerCount} towns` : ''
+  }`
+  const capFont =
+    'font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:0.16em;text-transform:uppercase;white-space:nowrap;'
   return `
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+    <table role="presentation" width="${HEAT_STRIP_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${HEAT_STRIP_PX}px;border-collapse:collapse;">
       <tr>
-        <td style="padding:0 8px 0 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${caption};white-space:nowrap;vertical-align:middle;">${escapeHtml(band.label)}</td>
-        <td style="vertical-align:middle;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;table-layout:fixed;">
-            <tr>${swatches}</tr>
+        <td style="${capFont}color:${PANEL_MUTED};text-align:left;padding:0 0 3px 0;">Seller</td>
+        <td width="100%" style="${capFont}color:${PANEL_ASIDE};text-align:center;padding:0 4px 3px 4px;">${escapeHtml(caption)}</td>
+        <td style="${capFont}color:${PANEL_MUTED};text-align:right;padding:0 0 3px 0;">Buyer</td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding:0;">
+          <table role="presentation" width="${HEAT_STRIP_PX}" cellpadding="0" cellspacing="0" border="0" style="width:${HEAT_STRIP_PX}px;border-collapse:collapse;table-layout:fixed;">
+            <tr>${cells}</tr>
           </table>
         </td>
       </tr>
     </table>`
 }
 
-type StackedMetric = {
-  id: MarketPulseStackedMetricId
-  label: string
-  labelOf?: (row: MarketPulseCombinedTownRow) => string
-  color: string
-  barValueOf: (row: MarketPulseCombinedTownRow) => number | null
-  format: (row: MarketPulseCombinedTownRow) => string
-}
-
-const EMAIL_STACKED_BAR_COLOR: Record<MarketPulseStackedMetricId, string> = {
-  inventory: BAR_INVENTORY,
-  monthsSupply: BAR_MOS,
-  avgDom: BAR_DOM,
-  closed: BAR_CLOSED,
-  medianPrice: BAR_MEDIAN,
-  averagePrice: BAR_AVERAGE,
-  priceDelta: BAR_DELTA,
-  saleToAsk: BAR_SALE_TO_ASK,
+/** Percent against the bar, for the two metrics that carry one — as the panel does. */
+function metricAside(
+  id: MarketPulseStackedMetricId,
+  row: MarketPulseCombinedTownRow,
+): string | null {
+  if (id === 'priceDelta') return formatPriceDeltaPct(row.priceDeltaPct)
+  if (id === 'saleToAsk') return formatSaleToAskPct(row.saleToAskPct)
+  return null
 }
 
 function stackedTownMetricsSection(
@@ -188,21 +291,11 @@ function stackedTownMetricsSection(
   const lookbackLabel = marketPulseLookbackChartLabel(
     DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   )
-  const metrics: StackedMetric[] = marketPulseStackedMetrics(lookbackLabel).map(
-    (m) => ({
-      id: m.id,
-      label: m.label,
-      labelOf: m.labelOf,
-      color: EMAIL_STACKED_BAR_COLOR[m.id],
-      barValueOf: m.barValueOf,
-      format: m.format,
-    }),
-  )
+  const metrics = marketPulseStackedMetrics(lookbackLabel)
 
   if (rows.length === 0) {
     return `
       <tr><td style="padding:0 0 24px 0;">
-        <p style="margin:0 0 10px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Town metrics stacked (sales)</p>
         <p style="margin:0;font-family:Georgia,serif;font-size:13px;color:${SLATE};">No town rows in cache yet.</p>
       </td></tr>`
   }
@@ -230,6 +323,7 @@ function stackedTownMetricsSection(
     }),
     (r) => isAllTownsCity(r.city),
   )
+  const peerCount = rows.filter((r) => !isAllTownsCity(r.city)).length
 
   const towns = rows
     .map((row) => {
@@ -240,7 +334,9 @@ function stackedTownMetricsSection(
             ? priceMax
             : (maxByMetric[i] ?? 0)
           const pct =
-            max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0
+            max > 0 && v != null && Number.isFinite(v)
+              ? (Math.abs(v) / max) * 100
+              : 0
           const span =
             m.id === 'priceDelta'
               ? marketPulseDeltaBarSpan(
@@ -248,34 +344,39 @@ function stackedTownMetricsSection(
                   marketPulsePricePct(row.averagePrice, priceMax),
                 )
               : { leftPct: 0, widthPct: pct }
-          const tight =
-            m.id === 'medianPrice' ||
-            m.id === 'averagePrice' ||
-            m.id === 'priceDelta'
-          const metricLabel =
-            m.labelOf?.(row) ?? m.label
-          return metricBarRow(metricLabel, m.format(row), span.widthPct, m.color, {
-            tight,
+          return metricBarRow(m.label, m.format(row), span.widthPct, {
             leftPct: span.leftPct,
+            aside: metricAside(m.id, row),
+            asideNegative:
+              m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0,
           })
         })
         .join('')
       const heat = heatByCity.get(row.city)
+      // The composite is the towns averaged, so ranking it against a count of
+      // them reads as nonsense — the spectrum still places it.
+      const aggregate = isAllTownsCity(row.city)
       return `
         <tr>
-          <td style="padding:14px 0 4px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+          <td style="padding:0 0 10px 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${PANEL_BG}" style="width:100%;border-collapse:separate;background-color:${PANEL_BG};border-radius:12px;">
               <tr>
-                <td style="font-family:Georgia,serif;font-size:15px;color:${NAVY};vertical-align:middle;">${escapeHtml(cityLabel(row))}</td>
-                <td align="right" style="text-align:right;vertical-align:middle;">${heat == null ? '' : heatStripCell(heat)}</td>
+                <td style="padding:12px 14px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td style="font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.1em;color:${GOLD};white-space:nowrap;vertical-align:middle;">${escapeHtml(cityLabel(row))}</td>
+                      <td align="right" style="text-align:right;vertical-align:middle;">${
+                        heat == null
+                          ? ''
+                          : favorabilityStrip(heat, aggregate ? null : peerCount)
+                      }</td>
+                    </tr>
+                  </table>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:8px;">
+                    ${metricRows}
+                  </table>
+                </td>
               </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:0 0 8px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-              ${metricRows}
             </table>
           </td>
         </tr>`
@@ -283,8 +384,7 @@ function stackedTownMetricsSection(
     .join('')
 
   return `
-    <tr><td style="padding:0 0 24px 0;">
-      <p style="margin:0 0 12px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:${GOLD};">Town metrics stacked (sales)</p>
+    <tr><td style="padding:0 0 14px 0;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
         ${towns}
       </table>
@@ -456,7 +556,7 @@ export function formatMarketDigestHtml(
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:${WHITE};border-collapse:collapse;">
           <tr>
             <td style="padding:22px 22px 18px 22px;background-color:${NAVY};">
-              <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:${GOLD};">TMRE Market Pulse</p>
+              <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.2em;color:${WHITE};">TMRE Market Pulse, <span style="font-style:italic;color:${GOLD};">Town Metrics</span></p>
               <p style="margin:0 0 8px 0;font-family:Georgia,serif;font-size:22px;line-height:1.25;color:${WHITE};">${escapeHtml(etDate)}</p>
               <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11px;">
                 <a href="${escapeHtml(`${SITE_URL}/market-pulse`)}" style="color:${GOLD};text-decoration:underline;">Read on the web</a>
@@ -470,7 +570,7 @@ export function formatMarketDigestHtml(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:8px 0;">
                 <tr>
                   ${kpiCell('Market active', marketActive)}
-                  ${kpiCell('All Town Months Inventory', marketMos)}
+                  ${kpiCell('Months Inventory', marketMos)}
                   ${kpiCell('Avg days on market', allTownsDom)}
                 </tr>
               </table>
@@ -486,6 +586,11 @@ export function formatMarketDigestHtml(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${stackedTownMetricsSection(combinedRows)}
                 ${dealSection}
+                <tr><td style="padding:0 0 10px 0;">
+                  <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:${NAVY};">How Seller / Buyer Friendly is scored</p>
+                  <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;line-height:1.5;color:${SLATE};">${escapeHtml(MARKET_PULSE_BUYER_SCORE_COPY)}</p>
+                  <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:10px;line-height:1.5;color:${SLATE};">${escapeHtml(MARKET_PULSE_SELLER_SCORE_COPY)}</p>
+                </td></tr>
                 <tr><td style="padding:0 0 18px 0;">
                   <p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.5;color:${SLATE};">
                     Same defaults as /market-pulse: ${escapeHtml(filterSummary)}. MOS = active ÷ avg monthly closings (3 prior full months).
