@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MarketPulseTownPayload } from "@/app/api/market-pulse/town/route";
 import type { ListingPropertyClass } from "@/lib/listing-property-class";
-import { marketPulseStackedMetrics } from "@/lib/market-pulse-stacked-metrics";
+import {
+  marketPulseStackedMetrics,
+  type MarketPulseStackedMetricId,
+} from "@/lib/market-pulse-stacked-metrics";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
 /** Mirrors the Market Pulse category tabs, minus the ones with no town slice. */
@@ -14,7 +17,15 @@ const PROPERTY_TABS: { id: ListingPropertyClass; label: string }[] = [
   { id: "multi", label: "Multi" },
 ];
 
-const METRIC_MAX_KEY = {
+/**
+ * Bar scaling key per metric. Typed against the metric id union so a new
+ * Market Pulse metric fails the build here rather than silently rendering an
+ * unscaled bar.
+ */
+const METRIC_MAX_KEY: Record<
+  MarketPulseStackedMetricId,
+  keyof MarketPulseTownPayload["maxima"]
+> = {
   inventory: "activeCount",
   monthsSupply: "monthsSupply",
   avgDom: "avgDaysOnMarket",
@@ -22,7 +33,8 @@ const METRIC_MAX_KEY = {
   medianPrice: "medianPrice",
   priceDelta: "priceDelta",
   averagePrice: "averagePrice",
-} as const;
+  saleToAsk: "saleToAskDollars",
+};
 
 /**
  * Buyer ↔ seller spectrum. The score is a peer rank in [0,1] computed server

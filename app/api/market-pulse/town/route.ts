@@ -51,6 +51,7 @@ export type MarketPulseTownPayload = {
     medianPrice: number
     averagePrice: number
     priceDelta: number
+    saleToAskDollars: number
   }
 }
 
@@ -171,6 +172,7 @@ export async function GET(req: Request) {
         medianPrice: maxOf(peers, (r) => r.medianPrice),
         averagePrice: maxOf(peers, (r) => r.averagePrice),
         priceDelta: maxOf(peers, (r) => r.priceDelta),
+        saleToAskDollars: maxOf(peers, (r) => r.saleToAskDollars),
       },
     }
 
