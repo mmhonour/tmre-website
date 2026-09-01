@@ -191,7 +191,7 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
   // so a stray catch-up is at worst wasted work; this one puts a real email in
   // someone's inbox, and a developer's `next dev` is a long-lived Node process
   // too — which is how the Monday brief has been going out from a laptop against
-  // a local watermark, invisible to production. The sync queue owns the send now,
+  // a local last-sent stamp, invisible to production. The sync queue owns it now,
   // and only the runner claims it.
   if (
     !isSyncQueueRunnerJob('market-digest') &&

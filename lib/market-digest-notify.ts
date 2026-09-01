@@ -4,6 +4,7 @@ import {
   getMarketDigestConfigFresh,
   markMarketDigestSent,
   marketDigestWeekKey,
+  shouldSkipMarketDigestNotDue,
   MARKET_DIGEST_LAST_ATTEMPT_KEY,
   MARKET_DIGEST_LAST_RESULT_KEY,
   MARKET_DIGEST_SEND_LOCK_KEY,
@@ -111,6 +112,32 @@ export async function recordMarketDigestHandoffFailure(args: {
 }
 
 /**
+ * Why a scheduled tick declined to send.
+ *
+ * The gates in the thin cron each returned a bare HTTP response and wrote
+ * nothing, so a brief that chose not to send left no trace at all: /admin showed
+ * an unremarkable week and the reason had to be reconstructed from source every
+ * time. A gate is not an attempt, so this deliberately leaves
+ * `market_digest_last_attempt_at` alone — otherwise "last attempt" would read as
+ * now on every half-hour tick and bury when a send was genuinely last tried.
+ */
+export async function recordMarketDigestSkip(args: {
+  trigger: string
+  reason: string
+}): Promise<void> {
+  const startedAt = new Date().toISOString()
+  const previousResult = await getSyncMetaFresh(
+    MARKET_DIGEST_LAST_RESULT_KEY,
+  ).catch(() => null)
+  await recordMarketDigestOutcome({
+    startedAt,
+    trigger: args.trigger,
+    previousResult,
+    result: { ok: true, skipped: true, reason: args.reason },
+  })
+}
+
+/**
  * One durable line for "what happened last time", plus a History row for
  * everything except a skip we have already reported. Repeat skips are stamped but
  * not audited: the dense alarm would otherwise write the same "disabled in admin"
@@ -159,9 +186,9 @@ async function recordMarketDigestOutcome(args: {
 }
 
 /**
- * When `force` is false, skips if disabled, already sent this ET week, or no API key.
- * Admin "Send test now" uses `force: true` (does not stamp the week).
- * Admin Syncs Run uses `force: true, stampWeek: true` so the watermark advances.
+ * When `force` is false, skips if disabled, not due for the current slot, or no
+ * API key. Admin "Send test now" uses `force: true` without stamping, so a test
+ * cannot satisfy the slot and cancel the real send. Admin Syncs Run stamps.
  *
  * Scheduled sends take a durable lock so the every-30m thin cron and the Railway
  * sweep cannot overlap and Resend the same brief twice.
@@ -177,11 +204,11 @@ async function runMarketDigestSend(
   if (!force && !config.enabled) {
     return { ok: true, skipped: true, reason: 'market digest disabled in admin' }
   }
-  if (!force && config.lastWeekKey === weekKey) {
+  if (!force && (await shouldSkipMarketDigestNotDue())) {
     return {
       ok: true,
       skipped: true,
-      reason: `already sent for week ${weekKey}`,
+      reason: 'not due for the current send slot',
       weekKey,
     }
   }
@@ -210,16 +237,14 @@ async function runMarketDigestSend(
   }
 
   try {
-    // Re-read after lock — a sibling worker may have stamped while we waited.
-    if (!force) {
-      const again = await getMarketDigestConfigFresh()
-      if (again.lastWeekKey === weekKey) {
-        return {
-          ok: true,
-          skipped: true,
-          reason: `already sent for week ${weekKey}`,
-          weekKey,
-        }
+    // Re-check after taking the lock — a sibling host may have sent while we
+    // were still deciding, and the lock is not held across both hosts' reads.
+    if (!force && (await shouldSkipMarketDigestNotDue())) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'not due for the current send slot',
+        weekKey,
       }
     }
 
@@ -269,7 +294,7 @@ async function runMarketDigestSend(
     }
 
     if (stampWeek) {
-      await markMarketDigestSent(weekKey)
+      await markMarketDigestSent()
     }
 
     console.info(

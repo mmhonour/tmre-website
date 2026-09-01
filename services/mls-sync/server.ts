@@ -195,12 +195,8 @@ async function jobHasWork(jobId: ScheduledSyncJobId): Promise<boolean> {
     const { towns } = await statsTownsDueForRebuild()
     return towns.length > 0
   }
-  if (jobId === 'market-digest') {
-    const { isMarketDigestAlreadySentThisWeek } = await import(
-      '../../lib/market-digest-config'
-    )
-    return !(await isMarketDigestAlreadySentThisWeek())
-  }
+  // market-digest needs no extra condition: jobIsDue already compares the last
+  // send against the configured slot, which is the whole of its dedupe.
   return true
 }
 

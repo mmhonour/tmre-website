@@ -2,7 +2,7 @@
 /**
  * Why did the Monday brief not go out?
  *
- * The week watermark alone cannot tell sent from skipped from never-alarmed, so
+ * The last-sent stamp alone cannot tell sent from skipped from never-alarmed, so
  * this reads the attempt/result stamps beside it, the owner and pause flags that
  * decide which host was even allowed to send, and the Railway heartbeat that
  * says whether that host was alive at the slot.

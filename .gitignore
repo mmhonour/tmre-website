@@ -52,6 +52,7 @@ tmp-cms-scrape*.js
 tmp-scrape-expr*.js
 tmp-*.txt
 tmp-*.json
+scripts/tmp-probe-*.ts
 
 # debug
 *.log

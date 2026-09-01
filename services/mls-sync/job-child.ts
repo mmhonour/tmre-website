@@ -40,14 +40,15 @@ export type SyncJobChildSpec = {
   /** Incremental only. */
   statusScope?: 'all' | 'active' | 'closed'
   /**
-   * Market brief only: push past the once-per-week watermark. A sweep must not
-   * (the watermark is what stops a second Monday email); an operator pressing
+   * Market brief only: send even though the slot says not to. A sweep must not
+   * (the slot check is what stops a second Monday email); an operator pressing
    * Sync now must.
    */
   force?: boolean
   /**
-   * Market brief only: move the weekly watermark on success. False for the
-   * Communications test send, which must not cancel the real Monday brief.
+   * Market brief only: advance the last-sent stamp on success, marking the slot
+   * served. False for the Communications test send, which must not cancel the
+   * real Monday brief.
    */
   stampWeek?: boolean
 }

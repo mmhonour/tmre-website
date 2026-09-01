@@ -111,7 +111,7 @@ export async function dispatchEventBridgeScheduledJob(
       requestedAt: startedAt,
       ignoreCooldown: options?.fromAdminSyncNow === true,
       // Admin Sync now must send the brief even off-cadence; a scheduled AWS
-      // tick keeps the weekly watermark, same as before the queue existed.
+      // tick keeps the slot check, same as before the queue existed.
       ...(jobId === 'market-digest'
         ? { payload: { force: options?.fromAdminSyncNow === true } }
         : {}),

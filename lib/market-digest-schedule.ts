@@ -17,6 +17,9 @@ import {
  * Persist market-digest day/time on the shared sync_schedule_config (Postgres).
  * When weekday changes, rewrite the subject template day name if it still
  * matches the prior default / leading “X market brief” pattern.
+ *
+ * A moved day/time needs nothing else: dedupe is last-sent versus the slot, so a
+ * new time is simply a slot that has not been served yet.
  */
 export async function updateMarketDigestSchedule(opts: {
   weekdayEt?: SyncScheduleWeekdayEt

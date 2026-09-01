@@ -214,20 +214,22 @@ export type AdminSyncActionOptions = {
    */
   executeInProcess?: boolean
   /**
-   * Market brief only: push past the once-per-week watermark.
+   * Market brief only: send even though the slot says not to.
    *
    * Defaults to true, because every caller before the queue was an operator
    * pressing Sync now. A scheduled sweep must pass false — it enqueues on a
-   * cadence, and the watermark is the only thing standing between that cadence
+   * cadence, and the slot check is the only thing standing between that cadence
    * and a second Monday email to the whole list.
    */
   force?: boolean
   /**
-   * Market brief only: move the once-per-week watermark on a successful send.
+   * Market brief only: advance the last-sent stamp on a successful send, which is
+   * what marks the current slot served. Named for the day-keyed watermark it used
+   * to move; the wire payload keeps the name so queued rows stay readable.
    *
-   * Defaults to true. The Communications tab's test send passes false, because
-   * a test that consumed the watermark would silently cancel the real Monday
-   * brief — and the only symptom would be an email nobody received.
+   * Defaults to true. The Communications tab's test send passes false, because a
+   * test that marked the slot served would silently cancel the real Monday brief
+   * — and the only symptom would be an email nobody received.
    */
   stampWeek?: boolean
 }
@@ -1333,7 +1335,7 @@ async function runAdminSyncActionImpl(
               stampWeek: true,
             }),
           // Say so on the row rather than leaning on the child's default: an
-          // operator pressing Sync now means past the weekly watermark.
+          // operator pressing Sync now means past the slot check.
           { startedAt, payload: { force: true } },
         )
         let queued = first.queued
@@ -1341,7 +1343,7 @@ async function runAdminSyncActionImpl(
         // Netlify refusing background invokes site-wide (HTTP 429) is how a whole
         // week's brief went missing: the hop was declined, nothing sent, and the
         // catch-up kept re-posting the same refusal. Put it on the queue instead —
-        // the weekly watermark still blocks a double send.
+        // the slot check still blocks a double send.
         if (
           !queued.ok &&
           via === 'admin' &&

@@ -111,7 +111,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-/** Force-send a test digest (does not update the weekly watermark). */
+/** Force-send a test digest (does not mark the scheduled slot served). */
 export async function POST(req: NextRequest) {
   if (!isAdminAuthorizedRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -123,8 +123,8 @@ export async function POST(req: NextRequest) {
     // That used to mean POSTing the background worker directly, which is why
     // this button still answered "HTTP 429" long after the scheduled path
     // stopped depending on that hop. It goes on `sync_queue` now, like every
-    // other brief. stampWeek stays false throughout: a test that consumed the
-    // weekly watermark would silently cancel the real Monday send.
+    // other brief. stampWeek stays false throughout: a test that marked the slot
+    // served would silently cancel the real Monday send.
     if (isServerlessRuntime()) {
       const config = await payload()
       const { enqueueSyncJob, readSyncQueueSnapshot } = await import(
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
         })
 
         // One queued row per job. Silently piggybacking on a scheduled brief
-        // would send with stampWeek true and burn the watermark, so refuse.
+        // would send with stampWeek true and consume the slot, so refuse.
         if (!enqueued.enqueued) {
           return NextResponse.json(
             {
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
           ok: true,
           queued: true,
           to: config.email,
-          message: `Test brief queued on the sync runner — ${config.email} should have it within a couple of minutes. It does not consume the weekly watermark, so Monday still sends. Syncs → Dashboard shows it in the Queue column.`,
+          message: `Test brief queued on the sync runner — ${config.email} should have it within a couple of minutes. It does not count as the scheduled send, so Monday still goes out. Syncs → Dashboard shows it in the Queue column.`,
         })
       }
 

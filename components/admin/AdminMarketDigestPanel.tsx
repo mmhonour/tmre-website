@@ -347,7 +347,6 @@ export default function AdminMarketDigestPanel({
                 email: body.email ?? prev.email,
                 enabled: body.enabled ?? prev.enabled,
                 lastSentAt: body.lastSentAt ?? prev.lastSentAt,
-                lastWeekKey: body.lastWeekKey ?? prev.lastWeekKey,
                 defaultEmail: body.defaultEmail ?? prev.defaultEmail,
                 subjectTemplate:
                   body.subjectTemplate ?? prev.subjectTemplate,
@@ -417,7 +416,8 @@ export default function AdminMarketDigestPanel({
           <span className="font-mono text-[11px]">market-digest</span> job — a
           paused job will not send. Send test now hands off to the same
           background worker as the cron (the brief is too slow for a
-          request-time send) and does not advance the weekly watermark — watch
+          request-time send) and does not count as the scheduled send, so the
+          next scheduled brief still goes out — watch
           Syncs → History for the{" "}
           <span className="font-mono text-[11px]">digest</span> row. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
@@ -622,7 +622,6 @@ export default function AdminMarketDigestPanel({
             {config.lastSentAt
               ? new Date(config.lastSentAt).toLocaleString()
               : "never"}
-            {config.lastWeekKey ? ` · week ${config.lastWeekKey}` : ""}
           </p>
         ) : null}
         {message ? (

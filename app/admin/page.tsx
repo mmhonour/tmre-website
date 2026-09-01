@@ -675,7 +675,6 @@ export default async function AdminPage() {
       email: contactNotifyEmail,
       enabled: true,
       lastSentAt: null,
-      lastWeekKey: null,
       defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
       subjectTemplate:
         "Monday market brief — months supply & inventory ({date})",

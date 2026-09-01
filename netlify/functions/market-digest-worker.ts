@@ -43,10 +43,10 @@ export default async function handler(req: Request, _context: Context) {
     }
 
     const force = fromAdmin || body.force === true
-    // Stamp the week after a real send so the */30 thin cron cannot re-fire
-    // all day. Bug: cron used to pass stampWeek:false explicitly, which skipped
-    // markMarketDigestSent and produced ~12 digests on the scheduled weekday.
-    // Admin "Send test" sets stampWeek:false; Admin Syncs Run stamps.
+    // Stamp last-sent after a real send so the slot reads as served and the */30
+    // thin cron cannot re-fire all day. Bug: cron used to pass stampWeek:false
+    // explicitly, which skipped markMarketDigestSent and produced ~12 digests on
+    // the send day. Admin "Send test" sets stampWeek:false; Syncs Run stamps.
     const stampWeek =
       typeof body.stampWeek === 'boolean' ? body.stampWeek : !force
 
