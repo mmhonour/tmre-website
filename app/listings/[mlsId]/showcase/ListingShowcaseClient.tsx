@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ListingDetailClient from "@/app/listings/[mlsId]/ListingDetailClient";
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
@@ -22,7 +21,6 @@ import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
 import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import { isRentalListing } from "@/lib/listing-kind";
 import {
-  listingDetailHref,
   listingPhotoProxyUrlsFromCount,
 } from "@/lib/listing-url";
 import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
@@ -426,12 +424,6 @@ export default function ListingShowcaseClient({
                 >
                   See all photos
                 </button>
-              <Link
-                href={listingDetailHref(listing.mlsId, street, city)}
-                className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
-              >
-                Full detail page
-              </Link>
             </div>
           </div>
         </div>

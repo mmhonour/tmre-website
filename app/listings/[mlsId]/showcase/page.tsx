@@ -1,30 +1,14 @@
-import ListingShowcaseClient from "./ListingShowcaseClient";
+import { permanentRedirect } from "next/navigation";
+import { listingSectionHref } from "@/lib/listing-url";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Alternate full-bleed listing layout — one photo spanning the viewport,
- * auto-rotating through the MLS set. Mockup only; `/listings/[mlsId]` stays
- * the production detail page.
+ * The showcase is now the listing page itself. This route stays so existing
+ * links and bookmarks keep working, and folds them onto the canonical URL so
+ * the same content is not served from two places.
  */
-export async function generateMetadata({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string }>;
-}) {
-  const { mlsId } = await params;
-  const { address } = await searchParams;
-  const label = address?.trim() || `Listing ${mlsId}`;
-  return {
-    title: `${label} — showcase mockup`,
-    description: `Full-bleed rotating photo layout for listing #${mlsId}.`,
-    robots: { index: false, follow: false },
-  };
-}
-
-export default async function ListingShowcasePage({
+export default async function ListingShowcaseRedirect({
   params,
   searchParams,
 }: {
@@ -33,12 +17,14 @@ export default async function ListingShowcasePage({
 }) {
   const { mlsId } = await params;
   const { address, city, panel } = await searchParams;
-  return (
-    <ListingShowcaseClient
-      mlsId={mlsId}
-      addressHint={address?.trim() || null}
-      townHint={city?.trim() || null}
-      productionPanel={panel === "production"}
-    />
+  const extra = panel ? `panel=${encodeURIComponent(panel)}` : undefined;
+  permanentRedirect(
+    listingSectionHref(
+      mlsId,
+      "overview",
+      address?.trim() || null,
+      city?.trim() || null,
+      extra,
+    ),
   );
 }
