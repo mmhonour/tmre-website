@@ -2092,7 +2092,7 @@ export default function ListingIfPanel({
       {criteriaInSidePanel ? (
         <ListingCriteriaSideLayout
           criteria={criteriaBlock}
-          heading="What if criteria"
+          heading="Criteria for What if"
           linkSlotId={desktopIfCriteriaSlotId}
           linkSlotIds={[mobileIfCriteriaSlotId]}
         >

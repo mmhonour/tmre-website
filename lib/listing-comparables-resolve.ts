@@ -10,7 +10,11 @@ import {
   type ComparablesMatchMode,
 } from '@/lib/listing-comparables'
 import type { ComparablesResult } from '@/lib/listing-comparables-shared'
-import { COMPARABLES_MAX_LOOKBACK_MONTHS } from '@/lib/listing-comparables-shared'
+import {
+  COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
+  COMPARABLES_MAX_LOOKBACK_MONTHS,
+  soldWithinLookback,
+} from '@/lib/listing-comparables-shared'
 import { widePricingMatchingConfig } from '@/lib/listing-comparables-session'
 import {
   readAllListingsFromDb,
@@ -26,6 +30,40 @@ export type ComparablesApiPayload = ComparablesResult & {
   kind: ComparablesMatchMode
   /** Admin Pricing defaults — seed session +/- controls. */
   matchConfig: PricingMatchingConfig
+  /** Look-back the count below is measured over. */
+  soldLookbackMonths: number
+  /**
+   * Sold comps that closed inside that look-back. `sold` is cached as a
+   * 36-month superset, so its length is not a headline figure — callers that
+   * want "sold recently" must not use `sold.length`.
+   */
+  soldWithinLookbackCount: number
+}
+
+/** Payload before the look-back counts are attached. */
+type ComparablesPayloadBase = Omit<
+  ComparablesApiPayload,
+  'soldLookbackMonths' | 'soldWithinLookbackCount'
+>
+
+/** Resolve the effective look-back and count the sold pool over it, once. */
+function withSoldCounts(
+  payload: ComparablesPayloadBase,
+  match: PricingMatchingConfig,
+): ComparablesApiPayload {
+  const months =
+    payload.defaultLookbackMonths ??
+    match.defaultLookbackMonths ??
+    COMPARABLES_DEFAULT_LOOKBACK_MONTHS
+  return {
+    ...payload,
+    soldLookbackMonths: months,
+    soldWithinLookbackCount: soldWithinLookback(
+      payload.sold,
+      months,
+      Number.POSITIVE_INFINITY,
+    ).length,
+  }
 }
 
 async function attachStoredEdgeScores(
@@ -76,7 +114,7 @@ async function resolveWideComparablesPool(
   subject: Listing,
   kind: ComparablesMatchMode,
   match: PricingMatchingConfig,
-): Promise<ComparablesApiPayload> {
+): Promise<ComparablesPayloadBase> {
   const { soldPool, activePool } = await loadTownPools(subject)
   const wide = widePricingMatchingConfig(match)
   const ranked = findComparablesRanked(subject, soldPool, activePool, kind, {
@@ -120,20 +158,26 @@ export async function resolveComparablesForSubject(
   const match = await getPricingMatchingConfigFresh()
 
   if (options.pool === 'wide') {
-    return resolveWideComparablesPool(subject, kind, match)
+    return withSoldCounts(
+      await resolveWideComparablesPool(subject, kind, match),
+      match,
+    )
   }
 
   const cached = await readCachedComparables(subject, kind)
   if (cached) {
     const withScores = await attachStoredEdgeScores(cached)
-    return {
-      mlsId: subject.mlsId,
-      kind,
-      ...withScores,
-      defaultLookbackMonths:
-        withScores.defaultLookbackMonths ?? match.defaultLookbackMonths,
-      matchConfig: match,
-    }
+    return withSoldCounts(
+      {
+        mlsId: subject.mlsId,
+        kind,
+        ...withScores,
+        defaultLookbackMonths:
+          withScores.defaultLookbackMonths ?? match.defaultLookbackMonths,
+        matchConfig: match,
+      },
+      match,
+    )
   }
 
   const { soldPool, activePool } = await loadTownPools(subject)
@@ -146,10 +190,13 @@ export async function resolveComparablesForSubject(
 
   const withScores = await attachStoredEdgeScores(result)
 
-  return {
-    mlsId: subject.mlsId,
-    kind,
-    ...withScores,
-    matchConfig: match,
-  }
+  return withSoldCounts(
+    {
+      mlsId: subject.mlsId,
+      kind,
+      ...withScores,
+      matchConfig: match,
+    },
+    match,
+  )
 }

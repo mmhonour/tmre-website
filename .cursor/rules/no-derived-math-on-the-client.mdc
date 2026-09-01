@@ -1,0 +1,65 @@
+---
+description: Flag derived values computed in the browser instead of precomputed server-side
+alwaysApply: true
+---
+
+# Derived values belong upstream, not in the browser
+
+If a page computes anything beyond arithmetic on numbers already rendered on
+that page, stop and flag it before shipping. Say what the value is, where it is
+being computed, and which precomputed store it should live in.
+
+## What counts
+
+Flag it when a component:
+
+- filters or aggregates a collection to produce a headline figure (counts,
+  sums, medians, "within the last N months")
+- re-derives a field from `raw` MLS JSON that sync already denormalises
+- parses dates to bucket or compare them
+- recomputes something a server route, cache table or resolver already knows
+
+Not worth flagging: formatting, currency and date display, percentages of two
+numbers already on screen, sorting a list the user is looking at.
+
+## Why it matters here
+
+Derived numbers computed per render are invisible to the Admin surfaces, cannot
+be queried in SQL, drift between callers that each roll their own version, and
+recompute on every mount. They also tend to be quietly wrong — the comparables
+API caches a **36-month** sold superset, so `sold.length` is not "sold
+recently"; a client counting the array reported 48 where the 12-month answer
+was 21.
+
+## Where things already live
+
+Check these before proposing anything new:
+
+| Store | Granularity | Holds |
+| --- | --- | --- |
+| `stats_cache` (Postgres) | town × sale/rental, plus `All` rollups | market medians, monthly/vintage/price histograms, months supply |
+| `listings.goldilocks_*` | per listing | composite score + breakdown |
+| `listing_edge_scores` | per listing | comp-ranking edge score |
+| `listing_if_estimates` | per listing | What-if sale/rent amounts, sold/active counts |
+| `listing_relations` | per subject listing | ranked sold/active comparables |
+| `stats_cache` `if:detail:…` | per listing | full What-if payload |
+
+The town-level stats cache is **not** the home for per-listing figures — its
+rebuild loop is town-at-a-time market math. Per-listing derived values belong
+in a per-listing table or in the resolver that already assembles that listing's
+payload.
+
+## Preferred order
+
+1. **The API/resolver that already loads the data** — cheapest, no migration,
+   and every caller gets the same answer. Add a field to the response.
+2. **A per-listing table** when the value is needed in SQL, on cards, in
+   search, or in email.
+3. **The stats cache** only for genuinely town or market level aggregates.
+
+## When you do compute in the browser anyway
+
+Only for values that are session-specific (e.g. following a user's own filter
+control). Reuse the shared helper rather than reimplementing the rule —
+`soldWithinLookback` in `lib/listing-comparables-shared.ts` is the canonical
+look-back filter — and say in the reply that it is client-side and why.

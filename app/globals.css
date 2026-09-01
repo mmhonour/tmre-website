@@ -828,3 +828,165 @@ html.listing-split-test body {
     box-shadow: 0 0 0 1.5px #c8a951;
   }
 }
+
+/* Full-bleed listing showcase — crossfading photo stage (/listings/[mlsId]/showcase) */
+.listing-showcase-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.06);
+  transition: opacity 1200ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.listing-showcase-layer--drift {
+  animation: listingShowcaseDrift 30s ease-in-out infinite alternate;
+}
+
+@keyframes listingShowcaseDrift {
+  from {
+    transform: scale(1.04) translate3d(-1.2%, 0.9%, 0);
+  }
+  to {
+    transform: scale(1.16) translate3d(1.2%, -0.9%, 0);
+  }
+}
+
+/* Listing photos are frequently near-white (kitchens, tile, snow, bright sky),
+   so the overlay needs a scrim that is already dark where the type sits rather
+   than only at the very edge of the frame. */
+.listing-showcase-scrim-bottom {
+  background: linear-gradient(
+    to top,
+    rgba(9, 14, 26, 0.9) 0%,
+    rgba(9, 14, 26, 0.78) 20%,
+    rgba(9, 14, 26, 0.45) 40%,
+    rgba(9, 14, 26, 0.12) 55%,
+    rgba(9, 14, 26, 0) 68%
+  );
+}
+
+.listing-showcase-scrim-top {
+  background: linear-gradient(
+    to bottom,
+    rgba(9, 14, 26, 0.65) 0%,
+    rgba(9, 14, 26, 0.25) 12%,
+    rgba(9, 14, 26, 0) 26%
+  );
+}
+
+/* Photo step arrows — stacked shadows give the glyph edge weight so it reads
+   as a raised control against any photo underneath it. */
+.listing-showcase-arrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    0 3px 6px rgba(0, 0, 0, 0.6);
+  -webkit-text-stroke: 1.25px currentColor;
+  paint-order: stroke fill;
+}
+
+/* Mobile rail tiles hide their figures until tapped; the pulsing chevrons are
+   the affordance that says there is more behind the label. */
+@keyframes showcaseChevronPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.showcase-chevron-pulse {
+  animation: showcaseChevronPulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .showcase-chevron-pulse {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
+/* Showcase details panel — the summary + tab strip pin at both breakpoints so
+   the tabs act as a nav rail for the panels below. */
+
+/* Negative margin widens the panel past the content column, and the matching
+   padding puts the type back on the column's edge — otherwise the summary
+   butts straight against the panel it sits on. */
+.showcase-sticky-chrome {
+  margin-inline: -1rem;
+  padding: 0.75rem 1rem 0.5rem;
+  border-radius: 1rem;
+  background: rgba(19, 31, 56, 0.97);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 30px -20px rgba(0, 0, 0, 0.85);
+}
+
+/* Any anchor in the panel — ours and the ones inside the comps body — has to
+   clear the pinned chrome, whose height is published as a CSS var. */
+.showcase-details [id] {
+  scroll-margin-top: var(--showcase-sticky-offset, 12rem);
+}
+
+@media (min-width: 1024px) {
+  .showcase-sticky-chrome {
+    margin-inline: -1.25rem;
+    padding: 1rem 1.25rem 0.75rem;
+  }
+}
+
+/* Wheel-scrollable without the bar — used by the sticky dashboard deck, whose
+   expanded cards can run past the bottom of the viewport. */
+.showcase-hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.showcase-hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Second line of defence for type sitting over a busy or blown-out photo. */
+.listing-showcase-type {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 2px 28px rgba(0, 0, 0, 0.45);
+}
+
+.listing-showcase-progress {
+  transform-origin: left center;
+  animation: listingShowcaseProgress var(--showcase-hold, 6500ms) linear forwards;
+}
+
+@keyframes listingShowcaseProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listing-showcase-layer {
+    transition-duration: 250ms;
+  }
+
+  .listing-showcase-layer--drift {
+    animation: none;
+  }
+
+  .listing-showcase-progress {
+    animation: none;
+    transform: scaleX(1);
+  }
+}

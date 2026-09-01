@@ -1,0 +1,487 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import ListingDetailClient from "@/app/listings/[mlsId]/ListingDetailClient";
+import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
+import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
+import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
+import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
+import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
+import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
+import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
+import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
+import { formatListingHeaderPrice } from "@/lib/listing-header-price";
+import {
+  fmtMoney,
+  formatMlsStatus,
+  primaryListingPrice,
+  primaryListingPriceIsClosed,
+} from "@/lib/listing-history";
+import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
+import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
+import { isRentalListing } from "@/lib/listing-kind";
+import {
+  listingDetailHref,
+  listingPhotoProxyUrlsFromCount,
+} from "@/lib/listing-url";
+import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
+
+const HOLD_MS = 6500;
+const MAX_PHOTOS = 40;
+const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
+
+type ApiResponse = ListingScoreApiFields & {
+  listing: ShowcaseListing;
+  /** VGSI parcel pairing — feeds the Admin deck card when unlocked. */
+  vision?: ListingVisionLink | null;
+};
+
+type LoadState = "loading" | "ready" | "error" | "not-found";
+
+function fmtFullMoney(n: number | null): string | null {
+  if (n == null || !Number.isFinite(n) || n <= 0) return null;
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function fmtAcres(acres: number | null): string | null {
+  if (acres == null || acres <= 0) return null;
+  return `${acres.toFixed(acres < 1 ? 2 : 1)} acres`;
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return reduced;
+}
+
+function ShowcaseMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="navy-gradient relative flex min-h-[100dvh] items-center justify-center px-6 text-white">
+      <div className="absolute inset-0 hero-grid opacity-30" aria-hidden />
+      <div className="relative text-center font-mono text-xs tracking-[0.2em] uppercase text-white/60">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function ControlButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white/85 backdrop-blur-sm transition-colors hover:border-gold/60 hover:bg-black/45 hover:text-gold"
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function ListingShowcaseClient({
+  mlsId,
+  addressHint,
+  townHint,
+  productionPanel = false,
+}: {
+  mlsId: string;
+  addressHint?: string | null;
+  townHint?: string | null;
+  /** `?panel=production` — render the real Overview page below the photo. */
+  productionPanel?: boolean;
+}) {
+  const [data, setData] = useState<ApiResponse | null>(null);
+  const [state, setState] = useState<LoadState>("loading");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const [mapState, setMapState] = useState({ open: false, expanded: false });
+  /** Rail is showing the Details card, which carries its own arrow pair. */
+  const [railDetailsOnly, setRailDetailsOnly] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const isDesktop = useIsDesktop();
+
+  useEffect(() => {
+    let cancelled = false;
+    const url = listingChromeApiUrl(mlsId);
+
+    void loadTabJson<ApiResponse>(url)
+      .then((d) => {
+        if (cancelled) return;
+        if (!d?.listing) {
+          setState("not-found");
+          return;
+        }
+        setData(d);
+        setState("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setErrorMsg(err instanceof Error ? err.message : "Fetch failed");
+        setState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mlsId]);
+
+  const listing = data?.listing ?? null;
+
+  const photos = useMemo(() => {
+    if (!listing) return [] as string[];
+    const all = listingPhotoProxyUrlsFromCount(
+      listing.mlsId,
+      listing.photoCount ?? 0,
+      MAX_PHOTOS,
+      { size: "full" },
+    );
+    const live = all.filter((url) => !failed.has(url));
+    return live.length > 0 ? live : all.slice(0, 1);
+  }, [listing, failed]);
+
+  const total = photos.length;
+  const safeIndex = total > 0 ? index % total : 0;
+
+  const step = useCallback(
+    (delta: number) => {
+      setIndex((current) => {
+        if (total <= 0) return 0;
+        return (current + delta + total) % total;
+      });
+    },
+    [total],
+  );
+
+  useEffect(() => {
+    if (paused || total < 2) return;
+    const timer = setTimeout(() => step(1), HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [paused, total, safeIndex, step]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") {
+        step(1);
+      } else if (e.key === "ArrowLeft") {
+        step(-1);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setPaused((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step]);
+
+  const markFailed = useCallback(
+    (photoIndex: number) => {
+      const url = photos[photoIndex];
+      if (!url) return;
+      setFailed((prev) => {
+        if (prev.has(url)) return prev;
+        const next = new Set(prev);
+        next.add(url);
+        return next;
+      });
+    },
+    [photos],
+  );
+
+  if (state === "loading") {
+    return (
+      <ShowcaseMessage>
+        Loading {addressHint?.trim() || `listing ${mlsId}`}…
+      </ShowcaseMessage>
+    );
+  }
+
+  if (state === "not-found" || !listing) {
+    return (
+      <ShowcaseMessage>
+        {errorMsg
+          ? `Couldn't load listing ${mlsId} — ${errorMsg}`
+          : `Listing ${mlsId} isn't in the feed right now.`}
+      </ShowcaseMessage>
+    );
+  }
+
+  const street = listing.address.street || listing.address.full || addressHint || "";
+  const city = townHint || listing.address.city;
+  const status = formatMlsStatus(listing.status);
+  const insight = data?.insight?.trim() || null;
+  const primaryPrice = primaryListingPrice(listing);
+  const priceIsClosed = primaryListingPriceIsClosed(listing);
+  const headerPrice =
+    primaryPrice != null && primaryPrice > 0
+      ? formatListingHeaderPrice(primaryPrice)
+      : null;
+  const isRental = isRentalListing(listing);
+  // Built once here so the hero rail and the dashboard deck below cannot drift.
+  const detailsPanelProps = buildListingDetailsPanelProps(
+    { ...listing, townHint: city },
+    fmtMoney,
+    {
+      listingId: listing.mlsId,
+      addressHint: street || addressHint,
+      townHint: city,
+      cityMedianPpsf: data?.cityMedianPpsf,
+      listingPricePerSqft: data?.pricePerSqft,
+      medianPpsfBand: data?.medianPpsfBand,
+      marketBandLabel: data?.marketBandLabel,
+    },
+  );
+  const remarks =
+    listing.remarks?.trim() ||
+    REMARKS_KEYS.map((k) => listing.raw?.[k])
+      .filter(Boolean)
+      .join("\n\n");
+
+  const detailRows = [
+    { label: "Lot", value: fmtAcres(listing.lotAcres) ?? "—" },
+    { label: "MLS #", value: listing.mlsId },
+    { label: "Status", value: status },
+    { label: "Type", value: listing.propertyType || "—" },
+    { label: "Style", value: listing.style || "—" },
+    { label: "Days on market", value: listing.dom != null ? String(listing.dom) : "—" },
+    {
+      label: listing.propertyTaxYear
+        ? `Taxes (${listing.propertyTaxYear})`
+        : "Taxes",
+      value: fmtFullMoney(listing.propertyTax) ?? "—",
+    },
+    { label: "Elementary", value: listing.schools.elementary || "—" },
+    { label: "High school", value: listing.schools.high || "—" },
+  ];
+
+  return (
+    <div className="bg-navy-dark text-white">
+      <section className="relative min-h-[100dvh] w-full overflow-hidden">
+        <ShowcasePhotoStage
+          photos={photos}
+          index={safeIndex}
+          altBase={street || `Listing ${listing.mlsId}`}
+          drift={!reducedMotion && !paused}
+          onPhotoFailed={markFailed}
+        />
+
+        {/* Scrims keep the overlaid type legible over any photo. */}
+        <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
+        <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
+
+        {/*
+         * Both arrows stay pinned to opposite edges. With the Details card
+         * showing they lift clear of it — the rail's own next arrow is inside
+         * the tile stack, which that mode hides, so the hero supplies it.
+         */}
+        <ShowcaseStepArrow
+          direction="prev"
+          label="Previous photo"
+          onClick={() => step(-1)}
+          className={`absolute left-3 z-20 sm:left-6 ${
+            railDetailsOnly
+              ? "top-[calc(50%-14rem)]"
+              : "top-1/2 -translate-y-1/2"
+          }`}
+        />
+        {railDetailsOnly ? (
+          <ShowcaseStepArrow
+            direction="next"
+            label="Next photo"
+            onClick={() => step(1)}
+            className="absolute right-3 top-[calc(50%-14rem)] z-20 sm:right-6"
+          />
+        ) : null}
+        <ShowcaseSectionRail
+          mlsId={listing.mlsId}
+          insight={insight}
+          detailRows={detailRows}
+          townHint={city}
+          postalCode={listing.address.postalCode}
+          subject={
+            listing.latitude != null && listing.longitude != null
+              ? {
+                  key: listing.listingKey || listing.mlsId,
+                  address: street,
+                  city,
+                  price: primaryListingPrice(listing) ?? 0,
+                  score: data?.goldilocksScore ?? 0,
+                  isRental,
+                  beds: listing.beds,
+                  baths: listing.baths,
+                  sqft: listing.sqft,
+                  latitude: listing.latitude,
+                  longitude: listing.longitude,
+                  photoCount: listing.photoCount,
+                }
+              : null
+          }
+          detailsPanelProps={detailsPanelProps}
+          onNext={() => step(1)}
+          onMapStateChange={setMapState}
+          onDetailsOnlyChange={setRailDetailsOnly}
+        />
+
+        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
+          <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-6">
+            <div className="max-w-xl">
+              <span className="inline-flex bg-[#0d1424]/85 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
+                {status}
+              </span>
+              <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
+                {street}
+              </h1>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
+                {[city, listing.address.state, listing.address.postalCode]
+                  .filter(Boolean)
+                  .join(" ")}
+              </p>
+            </div>
+
+            {headerPrice ? (
+              /*
+               * Sits just left of the map's edge while it is open. The map is
+               * anchored to the viewport but the price lives in a centred
+               * max-w-7xl row, so the shift is the gap between those two right
+               * edges — a flat margin of the map's width overshoots by half the
+               * page gutter.
+               */
+              <div
+                className="shrink-0 text-right transition-[margin] duration-300"
+                style={
+                  isDesktop && mapState.open
+                    ? {
+                        marginRight: `max(0rem, calc(${
+                          mapState.expanded ? "min(50vw, 44rem)" : "24rem"
+                        } + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
+                      }
+                    : undefined
+                }
+              >
+                <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
+                  {priceIsClosed ? "Closed at" : "Offered at"}
+                </p>
+                {/* Same treatment the detail header uses beside the score. */}
+                <p className="mt-1 font-serif text-3xl font-bold tabular-nums leading-none text-gold lg:text-4xl">
+                  {headerPrice}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-end gap-5 sm:grid-cols-[1fr_auto_1fr]">
+            <button
+              type="button"
+              onClick={() => scrollToShowcaseSection("overview")}
+              className="group max-w-md text-left font-mono text-[10px] uppercase tracking-[0.25em] text-white/70 transition-colors hover:text-gold"
+            >
+              Scroll for details
+              <span
+                aria-hidden
+                className="ml-2 inline-block transition-transform group-hover:translate-y-0.5"
+              >
+                ↓
+              </span>
+            </button>
+
+            {/* Centre column keeps pause + counter on the page midline. */}
+            <div className="flex items-center justify-center gap-3">
+              <ControlButton
+                label={paused ? "Resume slideshow" : "Pause slideshow"}
+                onClick={() => setPaused((p) => !p)}
+              >
+                <span aria-hidden className="text-xs leading-none">
+                  {paused ? "▶" : "❚❚"}
+                </span>
+              </ControlButton>
+              <span className="font-mono text-xs tracking-[0.2em] text-white/70 tabular-nums">
+                {String(safeIndex + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+              </span>
+            </div>
+
+              <div className="flex flex-wrap items-center gap-4 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => scrollToShowcaseSection("photos")}
+                  className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+                >
+                  See all photos
+                </button>
+              <Link
+                href={listingDetailHref(listing.mlsId, street, city)}
+                className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+              >
+                Full detail page
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10">
+          <div
+            key={paused ? "paused" : safeIndex}
+            className={paused ? "h-full w-full origin-left bg-gold/60" : "listing-showcase-progress h-full w-full bg-gold"}
+            style={{ ["--showcase-hold" as string]: `${HOLD_MS}ms` }}
+            aria-hidden
+          />
+        </div>
+      </section>
+
+      {productionPanel ? (
+        /*
+         * `?panel=production` drops the real Overview page in under the photo,
+         * unmodified. Zero divergence by construction — it is the same
+         * component tree `/listings/[mlsId]` renders, so Insight, Rented, Under
+         * Agreement and the deck all behave exactly as they do in production.
+         */
+        <div className="border-t border-white/10">
+          <ListingDetailClient
+            mlsId={mlsId}
+            addressHint={street || addressHint}
+            townHint={city}
+            embedded
+          />
+        </div>
+      ) : (
+      <ShowcaseDetailsPanel
+        listing={listing}
+        street={street}
+        city={city}
+        addressHint={addressHint}
+        insight={insight}
+        remarks={remarks}
+        detailRows={detailRows}
+        isRental={isRental}
+        photoCount={total}
+        detailsPanelProps={detailsPanelProps}
+        vision={data?.vision ?? null}
+        onSelectPhoto={(photoIndex) => {
+          setIndex(photoIndex);
+          setPaused(true);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        score={data ?? {}}
+      />
+      )}
+    </div>
+  );
+}

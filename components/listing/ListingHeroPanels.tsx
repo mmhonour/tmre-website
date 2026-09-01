@@ -187,6 +187,12 @@ type ListingHeroPanelsProps = {
   /** Suppress the MLS status badge (e.g. the Coming Soon spotlight tab). */
   hideStatusBadge?: boolean;
   /**
+   * Lock document scroll while a slide-up panel is open. Correct when this
+   * component owns the page; hosts that render content above it (the showcase
+   * hero) must pass false or the visitor cannot scroll back up to it.
+   */
+  lockPanelScroll?: boolean;
+  /**
    * Overview photo-deck content (remarks on mobile + photo stack). Shown inside
    * the slide-up panel when Overview is selected — not in the page scroll flow.
    */
@@ -228,6 +234,7 @@ export default function ListingHeroPanels({
   interest = null,
   listingRaw = null,
   vision = null,
+  lockPanelScroll = true,
 }: ListingHeroPanelsProps) {
   const router = useRouter();
   const siteUnlocked = useSiteUnlocked();
@@ -845,8 +852,12 @@ export default function ListingHeroPanels({
     const body = document.body;
     const prevHtml = html.style.overflow;
     const prevBody = body.style.overflow;
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
+    // Embedded hosts render content above this component, so locking the
+    // document would strand the visitor below it with no way back up.
+    if (lockPanelScroll) {
+      html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+    }
 
     // Lazy section bodies (What if) mount after first paint — re-pin panel only
     // (window scroll is locked once overflow is hidden).
@@ -859,10 +870,12 @@ export default function ListingHeroPanels({
     return () => {
       window.clearTimeout(t0);
       window.clearTimeout(t1);
-      html.style.overflow = prevHtml;
-      body.style.overflow = prevBody;
+      if (lockPanelScroll) {
+        html.style.overflow = prevHtml;
+        body.style.overflow = prevBody;
+      }
     };
-  }, [panelOpen, panelTab]);
+  }, [panelOpen, panelTab, lockPanelScroll]);
 
   const panelSections =
     useSlidePanel && isValidElement(sections)

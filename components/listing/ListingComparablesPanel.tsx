@@ -1986,7 +1986,7 @@ export default function ListingComparablesPanel({
       {criteriaInSidePanel ? (
         <ListingCriteriaSideLayout
           criteria={criteriaBlock}
-          heading={isRental ? "Rented criteria" : "Sold criteria"}
+          heading={isRental ? "Criteria for rented comps" : "Criteria for sold comps"}
           linkSlotId={criteriaLinkSlotId}
         >
           {mainColumn}
