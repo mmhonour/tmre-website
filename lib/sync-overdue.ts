@@ -10,6 +10,7 @@ import {
   setSyncMeta,
   tryAcquireTimedLock,
 } from '@/lib/db/sync-meta-store'
+import { marketDigestQueueBackoffUntil } from '@/lib/market-digest-config'
 import { isRetsConfigured } from '@/lib/rets'
 import { isServerlessRuntime } from '@/lib/runtime-host'
 import {
@@ -22,6 +23,7 @@ import {
   isScheduledJobDue,
   readSyncScheduleConfig,
 } from '@/lib/sync-schedule-config'
+import { isSyncQueueRunnerJob } from '@/lib/sync-queue-shared'
 
 export type OverdueSyncJob = AdminSyncActionId
 
@@ -185,7 +187,19 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
     overdue.add('cpi-sync')
   }
 
-  if (isScheduledJobDue('market-digest', now, schedule)) {
+  // Never catch the brief up from here. Every other lane writes to a database,
+  // so a stray catch-up is at worst wasted work; this one puts a real email in
+  // someone's inbox, and a developer's `next dev` is a long-lived Node process
+  // too — which is how the Monday brief has been going out from a laptop against
+  // a local last-sent stamp, invisible to production. The sync queue owns it now,
+  // and only the runner claims it.
+  if (
+    !isSyncQueueRunnerJob('market-digest') &&
+    isScheduledJobDue('market-digest', now, schedule) &&
+    // A refused worker hop stays refused for a while; retrying it every catch-up
+    // pass only burned invokes and buried History under identical failures.
+    !marketDigestQueueBackoffUntil(now.getTime())
+  ) {
     overdue.add('market-digest')
   }
 

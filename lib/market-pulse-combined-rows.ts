@@ -24,19 +24,26 @@ export type MarketPulseCombinedTownRow = {
   priceDelta: number | null
   /** (Average − median) / median × 100. */
   priceDeltaPct: number | null
+  /** Close ÷ original ask, as a percent (97.4 = closed 2.6% under first ask). */
+  saleToAskPct: number | null
+  /** Average dollar gap against the first ask (negative = under ask). */
+  saleToAskDollars: number | null
   activeCountCalc?: StatsValueCalc
   monthsSupplyCalc?: StatsValueCalc
   avgDaysOnMarketCalc?: StatsValueCalc
   closedCalc?: StatsValueCalc
   medianPriceCalc?: StatsValueCalc
   averagePriceCalc?: StatsValueCalc
+  saleToAskCalc?: StatsValueCalc
+  priceDeltaCalc?: StatsValueCalc
 }
 
 function cityKey(city: string): string {
   return city.trim().toLowerCase()
 }
 
-function isAllTownsCity(city: string): boolean {
+/** The market aggregate row, however the cache spelled it. */
+export function isAllTownsCity(city: string): boolean {
   const t = cityKey(city)
   return t === 'all' || t === 'all towns'
 }
@@ -70,7 +77,13 @@ export function buildMarketPulseCombinedTownRows(
     const dom = domBy.get(key)
     const closed = closedBy.get(key)
     const price = priceBy.get(key)
-    const delta = meanMinusMedian(price?.averagePrice, price?.medianPrice)
+    // Cached at rebuild. The subtraction stays only as a fallback for a row
+    // written before the cache carried it, so a stale entry still shows a delta
+    // rather than a blank.
+    const delta =
+      price?.priceDelta != null || price?.priceDeltaPct != null
+        ? { dollars: price.priceDelta ?? null, pct: price.priceDeltaPct ?? null }
+        : meanMinusMedian(price?.averagePrice, price?.medianPrice)
     return {
       city: row.city,
       activeCount: row.activeCount ?? null,
@@ -81,12 +94,16 @@ export function buildMarketPulseCombinedTownRows(
       averagePrice: price?.averagePrice ?? null,
       priceDelta: delta.dollars,
       priceDeltaPct: delta.pct,
+      saleToAskPct: price?.saleToAskPct ?? null,
+      saleToAskDollars: price?.saleToAskDollars ?? null,
       activeCountCalc: row.activeCountCalc,
       monthsSupplyCalc: row.monthsSupplyCalc,
       avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,
       closedCalc: closed?.calc,
       medianPriceCalc: price?.medianPriceCalc,
       averagePriceCalc: price?.averagePriceCalc,
+      saleToAskCalc: price?.saleToAskCalc,
+      priceDeltaCalc: price?.priceDeltaCalc,
     }
   })
 }
@@ -110,6 +127,7 @@ export function defaultMarketPulseCombinedRows(
       medianPrice: r.medianPrice,
       priceDelta: r.priceDelta,
       averagePrice: r.averagePrice,
+      saleToAskPct: r.saleToAskPct,
     }),
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
     (r) => isAllTownsCity(r.city),

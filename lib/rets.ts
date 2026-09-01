@@ -426,6 +426,49 @@ async function withClient<T>(fn: (c: any) => Promise<T>): Promise<T> {
   return withRetsClient(fn)
 }
 
+/** Attempts after the first, and how long to wait before each. */
+const RETS_TRANSIENT_RETRY_DELAYS_MS = [2_000, 6_000]
+
+/**
+ * One RETS search, retried only for faults that are theirs and intermittent.
+ *
+ * Deliberately short and bounded: two extra attempts over about eight seconds.
+ * A real SmartMLS outage must still fail the town promptly rather than hold a
+ * child against its kill budget, and retrying hard against a database that is
+ * already unhappy is not a kindness to either side.
+ */
+async function searchWithTransientRetry(
+  dmql: string,
+  limit: number,
+): Promise<RawRetsRecord[]> {
+  let lastErr: unknown = null
+  for (let attempt = 0; attempt <= RETS_TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await withClient(async (client) => {
+        try {
+          const result = await client.search.query('Property', 'Property', dmql, {
+            limit,
+            offset: 1,
+          })
+          return (result?.results ?? []) as RawRetsRecord[]
+        } catch (err) {
+          if (isRetsNoRecordsError(err)) return []
+          throw err
+        }
+      })
+    } catch (err) {
+      lastErr = err
+      const delay = RETS_TRANSIENT_RETRY_DELAYS_MS[attempt]
+      if (delay == null || !isRetsTransientServerError(err)) throw err
+      console.warn(
+        `[rets] transient ${String((err as { replyCode?: string }).replyCode ?? '?')} — retrying in ${delay}ms (attempt ${attempt + 2}/${RETS_TRANSIENT_RETRY_DELAYS_MS.length + 1})`,
+      )
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+  throw lastErr
+}
+
 export async function searchListings(params: SearchParams = {}): Promise<Listing[]> {
   const limit = Math.min(Math.max(params.limit ?? DEFAULT_LIMIT, 1), 2500)
   const dmql = buildDmql(params)
@@ -433,18 +476,7 @@ export async function searchListings(params: SearchParams = {}): Promise<Listing
   const cached = getCached<Listing[]>(cacheKey)
   if (cached) return cached
 
-  const records = await withClient(async (client) => {
-    try {
-      const result = await client.search.query('Property', 'Property', dmql, {
-        limit,
-        offset: 1,
-      })
-      return (result?.results ?? []) as RawRetsRecord[]
-    } catch (err) {
-      if (isRetsNoRecordsError(err)) return []
-      throw err
-    }
-  })
+  const records = await searchWithTransientRetry(dmql, limit)
 
   const listings = records.map(mapListing)
   setCached(cacheKey, listings, SEARCH_TTL_MS)
@@ -481,6 +513,19 @@ function isRetsNoRecordsError(err: unknown): boolean {
   const code = String((err as { replyCode?: string }).replyCode ?? '')
   const tag = String((err as { replyTag?: string }).replyTag ?? '')
   return code === '20201' || tag === 'NO_RECORDS_FOUND'
+}
+
+/**
+ * SmartMLS answering 20513 MISC_ERROR / "Database error" is a fault on their
+ * side, and an intermittent one — the same search usually succeeds moments
+ * later. Left unretried it takes out a whole town for the run, and because a
+ * partial run still records an End, that town simply goes quiet.
+ */
+function isRetsTransientServerError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = String((err as { replyCode?: string }).replyCode ?? '')
+  const tag = String((err as { replyTag?: string }).replyTag ?? '')
+  return code === '20513' || tag === 'MISC_ERROR'
 }
 
 function isPhotoMedia(record: RawRetsRecord): boolean {

@@ -7,6 +7,7 @@ import { listingDetailHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import type { StatsKind, Town } from "./stats-towns";
 import StatsChartPrintFrame from "./StatsChartPrintFrame";
+import { STATS_SCROLL_MT } from "./stats-scroll";
 
 const MedianPriceUnderlyingChart = dynamic(
   () => import("./MedianPriceUnderlyingChart"),
@@ -241,7 +242,7 @@ export default function MedianPriceListingsTable({
   const showTownCol = townFilter === "All";
 
   return (
-    <div id={sectionId} className="scroll-mt-28">
+    <div id={sectionId} className={STATS_SCROLL_MT}>
       <div className="mb-4 stats-print-screen-only">
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-1">
           {isPriceBand

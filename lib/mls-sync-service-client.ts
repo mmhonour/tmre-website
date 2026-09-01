@@ -2,7 +2,7 @@ import 'server-only'
 
 import { syncCronSecret } from '@/lib/netlify-cron-auth'
 import type { NetlifyFunctionQueueResult } from '@/lib/netlify-sync-trigger'
-import { railwayEndpointForJob } from '@/lib/sync-schedule-config-shared'
+import { isSyncQueueRunnerJob } from '@/lib/sync-queue-shared'
 
 /**
  * Railway (or local) mls-sync base URL — no trailing slash.
@@ -20,13 +20,6 @@ export function mlsSyncServiceBaseUrl(): string | null {
   } catch {
     return null
   }
-}
-
-export type MlsSyncServiceRunBody = {
-  startedAt?: string
-  source?: 'admin' | 'railway' | 'watchdog'
-  towns?: string[]
-  statusScope?: 'all' | 'active' | 'closed'
 }
 
 async function postToMlsSyncService(
@@ -89,58 +82,23 @@ async function postToMlsSyncService(
 }
 
 /**
- * Ask the Railway mls-sync service to start an Incremental pull (202 Accepted).
- * The service process stays alive and runs RETS→Neon; Netlify does not pull.
+ * Nudge the runner to look at the queue now instead of on its next poll.
+ *
+ * The row in `sync_queue` is what actually starts the job, so this is a latency
+ * optimisation and nothing more: if the service is unreachable, the work still
+ * happens on the next drain tick. Callers should not treat a failure here as a
+ * failure to schedule.
  */
-export async function queueMlsSyncServiceRun(
-  body: MlsSyncServiceRunBody = {},
-): Promise<NetlifyFunctionQueueResult> {
-  return postToMlsSyncService('/run', {
-    startedAt: body.startedAt ?? new Date().toISOString(),
-    source: body.source ?? 'admin',
-    ...(body.towns?.length ? { towns: body.towns } : {}),
-    ...(body.statusScope && body.statusScope !== 'all'
-      ? { statusScope: body.statusScope }
-      : {}),
-  })
-}
-
-/**
- * Ask Railway to rebuild stats_cache. Used when Configure names Railway as the
- * stats-cache scheduler; the always-on process can outlast a serverless slot,
- * which a full rebuild needs.
- */
-export async function queueMlsSyncServiceStatsRebuild(
-  body: { startedAt?: string } = {},
-): Promise<NetlifyFunctionQueueResult> {
-  return postToMlsSyncService('/stats', {
-    startedAt: body.startedAt ?? new Date().toISOString(),
-  })
-}
-
-/**
- * Start whichever job Configure has pointed at Railway. Routes from the
- * declared endpoint map rather than assuming Incremental, and fails loudly when
- * a job is set to Railway that the service does not host.
- */
-export async function queueMlsSyncServiceJob(
+export async function pokeMlsSyncServiceQueue(
   jobId: string,
-  body: MlsSyncServiceRunBody = {},
 ): Promise<NetlifyFunctionQueueResult> {
-  const endpoint = railwayEndpointForJob(jobId)
-  if (!endpoint) {
+  if (!isSyncQueueRunnerJob(jobId)) {
     return {
       ok: false,
       status: null,
       base: mlsSyncServiceBaseUrl(),
-      error: `Railway mls-sync does not host "${jobId}" — pick another scheduler in Configure`,
+      error: `"${jobId}" is not a sync-queue job — the runner never claims it`,
     }
   }
-  // Incremental is the only job that takes towns / status scope; every rebuild
-  // job takes just the start stamp. Route from the declared endpoint rather than
-  // falling through to /run, or a newly hosted job silently starts a RETS pull.
-  if (endpoint === '/run') return queueMlsSyncServiceRun(body)
-  return postToMlsSyncService(endpoint, {
-    startedAt: body.startedAt ?? new Date().toISOString(),
-  })
+  return postToMlsSyncService('/drain', { jobId })
 }

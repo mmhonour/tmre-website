@@ -41,7 +41,6 @@ import AdminInventorySegmentBandsPanel from "@/components/admin/AdminInventorySe
 import AdminCtCoveragePanel from "@/components/admin/AdminCtCoveragePanel";
 import AdminTownBudgetSourcesPanel from "@/components/admin/AdminTownBudgetSourcesPanel";
 import AdminPageStylesPanel from "@/components/admin/AdminPageStylesPanel";
-import AdminArchitecturePanel from "@/components/admin/AdminArchitecturePanel";
 import AdminUiKitPanel from "@/components/admin/AdminUiKitPanel";
 import AdminSiteArchitecturePanel from "@/components/admin/AdminSiteArchitecturePanel";
 import AdminLatestStatusLogicPanel from "@/components/admin/AdminLatestStatusLogicPanel";
@@ -73,6 +72,7 @@ import {
   LISTING_PHOTO_TTL_MINUTES_MAX,
   LISTING_PHOTO_TTL_MINUTES_MIN,
 } from "@/lib/listing-photo-ttl-config";
+import { getLatestFeedSizeFresh } from "@/lib/latest-feed-size-config";
 import {
   getContactNotifyEmailFresh,
   DEFAULT_CONTACT_NOTIFY_EMAIL,
@@ -675,7 +675,6 @@ export default async function AdminPage() {
       email: contactNotifyEmail,
       enabled: true,
       lastSentAt: null,
-      lastWeekKey: null,
       defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
       subjectTemplate:
         "Monday market brief — months supply & inventory ({date})",
@@ -985,6 +984,7 @@ export default async function AdminPage() {
     />
   );
 
+  const latestFeedSize = await getLatestFeedSizeFresh();
   const serverPanel = (
     <AdminServerPanel
       apiRoutes={<AdminServerFunctionsPanel />}
@@ -993,6 +993,11 @@ export default async function AdminPage() {
       uiKit={<AdminUiKitPanel />}
       intelDescriptorSizes={<AdminIntelligenceDescriptorSizesPanel />}
       apiCosts={<AdminStackCostsPanel />}
+      map={<AdminSiteArchitecturePanel />}
+      statusLogic={
+        <AdminLatestStatusLogicPanel initialFeedSize={latestFeedSize} />
+      }
+      docs={<AdminProductDocsPanel />}
     />
   );
 
@@ -1217,13 +1222,6 @@ export default async function AdminPage() {
           <AdminCookiesPanel
             cookies={<AdminBrowserCookiesPanel />}
             ephemeral={<AdminEphemeralCachesPanel />}
-          />
-        }
-        architecture={
-          <AdminArchitecturePanel
-            map={<AdminSiteArchitecturePanel />}
-            statusLogic={<AdminLatestStatusLogicPanel />}
-            docs={<AdminProductDocsPanel />}
           />
         }
         syncs={syncsPanel}

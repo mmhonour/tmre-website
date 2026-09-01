@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { StatsChartFrameProvider } from "./stats-chart-frame-context";
 import { printStatsChart, type StatsPrintMode } from "./stats-print";
+import { STATS_SCROLL_MT } from "./stats-scroll";
 
 type StatsChartPrintFrameProps = {
   chartId: string;
@@ -109,8 +110,9 @@ export default function StatsChartPrintFrame({
   return (
     <div
       id={`stats-chart-${chartId}`}
-      className={`stats-chart-print-frame relative scroll-mt-28 ${className}`.trim()}
+      className={`stats-chart-print-frame relative ${STATS_SCROLL_MT} ${className}`.trim()}
       data-stats-chart-id={chartId}
+      data-stats-chart-ready={chartReady ? "true" : "false"}
       data-stats-data-open={dataPanel && dataOpen ? "true" : undefined}
     >
       {chartReady && title ? (

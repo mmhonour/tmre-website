@@ -1,12 +1,12 @@
 /**
  * Incremental health is two clocks, not one.
  *
- *   process   = last_mls_sync_heartbeat (is Railway mls-sync up?)
+ *   process   = last_mls_sync_heartbeat (is the sync runner up?)
  *   inventory = last_incremental_sync End (did a pull finish into Neon?)
  *
- * Pink BROKEN is process-dead on Railway, or End-broken on legacy
- * Netlify/EventBridge. Overdue Next is Status/Next text, never row color.
- * A live process with a stale End is STALE, not BROKEN.
+ * Pink BROKEN is a dead runner process, or an End-broken job that no runner
+ * owns. Overdue Next is Status/Next text, never row color. A live process with
+ * a stale End is STALE, not BROKEN.
  */
 
 export const INCREMENTAL_END_STALE_MS = 70 * 60 * 1000
@@ -25,7 +25,7 @@ export const RAILWAY_HEARTBEAT_RUNNING_MS = 3 * 60 * 1000
  * Process up: idle pulse ~60s, or last run finish before that ships.
  * Pink only when heartbeat is older than this.
  */
-export const RAILWAY_HEARTBEAT_ALIVE_MS = 45 * 60 * 1000
+export const RUNNER_HEARTBEAT_ALIVE_MS = 45 * 60 * 1000
 
 /**
  * How long an open Start may claim "in pull". A RETS pull across the seven
@@ -35,12 +35,24 @@ export const RAILWAY_HEARTBEAT_ALIVE_MS = 45 * 60 * 1000
  */
 export const INCREMENTAL_OPEN_START_IN_PULL_MS = 20 * 60 * 1000
 
-export type IncrementalHealthScheduler = 'railway' | 'eventbridge' | 'netlify'
+/**
+ * Who is expected to run this job.
+ *
+ * `runner` means the always-on sync runner claims it off `sync_queue`, so its
+ * heartbeat is the process clock. `netlify` means a scheduled function owns the
+ * job end to end and there is no process to watch — only the End stamp.
+ */
+export type IncrementalHealthHost = 'runner' | 'netlify'
 
 export type IncrementalProcessHealth = 'running' | 'alive' | 'dead' | 'unknown'
 export type IncrementalInventoryHealth = 'fresh' | 'stale' | 'missing'
 export type IncrementalHealthRow = 'running' | 'ok' | 'alert' | 'idle'
-export type IncrementalHealthPrefix = 'RUNNING' | 'BROKEN' | 'STALE' | null
+export type IncrementalHealthPrefix =
+  | 'RUNNING'
+  | 'BROKEN'
+  | 'STALE'
+  | 'PARTIAL'
+  | null
 
 export type IncrementalHealth = {
   process: IncrementalProcessHealth
@@ -50,6 +62,12 @@ export type IncrementalHealth = {
   processAlive: boolean
   inPull: boolean
   inventoryStale: boolean
+  /**
+   * Towns whose RETS pull failed on the most recent run. A run where two towns
+   * error still finishes and still stamps End, so without this the row reads
+   * green while that inventory quietly goes cold.
+   */
+  partialTowns: string[]
 }
 
 function parseIsoMs(iso: string | null | undefined): number | null {
@@ -59,7 +77,7 @@ function parseIsoMs(iso: string | null | undefined): number | null {
 }
 
 export function evaluateIncrementalHealth(input: {
-  scheduler: IncrementalHealthScheduler
+  host: IncrementalHealthHost
   heartbeatAt?: string | null
   finishedAt?: string | null
   startedAt?: string | null
@@ -67,6 +85,8 @@ export function evaluateIncrementalHealth(input: {
   /** Open Start without End still counts as in-pull under this age. */
   openStartMaxMs?: number
   liveInFlight?: boolean
+  /** Towns that failed on the last finished run (see `partialTowns`). */
+  partialTowns?: readonly string[] | null
 }): IncrementalHealth {
   const nowMs = input.nowMs ?? Date.now()
   const openStartMaxMs =
@@ -89,13 +109,13 @@ export function evaluateIncrementalHealth(input: {
     nowMs - startedMs < openStartMaxMs
 
   const heartbeatAlive =
-    heartbeatMs != null && nowMs - heartbeatMs < RAILWAY_HEARTBEAT_ALIVE_MS
+    heartbeatMs != null && nowMs - heartbeatMs < RUNNER_HEARTBEAT_ALIVE_MS
 
-  const railway = input.scheduler === 'railway'
-  const inPull = Boolean(input.liveInFlight || (railway && openStart))
+  const runnerOwned = input.host === 'runner'
+  const inPull = Boolean(input.liveInFlight || (runnerOwned && openStart))
 
   let process: IncrementalProcessHealth = 'unknown'
-  if (railway) {
+  if (runnerOwned) {
     if (inPull) process = 'running'
     else if (heartbeatAlive || openStart) process = 'alive'
     else process = 'dead'
@@ -109,7 +129,7 @@ export function evaluateIncrementalHealth(input: {
   if (inPull) {
     row = 'running'
     prefix = 'RUNNING'
-  } else if (railway) {
+  } else if (runnerOwned) {
     if (!processAlive) {
       row = 'alert'
       prefix = 'BROKEN'
@@ -126,6 +146,17 @@ export function evaluateIncrementalHealth(input: {
     row = 'ok'
   }
 
+  // A run that finished with towns missing is not healthy, however fresh End
+  // looks. It ranks below BROKEN and STALE, which describe worse states, but it
+  // must never be allowed to read as plain OK.
+  const partialTowns = [...(input.partialTowns ?? [])].filter(
+    (town): town is string => typeof town === 'string' && town.length > 0,
+  )
+  if (partialTowns.length > 0 && prefix == null) {
+    row = 'alert'
+    prefix = 'PARTIAL'
+  }
+
   return {
     process,
     inventory,
@@ -134,6 +165,7 @@ export function evaluateIncrementalHealth(input: {
     processAlive,
     inPull,
     inventoryStale,
+    partialTowns,
   }
 }
 
@@ -149,7 +181,7 @@ export function isMlsSyncDoorbellError(text: string | undefined): boolean {
   )
 }
 
-export function formatRailwayHealthStrip(options: {
+export function formatRunnerHealthStrip(options: {
   health: IncrementalHealth
   heartbeatLabel: string
   endLabel: string
@@ -157,11 +189,16 @@ export function formatRailwayHealthStrip(options: {
   liveStatus?: string | null
 }): string {
   const bits = [
-    'Railway',
+    'Runner',
     options.heartbeatLabel,
     `End ${options.endLabel}`,
   ]
   if (options.upsertLabel?.trim()) bits.push(options.upsertLabel.trim())
+  // Name the towns: "PARTIAL" alone tells an operator to go digging, and the
+  // digging is the part that did not happen for three days.
+  if (options.health.partialTowns.length > 0) {
+    bits.push(`no data: ${options.health.partialTowns.join(', ')}`)
+  }
   if (options.health.prefix) bits.unshift(options.health.prefix)
   if (options.liveStatus && options.health.inPull) {
     bits.push(options.liveStatus)

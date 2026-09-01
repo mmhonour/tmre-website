@@ -14,7 +14,8 @@
     "build": "next build",
     "build:netlify": "node scripts/rebuild-native-modules.cjs && node scripts/verify-native-prebuilds.cjs && node scripts/verify-server-only-shim.mjs && tsx --require ./scripts/stub-server-only.cjs scripts/prepare-netlify-bundle.ts && node scripts/bake-deploy-env.mjs && next build && node scripts/verify-netlify-tracing.mjs",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint --cache --cache-strategy content --cache-location .eslintcache",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "db:migrate": "node --env-file=.env.local scripts/run-migrations.mjs",
     "db:ping": "node --env-file=.env.local scripts/db-ping.mjs",
     "backfill:photo-index": "node --env-file=.env.local scripts/backfill-photo-index.mjs",
@@ -32,6 +33,8 @@
     "sync:listings:incremental": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-listings-incremental.ts",
     "dump:incremental-step-log": "tsx --require ./scripts/stub-server-only.cjs scripts/dump-incremental-step-log.ts",
     "smoke:incremental": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/smoke-incremental-sync.ts",
+    "smoke:sync-queue": "tsx --require ./scripts/stub-server-only.cjs scripts/smoke-sync-queue.ts",
+    "why:latest": "tsx --require ./scripts/stub-server-only.cjs scripts/why-not-latest.ts",
     "start:mls-sync": "tsx --require ./scripts/stub-server-only.cjs services/mls-sync/server.ts",
     "sync:spotlight-status": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-spotlight-status.ts",
     "sync:property-addresses": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-property-addresses.ts",
@@ -39,7 +42,8 @@
     "match:vision-listings": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-listings.ts",
     "match:vision-abbrev": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-abbrev.ts",
     "backfill:missed-vision-pids": "tsx --require ./scripts/stub-server-only.cjs scripts/backfill-missed-vision-pids.ts",
-    "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts"
+    "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts",
+    "export:chats": "node scripts/export-chat-history.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1085.0",

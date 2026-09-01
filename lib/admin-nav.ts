@@ -8,7 +8,6 @@ export type AdminTabId =
   | "data-controls"
   | "communications"
   | "cookies"
-  | "architecture"
   | "syncs"
   | "r2"
   | "server"
@@ -31,14 +30,24 @@ export type AdminDataControlsPanelId =
 /** Sub-panels under Admin → Cookies. */
 export type AdminCookiesPanelId = "cookies" | "ephemeral";
 
-/** Sub-panels under Admin → Web server. */
+/**
+ * Sub-panels under Admin → Web server.
+ *
+ * The three architecture panels (`map`, `status-logic`, `docs`) moved here from
+ * a former top-level Architecture tab, keeping their ids so deep links and hash
+ * anchors survive. Admin has two levels, not three, so they sit alongside the
+ * other server panels rather than nested under an Architecture group.
+ */
 export type AdminServerPanelId =
   | "api-routes"
   | "site-menu"
   | "page-styles"
   | "ui-kit"
   | "intel-descriptor-sizes"
-  | "api-costs";
+  | "api-costs"
+  | "map"
+  | "status-logic"
+  | "docs";
 
 /** Sub-panels under Admin → Syncs. */
 export type AdminSyncsPanelId =
@@ -55,7 +64,11 @@ export type AdminSyncsPanelId =
 /** Sub-panels under Admin → NEON Postgres. */
 export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
 
-/** Sub-panels under Admin → Architecture. */
+/**
+ * Retained as the narrowed set of Web server panels that used to live under a
+ * top-level Architecture tab. Kept so existing deep links and helpers stay
+ * expressible; new code should use AdminServerPanelId.
+ */
 export type AdminArchitecturePanelId = "map" | "docs" | "status-logic";
 
 /** Sub-panels under Admin → Communications. */
@@ -218,6 +231,23 @@ export const ADMIN_SERVER_PANELS: {
     label: "API costs",
     subtitle: "Jun/Jul stack spend via vendor APIs where they exist; paste the rest from invoices",
   },
+  {
+    id: "map",
+    label: "Site architecture",
+    subtitle:
+      "Visual map of Netlify DNS/nameservers, site host, Railway, Neon, R2, Resend, mail forwarder, and related services",
+  },
+  {
+    id: "status-logic",
+    label: "Latest rules",
+    subtitle:
+      "/latest badge precedence, feed ranking, and how many rows the page renders — sourced from lib/latest-status-rules.ts",
+  },
+  {
+    id: "docs",
+    label: "Product docs",
+    subtitle: "Live pages and repository reference files",
+  },
 ];
 
 export const ADMIN_SYNCS_PANELS: {
@@ -246,7 +276,7 @@ export const ADMIN_SYNCS_PANELS: {
     id: "latest-health",
     label: "Latest health",
     subtitle:
-      "Feed freshness clocks and upsert history for /latest (display rules live under Architecture → Latest rules)",
+      "Feed freshness clocks and upsert history for /latest (display rules live under Web server → Latest rules)",
   },
   {
     id: "mls-reconcile",
@@ -298,30 +328,6 @@ export const ADMIN_POSTGRES_PANELS: {
     id: "town-counts",
     label: "Listings by town",
     subtitle: "Active listing counts from the current Postgres inventory",
-  },
-];
-
-export const ADMIN_ARCHITECTURE_PANELS: {
-  id: AdminArchitecturePanelId;
-  label: string;
-  subtitle: string;
-}[] = [
-  {
-    id: "map",
-    label: "Site architecture",
-    subtitle:
-      "Visual map of Netlify DNS/nameservers, site host, Railway, Neon, R2, Resend, mail forwarder, and related services",
-  },
-  {
-    id: "status-logic",
-    label: "Latest rules",
-    subtitle:
-      "/latest badge precedence, feed ranking, and the fields that drive them — sourced from lib/latest-status-rules.ts",
-  },
-  {
-    id: "docs",
-    label: "Product docs",
-    subtitle: "Live pages and repository reference files",
   },
 ];
 
@@ -430,11 +436,6 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     label: "Cookies",
     subtitle:
       "Browser cookie jar, known cookie catalog, and ephemeral memory / browser caches",
-  },
-  {
-    id: "architecture",
-    label: "Architecture",
-    subtitle: "Site map, /latest display rules, and product docs",
   },
   {
     id: "postgres",
@@ -667,13 +668,13 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-site-architecture",
     label: "Site architecture",
-    tab: "architecture",
+    tab: "server",
     panel: "map",
   },
   {
     id: "admin-latest-status-logic",
     label: "Latest rules",
-    tab: "architecture",
+    tab: "server",
     panel: "status-logic",
   },
   {
@@ -768,13 +769,13 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
   {
     id: "admin-product-pages",
     label: "Product pages",
-    tab: "architecture",
+    tab: "server",
     panel: "docs",
   },
   {
     id: "admin-repo-docs",
     label: "Repository docs",
-    tab: "architecture",
+    tab: "server",
     panel: "docs",
   },
   { id: "admin-glossary", label: "Glossary", tab: "glossary" },
@@ -871,7 +872,7 @@ export const ADMIN_REPO_DOCS: AdminRepoDoc[] = [
   {
     label: "site-architecture.ts",
     path: "lib/site-architecture.ts",
-    description: "Admin → Architecture → Site architecture component roster",
+    description: "Admin → Web server → Site architecture component roster",
   },
   {
     label: "sqlite-schema-diagram.ts",
@@ -1019,7 +1020,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "eventbridge-sync-ingress",
     detail:
-      "AWS EventBridge Scheduler HTTP target — Bearer SYNC_CRON_SECRET + JSON { job }. Queues the matching *-worker when Configure Scheduler is EventBridge. No Netlify schedule.",
+      "AWS EventBridge Scheduler HTTP target — Bearer SYNC_CRON_SECRET + JSON { job }. Enqueues the job on sync_queue for the runner (legacy *-worker handoff only for jobs the runner does not own). No Netlify schedule.",
     schedule: "On invoke (EventBridge)",
   },
 ];
@@ -1283,7 +1284,6 @@ export function adminSectionHref(sectionId: string, tab: AdminTabId): string {
     ((tab === "syncs" && isAdminSyncsPanelId(link.panel)) ||
       (tab === "data-controls" && isAdminDataControlsPanelId(link.panel)) ||
       (tab === "postgres" && isAdminPostgresPanelId(link.panel)) ||
-      (tab === "architecture" && isAdminArchitecturePanelId(link.panel)) ||
       (tab === "communications" && isAdminCommunicationsPanelId(link.panel)) ||
       (tab === "cookies" && isAdminCookiesPanelId(link.panel)) ||
       (tab === "server" && isAdminServerPanelId(link.panel)))
@@ -1313,8 +1313,9 @@ export function adminPostgresHref(panel: AdminPostgresPanelId): string {
   return `/admin?tab=postgres&panel=${panel}`;
 }
 
+/** Architecture now lives under Web server; the panel ids are unchanged. */
 export function adminArchitectureHref(panel: AdminArchitecturePanelId): string {
-  return `/admin?tab=architecture&panel=${panel}`;
+  return `/admin?tab=server&panel=${panel}`;
 }
 
 export function adminCommunicationsHref(

@@ -15,8 +15,8 @@ import { adminSectionHref, adminSyncsHref } from "@/lib/admin-nav";
 import {
   SYNC_SCHEDULE_WEEKDAYS,
   frequencyLabel,
-  resolveJobScheduler,
-  schedulerProviderLabel,
+  resolveJobBudgetMinutes,
+  syncJobHostLabel,
   weekdayEtLabel,
   type SyncScheduleConfig,
   type SyncScheduleWeekdayEt,
@@ -27,7 +27,8 @@ type PanelMessage = { text: string; tone: "ok" | "error" };
 /** Read-only mirror of the shared market-digest row on Syncs → Configure. */
 type DigestJobFacts = {
   frequency: string;
-  scheduler: string;
+  runsOn: string;
+  budgetMinutes: number;
   nextRunAt: string | null;
 };
 
@@ -160,7 +161,7 @@ export default function AdminMarketDigestPanel({
     }
   }, [applyConfig]);
 
-  /** Frequency / scheduler / Next are owned by Syncs → Configure — mirror them. */
+  /** Frequency / budget / Next are owned by Syncs → Configure — mirror them. */
   const refreshJobFacts = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/sync-schedule", {
@@ -175,7 +176,8 @@ export default function AdminMarketDigestPanel({
       if (!job) return;
       setJobFacts({
         frequency: frequencyLabel(job.frequency),
-        scheduler: schedulerProviderLabel(resolveJobScheduler(job)),
+        runsOn: syncJobHostLabel("market-digest"),
+        budgetMinutes: resolveJobBudgetMinutes("market-digest", job),
         nextRunAt: body.nextRuns?.["market-digest"] ?? null,
       });
     } catch {
@@ -345,7 +347,6 @@ export default function AdminMarketDigestPanel({
                 email: body.email ?? prev.email,
                 enabled: body.enabled ?? prev.enabled,
                 lastSentAt: body.lastSentAt ?? prev.lastSentAt,
-                lastWeekKey: body.lastWeekKey ?? prev.lastWeekKey,
                 defaultEmail: body.defaultEmail ?? prev.defaultEmail,
                 subjectTemplate:
                   body.subjectTemplate ?? prev.subjectTemplate,
@@ -415,7 +416,8 @@ export default function AdminMarketDigestPanel({
           <span className="font-mono text-[11px]">market-digest</span> job — a
           paused job will not send. Send test now hands off to the same
           background worker as the cron (the brief is too slow for a
-          request-time send) and does not advance the weekly watermark — watch
+          request-time send) and does not count as the scheduled send, so the
+          next scheduled brief still goes out — watch
           Syncs → History for the{" "}
           <span className="font-mono text-[11px]">digest</span> row. Requires{" "}
           <span className="font-mono text-[11px]">RESEND_API_KEY</span>.
@@ -459,9 +461,15 @@ export default function AdminMarketDigestPanel({
             </span>
             <span className="font-mono text-[10px] text-charcoal/60">
               <span className="text-charcoal/35 uppercase tracking-wide mr-1">
-                Scheduler
+                Runs on
               </span>
-              {jobFacts.scheduler}
+              {jobFacts.runsOn}
+            </span>
+            <span className="font-mono text-[10px] text-charcoal/60">
+              <span className="text-charcoal/35 uppercase tracking-wide mr-1">
+                Budget
+              </span>
+              {jobFacts.budgetMinutes}m
             </span>
             <span className="font-mono text-[10px] text-charcoal/60">
               <span className="text-charcoal/35 uppercase tracking-wide mr-1">
@@ -614,7 +622,6 @@ export default function AdminMarketDigestPanel({
             {config.lastSentAt
               ? new Date(config.lastSentAt).toLocaleString()
               : "never"}
-            {config.lastWeekKey ? ` · week ${config.lastWeekKey}` : ""}
           </p>
         ) : null}
         {message ? (

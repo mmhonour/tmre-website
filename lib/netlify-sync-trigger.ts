@@ -362,8 +362,8 @@ export function queueNetlifyMarketDigest(options?: {
     source: options?.source ?? 'netlify-sync-trigger',
   }
   // Only send these when callers set them. Defaulting stampWeek:false made the
-  // scheduled digest send without writing market_digest_last_week_key, so the
-  // */30 cron re-sent every half hour all day.
+  // scheduled digest send without advancing market_digest_last_sent_at, so the
+  // slot never read as served and the */30 cron re-sent every half hour all day.
   if (options?.force === true) body.force = true
   if (typeof options?.stampWeek === 'boolean') {
     body.stampWeek = options.stampWeek

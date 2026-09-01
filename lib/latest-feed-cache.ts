@@ -5,13 +5,20 @@ import {
   type LatestListingRow,
 } from '@/lib/latest-listings'
 import { feedCoversAllTmreTowns } from '@/lib/latest-town-coverage'
+import { LATEST_FEED_SIZE_DEFAULT } from '@/lib/latest-feed-size-shared'
 import { setSyncMeta } from '@/lib/db/sync-meta-store'
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
 
 /** Default (no-town) Latest ticker — served instantly outside full sync rebuilds. */
 // v9: temporal priceChange ($/%) on Reduced/Increased rows.
 export const LATEST_GLOBAL_FEED_CACHE_KEY = 'latest-feed:v9:global'
-export const LATEST_GLOBAL_FEED_LIMIT = 30
+/**
+ * Fallback only. The live number is Admin-configurable — see
+ * `lib/latest-feed-size-config.ts`. This stays as the default a caller gets
+ * when it has not resolved the setting, and matches
+ * `LATEST_FEED_SIZE_DEFAULT`.
+ */
+export const LATEST_GLOBAL_FEED_LIMIT = LATEST_FEED_SIZE_DEFAULT
 /** Serve warm cache only while fresher than the incremental warm cadence. */
 export const LATEST_FEED_CACHE_MAX_AGE_MS = 45 * 60 * 1000
 

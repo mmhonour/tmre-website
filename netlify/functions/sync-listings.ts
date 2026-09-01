@@ -16,7 +16,7 @@ import {
   shouldDeferScheduledJob,
 } from '../../lib/sync-next-override'
 import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
-import { thinCronSkipIfAnotherHostOwns } from '../../lib/netlify-thin-cron'
+import { thinCronHandOffToQueue } from '../../lib/netlify-thin-cron'
 
 /**
  * Scheduled incremental trigger (NO background flag) — must finish in ~26–30s.
@@ -67,29 +67,6 @@ export default async function handler() {
         }),
         { status: 500, headers: { 'content-type': 'application/json' } },
       )
-    }
-
-    {
-      const owned = await thinCronSkipIfAnotherHostOwns('incremental')
-      if (owned) {
-        // ok:true — intentional Configure skip, not a failed pull (History ≠ Failed).
-        // Reason comes from the guard so History names the real owner (Railway
-        // or EventBridge) instead of a hardcoded guess.
-        let reason = 'another scheduler owns this job — Netlify cron ignored'
-        try {
-          const body = (await owned.clone().json()) as { reason?: unknown }
-          if (typeof body.reason === 'string' && body.reason) reason = body.reason
-        } catch {
-          /* keep fallback */
-        }
-        await recordIncrementalCronTick({
-          startedAt,
-          ok: true,
-          skipped: true,
-          error: reason,
-        })
-        return owned
-      }
     }
 
     if (await isScheduledSyncJobPausedFresh('incremental')) {
@@ -155,7 +132,31 @@ export default async function handler() {
       )
     }
 
-    // ★ Primary path — background worker has ~15 minutes for full RETS.
+    // The always-on runner does the pull: hand it the queue row and stand down.
+    // Only a stranded row (nobody claimed it, runner silent) falls through to
+    // the Netlify worker below — that is what replaced the Scheduler radio.
+    {
+      const handedOff = await thinCronHandOffToQueue('incremental')
+      if (handedOff) {
+        let reason = 'queued for the sync runner — Netlify cron stood down'
+        try {
+          const body = (await handedOff.clone().json()) as { reason?: unknown }
+          if (typeof body.reason === 'string' && body.reason) reason = body.reason
+        } catch {
+          /* keep fallback */
+        }
+        // ok:true — an intentional handoff, not a failed pull (History ≠ Failed).
+        await recordIncrementalCronTick({
+          startedAt,
+          ok: true,
+          skipped: true,
+          error: reason,
+        })
+        return handedOff
+      }
+    }
+
+    // ★ Rescue path — background worker has ~15 minutes for full RETS.
     // If a prior hop is still Queued (worker never started) past the dead-queue
     // window, skip another 202 stamp and lean-fallback so End advances.
     let skipQueueForLeanFallback = false

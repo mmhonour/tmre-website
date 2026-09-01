@@ -47,21 +47,48 @@ export function dealBoardCardView(view: DealBoardView): DealBoardCardView {
  * Where the map sits relative to the cards on desktop. Phones hide the cards
  * and run the map full-bleed.
  */
-export type DealBoardMapLayout = "top" | "side";
+export type DealBoardMapLayout = "top" | "left" | "right";
 
 export const DEAL_BOARD_MAP_LAYOUT_DEFAULT: DealBoardMapLayout = "top";
 
 export const DEAL_BOARD_MAP_LAYOUT_VALUES: readonly DealBoardMapLayout[] = [
   "top",
-  "side",
+  "left",
+  "right",
 ] as const;
 
 export const DEAL_BOARD_MAP_LAYOUT_PREF_KEY = "intel-board-map-layout-v1";
 
+/** Spoken form, for title / aria — "Left" on its own says nothing. */
 export const DEAL_BOARD_MAP_LAYOUT_LABELS: Record<DealBoardMapLayout, string> = {
   top: "Map on top",
-  side: "Map beside",
+  left: "Map on left",
+  right: "Map on right",
 };
+
+/** Button faces — the control carries one static "Map on" label for all three. */
+export const DEAL_BOARD_MAP_LAYOUT_SHORT_LABELS: Record<
+  DealBoardMapLayout,
+  string
+> = {
+  top: "Top",
+  left: "Left",
+  right: "Right",
+};
+
+/**
+ * `side` was the only beside-the-cards value before Left / Right split it, and
+ * it rendered to the right of the listings. Saved prefs and already-shared
+ * links still carry it, so read it as Right rather than dropping to Top.
+ */
+export function dealBoardMapLayoutFromStored(
+  raw: string | null | undefined,
+): DealBoardMapLayout {
+  const value = (raw ?? "").trim().toLowerCase();
+  if (value === "left") return "left";
+  if (value === "right" || value === "side") return "right";
+  return DEAL_BOARD_MAP_LAYOUT_DEFAULT;
+}
 
 /** Prefer Large on phones when the visitor has no saved board-view preference. */
 export function dealBoardViewDefaultForViewport(): DealBoardCardView {

@@ -4,6 +4,9 @@ import {
   getMarketDigestConfigFresh,
   markMarketDigestSent,
   marketDigestWeekKey,
+  shouldSkipMarketDigestNotDue,
+  MARKET_DIGEST_LAST_ATTEMPT_KEY,
+  MARKET_DIGEST_LAST_RESULT_KEY,
   MARKET_DIGEST_SEND_LOCK_KEY,
   MARKET_DIGEST_SEND_LOCK_STALE_MS,
 } from '@/lib/market-digest-config'
@@ -11,8 +14,11 @@ import {
   buildMarketDigestSnapshot,
   formatMarketDigestEmail,
 } from '@/lib/market-digest'
+import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
+import { resendFrom } from '@/lib/resend-from'
 import {
   releaseTimedLock,
+  setSyncMetaDurable,
   tryAcquireTimedLock,
 } from '@/lib/db/sync-meta-store'
 
@@ -27,20 +33,169 @@ export type MarketDigestSendResult = {
   subject?: string
 }
 
-/**
- * Build and send the Monday months-supply / inventory digest via Resend.
- * When `force` is false, skips if disabled, already sent this ET week, or no API key.
- * Admin "Send test now" uses `force: true` (does not stamp the week).
- * Admin Syncs Run uses `force: true, stampWeek: true` so the watermark advances.
- *
- * Scheduled sends take a durable lock so Netlify's every-30m thin cron cannot
- * overlap workers and Resend the same brief every half hour.
- */
-export async function sendMarketDigestEmail(opts?: {
+export type MarketDigestSendOptions = {
   force?: boolean
   /** Defaults to `!force`. Syncs dashboard Run sets true so Next/overdue clear. */
   stampWeek?: boolean
-}): Promise<MarketDigestSendResult> {
+  /** Start of the attempt for the History row; defaults to now. */
+  startedAt?: string
+  /** Who asked: railway-sweep, netlify-worker, admin-test… Recorded, not acted on. */
+  trigger?: string
+}
+
+/**
+ * Build and send the Monday months-supply / inventory digest via Resend, and
+ * record what happened.
+ *
+ * Recording lives here rather than in each caller so Netlify's background worker
+ * and the Railway lane cannot drift: every attempt stamps
+ * `market_digest_last_attempt_at` / `market_digest_last_result`, and anything an
+ * operator would want to find later also lands in Syncs History.
+ */
+export async function sendMarketDigestEmail(
+  opts?: MarketDigestSendOptions,
+): Promise<MarketDigestSendResult> {
+  const startedAt = opts?.startedAt ?? new Date().toISOString()
+  const trigger = opts?.trigger?.trim() || 'scheduled'
+  const previousResult = await getSyncMetaFresh(
+    MARKET_DIGEST_LAST_RESULT_KEY,
+  ).catch(() => null)
+  await setSyncMetaDurable(MARKET_DIGEST_LAST_ATTEMPT_KEY, startedAt).catch(
+    () => {},
+  )
+
+  try {
+    const result = await runMarketDigestSend(opts)
+    await recordMarketDigestOutcome({
+      startedAt,
+      trigger,
+      previousResult,
+      result,
+    })
+    return result
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    await recordMarketDigestOutcome({
+      startedAt,
+      trigger,
+      previousResult,
+      result: { ok: false, reason: detail },
+    })
+    throw err
+  }
+}
+
+/**
+ * A worker hop that never started leaves no trace on its own: the send function
+ * was never reached, so `market_digest_last_attempt_at` stayed empty and /admin
+ * could only show a bare "queue failed" with nothing to explain the quiet week.
+ * Recorded as a skip so repeats collapse instead of filling History.
+ */
+export async function recordMarketDigestHandoffFailure(args: {
+  startedAt: string
+  trigger: string
+  reason: string
+}): Promise<void> {
+  const previousResult = await getSyncMetaFresh(
+    MARKET_DIGEST_LAST_RESULT_KEY,
+  ).catch(() => null)
+  await setSyncMetaDurable(
+    MARKET_DIGEST_LAST_ATTEMPT_KEY,
+    args.startedAt,
+  ).catch(() => {})
+  await recordMarketDigestOutcome({
+    startedAt: args.startedAt,
+    trigger: args.trigger,
+    previousResult,
+    result: { ok: false, skipped: true, reason: args.reason },
+  })
+}
+
+/**
+ * Why a scheduled tick declined to send.
+ *
+ * The gates in the thin cron each returned a bare HTTP response and wrote
+ * nothing, so a brief that chose not to send left no trace at all: /admin showed
+ * an unremarkable week and the reason had to be reconstructed from source every
+ * time. A gate is not an attempt, so this deliberately leaves
+ * `market_digest_last_attempt_at` alone — otherwise "last attempt" would read as
+ * now on every half-hour tick and bury when a send was genuinely last tried.
+ */
+export async function recordMarketDigestSkip(args: {
+  trigger: string
+  reason: string
+}): Promise<void> {
+  const startedAt = new Date().toISOString()
+  const previousResult = await getSyncMetaFresh(
+    MARKET_DIGEST_LAST_RESULT_KEY,
+  ).catch(() => null)
+  await recordMarketDigestOutcome({
+    startedAt,
+    trigger: args.trigger,
+    previousResult,
+    result: { ok: true, skipped: true, reason: args.reason },
+  })
+}
+
+/**
+ * One durable line for "what happened last time", plus a History row for
+ * everything except a skip we have already reported. Repeat skips are stamped but
+ * not audited: the dense alarm would otherwise write the same "disabled in admin"
+ * row every thirty minutes and bury the real events.
+ */
+async function recordMarketDigestOutcome(args: {
+  startedAt: string
+  trigger: string
+  previousResult: string | null
+  result: MarketDigestSendResult
+}): Promise<void> {
+  const { startedAt, trigger, previousResult, result } = args
+  const finishedAt = new Date().toISOString()
+  const outcome = result.skipped
+    ? `skipped: ${result.reason ?? 'no reason given'}`
+    : result.ok
+      ? `sent: ${result.to ?? 'recipient'} (week ${result.weekKey ?? 'unknown'})`
+      : `failed: ${result.reason ?? 'unknown error'}`
+  const line = `${finishedAt} · ${trigger} · ${outcome}`
+
+  await setSyncMetaDurable(MARKET_DIGEST_LAST_RESULT_KEY, line).catch(() => {})
+
+  const repeatSkip =
+    result.skipped === true &&
+    typeof previousResult === 'string' &&
+    previousResult.endsWith(outcome)
+  if (repeatSkip) return
+
+  const { recordDashboardSyncAudit } = await import('@/lib/db/listings-repo')
+  await recordDashboardSyncAudit({
+    startedAt,
+    finishedAt,
+    syncSuffix: 'digest',
+    listingsCount: 0,
+    ok: result.ok && !result.skipped,
+    detail: result.skipped
+      ? `Market brief skipped (${trigger}) — ${result.reason ?? 'no reason given'}`
+      : result.ok
+        ? `Market brief sent to ${result.to ?? 'recipient'}${
+            result.subject ? ` — ${result.subject}` : ''
+          }`
+        : `Market brief failed (${trigger}) — ${result.reason ?? 'unknown error'}`,
+  }).catch((err) => {
+    console.warn('[market-digest] could not record History row', err)
+  })
+}
+
+/**
+ * When `force` is false, skips if disabled, not due for the current slot, or no
+ * API key. Admin "Send test now" uses `force: true` without stamping, so a test
+ * cannot satisfy the slot and cancel the real send. Admin Syncs Run stamps.
+ *
+ * Scheduled sends take a durable lock so the every-30m thin cron and the Railway
+ * sweep cannot overlap and Resend the same brief twice.
+ */
+async function runMarketDigestSend(
+  opts?: MarketDigestSendOptions,
+): Promise<MarketDigestSendResult> {
   const force = opts?.force === true
   const stampWeek = opts?.stampWeek ?? !force
   const config = await getMarketDigestConfigFresh()
@@ -49,11 +204,11 @@ export async function sendMarketDigestEmail(opts?: {
   if (!force && !config.enabled) {
     return { ok: true, skipped: true, reason: 'market digest disabled in admin' }
   }
-  if (!force && config.lastWeekKey === weekKey) {
+  if (!force && (await shouldSkipMarketDigestNotDue())) {
     return {
       ok: true,
       skipped: true,
-      reason: `already sent for week ${weekKey}`,
+      reason: 'not due for the current send slot',
       weekKey,
     }
   }
@@ -82,16 +237,14 @@ export async function sendMarketDigestEmail(opts?: {
   }
 
   try {
-    // Re-read after lock — a sibling worker may have stamped while we waited.
-    if (!force) {
-      const again = await getMarketDigestConfigFresh()
-      if (again.lastWeekKey === weekKey) {
-        return {
-          ok: true,
-          skipped: true,
-          reason: `already sent for week ${weekKey}`,
-          weekKey,
-        }
+    // Re-check after taking the lock — a sibling host may have sent while we
+    // were still deciding, and the lock is not held across both hosts' reads.
+    if (!force && (await shouldSkipMarketDigestNotDue())) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'not due for the current send slot',
+        weekKey,
       }
     }
 
@@ -105,9 +258,7 @@ export async function sendMarketDigestEmail(opts?: {
       includeSocialProfiles: config.includeSocialProfiles,
       weekdayEt: config.weekdayEt,
     })
-    const from =
-      process.env.CONTACT_FROM_EMAIL?.trim() ||
-      'TMRE Market Brief <notifications@tmre-website.com>'
+    const from = resendFrom('TMRE Market Brief')
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
@@ -143,7 +294,7 @@ export async function sendMarketDigestEmail(opts?: {
     }
 
     if (stampWeek) {
-      await markMarketDigestSent(weekKey)
+      await markMarketDigestSent()
     }
 
     console.info(

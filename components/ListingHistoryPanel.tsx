@@ -6,6 +6,7 @@ import { fmtDate, fmtMoney } from "@/lib/listing-history";
 import { listingDetailHref, listingHistoryHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import type { ListingMlsDate } from "@/lib/listing-mls-dates";
 
 type HistoryEvent = {
   date: string | null;
@@ -28,7 +29,24 @@ type HistoryResponse = {
   events: HistoryEvent[];
   priorListings: PriorListing[];
   town: string | null;
+  /** Present only for an authorized admin session — see the history route. */
+  mlsDates?: ListingMlsDate[];
 };
+
+/** The MLS records these in Eastern time, and Admin reads them expecting Eastern. */
+const MLS_TZ = "America/New_York";
+
+function fmtMlsStamp(entry: ListingMlsDate): string {
+  const ms = Date.parse(entry.iso);
+  if (Number.isNaN(ms)) return entry.iso;
+  return new Date(ms).toLocaleString("en-US", {
+    timeZone: MLS_TZ,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    ...(entry.hasTime ? { hour: "numeric", minute: "2-digit" } : {}),
+  });
+}
 
 export default function ListingHistoryPanel({
   mlsId,
@@ -79,7 +97,11 @@ export default function ListingHistoryPanel({
   const events = data?.events ?? [];
   const prior = data?.priorListings ?? [];
   const town = data?.town ?? townHint ?? null;
-  const hasContent = events.length > 0 || prior.length > 0;
+  // Admin dates count as content, or a listing whose only record is its feed
+  // stamps would collapse the panel for the one viewer who wants them.
+  const mlsDates = data?.mlsDates ?? [];
+  const hasContent =
+    events.length > 0 || prior.length > 0 || mlsDates.length > 0;
   const isPage = variant === "page";
   const isModal = variant === "modal";
   const isSide = variant === "side";
@@ -126,6 +148,13 @@ export default function ListingHistoryPanel({
     : isSide
       ? "font-mono text-[9px] text-white/40 shrink-0 w-20 pt-0.5"
       : "font-mono text-[10px] text-white/40 shrink-0 w-24 pt-0.5";
+  // Same ink as the timeline dates, without its fixed column — a stamp carrying
+  // a clock is twice as wide as a bare day and would clip at w-24.
+  const stampClass = isModal
+    ? "font-mono text-[10px] text-slate"
+    : isSide
+      ? "font-mono text-[9px] text-white/40"
+      : "font-mono text-[10px] text-white/40";
   const labelClass = isModal ? "text-charcoal" : "text-white/85";
   const detailClass = isModal
     ? "block text-slate text-xs mt-0.5"
@@ -219,6 +248,51 @@ export default function ListingHistoryPanel({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {mlsDates.length > 0 && (
+        <div
+          className={
+            isPage
+              ? "rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+              : isModal
+                ? "rounded-2xl border border-charcoal/[0.08] bg-cream/40 p-4"
+                : isSide
+                  ? "border-t border-white/10 pt-3"
+                  : "border-t border-white/10 pt-5"
+          }
+        >
+          <p className={sectionTitleClass}>MLS dates · admin</p>
+          <ul className={isSide ? "space-y-1.5" : "space-y-2"}>
+            {mlsDates.map((d) => (
+              <li
+                key={d.field}
+                className={`flex items-baseline justify-between gap-3 ${rowTextClass}`}
+              >
+                <span className={`min-w-0 ${labelClass}`}>
+                  {d.label}
+                  <span className={detailClass}>{d.field}</span>
+                </span>
+                <span className={`${stampClass} shrink-0 tabular-nums`}>
+                  {fmtMlsStamp(d)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!isSide && (
+            <p
+              className={
+                isModal
+                  ? "mt-3 text-[11px] text-slate"
+                  : "mt-3 text-[11px] text-white/40"
+              }
+            >
+              Eastern time, as the MLS records it. Dates the SmartMLS web UI shows
+              but the IDX feed withholds — contract effective, expiration, deposit,
+              proposed closing — are not available here.
+            </p>
+          )}
         </div>
       )}
 

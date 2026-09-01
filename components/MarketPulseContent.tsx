@@ -10,13 +10,17 @@ import type {
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
+  MARKET_PULSE_LOOKBACK_OPTIONS,
   lookbackIdFromClosedCalc,
   type MarketPulseLookbackId,
   closedCountBarMax,
 } from "@/lib/market-pulse-lookback";
 import {
   MARKET_PULSE_CATEGORY_IDS,
+  marketPulseCategoryToIntelligenceFilters,
   marketPulseTownAvgDomStatsHref,
+  marketPulseTownListToAskStatsHref,
+  marketPulseTownMetricStatsHref,
   marketPulseTownClosedSalesStatsHref,
   marketPulseTownIntelligenceHref,
   marketPulseTownMonthsSupplyStatsHref,
@@ -43,6 +47,8 @@ function closedCacheKey(
 type ClosedFetchState = {
   status: "loading" | "ok" | "error";
   rows: MarketDigestClosedTownCount[];
+  /** Order marker, so the most recent good window can be held on screen. */
+  loadedAt?: number;
 };
 
 export default function MarketPulseContent({
@@ -110,6 +116,7 @@ export default function MarketPulseContent({
         seeded[closedCacheKey(cat.id, stamped)] = {
           status: "ok",
           rows: cat.closedTrailing,
+          loadedAt: 0,
         };
       }
     }
@@ -120,9 +127,36 @@ export default function MarketPulseContent({
 
   const closedKey = closedCacheKey(category, lookbackId);
   const closedState = closedByKey[closedKey];
-  const closedRows = closedState?.status === "ok" ? closedState.rows : undefined;
   const closedPending =
     closedState == null || closedState.status === "loading";
+  /**
+   * Dragging the slider asks for a window we have not fetched, and handing the
+   * chart nothing for that beat collapsed it to its empty state and then threw
+   * it back open when the rows landed. It keeps the last window it had until
+   * the new one arrives, so the panel holds its shape and the bars just move.
+   */
+  // Derived from the cache rather than remembered separately: the newest good
+  // window for this tab. Only within the same tab — another property type is
+  // different data, not a slower version of this one.
+  const held = useMemo(() => {
+    if (closedState?.status === "ok") return null;
+    let best: { lookbackId: MarketPulseLookbackId; state: ClosedFetchState } | null =
+      null;
+    for (const option of MARKET_PULSE_LOOKBACK_OPTIONS) {
+      const state = closedByKey[closedCacheKey(category, option.id)];
+      if (state?.status !== "ok") continue;
+      if (!best || (state.loadedAt ?? 0) >= (best.state.loadedAt ?? 0)) {
+        best = { lookbackId: option.id, state };
+      }
+    }
+    return best;
+  }, [closedByKey, category, closedState?.status]);
+  const closedRows =
+    closedState?.status === "ok" ? closedState.rows : held?.state.rows;
+  // Labels and months supply follow the window the rows on screen belong to,
+  // so a held window is never captioned with the one still loading.
+  const closedDataLookbackId =
+    closedState?.status === "ok" ? lookbackId : (held?.lookbackId ?? lookbackId);
   /** Bumps when the user re-requests the same lookback after an error. */
   const [closedFetchNonce, setClosedFetchNonce] = useState(0);
 
@@ -162,7 +196,11 @@ export default function MarketPulseContent({
         }
         setClosedByKey((prev) => ({
           ...prev,
-          [closedKey]: { status: "ok", rows: body.rows! },
+          [closedKey]: {
+            status: "ok",
+            rows: body.rows!,
+            loadedAt: Date.now(),
+          },
         }));
       } catch {
         if (cancelled) return;
@@ -211,7 +249,11 @@ export default function MarketPulseContent({
         }
         setClosedByKey((prev) => ({
           ...prev,
-          [axisKey]: { status: "ok", rows: body.rows! },
+          [axisKey]: {
+            status: "ok",
+            rows: body.rows!,
+            loadedAt: Date.now(),
+          },
         }));
       } catch {
         if (cancelled) return;
@@ -277,35 +319,31 @@ export default function MarketPulseContent({
     marketPulseTownClosedSalesStatsHref(cityLabel, category);
   const avgDomTownHref = (cityLabel: string) =>
     marketPulseTownAvgDomStatsHref(cityLabel, category);
+  const saleToAskTownHref = (cityLabel: string) =>
+    marketPulseTownListToAskStatsHref(cityLabel, category);
+  const metricStatsHref = (metricId: string, cityLabel: string) =>
+    marketPulseTownMetricStatsHref(metricId, cityLabel, category);
   const categoryFilter = (
     <div
-      className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.12em] uppercase"
+      className="flex min-w-0 flex-wrap gap-1"
       role="tablist"
       aria-label="Property type"
     >
       {categories.map((cat) => {
         const selected = active?.id === cat.id;
-        if (selected) {
-          return (
-            <span
-              key={cat.id}
-              role="tab"
-              aria-selected
-              aria-current="page"
-              className="text-[var(--mp-text)]"
-            >
-              {cat.label}
-            </span>
-          );
-        }
         return (
           <button
             key={cat.id}
             type="button"
             role="tab"
-            aria-selected={false}
+            aria-selected={selected}
+            aria-current={selected ? "page" : undefined}
             onClick={() => setCategoryId(cat.id)}
-            className="text-[var(--mp-muted-text)] underline decoration-[var(--mp-text)]/30 underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)]/50"
+            className={`rounded-sm px-2 py-1 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase transition-colors ${
+              selected
+                ? "bg-[var(--mp-text)]/15 text-[var(--mp-text)]"
+                : "text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
+            }`}
           >
             {cat.label}
           </button>
@@ -328,8 +366,16 @@ export default function MarketPulseContent({
       monthsSupplyTownHref={monthsSupplyTownHref}
       closedSalesTownHref={closedSalesTownHref}
       avgDomTownHref={avgDomTownHref}
+      saleToAskTownHref={saleToAskTownHref}
+      metricStatsHref={metricStatsHref}
+      kind={
+        marketPulseCategoryToIntelligenceFilters(category).tx === "rental"
+          ? "rental"
+          : "sale"
+      }
       settle={settle}
       closedPending={closedPending}
+      closedLookbackId={closedDataLookbackId}
       categoryFilter={categoryFilter}
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}

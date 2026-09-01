@@ -33,6 +33,8 @@ export type InterestingStatChartId =
   | 'median-by-town'
   | 'avg-dom'
   | 'town-comparison'
+  | 'list-to-ask'
+  | 'price-spread'
 
 const CHART_BY_KIND: Record<InterestingStatKind, InterestingStatChartId> = {
   'closed-this-week': 'sales-trend',
@@ -64,6 +66,8 @@ export const INTERESTING_STAT_CHART_IDS: readonly InterestingStatChartId[] = [
   'median-by-town',
   'avg-dom',
   'town-comparison',
+  'list-to-ask',
+  'price-spread',
 ]
 
 export function interestingStatChartId(

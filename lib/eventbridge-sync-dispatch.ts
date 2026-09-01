@@ -19,10 +19,10 @@ import {
 import { isScheduledSyncJobPausedFresh } from '@/lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '@/lib/sync-next-override'
 import {
-  readSyncScheduleConfigFresh,
-  resolveJobScheduler,
-  shouldSkipScheduledJobWrongProviderFresh,
-} from '@/lib/sync-schedule-config'
+  SYNC_QUEUE_PRIORITY_MANUAL,
+  SYNC_QUEUE_PRIORITY_SWEEP,
+  isSyncQueueRunnerJob,
+} from '@/lib/sync-queue-shared'
 import { setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import { stampIncrementalSyncLive } from '@/lib/incremental-sync-live'
 import { stampIncrementalQueuedStepLog } from '@/lib/incremental-sync-step-log'
@@ -75,17 +75,6 @@ export async function dispatchEventBridgeScheduledJob(
     }
   }
 
-  if (await shouldSkipScheduledJobWrongProviderFresh(jobId, 'eventbridge')) {
-    const config = await readSyncScheduleConfigFresh()
-    const provider = resolveJobScheduler(config.jobs[jobId])
-    return {
-      ok: false,
-      skipped: true,
-      jobId,
-      reason: `job scheduler is ${provider} — EventBridge ignored`,
-    }
-  }
-
   if (!options?.fromAdminSyncNow) {
     if (await isScheduledSyncJobPausedFresh(jobId)) {
       return {
@@ -107,6 +96,39 @@ export async function dispatchEventBridgeScheduledJob(
   }
 
   const startedAt = new Date().toISOString()
+
+  // Runner jobs go on the sync queue rather than into a Netlify background
+  // function: EventBridge is an alarm clock, and the queue is what an alarm
+  // rings. The runner claims the row and forks a child under a kill budget.
+  if (isSyncQueueRunnerJob(jobId)) {
+    const { enqueueSyncJob } = await import('@/lib/sync-queue')
+    const enqueued = await enqueueSyncJob({
+      jobId,
+      trigger: options?.fromAdminSyncNow ? 'admin' : 'eventbridge',
+      priority: options?.fromAdminSyncNow
+        ? SYNC_QUEUE_PRIORITY_MANUAL
+        : SYNC_QUEUE_PRIORITY_SWEEP,
+      requestedAt: startedAt,
+      ignoreCooldown: options?.fromAdminSyncNow === true,
+      // Admin Sync now must send the brief even off-cadence; a scheduled AWS
+      // tick keeps the slot check, same as before the queue existed.
+      ...(jobId === 'market-digest'
+        ? { payload: { force: options?.fromAdminSyncNow === true } }
+        : {}),
+    })
+    return {
+      ok: enqueued.ok,
+      jobId,
+      skipped: !enqueued.enqueued,
+      reason: enqueued.reason ?? undefined,
+      queue: {
+        ok: enqueued.ok,
+        status: enqueued.enqueued ? 202 : 200,
+        base: 'sync_queue',
+        ...(enqueued.ok ? {} : { error: enqueued.reason ?? 'enqueue failed' }),
+      },
+    }
+  }
 
   let queue: NetlifyFunctionQueueResult
 

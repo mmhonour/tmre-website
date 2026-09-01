@@ -109,9 +109,13 @@
   included_files = []
   background = true
 
+# Dense cron; the handler gates on Configure weekday + start time (default Mon
+# 08:00 ET). A once-a-week expression here gave the brief exactly one attempt and
+# no retry, so a single queue 502 or Resend blip lost the whole week silently.
+# Must stay in step with the `schedule` exported from the function itself.
 [functions."market-digest"]
   included_files = []
-  schedule = "0 12 * * 1"
+  schedule = "*/30 * * * *"
 
 [functions."market-digest-worker"]
   included_files = []

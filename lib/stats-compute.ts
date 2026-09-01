@@ -89,6 +89,25 @@ export type MarketStatsPayload = {
   avgDaysOnMarketCalc?: StatsValueCalc
   avgPricePerSqft: number | null
   avgPricePerSqftCalc?: StatsValueCalc
+  /**
+   * What closings fetched against the seller's first asking price, as a percent
+   * (97.4 = sold 2.6% under the original ask) and as the average dollar gap on
+   * the same pool (negative = under ask). Precomputed here rather than derived in
+   * the page or the email so both read one cached number.
+   */
+  saleToAskPct: number | null
+  saleToAskDollars: number | null
+  /** Closings behind {@link saleToAskPct} — 0 means the metric has no pool. */
+  saleToAskCount: number
+  saleToAskCalc?: StatsValueCalc
+  /**
+   * Average minus median on the same price pool, in dollars and as a share of
+   * the median. Cached rather than subtracted wherever it is shown, so the page,
+   * the email and any panel that borrows them read one number.
+   */
+  priceDelta: number | null
+  priceDeltaPct: number | null
+  priceDeltaCalc?: StatsValueCalc
   avgBeds: number | null
   sampleSize: number
 }
@@ -281,6 +300,23 @@ export function marketStatsPoolsFromListings(
       : []
   const beds = filteredActive.map((l) => l.beds).filter((b): b is number => b != null && b > 0)
 
+  // Sale to original ask: only closings that carry both halves of the comparison.
+  // A missing or zero original ask means the MLS never published a starting price
+  // for that listing, and pretending it equalled the close price would drag every
+  // town toward a flat 100%.
+  let saleToAskCount = 0
+  let saleToAskClosedSum = 0
+  let saleToAskOriginalSum = 0
+  for (const l of closedInPeriod) {
+    const closed = closedKindPrice(l, kind)
+    const original = l.originalListPrice
+    if (closed == null || closed <= 0) continue
+    if (original == null || original <= 0) continue
+    saleToAskCount += 1
+    saleToAskClosedSum += closed
+    saleToAskOriginalSum += original
+  }
+
   return {
     activeCount: filteredActive.length,
     closedPriceCount: closedPrices.length,
@@ -294,6 +330,9 @@ export function marketStatsPoolsFromListings(
     ppsfCount: ppsf.length,
     ppsfMean: mean(ppsf),
     bedsMean: mean(beds),
+    saleToAskCount,
+    saleToAskClosedSum,
+    saleToAskOriginalSum,
   }
 }
 
@@ -314,6 +353,26 @@ export function marketStatsFromPools(
   const avgDaysOnMarket = pools.domMean
   const avgPricePerSqft = kind === 'sale' ? pools.ppsfMean : null
   const activeCount = pools.activeCount
+
+  // Σclose ÷ Σoriginal, never the mean of per-listing ratios: the sums are what
+  // roll up from towns to All without re-reading a single listing.
+  const hasSaleToAsk =
+    pools.saleToAskCount > 0 && pools.saleToAskOriginalSum > 0
+  const saleToAskPct = hasSaleToAsk
+    ? (pools.saleToAskClosedSum / pools.saleToAskOriginalSum) * 100
+    : null
+  const saleToAskDollars = hasSaleToAsk
+    ? (pools.saleToAskClosedSum - pools.saleToAskOriginalSum) /
+      pools.saleToAskCount
+    : null
+
+  // A high-end tail pulls the mean above the typical sale; this is that gap.
+  const priceDelta =
+    medianPrice != null && averagePrice != null ? averagePrice - medianPrice : null
+  const priceDeltaPct =
+    priceDelta != null && medianPrice != null && medianPrice !== 0
+      ? (priceDelta / medianPrice) * 100
+      : null
 
   return {
     city,
@@ -382,6 +441,62 @@ export function marketStatsFromPools(
               city,
               kind,
               avgPricePerSqft,
+            },
+          }
+        : undefined,
+    priceDelta,
+    priceDeltaPct,
+    priceDeltaCalc:
+      priceDelta != null
+        ? {
+            summary: `The mean ${
+              hasClosed ? 'close' : 'list'
+            } price in ${city} runs ${priceDeltaPct != null ? `${priceDeltaPct >= 0 ? '' : '-'}${Math.abs(priceDeltaPct).toFixed(1)}%` : '—'} ${
+              priceDelta >= 0 ? 'above' : 'below'
+            } the median across ${pricePoolSize.toLocaleString()} ${
+              kind === 'rental' ? 'leases' : 'sales'
+            }.`,
+            detail: [
+              'Average minus median on the same price pool — a few high-end sales pull the mean above the typical one.',
+              'The percent is that gap as a share of the median, not a month-over-month change.',
+            ],
+            inputs: {
+              source: 'price-mean-minus-median',
+              sampleSize: pricePoolSize,
+              city,
+              kind,
+              priceDelta,
+              priceDeltaPct,
+            },
+          }
+        : undefined,
+    saleToAskPct,
+    saleToAskDollars,
+    saleToAskCount: pools.saleToAskCount,
+    saleToAskCalc:
+      saleToAskPct != null
+        ? {
+            summary: `Closings in ${city} fetched ${saleToAskPct.toFixed(1)}% of their original asking price across ${pools.saleToAskCount.toLocaleString()} ${
+              kind === 'rental' ? 'leases' : 'sales'
+            }.`,
+            detail: [
+              'Total close prices ÷ total original list prices — not the average of each sale\'s percentage, so larger sales carry the weight they should.',
+              `Average gap ${
+                saleToAskDollars != null
+                  ? `${saleToAskDollars < 0 ? '-' : '+'}$${Math.round(Math.abs(saleToAskDollars)).toLocaleString()}`
+                  : '—'
+              } per ${kind === 'rental' ? 'lease' : 'sale'} against the first asking price.`,
+              `Closings since ${STATS_CLOSED_PERIOD_START} that published both a close price and an original list price.`,
+            ],
+            inputs: {
+              source: 'closed-sale-to-original-ask',
+              sampleSize: pools.saleToAskCount,
+              city,
+              kind,
+              closedSum: Math.round(pools.saleToAskClosedSum),
+              originalSum: Math.round(pools.saleToAskOriginalSum),
+              saleToAskPct,
+              saleToAskDollars,
             },
           }
         : undefined,

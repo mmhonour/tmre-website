@@ -31,8 +31,15 @@ import ActiveByTownView from "./ActiveByTownView";
 import SalesByTownDataTable from "./SalesByTownDataTable";
 import VintageSalesDataTable from "./VintageSalesDataTable";
 import PriceSalesByTownDataTable from "./PriceSalesByTownDataTable";
+import ListToAskByTownDataTable from "./ListToAskByTownDataTable";
+import PriceSpreadByTownDataTable from "./PriceSpreadByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
+import {
+  scrollToStatsAnchor,
+  STATS_SCROLL_MT,
+  useStatsScrollOffset,
+} from "./stats-scroll";
 import {
   statsActiveByMonthTitle,
   statsActiveByMonthTownTitle,
@@ -41,6 +48,8 @@ import {
   statsByPriceTitle,
   statsByPriceTownTitle,
   statsByVintageTitle,
+  statsListToAskTitle,
+  statsPriceSpreadTitle,
   statsMonthsSupplyByMonthTitle,
   statsMonthsSupplyByMonthTownTitle,
 } from "./stats-labels";
@@ -62,6 +71,13 @@ const PriceSalesByTownChart = dynamic(() => import("./PriceSalesByTownChart"), {
   ssr: false,
 });
 const MedianPriceBarChart = dynamic(() => import("./MedianPriceBarChart"), { ssr: false });
+const ListToAskByTownChart = dynamic(() => import("./ListToAskByTownChart"), {
+  ssr: false,
+});
+const PriceSpreadByTownChart = dynamic(
+  () => import("./PriceSpreadByTownChart"),
+  { ssr: false },
+);
 const AvgDomLineChart = dynamic(() => import("./AvgDomLineChart"), { ssr: false });
 
 export type { StatsCity, StatsKind, Town } from "./stats-towns";
@@ -90,6 +106,17 @@ const LISTING_POOLS = ["active", "closed"] as const;
 function parseUrlTown(value: string | null): Town | null {
   if (!value) return null;
   return TOWN_LIST.find((t) => t.toLowerCase() === value.toLowerCase()) ?? null;
+}
+
+/**
+ * Like {@link parseUrlTown} but accepts All, which several charts are built
+ * around. Without it a `?city=All` link leaves whichever town the visitor last
+ * had saved in place, and an All-only chart never renders for the jump to find.
+ */
+function parseUrlCity(value: string | null): StatsCity | null {
+  if (!value) return null;
+  if (value.toLowerCase() === "all") return "All";
+  return parseUrlTown(value);
 }
 
 type TopVintage = {
@@ -217,9 +244,11 @@ export default function StatsClient() {
   const deepLinkApplied = useRef(false);
   const chartScrollApplied = useRef(false);
 
+  useStatsScrollOffset();
+
   useEffect(() => {
     if (deepLinkApplied.current) return;
-    const city = parseUrlTown(urlCity);
+    const city = parseUrlCity(urlCity);
     if (city) {
       setSelectedCity(city);
       setTableTown(city);
@@ -243,9 +272,14 @@ export default function StatsClient() {
     let attempts = 0;
     const tryScroll = () => {
       const el = document.getElementById(targetId);
-      if (el) {
+      // Aiming at a chart that is still a loading skeleton lands short once its
+      // title block appears, so hold out for the chart to report itself ready
+      // before the first scroll — but not forever, in case its data never comes.
+      const waiting =
+        el?.dataset.statsChartReady === "false" && attempts < 16;
+      if (el && !waiting) {
         chartScrollApplied.current = true;
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        scrollToStatsAnchor(el);
         el.classList.add("ring-2", "ring-gold/50", "ring-offset-2", "ring-offset-cream");
         window.setTimeout(() => {
           el.classList.remove(
@@ -307,7 +341,7 @@ export default function StatsClient() {
         : listingsLoadState === "ready" || listingsLoadState === "error";
     if (!ready) return;
     requestAnimationFrame(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
     });
   }, [
     urlView,
@@ -365,7 +399,7 @@ export default function StatsClient() {
     setTableTown(town);
     if (town !== "All") setSelectedCity(town);
     requestAnimationFrame(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
     });
   };
 
@@ -391,7 +425,7 @@ export default function StatsClient() {
       });
 
     requestAnimationFrame(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
     });
   };
 
@@ -568,6 +602,8 @@ export default function StatsClient() {
             ? statsByPriceTownTitle(statsKind)
             : statsByPriceTitle(statsKind),
       },
+      { id: "stats-chart-price-spread", label: statsPriceSpreadTitle(statsKind) },
+      { id: "stats-chart-list-to-ask", label: statsListToAskTitle(statsKind) },
     );
     if (selectedCity === "All") {
       items.push(
@@ -917,7 +953,7 @@ export default function StatsClient() {
                 </StatsChartLazyMount>
               )}
 
-              <StatsChartLazyMount>
+              <StatsChartLazyMount eager={urlChart === "sales-by-vintage"}>
               <StatsChartPrintFrame
                 chartId="sales-by-vintage"
                 dataPanel={
@@ -936,7 +972,7 @@ export default function StatsClient() {
               </StatsChartPrintFrame>
               </StatsChartLazyMount>
 
-              <StatsChartLazyMount>
+              <StatsChartLazyMount eager={urlChart === "sales-by-price"}>
               <StatsChartPrintFrame
                 chartId="sales-by-price"
                 dataPanel={
@@ -968,7 +1004,7 @@ export default function StatsClient() {
               {selectedCity === "All" && (
                 <div
                   id="stats-chart-town-comparison"
-                  className="stats-comparison-table stats-print-screen-only scroll-mt-28"
+                  className={`stats-comparison-table stats-print-screen-only ${STATS_SCROLL_MT}`}
                 >
                   <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-4">
                     Side-by-side comparison
@@ -1055,7 +1091,7 @@ export default function StatsClient() {
               )}
 
               {selectedCity === "All" && (
-                <StatsChartLazyMount>
+                <StatsChartLazyMount eager={urlChart === "median-by-town"}>
                 <StatsChartPrintFrame chartId="median-by-town" title={`${medianLabel} by town`}>
                   <MedianPriceBarChart
                     key={`median-bar-${statsKind}${chartVersionSuffix}`}
@@ -1069,7 +1105,7 @@ export default function StatsClient() {
               )}
 
               {selectedCity === "All" && (
-                <StatsChartLazyMount>
+                <StatsChartLazyMount eager={urlChart === "avg-dom"}>
                 <StatsChartPrintFrame
                   chartId="avg-dom"
                   title="Avg days on market — lower is faster"
@@ -1084,7 +1120,59 @@ export default function StatsClient() {
                 </StatsChartLazyMount>
               )}
 
-              <div ref={tableRef} className="mt-16 pt-10 border-t border-charcoal/[0.08]">
+              {/*
+               * Shown for every town selection, not just All: the metric only
+               * means anything next to its neighbours, and Market Pulse links
+               * here per town, which would land on nothing if it were hidden.
+               */}
+              {/*
+               * Median and average with the gap between them — the chart Market
+               * Pulse's Delta and Average bars point at. Shown for every town
+               * selection for the same reason as list to ask: those links are
+               * per town and would land on nothing if it were All-only.
+               */}
+              <StatsChartLazyMount eager={urlChart === "price-spread"}>
+                <StatsChartPrintFrame
+                  chartId="price-spread"
+                  title={statsPriceSpreadTitle(statsKind)}
+                  dataPanel={
+                    <PriceSpreadByTownDataTable
+                      key={`price-spread-data-${statsKind}${chartVersionSuffix}`}
+                      kind={statsKind}
+                    />
+                  }
+                >
+                  <PriceSpreadByTownChart
+                    key={`price-spread-${statsKind}${chartVersionSuffix}`}
+                    kind={statsKind}
+                    selectedCity={selectedCity}
+                  />
+                </StatsChartPrintFrame>
+              </StatsChartLazyMount>
+
+              <StatsChartLazyMount eager={urlChart === "list-to-ask"}>
+                <StatsChartPrintFrame
+                  chartId="list-to-ask"
+                  title={statsListToAskTitle(statsKind)}
+                  dataPanel={
+                    <ListToAskByTownDataTable
+                      key={`list-to-ask-data-${statsKind}${chartVersionSuffix}`}
+                      kind={statsKind}
+                    />
+                  }
+                >
+                  <ListToAskByTownChart
+                    key={`list-to-ask-${statsKind}${chartVersionSuffix}`}
+                    kind={statsKind}
+                    selectedCity={selectedCity}
+                  />
+                </StatsChartPrintFrame>
+              </StatsChartLazyMount>
+
+              <div
+                ref={tableRef}
+                className={`mt-16 pt-10 border-t border-charcoal/[0.08] ${STATS_SCROLL_MT}`}
+              >
                 {tableMode === "price-band" ? (
                   <MedianPriceListingsTable
                     rows={priceBandRows}

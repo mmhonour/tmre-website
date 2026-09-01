@@ -52,6 +52,7 @@ tmp-cms-scrape*.js
 tmp-scrape-expr*.js
 tmp-*.txt
 tmp-*.json
+scripts/tmp-probe-*.ts
 
 # debug
 *.log
@@ -70,6 +71,7 @@ r2.env
 
 # typescript
 *.tsbuildinfo
+.eslintcache
 next-env.d.ts
 
 # Local Netlify folder

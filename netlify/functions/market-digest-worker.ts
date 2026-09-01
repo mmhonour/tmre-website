@@ -19,6 +19,8 @@ export default async function handler(req: Request, _context: Context) {
 
   process.env.NETLIFY_SYNC_HANDLER = '1'
   const startedAt = new Date().toISOString()
+  /** Once the send owns recording, a second audit row here would double-report. */
+  let sendStarted = false
 
   try {
     await hydrateSyncMetaStore()
@@ -41,36 +43,22 @@ export default async function handler(req: Request, _context: Context) {
     }
 
     const force = fromAdmin || body.force === true
-    // Stamp the week after a real send so the */30 thin cron cannot re-fire
-    // all day. Bug: cron used to pass stampWeek:false explicitly, which skipped
-    // markMarketDigestSent and produced ~12 digests on the scheduled weekday.
-    // Admin "Send test" sets stampWeek:false; Admin Syncs Run stamps.
+    // Stamp last-sent after a real send so the slot reads as served and the */30
+    // thin cron cannot re-fire all day. Bug: cron used to pass stampWeek:false
+    // explicitly, which skipped markMarketDigestSent and produced ~12 digests on
+    // the send day. Admin "Send test" sets stampWeek:false; Syncs Run stamps.
     const stampWeek =
       typeof body.stampWeek === 'boolean' ? body.stampWeek : !force
 
+    // Stamping and the History row belong to sendMarketDigestEmail, so this
+    // worker and the Railway lane report a send the same way.
+    sendStarted = true
     const result = await sendMarketDigestEmail({
       force,
       stampWeek,
+      startedAt,
+      trigger: fromAdmin ? 'netlify-admin' : 'netlify-worker',
     })
-    const finishedAt = new Date().toISOString()
-
-    // Cron "already sent / disabled" skips stay quiet; admin runs always audit.
-    if (fromAdmin || !result.skipped) {
-      await recordDashboardSyncAudit({
-        startedAt,
-        finishedAt,
-        syncSuffix: 'digest',
-        listingsCount: 0,
-        ok: result.ok && !result.skipped,
-        detail: result.skipped
-          ? result.reason ?? 'Market brief skipped'
-          : result.ok
-            ? `Market brief sent to ${result.to ?? 'recipient'}${
-                result.subject ? ` — ${result.subject}` : ''
-              }`
-            : result.reason ?? 'Market brief send failed',
-      })
-    }
 
     return new Response(JSON.stringify(result), {
       status: result.ok ? 200 : 503,
@@ -80,14 +68,18 @@ export default async function handler(req: Request, _context: Context) {
     console.error('[netlify/market-digest-worker]', err)
     const finishedAt = new Date().toISOString()
     const detail = err instanceof Error ? err.message : String(err)
-    await recordDashboardSyncAudit({
-      startedAt,
-      finishedAt,
-      syncSuffix: 'digest',
-      listingsCount: 0,
-      ok: false,
-      detail,
-    }).catch(() => {})
+    // Failures inside the send already recorded themselves; this covers the ones
+    // before it — a Neon hydrate that never came back, a malformed body.
+    if (!sendStarted) {
+      await recordDashboardSyncAudit({
+        startedAt,
+        finishedAt,
+        syncSuffix: 'digest',
+        listingsCount: 0,
+        ok: false,
+        detail: `Market brief failed before send — ${detail}`,
+      }).catch(() => {})
+    }
     return new Response(
       JSON.stringify({
         error: detail,

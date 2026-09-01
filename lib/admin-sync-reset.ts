@@ -69,7 +69,21 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
   ],
   'fomc-sync': ['fomc_last_synced_at'],
   'cpi-sync': ['cpi_last_synced_at'],
-  'market-digest': ['market_digest_last_sent_at'],
+  'market-digest': [
+    // Clearing last-sent is the whole of it now: dedupe compares it against the
+    // slot, so an unset stamp makes the job due at the next tick. It used to take
+    // a second, day-keyed watermark as well, and forgetting that one made Reset
+    // look like it worked while the brief stayed stuck for the week.
+    'market_digest_last_sent_at',
+    'market_digest_send_lock',
+    'market_digest_last_attempt_at',
+    'market_digest_last_result',
+    // Otherwise Reset leaves a live 429 cool-off holding the catch-up back.
+    'market_digest_queue_backoff_until',
+    // A moved send slot pins itself with a one-shot override. Reset means "go at
+    // the next tick", so it has to drop that pin too or Reset would quietly wait.
+    'sync_next_override_market-digest',
+  ],
   'full-resync': ['last_full_sync', 'last_full_sync_started'],
 }
 

@@ -53,22 +53,67 @@ type UpdatedAtParts = {
   title: string;
 };
 
-function formatClosedDate(iso: string | null): UpdatedAtParts {
-  const t = mlsTimestampMs(iso);
-  if (Number.isNaN(t)) {
+/**
+ * MLS CloseDate is a bare calendar day, so a clock read off it would be a
+ * midnight this listing never saw. The record's own stamp is the only real time
+ * on a closed row.
+ */
+function hasClockTime(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  if (!/\d{2}:\d{2}/.test(iso)) return false;
+  return !/[T ]00:00(:00)?(\.0+)?Z?$/.test(iso);
+}
+
+/**
+ * Closed rows, stamped like the Latest feed: the clock line carries the MLS
+ * record stamp and the day below it stays the close date, which is the fact
+ * that matters here. Without a usable stamp it says the day and no clock
+ * rather than inventing one.
+ */
+function formatClosedDate(
+  closeIso: string | null,
+  stampIso?: string | null,
+): UpdatedAtParts {
+  const closeMs = mlsTimestampMs(closeIso);
+  if (Number.isNaN(closeMs)) {
     return { time: "—", dateDay: null, datePrefix: null, dateSuffix: null, title: "Closed —" };
   }
-  const date = new Date(t);
-  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
-  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(date);
-  const day = date.getDate();
+  const closeDate = new Date(closeMs);
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(closeDate);
+  const month = new Intl.DateTimeFormat(undefined, { month: "short" }).format(closeDate);
+  const day = closeDate.getDate();
   const suffix = ordinalSuffix(day);
+  const dateLabel = `${weekday} ${month} ${day}${suffix}`;
+
+  const stampMs = hasClockTime(stampIso) ? mlsTimestampMs(stampIso) : Number.NaN;
+  if (Number.isNaN(stampMs)) {
+    return {
+      time: `${weekday} ${month} ${day}`,
+      dateDay: null,
+      datePrefix: null,
+      dateSuffix: null,
+      title: `Closed ${dateLabel}`,
+    };
+  }
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(stampMs));
+  if (isSameLocalDay(closeDate, new Date())) {
+    return {
+      time,
+      dateDay: null,
+      datePrefix: null,
+      dateSuffix: null,
+      title: `Closed ${dateLabel} · MLS stamped ${time} (your local time)`,
+    };
+  }
   return {
-    time: `${weekday} ${month} ${day}`,
-    dateDay: null,
-    datePrefix: null,
-    dateSuffix: null,
-    title: `Closed ${weekday} ${month} ${day}${suffix}`,
+    time,
+    dateDay: day,
+    datePrefix: `${weekday} ${month} `,
+    dateSuffix: suffix,
+    title: `Closed ${dateLabel} · MLS stamped ${time} (your local time)`,
   };
 }
 
@@ -154,7 +199,7 @@ function LatestLineRow({
   // ModificationTimestamp day when listDate is today/yesterday.
   const clockIso = latestRowActivityIso(l);
   const updatedAt = dateOnlyClock
-    ? formatClosedDate(clockIso)
+    ? formatClosedDate(clockIso, l.modificationTimestamp)
     : formatUpdatedAt(clockIso);
   const ppsf =
     !l.isRental && l.pricePerSqft != null

@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { SITE_URL } from '@/lib/business-info'
 import { isValidEmail } from '@/lib/contact-notify-config'
 import { query, queryOne } from '@/lib/db/postgres'
+import { resendFrom } from '@/lib/resend-from'
 
 export const SITE_USER_SESSION_COOKIE = 'tmre_user_session'
 
@@ -160,9 +161,7 @@ async function sendMagicLinkEmail(opts: {
     console.warn('[site-user-auth] RESEND_API_KEY not set; magic link not sent')
     return false
   }
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
   try {

@@ -7,22 +7,20 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
-  thinCronSkipIfAnotherHostOwns,
+  thinCronHandOffToQueue,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin property-address trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start time gate the work.
- * Queues sync-property-addresses-worker.
+ *
+ * A due run goes on the sync queue for the always-on runner; this function only
+ * queues sync-property-addresses-worker when that row is stranded.
  */
 export default async function handler() {
   try {
     await hydrateSyncMetaStore()
-    {
-      const owned = await thinCronSkipIfAnotherHostOwns('property-addresses')
-      if (owned) return owned
-    }
     if (await isScheduledSyncJobPausedFresh('property-addresses')) {
       return thinCronSkipped('property-addresses scheduled sync paused by admin')
     }
@@ -33,6 +31,10 @@ export default async function handler() {
     }
     if (shouldSkipScheduledJobNotDue('property-addresses')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
+    }
+    {
+      const handedOff = await thinCronHandOffToQueue('property-addresses')
+      if (handedOff) return handedOff
     }
     const queued = await queueNetlifyPropertyAddressSync()
     if (!queued.ok) {

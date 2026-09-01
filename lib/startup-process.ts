@@ -222,7 +222,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync (Lane 1)",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "Preferred: Railway mls-sync (MLS_SYNC_SERVICE=1) pulls RETS → Neon with postHooks:false, stamps End + last_mls_sync_heartbeat, then queues Netlify sideWorkOnly for warm. Configure → Incremental → Railway. Legacy: Netlify sync-listings (*/30) or EventBridge → sync-listings-worker with full RETS + postHooks. See Syncs → Dashboard ownership lanes.",
+            "A due pull is enqueued on sync_queue by whoever notices — the Railway sweep, the Netlify */30 cron, or the EventBridge ingress — and the Railway runner (MLS_SYNC_SERVICE=1) claims it, forks a child, and pulls RETS → Neon with postHooks:false under a kill budget, stamping End + last_mls_sync_heartbeat before queueing Netlify sideWorkOnly for warm. Netlify sync-listings only runs the pull itself when the row has sat unclaimed long enough to prove the runner is gone. See Syncs → Dashboard ownership lanes.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -231,7 +231,7 @@ export function describeStartupProcess(): {
           title: "Stale incremental watchdog",
           timing: "every 15 min + Admin open",
           detail:
-            "Netlify path only: if End older than ~70m, Incremental not paused, and Scheduler is still Netlify — clear dead Queued and re-queue worker (source=watchdog). When Scheduler is Railway, heal via mls-sync interval / Admin Sync now → POST /run. Diagram: Syncs → Dashboard.",
+            "If End is older than ~70m and Incremental is not paused, put a row on sync_queue (source=watchdog). A live runner claims it within seconds; only when the runner's heartbeat is stale does the watchdog fall back to clearing a dead Queued and re-queueing the Netlify worker itself. Diagram: Syncs → Dashboard.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -299,7 +299,7 @@ export function describeStartupProcess(): {
           title: "Rebuild on the Configure slot",
           timing: "Configure → Goldilocks → Frequency / Start",
           detail:
-            "rebuildAllListingScores(): scores every Active listing against its town peer pool, one town at a time, then refreshes avg-score-by-vintage. Who runs it is declared in Configure → Goldilocks → Scheduler: Railway mls-sync (5-min sweep that only fires at the configured wall-clock slot, plus POST /scores for Sync now) or Netlify cron (thin */30 → sync-listing-scores-worker). Exactly one host acts — each stands down when the radio names the other. Never overlaps the RETS pull or a stats rebuild in the Railway process (shared heap).",
+            "rebuildAllListingScores(): scores every Active listing against its town peer pool, one town at a time, then refreshes avg-score-by-vintage. Nobody picks a host: the Railway 5-min sweep and the Netlify thin */30 both enqueue on sync_queue when the configured wall-clock slot comes round, one waiting row per job survives either way, and the runner claims it into a forked child under Configure → Goldilocks → Budget. Never overlaps the RETS pull or a stats rebuild, because the runner takes one row at a time.",
           status: "active",
           statusLabel: "Running",
         },
@@ -324,7 +324,7 @@ export function describeStartupProcess(): {
           title: "Rebuild on the Configure slot",
           timing: "Configure → Deal of the Day → Frequency / Start",
           detail:
-            "rebuildDealOfTheDayCache(): clears the deal-of-the-day prefix, rescores each town's Active inventory, writes 42 stats_cache payloads, then fills photo gaps. Who runs it is declared in Configure → Deal of the Day → Scheduler: Railway mls-sync (default; 10-min sweep that only fires at the configured wall-clock slot, plus POST /deal-of-the-day for Sync now) or Netlify cron (thin */30 → sync-deal-of-the-day-worker). Exactly one host acts — each stands down when the radio names the other. Never overlaps another Railway lane (shared heap). The Railway lane also stamps last_deal_of_the_day_cache on an empty run, so a Start cannot dangle without an End.",
+            "rebuildDealOfTheDayCache(): clears the deal-of-the-day prefix, rescores each town's Active inventory, writes 42 stats_cache payloads, then fills photo gaps. The Railway 10-min sweep and the Netlify thin */30 both enqueue on sync_queue at the configured wall-clock slot; the runner claims one row into a forked child under Configure → Deal of the Day → Budget, so it never overlaps another job. It stamps last_deal_of_the_day_cache even on an empty run, so a Start cannot dangle without an End.",
           status: "active",
           statusLabel: "Running",
         },
@@ -365,7 +365,7 @@ export function describeStartupProcess(): {
           title: "Verify + enrich on the Configure slot",
           timing: "Configure → Property addresses → Frequency / Start",
           detail:
-            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. Who runs it is declared in Configure → Property addresses → Scheduler: Railway mls-sync (default; 10-min sweep that only fires at the configured wall-clock slot, plus POST /property-addresses for Sync now) or Netlify cron (thin */30 → sync-property-addresses-worker). Exactly one host acts — the Netlify thin cron and this process's own weekly timer both stand down when the radio names Railway. Never overlaps another Railway lane (shared heap). Sync now that arrives while Incremental/DOTD/etc. is running is kept (in memory and property_addresses_railway_pending) and started when that lane finishes — it is not dropped. Skips when Pause is checked on Property address directory.",
+            "syncPropertyAddresses(): MLS parcels/addresses + Vision recent sales; shared property_key when parcel matches. The Railway 10-min sweep and the Netlify thin */30 both enqueue on sync_queue at the configured wall-clock slot, and the runner claims the row into a forked child under Configure → Property addresses → Budget. A Sync now that arrives while another job is running is a queued row, not an in-memory flag, so a restart cannot lose it and Admin can see it waiting. Skips when Pause is checked on Property address directory.",
           status: propertyAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: propertyAddressSyncEnabled ? "Armed" : "Disabled",
         },
@@ -414,7 +414,7 @@ export function describeStartupProcess(): {
           title: "Periodic dirty-town sweep",
           timing: "usually every 10 min",
           detail:
-            "rebuildStatsCacheIfStale(false) — rebuilds only the towns the incremental sync marked dirty (stats_dirty:<Town> in sync_meta), plus any town whose last rebuild is over 24h old, plus the whole cache when required keys are missing. There is no hourly TTL trigger any more: an unchanged town is not rebuilt. Skips while the stats rebuild lock or a listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. Who rebuilds is declared in Configure → Stats cache → Scheduler: Railway mls-sync (default; 10-min dirty sweep + POST /stats) or Netlify cron (thin */30 → sync-stats-cache-worker, which also stands down when nothing is dirty). Exactly one host acts — each stands down when the radio names the other. The Railway sweep also honours Configure → Start time as a wall-clock grid: dirtiness says whether there is work, the slot says when it may run, so a manual Sync never drags the schedule onto a new minute.",
+            "rebuildStatsCacheIfStale(false) — rebuilds only the towns the incremental sync marked dirty (stats_dirty:<Town> in sync_meta), plus any town whose last rebuild is over 24h old, plus the whole cache when required keys are missing. There is no hourly TTL trigger any more: an unchanged town is not rebuilt. Skips while the stats rebuild lock or a listings refresh is held. Long-lived Node only: on Netlify this is off, because a request-scoped invocation cannot finish a rebuild but can freeze holding the lock. The Railway 10-min dirty sweep and the Netlify thin */30 both enqueue on sync_queue (each still standing down when nothing is dirty), and the runner claims the row into a forked child under Configure → Stats cache → Budget. Start time stays a wall-clock grid on top of dirtiness: dirtiness says whether there is work, the slot says when it may run, so a manual Sync never drags the schedule onto a new minute.",
           status: "active",
           statusLabel: "Running",
         },
@@ -482,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Every one of these is gated on Configure → Scheduler: a job pointed at Railway or EventBridge makes its thin cron stand down (Railway's own sweep runs it; AWS hits eventbridge-sync-ingress). Incremental, Stats cache, Goldilocks, Deal of the Day and Property addresses default to Railway, so their thin crons normally do nothing but report who owns the job.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses and the Monday market brief go on sync_queue: the thin cron enqueues, the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -536,14 +536,14 @@ export function describeStartupProcess(): {
   lanes.push({
     id: "market-digest",
     title: "Monday market brief",
-    subtitle: "Months supply + inventory email (Netlify cron + Admin Syncs)",
+    subtitle: "Months supply + inventory email (queue sweep + Admin Syncs)",
     steps: [
       {
         id: "market-digest-cron",
         title: "Send Monday market digest",
-        timing: "Every 30m → weekly Mon ~8am ET (Configure)",
+        timing: "5-min sweep → weekly Mon ~8am ET (Configure)",
         detail:
-          "netlify/functions/market-digest → market-digest-worker → sendMarketDigestEmail(). Pause/Run/schedule on Admin → Syncs; recipient/subject/social on Communications → Monday market brief.",
+          "sendMarketDigestEmail(). The Railway 5-min sweep and the Netlify thin */30 both enqueue on sync_queue at the configured wall-clock slot, and the runner claims the row into a forked child. Repeated attempts are the point: a weekly Netlify cron gave the send one shot and no retry, so a queue 502 or Resend blip at that minute skipped the whole week. A sweep enqueues with force:false so the slot check still stops a second email; Sync now sets force:true; Communications → Send test now sends without stamping, so a test cannot silently cancel the real Monday send. Dedupe is one rule — market_digest_last_sent_at versus the most recent slot, the same comparison every other job uses — so a brief sends once per slot and a moved day/time is just an unserved slot. A second day-keyed watermark used to sit on top of that and made any later time on a day that already sent unsendable for the rest of the week. Every attempt stamps market_digest_last_attempt_at / market_digest_last_result and writes a Syncs History row, and a declined tick records its gate reason too (repeats collapse to a stamp), so a quiet week names itself instead of looking unremarkable. Pause/Run/Reset on Admin → Syncs; recipient/subject/social on Communications → Monday market brief.",
         status: "scheduled",
         statusLabel: "Cron",
       },

@@ -18,7 +18,7 @@ import {
   readSyncScheduleConfig,
   readSyncScheduleConfigFresh,
 } from '@/lib/sync-schedule-config'
-import { nextWeekdayTimeEt } from '@/lib/admin-sync-schedule'
+import { isJobDueBySchedule, nextWeekdayTimeEt } from '@/lib/admin-sync-schedule'
 import {
   parseStartTimeEt,
   resolveWeekdayEt,
@@ -35,10 +35,48 @@ export {
 
 export const MARKET_DIGEST_EMAIL_KEY = 'market_digest_email'
 export const MARKET_DIGEST_ENABLED_KEY = 'market_digest_enabled'
+/**
+ * The one piece of send state: when a brief last went out. Dedupe compares it
+ * against the configured slot, exactly like every other scheduled job, so there
+ * is nothing else to keep in step.
+ */
 export const MARKET_DIGEST_LAST_SENT_KEY = 'market_digest_last_sent_at'
-export const MARKET_DIGEST_LAST_WEEK_KEY = 'market_digest_last_week_key'
+/**
+ * Every attempt stamps these two, whatever the outcome and whichever host ran it.
+ * Last-sent alone cannot tell an operator whether a quiet week means "sent",
+ * "skipped for a reason", or "the alarm never went off" — which is exactly how
+ * the brief went missing unnoticed.
+ */
+export const MARKET_DIGEST_LAST_ATTEMPT_KEY = 'market_digest_last_attempt_at'
+export const MARKET_DIGEST_LAST_RESULT_KEY = 'market_digest_last_result'
 export const MARKET_DIGEST_SUBJECT_KEY = 'market_digest_subject_template'
 export const MARKET_DIGEST_INCLUDE_SOCIAL_KEY = 'market_digest_include_social'
+/**
+ * Set when Netlify refuses the background worker hop (HTTP 429). Without it the
+ * missed-sync catch-up re-posted the same refused hop every minute for the whole
+ * day: no brief, and a Sync History full of identical "queue failed" rows.
+ */
+export const MARKET_DIGEST_QUEUE_BACKOFF_KEY = 'market_digest_queue_backoff_until'
+/** One thin-cron window — the next scheduled tick gets a clean attempt. */
+export const MARKET_DIGEST_QUEUE_BACKOFF_MS = 30 * 60_000
+
+export async function stampMarketDigestQueueBackoff(
+  now = Date.now(),
+): Promise<void> {
+  await setSyncMetaDurable(
+    MARKET_DIGEST_QUEUE_BACKOFF_KEY,
+    new Date(now + MARKET_DIGEST_QUEUE_BACKOFF_MS).toISOString(),
+  ).catch(() => {})
+}
+
+/** ISO stamp while a refused worker hop is still cooling off, else null. */
+export function marketDigestQueueBackoffUntil(now = Date.now()): string | null {
+  const raw = getSyncMeta(MARKET_DIGEST_QUEUE_BACKOFF_KEY)
+  if (!raw) return null
+  const until = Date.parse(raw)
+  if (!Number.isFinite(until) || until <= now) return null
+  return raw
+}
 
 const SUBJECT_MAX = 200
 
@@ -71,7 +109,6 @@ function buildConfig(parts: {
   emailRaw: string | null | undefined
   enabledRaw: string | null | undefined
   lastSent: string | null | undefined
-  lastWeek: string | null | undefined
   subjectRaw: string | null | undefined
   socialRaw: string | null | undefined
   fallbackEmail: string
@@ -82,7 +119,6 @@ function buildConfig(parts: {
     email: resolveEmail(parts.emailRaw, parts.fallbackEmail),
     enabled: parseEnabled(parts.enabledRaw),
     lastSentAt: parts.lastSent?.trim() || null,
-    lastWeekKey: parts.lastWeek?.trim() || null,
     defaultEmail: DEFAULT_CONTACT_NOTIFY_EMAIL,
     subjectTemplate: alignSubjectTemplateToWeekday(
       resolveSubjectTemplate(parts.subjectRaw, parts.weekdayEt),
@@ -113,7 +149,6 @@ export function getMarketDigestConfig(): MarketDigestConfig {
     emailRaw: getSyncMeta(MARKET_DIGEST_EMAIL_KEY),
     enabledRaw: getSyncMeta(MARKET_DIGEST_ENABLED_KEY),
     lastSent: getSyncMeta(MARKET_DIGEST_LAST_SENT_KEY),
-    lastWeek: getSyncMeta(MARKET_DIGEST_LAST_WEEK_KEY),
     subjectRaw: getSyncMeta(MARKET_DIGEST_SUBJECT_KEY),
     socialRaw: getSyncMeta(MARKET_DIGEST_INCLUDE_SOCIAL_KEY),
     fallbackEmail: getContactNotifyEmail(),
@@ -126,12 +161,11 @@ export function getMarketDigestConfig(): MarketDigestConfig {
 export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> {
   const fallback = await getContactNotifyEmailFresh()
   try {
-    const [emailRaw, enabledRaw, lastSent, lastWeek, subjectRaw, socialRaw, schedule] =
+    const [emailRaw, enabledRaw, lastSent, subjectRaw, socialRaw, schedule] =
       await Promise.all([
         getSyncMetaFresh(MARKET_DIGEST_EMAIL_KEY),
         getSyncMetaFresh(MARKET_DIGEST_ENABLED_KEY),
         getSyncMetaFresh(MARKET_DIGEST_LAST_SENT_KEY),
-        getSyncMetaFresh(MARKET_DIGEST_LAST_WEEK_KEY),
         getSyncMetaFresh(MARKET_DIGEST_SUBJECT_KEY),
         getSyncMetaFresh(MARKET_DIGEST_INCLUDE_SOCIAL_KEY),
         readSyncScheduleConfigFresh(),
@@ -141,7 +175,6 @@ export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> 
       emailRaw,
       enabledRaw,
       lastSent,
-      lastWeek,
       subjectRaw,
       socialRaw,
       fallbackEmail: fallback,
@@ -153,7 +186,6 @@ export async function getMarketDigestConfigFresh(): Promise<MarketDigestConfig> 
       emailRaw: null,
       enabledRaw: null,
       lastSent: null,
-      lastWeek: null,
       subjectRaw: null,
       socialRaw: null,
       fallbackEmail: fallback,
@@ -201,10 +233,13 @@ export async function setMarketDigestIncludeSocialProfiles(
   return include
 }
 
-export async function markMarketDigestSent(weekKey: string): Promise<void> {
-  const iso = new Date().toISOString()
-  await setSyncMetaDurable(MARKET_DIGEST_LAST_SENT_KEY, iso)
-  await setSyncMetaDurable(MARKET_DIGEST_LAST_WEEK_KEY, weekKey)
+export async function markMarketDigestSent(): Promise<void> {
+  await setSyncMetaDurable(MARKET_DIGEST_LAST_SENT_KEY, new Date().toISOString())
+  // A past Next override reads as due forever and short-circuits the slot check,
+  // which would send on every half-hour tick. Only the admin dashboard's own Run
+  // cleared overrides; the scheduled path never did.
+  const { setSyncNextOverride } = await import('@/lib/sync-next-override')
+  await setSyncNextOverride('market-digest', null).catch(() => {})
 }
 
 /** sync_meta lock so the every-30m thin cron cannot overlap Resend sends. */
@@ -214,21 +249,32 @@ export const MARKET_DIGEST_SEND_LOCK_KEY = 'market_digest_send_lock'
 export const MARKET_DIGEST_SEND_LOCK_STALE_MS = 20 * 60 * 1000
 
 /**
- * True when this week's brief was already stamped (once-per-week watermark).
- * Thin cron should skip queueing when true — otherwise a slow worker plus the
- * dense alarm re-sends all morning.
+ * True when the configured slot does not call for a send right now — either it
+ * has not arrived yet, or the brief for it has already gone out.
+ *
+ * This is deliberately the same predicate the scheduler uses for all eleven other
+ * jobs: last finish versus the most recent slot. The brief used to carry a second,
+ * day-keyed watermark on top of it, and because that one keyed on the send *day*
+ * rather than the slot, any send on a given day made every later time that day
+ * unsendable — so moving the start time could not produce a brief, with nothing
+ * recorded to say why. One rule means a moved time is simply a new slot.
+ *
+ * Reads Postgres directly: a sibling host may have sent since this process
+ * hydrated its cache.
  */
-export async function isMarketDigestAlreadySentThisWeek(
+export async function shouldSkipMarketDigestNotDue(
   now = new Date(),
 ): Promise<boolean> {
   try {
-    const [lastWeek, schedule] = await Promise.all([
-      getSyncMetaFresh(MARKET_DIGEST_LAST_WEEK_KEY),
+    const [lastSent, schedule] = await Promise.all([
+      getSyncMetaFresh(MARKET_DIGEST_LAST_SENT_KEY),
       readSyncScheduleConfigFresh(),
     ])
-    const { weekdayEt } = scheduleFieldsFromConfig(schedule)
-    const weekKey = marketDigestWeekKey(now, weekdayEt)
-    return Boolean(lastWeek?.trim() && lastWeek.trim() === weekKey)
+    return !isJobDueBySchedule(
+      schedule.jobs['market-digest'],
+      lastSent?.trim() || null,
+      now,
+    )
   } catch {
     return false
   }
@@ -281,7 +327,8 @@ export function renderMarketDigestSubject(
 
 /**
  * Send-day date key in America/New_York (YYYY-MM-DD of that week's configured
- * weekday — Monday by default). Used as the once-per-week watermark.
+ * weekday — Monday by default). A label for the subject line and logs; it is not
+ * send state, and nothing dedupes on it.
  */
 export function marketDigestWeekKey(
   now: Date = new Date(),

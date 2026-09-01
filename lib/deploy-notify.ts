@@ -6,6 +6,7 @@ import {
 } from '@/lib/deploy-notify-config'
 import { sendSms } from '@/lib/sms-notify'
 import { BRAND_NAME, SITE_URL } from '@/lib/business-info'
+import { resendFrom } from '@/lib/resend-from'
 
 const RESEND_TIMEOUT_MS = 15_000
 
@@ -82,9 +83,7 @@ async function sendDeployEmail(to: string, subject: string, text: string): Promi
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) throw new Error('RESEND_API_KEY not set')
 
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE Deploys <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE Deploys')
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)

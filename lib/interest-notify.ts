@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { SITE_URL } from '@/lib/business-info'
+import { resendFrom } from '@/lib/resend-from'
 
 const RESEND_TIMEOUT_MS = 10_000
 
@@ -12,9 +13,7 @@ export async function notifyInterestConfirmation(opts: {
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) return false
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
   try {

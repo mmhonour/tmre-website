@@ -3,6 +3,11 @@
  * Netlify build prep — listing-photos SQLite only.
  * MLS inventory lives in Neon Postgres; listings.bundle.db is no longer shipped.
  */
+
+// Nothing is imported at the top level here, which would otherwise leave this a
+// global script whose `main` collides with the `main` in every sibling script.
+export {}
+
 async function main(): Promise<void> {
   try {
     await import('better-sqlite3')

@@ -54,8 +54,8 @@ export function formatEventBridgeIngressResult(
 }
 
 /**
- * Record every ingress hit — including auth failures and Configure skips —
- * so Admin can show “EventBridge last fired” when Scheduler is EventBridge.
+ * Record every ingress hit — including auth failures and Configure skips — so
+ * Admin can show “EventBridge last fired” whenever AWS is armed as a clock.
  */
 export async function stampEventBridgeIngressHit(input: {
   jobId?: string | null

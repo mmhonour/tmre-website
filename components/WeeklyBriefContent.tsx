@@ -4,15 +4,30 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
-import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
-import { fmtMoney } from "@/lib/listing-history";
+import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
+import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
 import {
-  type MarketDigestClosedTownCount,
-  type MarketDigestDomTownCount,
-  type MarketDigestPriceTownCount,
-  type MarketDigestSnapshot,
-} from "@/lib/market-digest-types";
+  marketPulseTownScale,
+  type MarketPulseTownScale,
+} from "@/lib/market-pulse-town-scale";
+import {
+  PANEL_SURFACE,
+  PANEL_TITLE,
+  PanelBarRow,
+  fmtActive,
+  fmtDom,
+  fmtMos,
+  formatMetricValue,
+  type MetricValueKind,
+} from "@/components/market-pulse-bar";
+import type { ListingKind } from "@/lib/listing-kind";
+import { fmtMoney } from "@/lib/listing-history";
+import { type MarketDigestSnapshot } from "@/lib/market-digest-types";
 import type { MonthsSupplyPayload } from "@/lib/months-supply-types";
+import {
+  buildMarketPulseCombinedTownRows,
+  type MarketPulseCombinedTownRow,
+} from "@/lib/market-pulse-combined-rows";
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
@@ -22,22 +37,19 @@ import {
 import {
   sortRowsByBuyerFriendlyScore,
   unstackedFavorSortDir,
+  MARKET_PULSE_BUYER_SCORE_COPY,
+  MARKET_PULSE_SELLER_SCORE_COPY,
   type MarketPulseFavorSort,
 } from "@/lib/market-pulse-favorability";
 import {
   formatMarketPulseMoney,
   formatPriceDeltaK,
   formatPriceDeltaPct,
-  meanMinusMedian,
-  PRICE_DELTA_EXPLAIN,
 } from "@/lib/market-pulse-price-delta";
 import {
-  isMarketPulsePriceScaleMetric,
+  formatSaleToAskPct,
   marketPulseDeltaBarSpan,
-  marketPulsePriceBarMax,
   marketPulsePricePct,
-  marketPulseStackedMetrics,
-  type MarketPulseStackedMetricId,
 } from "@/lib/market-pulse-stacked-metrics";
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
@@ -66,132 +78,124 @@ import { splitSentences } from "@/lib/split-sentences";
 type ChartLayout = MarketPulseChartLayout;
 type FavorSort = MarketPulseFavorSort;
 type MetricSortDir = "asc" | "desc";
-type MetricValueKind = "int" | "mos" | "dom" | "money";
 
-/** Value sits on the fill (cream) vs the empty track (navy). */
-const BAR_VALUE_ON_FILL = "text-[#F6F1E8]";
-const BAR_VALUE_ON_EMPTY = "text-[var(--mp-text)]";
-
-function BarValueOverlay({
-  value,
-  asideLeft,
-  leftPct,
-  widthPct,
-  colorClass,
-}: {
-  value: ReactNode;
-  asideLeft?: ReactNode;
-  leftPct: number;
-  widthPct: number;
-  colorClass?: string;
-}) {
-  const fillLeft = Math.min(Math.max(leftPct, 0), 100);
-  const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100);
-  const fontClass = "[font-family:var(--mp-mono-font)]";
-  const base = `pointer-events-none absolute inset-y-0 z-[1] flex items-center text-[10px] tabular-nums whitespace-nowrap ${fontClass}`;
-  // Every value right-aligns in the grey track; only a full bar puts it on the fill.
-  const valueColor =
-    colorClass ?? (fillRight >= 95 ? BAR_VALUE_ON_FILL : BAR_VALUE_ON_EMPTY);
-  /**
-   * Aside (Delta %) hugs the outside of the fill's left edge so it reads against
-   * the bar it describes. A fill starting near the track edge leaves no room, so
-   * it moves just inside the fill instead of overflowing the track.
-   */
-  const asideInsideFill = fillLeft < 14;
-
-  return (
-    <>
-      {asideLeft ? (
-        <span
-          className={`${base} ${
-            asideInsideFill
-              ? `justify-start pl-1 ${BAR_VALUE_ON_FILL}`
-              : `justify-end pr-1 ${BAR_VALUE_ON_EMPTY}`
-          }`}
-          style={
-            asideInsideFill
-              ? { left: `${fillLeft}%`, right: 0 }
-              : { left: 0, right: `${100 - fillLeft}%` }
-          }
-        >
-          {asideLeft}
-        </span>
-      ) : null}
-      <span className={`${base} inset-x-0 justify-end pr-1 ${valueColor}`}>
-        {value}
-      </span>
-    </>
-  );
+/** Rentals are leased, not closed, and every label that says so follows. */
+function closedNounFor(kind: ListingKind): { title: string; lower: string } {
+  return kind === "rental"
+    ? { title: "Leased", lower: "leases" }
+    : { title: "Closed sales", lower: "closed sales" };
 }
 
-const METRIC_COLORS = {
-  inventory: "bg-[var(--mp-inventory-bar)]",
-  monthsSupply: "bg-[var(--mp-months-supply-bar)]",
-  avgDom: "bg-[var(--mp-avg-dom-bar,#5B8A72)]",
-  closed: "bg-[var(--mp-closed-bar,#C45C4A)]",
-  medianPrice: "bg-[var(--mp-median-bar,#6B7C9B)]",
-  averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
-  priceDelta: "bg-[var(--mp-delta-bar,#7A6A8A)]",
-} as const;
 
 function ClosedLookbackSlider({
   lookbackId,
   onChange,
   pending,
+  fill = false,
 }: {
   lookbackId: MarketPulseLookbackId;
   onChange: (id: MarketPulseLookbackId) => void;
   pending?: boolean;
+  /** Take the height of whatever it stands beside instead of a fixed rail. */
+  fill?: boolean;
 }) {
   const index = marketPulseLookbackIndex(lookbackId);
   const current = marketPulseLookbackChartLabel(lookbackId);
   const lastIndex = MARKET_PULSE_LOOKBACK_OPTIONS.length - 1;
-  return (
-    <div className="flex h-40 w-8 shrink-0 flex-col items-center gap-1">
+  // The selected label is centred on its tick and so overhangs the rail by half
+  // its height at either end; the gap below keeps the top one off the caption.
+  const body = (
+    <div
+      className={`flex flex-col gap-2 ${
+        // Filling takes the height of the block alongside. The rail has to be
+        // taken out of flow to do that, or the range input's own intrinsic
+        // length would set the height and drag the block taller with it.
+        fill ? "absolute inset-0" : "h-56 w-[4.75rem] shrink-0 sm:w-20"
+      }`}
+    >
       <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold tracking-[0.16em] uppercase text-[var(--mp-text)]">
         Lookback
       </span>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center">
-        <div
-          className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-black/15"
-          aria-hidden
-        />
-        <div className="absolute inset-y-1 right-0 z-0 flex flex-col justify-between">
-          {[...MARKET_PULSE_LOOKBACK_OPTIONS].reverse().map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              tabIndex={-1}
-              aria-label={opt.label}
-              onClick={() => onChange(opt.id)}
-              className={`pointer-events-auto h-1.5 w-1.5 shrink-0 rounded-full ${
-                opt.id === lookbackId
-                  ? "bg-[var(--mp-accent)]"
-                  : "bg-[var(--mp-text)]/25"
-              }`}
-            />
-          ))}
+      <div className="relative flex min-h-0 flex-1 items-stretch">
+        <div className="relative flex w-3 shrink-0 items-center justify-center">
+          <div
+            className="pointer-events-none absolute inset-y-1 left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--mp-hairline,rgba(0,0,0,0.15))]"
+            aria-hidden
+          />
+          <input
+            type="range"
+            min={0}
+            max={lastIndex}
+            step={1}
+            value={index}
+            aria-label="Lookback"
+            aria-valuetext={`${current}${pending ? " loading" : ""}`}
+            onChange={(e) =>
+              onChange(marketPulseLookbackIdAt(Number(e.target.value)))
+            }
+            className="mp-lookback-slider-vert relative z-[1] cursor-pointer appearance-none bg-transparent"
+          />
         </div>
-        <input
-          type="range"
-          min={0}
-          max={lastIndex}
-          step={1}
-          value={index}
-          aria-label="Lookback"
-          aria-valuetext={`${current}${pending ? " loading" : ""}`}
-          onChange={(e) =>
-            onChange(marketPulseLookbackIdAt(Number(e.target.value)))
-          }
-          className="mp-lookback-slider-vert relative z-[1] cursor-pointer appearance-none bg-transparent"
-        />
+        {/*
+         * Each notch is pinned to its own share of the rail rather than laid out
+         * in a column, so the enlarged selected label grows around its tick
+         * instead of shoving its neighbours off the mark they name. Ticks sit
+         * beside the rail, not over it, so they never swallow a thumb drag.
+         */}
+        <div className="relative min-w-0 flex-1">
+          <div className="absolute inset-x-0 inset-y-1">
+            {MARKET_PULSE_LOOKBACK_OPTIONS.map((opt, i) => {
+              const selected = opt.id === lookbackId;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  tabIndex={-1}
+                  aria-label={opt.label}
+                  onClick={() => onChange(opt.id)}
+                  style={{ top: `${100 - (i / lastIndex) * 100}%` }}
+                  className="absolute left-0 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap"
+                >
+                  <span
+                    aria-hidden
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      selected
+                        ? "bg-[var(--mp-accent)]"
+                        : "bg-[var(--mp-text)]/25"
+                    }`}
+                  />
+                  <span
+                    className={`[font-family:var(--mp-mono-font)] tabular-nums leading-none uppercase ${
+                      selected
+                        ? "text-[16px] text-[var(--mp-accent)]"
+                        : "text-[8px] text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
+                    }`}
+                  >
+                    {opt.label}
+                    {selected && pending ? "…" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
-      <span className="[font-family:var(--mp-mono-font)] text-[8px] tabular-nums uppercase text-[var(--mp-muted-text)]">
-        {current}
-        {pending ? "…" : ""}
-      </span>
     </div>
   );
+
+  if (!fill) return body;
+  return (
+    <div className="relative w-[4.75rem] shrink-0 self-stretch sm:w-20">
+      {body}
+    </div>
+  );
+}
+
+/** What the two layouts are, which the ordering explanation never said. */
+function marketPulseLayoutExplain(chartLayout: ChartLayout): string {
+  return chartLayout === "stacked"
+    ? "Stacked gives each town one card with all of its metrics on it, so you read a town top to bottom and compare towns by scrolling."
+    : "Unstacked gives each metric one card with every town on it, so you read a metric across the towns and compare towns at a glance on that one measure.";
 }
 
 function marketPulseSortExplain(
@@ -199,35 +203,20 @@ function marketPulseSortExplain(
   favorSort: FavorSort,
 ): string {
   if (favorSort === "default") {
-    return "Towns stay in default town order. All towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
+    return "Towns stay in default town order. All Towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
   }
   if (chartLayout === "stacked") {
-    return `Sorted by buyer/seller friendly composite (months supply, avg days on market, closed, median, delta, average — ${
+    return `Ordered by a buyer/seller composite of months supply, avg days on market, closed, median, delta, average and list to ask, in the ${
       favorSort === "sellers"
         ? "seller-friendly direction"
         : "buyer-friendly direction"
-    }). All towns stays on top.`;
+    }. All Towns stays on top.`;
   }
-  return `Each unstacked chart sorts on its own metric (${
+  return `Each card orders the towns on its own metric (${
     favorSort === "sellers"
-      ? "Seller: MOS↓, DOM↓, closed↑, median/delta/avg↑"
-      : "Buyer: MOS↑, DOM↑, closed↓, median/delta/avg↓"
-  }). All towns stays on top.`;
-}
-
-function fmtMos(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "n/a";
-  return `${n.toFixed(1)} mo`;
-}
-
-function fmtActive(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return String(Math.round(n));
-}
-
-function fmtDom(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${Math.round(n)}d`;
+      ? "seller: months supply and days on market lowest first, closed and prices highest first"
+      : "buyer: months supply and days on market highest first, closed and prices lowest first"
+  }). All Towns stays on top.`;
 }
 
 /** Town minus All-towns. Positive means the town is higher than the market. */
@@ -254,7 +243,7 @@ function fmtSignedDelta(
 
 function cityLabel(row: { city: string }): string {
   const city = row.city?.trim() || "—";
-  if (city.toLowerCase() === "all") return "All towns";
+  if (city.toLowerCase() === "all") return "All Towns";
   return city;
 }
 
@@ -301,33 +290,45 @@ const TOWN_METRICS_HEADING_CLASS =
   "[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3 inline-flex flex-wrap items-baseline gap-x-1.5";
 
 const TOWN_NAME_CLASS =
-  "[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors";
+  "text-inherit underline decoration-[var(--mp-text)]/40 underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors";
 
-function TownMetricsLayoutWord({
-  label,
-  selected,
+/**
+ * Bar-state toggle. Two glyphs, one for each layout: rows banded together for
+ * stacked, rows split apart for unstacked. The title beside it names the town,
+ * so spelling the two states out in words was costing a line for nothing.
+ */
+function TownMetricsLayoutToggle({
+  layout,
   onSelect,
 }: {
-  label: "stacked" | "unstacked";
-  selected: boolean;
-  onSelect: () => void;
+  layout: ChartLayout;
+  onSelect: (next: ChartLayout) => void;
 }) {
-  const text = label === "unstacked" ? "Unstacked" : "stacked";
-  if (selected) {
-    return (
-      <span className="font-semibold text-[var(--mp-accent)]" aria-current="true">
-        {text}
-      </span>
-    );
-  }
+  const stacked = layout === "stacked";
+  const next: ChartLayout = stacked ? "unstacked" : "stacked";
   return (
     <button
       type="button"
-      aria-label={`Show ${text} town metrics`}
-      onClick={onSelect}
-      className="underline decoration-[var(--mp-text)]/35 underline-offset-2 hover:text-[var(--mp-text)] hover:decoration-[var(--mp-text)]/55"
+      aria-label={`Showing ${layout} town metrics. Switch to ${next}.`}
+      title={`Switch to ${next}`}
+      onClick={() => onSelect(next)}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 hover:text-[var(--mp-text)]"
     >
-      {text}
+      <svg viewBox="0 0 14 14" className="h-7 w-7" aria-hidden>
+        {stacked ? (
+          <>
+            <rect x="1" y="3" width="12" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="6" width="9" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="9" width="6" height="2" rx="1" fill="currentColor" />
+          </>
+        ) : (
+          <>
+            <rect x="1" y="1.5" width="12" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="6" width="8" height="2" rx="1" fill="currentColor" />
+            <rect x="1" y="10.5" width="4" height="2" rx="1" fill="currentColor" />
+          </>
+        )}
+      </svg>
     </button>
   );
 }
@@ -398,13 +399,17 @@ function TownName({
       </Link>
     );
   }
-  return (
-    <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
-      {label}
-    </span>
-  );
+  return <span className="truncate text-inherit">{label}</span>;
 }
 
+/**
+ * Which side the town order favours, as a balance rather than a sentence.
+ *
+ * The beam tips toward the side the list is ordered for, and the pans say who
+ * those sides are: a money bag for the seller, a house and key for the buyer.
+ * Words live in the title and the accessible name, since the state is a
+ * picture of itself.
+ */
 function FavorSortToggle({
   favorSort,
   onToggle,
@@ -422,14 +427,65 @@ function FavorSortToggle({
     <button
       type="button"
       onClick={onToggle}
-      title={`Flip to ${next}`}
-      aria-label={`Sort by ${current}. Flip to ${next}`}
-      className="inline-flex min-w-0 items-baseline gap-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-text)] hover:text-[var(--mp-accent)]"
+      title={`${current} — switch to ${next}`}
+      aria-label={`Towns ordered ${current}. Switch to ${next}.`}
+      className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <span className="text-[var(--mp-muted-text)]">Sort</span>
-      <span className="underline decoration-[var(--mp-text)]/35 underline-offset-2">
-        {current}
-      </span>
+      <svg viewBox="-4 -3 50 42" className="h-16 w-16" aria-hidden>
+        <path
+          d="M18 7v16"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+        <path d="M13 27h10l-5-5z" fill="currentColor" />
+        <g
+          transform={buyers ? "rotate(8 18 9)" : "rotate(-8 18 9)"}
+          className="transition-transform duration-200"
+        >
+          <path
+            d="M2 9h38"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          {/* Seller: a money bag, tied at the neck, with its dollar mark. */}
+          <g fill="var(--color-coral, #C85A3A)">
+            <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
+            <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
+          </g>
+          <text
+            x="5"
+            y="17.4"
+            textAnchor="middle"
+            fontSize="6"
+            fontWeight="700"
+            fill="#fff"
+          >
+            $
+          </text>
+          {/*
+           * Buyer: the house stands on the beam and the key hangs beneath it,
+           * so the key has the whole pan to run along rather than sharing it
+           * end to end with the house.
+           */}
+          <g>
+            <path
+              d="M33 1.6l4.2 4.1h-1.45v2.9h-5.5v-2.9h-1.45z"
+              fill="var(--color-sage, #4A7C6F)"
+            />
+            <g fill="#000">
+              <rect x="24" y="11.6" width="14" height="0.95" rx="0.3" />
+              <rect x="24.2" y="12.5" width="0.6" height="1.9" rx="0.15" />
+              <rect x="25.2" y="12.5" width="0.45" height="1.1" rx="0.15" />
+              <rect x="26" y="12.5" width="0.7" height="1.6" rx="0.15" />
+              <rect x="27.1" y="12.5" width="0.4" height="0.9" rx="0.15" />
+              <rect x="27.9" y="12.5" width="0.55" height="1.75" rx="0.15" />
+              <circle cx="39.8" cy="12.05" r="1.9" />
+            </g>
+          </g>
+        </g>
+      </svg>
     </button>
   );
 }
@@ -461,81 +517,19 @@ function sortRowsByMetricValue<Row extends { city: string }>(
   return [...all, ...rest];
 }
 
-type CombinedTownRow = {
-  city: string;
-  activeCount: number | null;
-  monthsSupply: number | null;
-  avgDaysOnMarket: number | null;
-  closedCount: number | null;
-  medianPrice: number | null;
-  averagePrice: number | null;
-  priceDelta: number | null;
-  priceDeltaPct: number | null;
-  activeCountCalc?: StatsValueCalc;
-  monthsSupplyCalc?: StatsValueCalc;
-  avgDaysOnMarketCalc?: StatsValueCalc;
-  closedCalc?: StatsValueCalc;
-  medianPriceCalc?: StatsValueCalc;
-  averagePriceCalc?: StatsValueCalc;
-};
+/**
+ * Same row the email builds from — kept as an alias rather than a second local
+ * shape so a new cached metric cannot reach one surface and miss the other.
+ */
+type CombinedTownRow = MarketPulseCombinedTownRow;
 
-function buildCombinedTownRows(
-  inventory: MonthsSupplyPayload[],
-  domRows: MarketDigestDomTownCount[],
-  closedRows: MarketDigestClosedTownCount[],
-  priceRows: MarketDigestPriceTownCount[],
-): CombinedTownRow[] {
-  const domBy = new Map(
-    domRows.map((r) => [cityKey(r.city), r] as const),
-  );
-  const closedBy = new Map(
-    closedRows.map((r) => [cityKey(r.city), r] as const),
-  );
-  const priceBy = new Map(
-    priceRows.map((r) => [cityKey(r.city), r] as const),
-  );
-  return inventory.map((row) => {
-    const key = cityKey(row.city);
-    const dom = domBy.get(key);
-    const closed = closedBy.get(key);
-    const price = priceBy.get(key);
-    const delta = meanMinusMedian(price?.averagePrice, price?.medianPrice);
-    return {
-      city: row.city,
-      activeCount: row.activeCount ?? null,
-      monthsSupply: row.monthsSupply ?? null,
-      avgDaysOnMarket: dom?.avgDaysOnMarket ?? null,
-      closedCount: closed?.count ?? null,
-      medianPrice: price?.medianPrice ?? null,
-      averagePrice: price?.averagePrice ?? null,
-      priceDelta: delta.dollars,
-      priceDeltaPct: delta.pct,
-      activeCountCalc: row.activeCountCalc,
-      monthsSupplyCalc: row.monthsSupplyCalc,
-      avgDaysOnMarketCalc: dom?.avgDaysOnMarketCalc,
-      closedCalc: closed?.calc,
-      medianPriceCalc: price?.medianPriceCalc,
-      averagePriceCalc: price?.averagePriceCalc,
-    };
-  });
-}
-
-function formatMetricValue(
-  kind: MetricValueKind,
-  display: number | null,
-): string {
-  if (kind === "mos") return fmtMos(display);
-  if (kind === "dom") return fmtDom(display);
-  if (kind === "money") return formatMarketPulseMoney(display);
-  return fmtActive(display);
-}
+const buildCombinedTownRows = buildMarketPulseCombinedTownRows;
 
 function BarChart<Row extends { city: string }>({
   title,
   rows,
   valueOf,
   valueKind,
-  barClassName,
   emptyMessage,
   townHref,
   settle,
@@ -545,9 +539,11 @@ function BarChart<Row extends { city: string }>({
   sortValueOf,
   formatValue,
   formatValueAside,
+  asideNegative,
   explainDelta = false,
   scaleMax,
   barSpanOf,
+  inPanel = false,
   townsExpanded = true,
   onAllTownsToggle,
 }: {
@@ -555,7 +551,6 @@ function BarChart<Row extends { city: string }>({
   rows: Row[];
   valueOf: (row: Row) => number | null;
   valueKind: MetricValueKind;
-  barClassName: string;
   emptyMessage: string;
   townHref?: (cityLabel: string) => string;
   settle: MarketPulseSettleState;
@@ -568,12 +563,16 @@ function BarChart<Row extends { city: string }>({
   /** Sort key when it differs from bar width (e.g. signed delta vs abs). */
   sortValueOf?: (row: Row) => number | null;
   formatValue?: (row: Row, display: number | null, index: number) => string;
-  /** Percent (or other) shown next to the town, not beside the dollar amount. */
+  /** Percent (or other) shown against the bar itself, not beside the dollar amount. */
   formatValueAside?: (row: Row, index: number) => string;
+  /** Settled sign of that percent — it decides which side of the fill it takes. */
+  asideNegative?: (row: Row) => boolean;
   /** Title “Delta” is a link with the mean-vs-median popup. */
   explainDelta?: boolean;
   /** When set (Median / Average / Delta), bars share one dollar axis. */
   scaleMax?: number;
+  /** Drop the card, so a parent can group several charts on one. */
+  inPanel?: boolean;
   /** Delta: bar starts at one price-axis end and stops at the other. */
   barSpanOf?: (row: Row) => {
     start: number | null;
@@ -607,8 +606,8 @@ function BarChart<Row extends { city: string }>({
   }, [rows, sortable, effectiveSort, rankOf]);
 
   const titleRow = (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <p className="min-w-0 [font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)]">
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <p className={`min-w-0 ${PANEL_TITLE}`}>
         {explainDelta ? (
           <>
             <MarketPulseDeltaLabel />
@@ -631,9 +630,7 @@ function BarChart<Row extends { city: string }>({
             title="Ascending"
             onClick={() => setSortDir("asc")}
             className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
-              effectiveSort === "asc"
-                ? "text-[var(--mp-accent)]"
-                : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
+              effectiveSort === "asc" ? "text-gold" : "text-white/35 hover:text-white/70"
             }`}
           >
             ▲
@@ -645,9 +642,7 @@ function BarChart<Row extends { city: string }>({
             title="Descending"
             onClick={() => setSortDir("desc")}
             className={`px-0.5 font-mono text-[11px] leading-none transition-colors ${
-              effectiveSort === "desc"
-                ? "text-[var(--mp-accent)]"
-                : "text-[var(--mp-muted-text)]/45 hover:text-[var(--mp-muted-text)]"
+              effectiveSort === "desc" ? "text-gold" : "text-white/35 hover:text-white/70"
             }`}
           >
             ▼
@@ -659,15 +654,9 @@ function BarChart<Row extends { city: string }>({
 
   if (rows.length === 0) {
     return (
-      <section>
-        {sortable ? (
-          titleRow
-        ) : (
-          <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.16em] uppercase text-[var(--mp-accent)] mb-3">
-            {title}
-          </p>
-        )}
-        <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
+      <section className={inPanel ? undefined : PANEL_SURFACE}>
+        {sortable ? titleRow : <p className={PANEL_TITLE}>{title}</p>}
+        <p className="mt-2 [font-family:var(--mp-mono-font)] text-[10px] text-white/45">
           {emptyMessage}
         </p>
       </section>
@@ -698,9 +687,9 @@ function BarChart<Row extends { city: string }>({
         : "duration-150";
 
   return (
-    <section>
+    <section className={inPanel ? undefined : PANEL_SURFACE}>
       {titleRow}
-      <ul className="space-y-2.5">
+      <ul>
         {visibleRows.map((row, index) => {
           const v = valueOf(row);
           const settled =
@@ -746,69 +735,281 @@ function BarChart<Row extends { city: string }>({
                     : title.startsWith("Median")
                       ? "Median"
                       : "Delta"
-                  : title.startsWith("Closed")
-                    ? "Closed sales"
+                  : title.startsWith("Closed") || title.startsWith("Leased")
+                    ? title.split(" —")[0]
                     : "Active inventory";
-          return (
-            <li
-              key={`${row.city}-${title}`}
-              data-mp-town={row.city}
-              className="grid grid-cols-[4.75rem_1fr] items-center gap-1.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"
+          const asideText = formatValueAside?.(row, index);
+          const townName = onAllTownsToggle ? (
+            <TownName
+              city={row.city ?? label}
+              label={label}
+              href={href}
+              townsExpanded={townsExpanded}
+              onAllTownsToggle={onAllTownsToggle}
+              settle={settle}
+              rotateTownNames={rotateNames}
+            />
+          ) : href ? (
+            <Link
+              href={href}
+              className="truncate underline decoration-white/25 underline-offset-2 transition-colors hover:text-gold"
             >
-              {onAllTownsToggle ? (
+              {label}
+            </Link>
+          ) : (
+            label
+          );
+          return (
+            <li key={`${row.city}-${title}`} data-mp-town={row.city}>
+              <PanelBarRow
+                label={townName}
+                valueText={valueText}
+                leftPct={aligned.leftPct}
+                widthPct={aligned.widthPct}
+                aside={asideText}
+                asideNegative={asideNegative?.(row) ?? false}
+                widthTransition={widthTransition}
+                href={href}
+                tooltip={
+                  <div
+                    className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                    role="tooltip"
+                  >
+                    <StatsCalcTooltipShell
+                      label={label}
+                      valueLine={`${valueText} · ${metricLabel}`}
+                      calc={calc}
+                      theme="light"
+                    />
+                  </div>
+                }
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+
+/** Median, Delta and Average for one town, on the shared dollar axis. */
+const PRICE_METRIC_IDS = ["medianPrice", "priceDelta", "averagePrice"] as const;
+type PriceMetricId = (typeof PRICE_METRIC_IDS)[number];
+
+/**
+ * The price trio, grouped by town rather than by metric.
+ *
+ * These three are one reading, not three: Delta is the span between Median and
+ * Average, so it only says anything sat between the two bars it measures. Three
+ * separate town rankings broke that apart, and one card per metric broke it
+ * apart three times over.
+ */
+/**
+ * Sort control for one of the price metrics.
+ *
+ * The arrow is the switch, not the label: Delta's label is already a button
+ * that opens the explainer, and one cannot sit inside another. The arrow is
+ * also the state — dim until this metric is the one ordering the towns, then
+ * solid and pointing the way it has put them.
+ */
+function PriceSortLabel({
+  id,
+  name,
+  label,
+  sort,
+  onSort,
+}: {
+  id: PriceMetricId;
+  /** Plain name for the control's accessible label. */
+  name: string;
+  label: ReactNode;
+  sort: { id: PriceMetricId; dir: MetricSortDir } | null;
+  onSort: (next: { id: PriceMetricId; dir: MetricSortDir }) => void;
+}) {
+  const active = sort?.id === id;
+  const ascending = active && sort.dir === "asc";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${PANEL_TITLE} ${
+        active ? "" : "text-white/45"
+      }`}
+    >
+      {label}
+      <button
+        type="button"
+        aria-label={`Sort towns by ${name}, ${
+          ascending ? "highest" : "lowest"
+        } first`}
+        onClick={() => onSort({ id, dir: ascending ? "desc" : "asc" })}
+        className={`font-mono text-[9px] leading-none transition-colors ${
+          active ? "text-gold" : "text-white/30 hover:text-gold"
+        }`}
+      >
+        {ascending ? "▲" : "▼"}
+      </button>
+    </span>
+  );
+}
+
+function UnstackedPricePanel({
+  rows,
+  scale,
+  metrics,
+  settle,
+  townsExpanded,
+  onAllTownsToggle,
+  townHref,
+}: {
+  rows: CombinedTownRow[];
+  scale: MarketPulseTownScale;
+  metrics: ReturnType<typeof marketPulseTownMetrics>;
+  settle: MarketPulseSettleState;
+  townsExpanded: boolean;
+  onAllTownsToggle: () => void;
+  townHref?: (cityLabel: string) => string;
+}) {
+  const priceMetrics = PRICE_METRIC_IDS.map((id) =>
+    metrics.find((m) => m.id === id),
+  ).filter((m): m is (typeof metrics)[number] => m != null);
+  const [sort, setSort] = useState<{
+    id: PriceMetricId;
+    dir: MetricSortDir;
+  } | null>(null);
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const valueOf = (r: CombinedTownRow) =>
+      sort.id === "medianPrice"
+        ? r.medianPrice
+        : sort.id === "averagePrice"
+          ? r.averagePrice
+          : r.priceDelta;
+    return sortRowsByMetricValue(rows, valueOf, sort.dir);
+  }, [rows, sort]);
+  const rotateNames = rotatingTownNames(rows);
+  const widthTransition =
+    settle.phase === "scramble"
+      ? "duration-300"
+      : settle.phase === "countup"
+        ? "duration-75"
+        : "duration-150";
+
+  if (rows.length === 0 || priceMetrics.length === 0) return null;
+
+  return (
+    <section className={PANEL_SURFACE}>
+      {/*
+       * The three metrics head the panel rather than titling it, spread across
+       * its width so each sits over roughly the stretch of bar it governs, and
+       * each one orders the towns below.
+       */}
+      <div className="flex items-center justify-between gap-2">
+        <PriceSortLabel
+          id="medianPrice"
+          name="median"
+          label="Median"
+          sort={sort}
+          onSort={setSort}
+        />
+        <PriceSortLabel
+          id="priceDelta"
+          name="delta"
+          label={<MarketPulseDeltaLabel />}
+          sort={sort}
+          onSort={setSort}
+        />
+        <PriceSortLabel
+          id="averagePrice"
+          name="average"
+          label="Average"
+          sort={sort}
+          onSort={setSort}
+        />
+      </div>
+      <ul className="mt-2 space-y-3">
+        {visibleTownRows(sorted, townsExpanded).map((row, rowIndex) => {
+          const label = cityLabel(row);
+          return (
+            <li key={`price-${row.city}`} data-mp-town={row.city}>
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
                 <TownName
                   city={row.city ?? label}
                   label={label}
-                  href={href}
+                  href={townHref?.(row.city ?? label)}
                   townsExpanded={townsExpanded}
                   onAllTownsToggle={onAllTownsToggle}
                   settle={settle}
                   rotateTownNames={rotateNames}
                 />
-              ) : href ? (
-                <Link
-                  href={href}
-                  className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate underline decoration-[var(--mp-text)] underline-offset-2 hover:text-[var(--mp-accent)] hover:decoration-[var(--mp-accent)] transition-colors"
-                >
-                  {label}
-                </Link>
-              ) : (
-                <span className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-text)] truncate">
-                  {label}
-                </span>
-              )}
-              <div className="group relative h-4 rounded-sm bg-black/10 overflow-visible">
-                <div className="h-full overflow-hidden rounded-sm">
-                  <div
-                    className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${barClassName}`}
-                    style={{
-                      marginLeft: `${aligned.leftPct}%`,
-                      width: `${aligned.widthPct}%`,
-                    }}
-                  />
-                </div>
-                <BarValueOverlay
-                  value={valueText}
-                  asideLeft={
-                    formatValueAside ? formatValueAside(row, index) : undefined
-                  }
-                  leftPct={aligned.leftPct}
-                  widthPct={aligned.widthPct}
-                  // Gold months-supply fill reads fine under the standard text,
-                  // so it keeps it instead of flipping to cream.
-                  colorClass={valueKind === "mos" ? BAR_VALUE_ON_EMPTY : undefined}
-                />
-                <div
-                  className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                  role="tooltip"
-                >
-                  <StatsCalcTooltipShell
-                    label={label}
-                    valueLine={`${valueText} · ${metricLabel}`}
-                    calc={calc}
-                    theme="light"
-                  />
-                </div>
+              </p>
+              <div className="mt-1 border-t border-white/[0.08] pt-0.5">
+                {priceMetrics.map((m, i) => {
+                  const scrambleIndex = rowIndex * metrics.length + i;
+                  const pctOf = (id: "medianPrice" | "averagePrice") =>
+                    settleBarPercent(
+                      marketPulsePricePct(
+                        id === "medianPrice" ? row.medianPrice : row.averagePrice,
+                        scale.priceMax,
+                      ),
+                      rowIndex * metrics.length +
+                        metrics.findIndex((x) => x.id === id),
+                      settle,
+                      barScrambleNone,
+                    );
+                  const aligned =
+                    m.id === "priceDelta"
+                      ? marketPulseDeltaBarSpan(
+                          pctOf("medianPrice"),
+                          pctOf("averagePrice"),
+                        )
+                      : {
+                          leftPct: 0,
+                          widthPct: pctOf(
+                            m.id === "medianPrice" ? "medianPrice" : "averagePrice",
+                          ),
+                        };
+                  const valueText =
+                    m.id === "priceDelta"
+                      ? formatPriceDeltaK(
+                          settleSignedNumber(
+                            row.priceDelta,
+                            settle,
+                            scrambleIndex,
+                            0,
+                          ),
+                        )
+                      : formatMarketPulseMoney(
+                          m.id === "medianPrice"
+                            ? row.medianPrice
+                            : row.averagePrice,
+                        );
+                  return (
+                    <PanelBarRow
+                      key={m.id}
+                      label={m.label}
+                      valueText={valueText}
+                      leftPct={aligned.leftPct}
+                      widthPct={aligned.widthPct}
+                      aside={
+                        m.id === "priceDelta"
+                          ? formatPriceDeltaPct(
+                              settleSignedNumber(
+                                row.priceDeltaPct,
+                                settle,
+                                scrambleIndex + 19,
+                                1,
+                              ),
+                            )
+                          : null
+                      }
+                      asideNegative={
+                        m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0
+                      }
+                      widthTransition={widthTransition}
+                      dense
+                    />
+                  );
+                })}
               </div>
             </li>
           );
@@ -818,64 +1019,8 @@ function BarChart<Row extends { city: string }>({
   );
 }
 
-function combinedMetrics(closedLookbackLabel: string) {
-  const chrome: Record<
-    MarketPulseStackedMetricId,
-    {
-      barClassName: string;
-      valueKind: MetricValueKind;
-      calcOf: (r: CombinedTownRow) => StatsValueCalc | undefined;
-    }
-  > = {
-    inventory: {
-      barClassName: METRIC_COLORS.inventory,
-      valueKind: "int",
-      calcOf: (r) => r.activeCountCalc,
-    },
-    monthsSupply: {
-      barClassName: METRIC_COLORS.monthsSupply,
-      valueKind: "mos",
-      calcOf: (r) => r.monthsSupplyCalc,
-    },
-    avgDom: {
-      barClassName: METRIC_COLORS.avgDom,
-      valueKind: "dom",
-      calcOf: (r) => r.avgDaysOnMarketCalc,
-    },
-    closed: {
-      barClassName: METRIC_COLORS.closed,
-      valueKind: "int",
-      calcOf: (r) => r.closedCalc,
-    },
-    medianPrice: {
-      barClassName: METRIC_COLORS.medianPrice,
-      valueKind: "money",
-      calcOf: (r) => r.medianPriceCalc,
-    },
-    averagePrice: {
-      barClassName: METRIC_COLORS.averagePrice,
-      valueKind: "money",
-      calcOf: (r) => r.averagePriceCalc,
-    },
-    priceDelta: {
-      barClassName: METRIC_COLORS.priceDelta,
-      valueKind: "int",
-      calcOf: (r) => ({
-        summary: PRICE_DELTA_EXPLAIN,
-        detail: [
-          `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
-        ],
-      }),
-    },
-  };
-
-  return marketPulseStackedMetrics(closedLookbackLabel).map((m) => ({
-    ...m,
-    ...chrome[m.id],
-    valueOf: m.barValueOf,
-    formatOf: m.format,
-  }));
-}
+/** This panel rides the page settle, not the per-chart scramble frames. */
+const barScrambleNone = null;
 
 /** One town block with four stacked metric bars (each normalized to its own max). */
 function CombinedMetricsChart({
@@ -884,23 +1029,36 @@ function CombinedMetricsChart({
   townHref,
   settle,
   closedLookbackLabel,
+  lookbackId,
   closedPending = false,
   closedBarMax = 0,
   townsExpanded,
   onAllTownsToggle,
+  saleToAskTownHref,
+  metricStatsHref,
+  kind,
+  lookbackRail,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
+  /** Turns the List to ask row label into a link to its Stats chart. */
+  saleToAskTownHref?: (cityLabel: string) => string;
+  /** Stats chart behind each bar, by metric and town. */
+  metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
+  kind: ListingKind;
+  /** Lookback control, stood beside the All towns block and sized to it. */
+  lookbackRail?: ReactNode;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
+  lookbackId: MarketPulseLookbackId;
   closedPending?: boolean;
   /** 24-month Closed max — 7d bars stay a slice of this, not 100%. */
   closedBarMax?: number;
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
 }) {
-  const metrics = combinedMetrics(closedLookbackLabel);
+  const metrics = marketPulseTownMetrics(closedLookbackLabel, kind);
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
   useEffect(() => {
@@ -908,8 +1066,19 @@ function CombinedMetricsChart({
       setBarScramble(null);
       return;
     }
-    setBarScramble(randomBarPercents(rows.length * metrics.length));
+    // One extra slot per row so the heat marker scrambles on its own number.
+    setBarScramble(randomBarPercents(rows.length * (metrics.length + 1)));
   }, [settle.phase, settle.tick, rows.length, metrics.length]);
+
+  const scale = useMemo(
+    () =>
+      marketPulseTownScale(rows, {
+        closedLookbackLabel,
+        kind,
+        closedBarMax,
+      }),
+    [rows, closedLookbackLabel, kind, closedBarMax],
+  );
 
   if (rows.length === 0) {
     return (
@@ -918,159 +1087,9 @@ function CombinedMetricsChart({
           <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p>
         ) : null}
         <p className="[font-family:var(--mp-heading-font)] text-sm text-[var(--mp-muted-text)]">
-          No town rows in cache yet.
+          No town figures yet.
         </p>
       </section>
-    );
-  }
-
-  const maxByMetric = metrics.map((m) =>
-    Math.max(
-      0,
-      ...rows.map((r) => {
-        const v = m.valueOf(r);
-        return v != null && Number.isFinite(v) ? v : 0;
-      }),
-    ),
-  );
-  const priceMax = marketPulsePriceBarMax(rows);
-
-  const widthTransition =
-    settle.phase === "scramble"
-      ? "duration-300"
-      : settle.phase === "countup"
-        ? "duration-75"
-        : "duration-150";
-
-  function metricRow(
-    row: CombinedTownRow,
-    rowIndex: number,
-    townLabel: string,
-    m: (typeof metrics)[number],
-    metricIndex: number,
-  ) {
-    const v = m.valueOf(row);
-    const max =
-      m.id === "closed" && closedBarMax > 0
-        ? closedBarMax
-        : isMarketPulsePriceScaleMetric(m.id)
-          ? priceMax
-          : (maxByMetric[metricIndex] ?? 0);
-    const settled =
-      max > 0 && v != null && Number.isFinite(v) ? (v / max) * 100 : 0;
-    const scrambleIndex = rowIndex * metrics.length + metricIndex;
-    const settledPct = (metricId: "medianPrice" | "averagePrice") => {
-      const idx = metrics.findIndex((x) => x.id === metricId);
-      return settleBarPercent(
-        marketPulsePricePct(
-          metricId === "medianPrice" ? row.medianPrice : row.averagePrice,
-          priceMax,
-        ),
-        rowIndex * metrics.length + (idx >= 0 ? idx : metricIndex),
-        settle,
-        barScramble,
-      );
-    };
-    const aligned =
-      m.id === "priceDelta"
-        ? marketPulseDeltaBarSpan(
-            settledPct("medianPrice"),
-            settledPct("averagePrice"),
-          )
-        : {
-            leftPct: 0,
-            widthPct: settleBarPercent(
-              settled,
-              scrambleIndex,
-              settle,
-              barScramble,
-            ),
-          };
-    const display =
-      m.valueKind === "mos"
-        ? settleMosDisplay(v, settle, scrambleIndex)
-        : settleIntDisplay(v, settle, scrambleIndex);
-    const deltaDollars =
-      m.id === "priceDelta"
-        ? settleSignedNumber(row.priceDelta, settle, scrambleIndex, 0)
-        : null;
-    const deltaPct =
-      m.id === "priceDelta"
-        ? settleSignedNumber(row.priceDeltaPct, settle, scrambleIndex + 19, 1)
-        : null;
-    const closedCountText =
-      m.id === "closed"
-        ? closedPending
-          ? "…"
-          : formatMetricValue(m.valueKind, display)
-        : null;
-    const valueText =
-      closedCountText != null
-        ? formatClosedCountWithLookback(closedLookbackLabel, closedCountText)
-        : m.id === "priceDelta"
-          ? formatPriceDeltaK(deltaDollars)
-          : formatMetricValue(m.valueKind, display);
-    const calc = m.calcOf(row);
-    return (
-      <li
-        key={m.id}
-        className="group relative grid grid-cols-[5.75rem_1fr] items-center gap-1.5 sm:grid-cols-[9.5rem_1fr] sm:gap-2"
-        title={m.id === "priceDelta" ? undefined : `${m.label}: ${valueText}`}
-      >
-        {/* Labels right-align against the bar rather than flush under the town. */}
-        {m.id === "priceDelta" ? (
-          <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
-            <MarketPulseDeltaLabel />
-          </span>
-        ) : (
-          <span className="[font-family:var(--mp-mono-font)] text-[9px] tracking-[0.06em] uppercase text-[var(--mp-muted-text)] leading-tight text-right">
-            {m.label}
-          </span>
-        )}
-        <div className="relative h-4 rounded-sm bg-black/10 overflow-visible">
-          <div className="h-full overflow-hidden rounded-sm">
-            <div
-              className={`h-full rounded-sm transition-[width,margin-left] ease-out ${widthTransition} ${m.barClassName}`}
-              style={{
-                marginLeft: `${aligned.leftPct}%`,
-                width: `${aligned.widthPct}%`,
-              }}
-            />
-          </div>
-          <BarValueOverlay
-            value={
-              closedCountText != null
-                ? formatClosedCountWithLookback(
-                    closedLookbackLabel,
-                    closedCountText,
-                  )
-                : valueText
-            }
-            asideLeft={
-              m.id === "priceDelta"
-                ? formatPriceDeltaPct(deltaPct)
-                : undefined
-            }
-            leftPct={aligned.leftPct}
-            widthPct={aligned.widthPct}
-            // Gold months-supply fill reads fine under the standard text.
-            colorClass={
-              m.id === "monthsSupply" ? BAR_VALUE_ON_EMPTY : undefined
-            }
-          />
-          <div
-            className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-            role="tooltip"
-          >
-            <StatsCalcTooltipShell
-              label={townLabel}
-              valueLine={`${valueText} · ${m.label}`}
-              calc={calc}
-              theme="light"
-            />
-          </div>
-        </div>
-      </li>
     );
   }
 
@@ -1083,58 +1102,51 @@ function CombinedMetricsChart({
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
           const href = townHref?.(row.city ?? label);
+          const block = (
+            <MarketPulseTownPanel
+              row={row}
+              scale={scale}
+              metrics={metrics}
+              lookbackId={lookbackId}
+              kind={kind}
+              townLabel={label}
+              saleToAskHref={saleToAskTownHref?.(label)}
+              metricHref={(id) => metricStatsHref?.(id, label) ?? null}
+              closedPending={closedPending}
+              settle={settle}
+              scramble={{
+                values: barScramble,
+                rowIndex,
+                townCount: rows.length,
+              }}
+              heading={
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={href}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
+                />
+              }
+            />
+          );
           return (
-            <li
-              key={`combined-${row.city}`}
-              data-mp-town={row.city}
-              className="space-y-1"
-            >
-              <TownName
-                city={row.city ?? label}
-                label={label}
-                href={href}
-                townsExpanded={townsExpanded}
-                onAllTownsToggle={onAllTownsToggle}
-                settle={settle}
-                rotateTownNames={rotateNames}
-              />
-              <ul className="space-y-1.5">
-                {metrics.map((m, metricIndex) => {
-                  if (m.id === "averagePrice" || m.id === "priceDelta") {
-                    return null;
-                  }
-                  if (m.id === "medianPrice") {
-                    const delta = metrics.find((x) => x.id === "priceDelta");
-                    const deltaIndex = metrics.findIndex(
-                      (x) => x.id === "priceDelta",
-                    );
-                    const avg = metrics.find((x) => x.id === "averagePrice");
-                    const avgIndex = metrics.findIndex(
-                      (x) => x.id === "averagePrice",
-                    );
-                    return (
-                      <li key="price-sandwich" className="space-y-0">
-                        <ul className="space-y-0">
-                          {metricRow(row, rowIndex, label, m, metricIndex)}
-                          {delta
-                            ? metricRow(
-                                row,
-                                rowIndex,
-                                label,
-                                delta,
-                                deltaIndex,
-                              )
-                            : null}
-                          {avg
-                            ? metricRow(row, rowIndex, label, avg, avgIndex)
-                            : null}
-                        </ul>
-                      </li>
-                    );
-                  }
-                  return metricRow(row, rowIndex, label, m, metricIndex);
-                })}
-              </ul>
+            <li key={`combined-${row.city}`} data-mp-town={row.city}>
+              {/*
+               * The rail stands alongside the first block only, and stretches to
+               * it, so it runs from the All towns name to its last bar and no
+               * further. Towns below it are not indented past empty space.
+               */}
+              {rowIndex === 0 && lookbackRail ? (
+                <div className="flex items-stretch gap-2 sm:gap-3">
+                  <div className="min-w-0 flex-1">{block}</div>
+                  {lookbackRail}
+                </div>
+              ) : (
+                block
+              )}
             </li>
           );
         })}
@@ -1145,6 +1157,7 @@ function CombinedMetricsChart({
 
 function Kpi({
   label,
+  townLabel,
   final,
   kind,
   settle,
@@ -1153,6 +1166,8 @@ function Kpi({
   compareValue = null,
 }: {
   label: string;
+  /** Town the figure belongs to, prefixed onto the label. */
+  townLabel: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
@@ -1162,8 +1177,7 @@ function Kpi({
   compareValue?: number | null;
 }) {
   const comparing = Boolean(compareCity && !isAllTownsCity(compareCity));
-  const shownLabel =
-    comparing && kind === "mos" ? "Months Inventory" : label;
+  const metricLabel = comparing && kind === "mos" ? "Months Inventory" : label;
   const value = comparing ? compareValue : final;
   const display =
     comparing
@@ -1182,9 +1196,20 @@ function Kpi({
   const delta = comparing ? fmtSignedDelta(compareValue, final, kind) : null;
 
   return (
-    <div className="rounded-lg border border-black/[0.08] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
+    <div className="rounded-lg border border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
+      {/*
+       * The strip pins and follows you down the page, so the town it reports on
+       * changes under you. It gets its own line in the accent colour, keyed so
+       * it fades on each change — the one thing here that moves, marked as such.
+       */}
       <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
-        {shownLabel}
+        <span
+          key={townLabel}
+          className="block animate-[fadeIn_0.22s_ease-out] text-[var(--mp-accent)]"
+        >
+          {townLabel}
+        </span>
+        {metricLabel}
       </p>
       <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
         {text}
@@ -1217,10 +1242,14 @@ export default function WeeklyBriefContent({
   monthsSupplyTownHref,
   closedSalesTownHref,
   avgDomTownHref,
+  saleToAskTownHref,
+  metricStatsHref,
+  kind = "sale",
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
   lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
+  closedLookbackId,
   onLookbackIdChange,
   closedBarMax = 0,
 }: {
@@ -1242,6 +1271,12 @@ export default function WeeklyBriefContent({
   closedSalesTownHref?: (cityLabel: string) => string;
   /** Avg DOM town labels → Stats avg-dom chart. */
   avgDomTownHref?: (cityLabel: string) => string;
+  /** List to ask → Stats list-to-ask chart (its own graph and data table). */
+  saleToAskTownHref?: (cityLabel: string) => string;
+  /** Stats chart behind each bar, by metric and town. */
+  metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
+  /** Rentals are leased rather than closed, and the labels follow. */
+  kind?: ListingKind;
   /** Shared settle clock from Market Pulse (scramble → count-up). */
   settle?: MarketPulseSettleState;
   /** Closed totals still in flight — otherwise empty means "cache not built". */
@@ -1252,6 +1287,11 @@ export default function WeeklyBriefContent({
   categoryFilter?: ReactNode;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
+  /**
+   * Window the closed rows on screen belong to. Lags `lookbackId` while a new
+   * one loads, so the slider answers at once and the labels stay truthful.
+   */
+  closedLookbackId?: MarketPulseLookbackId;
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
@@ -1263,7 +1303,6 @@ export default function WeeklyBriefContent({
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
   const [townsExpanded, setTownsExpanded] = useState(false);
-  const [sortExplainOpen, setSortExplainOpen] = useState(false);
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
   const [kpisPinned, setKpisPinned] = useState(false);
@@ -1275,13 +1314,23 @@ export default function WeeklyBriefContent({
       setChartLayout("stacked");
     }
   }, [townsExpanded, chartLayout]);
-  const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
-  const lookbackDays = marketPulseLookbackById(lookbackId).days;
-  const lookbackDrivesMos = lookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
+  const shownLookbackId = closedLookbackId ?? lookbackId;
+  const closedLookbackLabel = marketPulseLookbackChartLabel(shownLookbackId);
+  const closedNoun = closedNounFor(kind);
+  const lookbackDays = marketPulseLookbackById(shownLookbackId).days;
+  const lookbackDrivesMos =
+    shownLookbackId !== DEFAULT_MARKET_PULSE_LOOKBACK_ID;
+  /**
+   * A request is in flight and there is nothing held to show meanwhile. Only
+   * then does a figure become an ellipsis — otherwise the last window stays up
+   * and simply dims, which is what keeps the panel from folding and reopening.
+   */
+  const closedBlank =
+    closedPending && (snapshot.closedTrailing ?? []).length === 0;
 
   const inventoryRows = useMemo(() => {
     const rows = chartRows(snapshot);
-    if (!lookbackDrivesMos || closedPending) return rows;
+    if (!lookbackDrivesMos || closedBlank) return rows;
     const closedBy = new Map(
       (snapshot.closedTrailing ?? []).map(
         (r) => [cityKey(r.city), r.count] as const,
@@ -1322,12 +1371,11 @@ export default function WeeklyBriefContent({
     lookbackDays,
     closedLookbackLabel,
     lookbackId,
-    closedPending,
+    closedBlank,
   ]);
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
   const priceRows = snapshot.priceByTown ?? [];
-  const priceBarMax = marketPulsePriceBarMax(priceRows);
 
   const allTownsAvgDom = useMemo(() => {
     const allRow = domRows.find((r) => isAllTownsCity(r.city));
@@ -1339,6 +1387,8 @@ export default function WeeklyBriefContent({
     ? (inventoryRows.find((r) => isAllTownsCity(r.city))?.monthsSupply ?? null)
     : (snapshot.market?.monthsSupply ?? null);
   const allTownsActive = snapshot.market?.activeCount ?? null;
+
+  const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind);
 
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
@@ -1356,11 +1406,24 @@ export default function WeeklyBriefContent({
         medianPrice: r.medianPrice,
         priceDelta: r.priceDelta,
         averagePrice: r.averagePrice,
+        saleToAskPct: r.saleToAskPct,
       }),
       favorSort,
       (r) => isAllTownsCity(r.city),
     );
   }, [inventoryRows, domRows, closedRows, priceRows, favorSort]);
+
+  // Unstacked's price panel ranks the same towns on the same axis the stacked
+  // view uses, so it reads off the same scale rather than a second one.
+  const unstackedScale = useMemo(
+    () =>
+      marketPulseTownScale(combinedRows, {
+        closedLookbackLabel,
+        kind,
+        closedBarMax,
+      }),
+    [combinedRows, closedLookbackLabel, kind, closedBarMax],
+  );
 
   const compareRow = useMemo(() => {
     if (!compareCity || isAllTownsCity(compareCity)) return null;
@@ -1421,34 +1484,45 @@ export default function WeeklyBriefContent({
 
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
 
-  const townMetricsHeading = (
-    <p className={TOWN_METRICS_HEADING_CLASS}>
-      Town metrics
-      <button
-        type="button"
-        className="align-super font-mono text-[12px] leading-none text-[var(--mp-accent)] hover:text-[var(--mp-text)]"
-        aria-label="How towns are sorted"
-        onClick={() => setSortExplainOpen(true)}
-      >
-        *
-      </button>
-      <TownMetricsLayoutWord
-        label="stacked"
-        selected={chartLayout === "stacked"}
-        onSelect={() => setChartLayout("stacked")}
-      />
-      <span className="text-[var(--mp-accent)]/45" aria-hidden>
-        {"-->"}
-      </span>
-      <TownMetricsLayoutWord
-        label="unstacked"
-        selected={chartLayout === "unstacked"}
-        onSelect={() => {
-          setTownsExpanded(true);
-          setChartLayout("unstacked");
+  const townMetricsControls = (
+    <div className="flex items-center gap-2">
+      <TownMetricsLayoutToggle
+        layout={chartLayout}
+        onSelect={(next) => {
+          if (next === "unstacked") setTownsExpanded(true);
+          setChartLayout(next);
         }}
       />
-    </p>
+      {/*
+       * Hover rather than a click through to a dialog — it is one paragraph of
+       * context, not a destination, and asking for a modal to read two
+       * sentences was more ceremony than the answer is worth.
+       */}
+      <span className="group/why relative inline-flex">
+        <span
+          tabIndex={0}
+          role="note"
+          aria-label="How the town metrics are laid out and ordered"
+          className="inline-flex h-10 w-10 cursor-help items-center justify-center rounded-full border border-[var(--mp-muted-text)]/40 [font-family:var(--mp-mono-font)] text-[15px] text-[var(--mp-muted-text)] transition-colors hover:border-[var(--mp-accent)] hover:text-[var(--mp-accent)]"
+        >
+          ?
+        </span>
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute right-0 top-[calc(100%+6px)] z-30 w-[min(20rem,75vw)] rounded-xl border border-black/10 bg-white px-3 py-2.5 text-left opacity-0 shadow-lg shadow-black/15 transition-opacity duration-150 group-hover/why:opacity-100 group-focus-within/why:opacity-100"
+        >
+          <span className="block font-mono text-[10px] tracking-[0.15em] uppercase text-[var(--mp-accent,#C8A951)]">
+            Town metrics
+          </span>
+          <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-black/65">
+            {marketPulseLayoutExplain(chartLayout)}
+          </span>
+          <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-black/65">
+            {marketPulseSortExplain(chartLayout, favorSort)}
+          </span>
+        </span>
+      </span>
+    </div>
   );
 
   const comparingTown =
@@ -1456,10 +1530,13 @@ export default function WeeklyBriefContent({
       ? cityLabel({ city: compareCity })
       : null;
 
+  const kpiTownLabel = comparingTown ?? "All Towns";
+
   const kpiStrip = (
     <div className="grid grid-cols-3 gap-2 sm:gap-3">
       <Kpi
         label="Market active"
+        townLabel={kpiTownLabel}
         final={allTownsActive}
         kind="int"
         settle={settle}
@@ -1468,7 +1545,8 @@ export default function WeeklyBriefContent({
         compareValue={compareRow?.activeCount ?? null}
       />
       <Kpi
-        label="All Town Months Inventory"
+        label="Months Inventory"
+        townLabel={kpiTownLabel}
         final={allTownsMos}
         kind="mos"
         settle={settle}
@@ -1478,6 +1556,7 @@ export default function WeeklyBriefContent({
       />
       <Kpi
         label="Avg days on market"
+        townLabel={kpiTownLabel}
         final={allTownsAvgDom}
         kind="dom"
         settle={settle}
@@ -1491,8 +1570,10 @@ export default function WeeklyBriefContent({
   return (
     <article className="mx-auto max-w-2xl">
       <header className="rounded-t-2xl bg-[var(--mp-surface)] px-3 py-6 sm:px-8 sm:py-7">
-        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] uppercase text-[var(--mp-accent)] mb-2">
-          {eyebrow}
+        {/* House voice: plain words, comma, the subject in italics. */}
+        <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] text-white mb-2">
+          {eyebrow},{" "}
+          <span className="italic text-[var(--mp-accent)]">Town Metrics</span>
         </p>
         <h1 className="[font-family:var(--mp-heading-font)] text-2xl sm:text-3xl text-white leading-snug">
           {etDate}
@@ -1511,15 +1592,14 @@ export default function WeeklyBriefContent({
       {kpisPinned ? (
         <div
           ref={pinnedKpiBarRef}
-          className="fixed inset-x-0 z-40 border-b border-black/[0.08] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
+          className="fixed inset-x-0 z-40 border-b border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
           style={{ top: navOffsetPx }}
           data-mp-kpi-pinned
         >
           <div className="mx-auto max-w-2xl px-3 py-2 sm:px-8">
             {comparingTown ? (
-              <p className="mb-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-accent)]">
-                {comparingTown}
-                <span className="text-[var(--mp-muted-text)]"> vs All towns</span>
+              <p className="mb-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                vs All towns
               </p>
             ) : null}
             {kpiStrip}
@@ -1527,7 +1607,7 @@ export default function WeeklyBriefContent({
         </div>
       ) : null}
 
-      <div className="rounded-b-2xl border border-t-0 border-black/[0.08] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-8 shadow-sm shadow-black/5">
+      <div className="rounded-b-2xl border border-t-0 border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-4 shadow-sm shadow-black/5">
         <div
           ref={kpiSentinelRef}
           className={kpisPinned ? "invisible" : undefined}
@@ -1535,41 +1615,65 @@ export default function WeeklyBriefContent({
           {kpiStrip}
         </div>
 
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {categoryFilter}
+          <div className="flex items-center gap-2">
           <FavorSortToggle
             favorSort={favorSort}
-            onToggle={() =>
+            onToggle={() => {
+              // Reordering a list of one says nothing, so asking for an order
+              // is also asking to see the towns it applies to.
+              setTownsExpanded(true);
               setFavorSort((current) =>
                 current === "buyers" ? "sellers" : "buyers",
-              )
-            }
+              );
+            }}
           />
+          {townMetricsControls}
+          </div>
         </div>
 
-        <div className="flex items-start gap-2 sm:gap-3">
-          <div className="min-w-0 flex-1 space-y-6">
-        {townMetricsHeading}
+        <div>
         {chartLayout === "stacked" || !townsExpanded ? (
+          /*
+           * Stacked hands the slider to the chart, which stands it beside the
+           * All towns block alone. Every town below then keeps the full width
+           * instead of being indented past a control that is not there.
+           */
           <CombinedMetricsChart
             rows={combinedRows}
             townHref={townHref}
             settle={settle}
             closedLookbackLabel={closedLookbackLabel}
+            lookbackId={lookbackId}
             closedPending={closedPending}
             closedBarMax={closedBarMax}
             townsExpanded={townsExpanded}
             onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            saleToAskTownHref={saleToAskTownHref}
+            metricStatsHref={metricStatsHref}
+            kind={kind}
+            lookbackRail={
+              onLookbackIdChange ? (
+                <ClosedLookbackSlider
+                  lookbackId={lookbackId}
+                  onChange={onLookbackIdChange}
+                  pending={closedPending}
+                  fill
+                />
+              ) : null
+            }
           />
         ) : (
+        <div className="space-y-6">
           <>
+        {/* Lookback drives neither of these, so they take the full width. */}
         <BarChart
           title="Active inventory"
           rows={inventoryRows}
           valueOf={(r) => r.activeCount}
           valueKind="int"
-          barClassName={METRIC_COLORS.inventory}
-          emptyMessage="No inventory rows in cache yet."
+          emptyMessage="No active listings for these towns yet."
           townHref={townHref}
           settle={settle}
           townsExpanded={townsExpanded}
@@ -1580,28 +1684,11 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title="Months supply"
-          rows={inventoryRows}
-          valueOf={(r) => r.monthsSupply}
-          valueKind="mos"
-          barClassName={METRIC_COLORS.monthsSupply}
-          emptyMessage="No months-supply rows in cache yet."
-          townHref={monthsSupplyTownHref ?? townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.monthsSupplyCalc}
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
-        />
-
-        <BarChart
           title="AVG DAYS ON MARKET"
           rows={domRows}
           valueOf={(r) => r.avgDaysOnMarket}
           valueKind="dom"
-          barClassName={METRIC_COLORS.avgDom}
-          emptyMessage="No days-on-market rows in cache yet."
+          emptyMessage="No days-on-market figures for these towns yet."
           townHref={avgDomTownHref ?? townHref}
           settle={settle}
           townsExpanded={townsExpanded}
@@ -1611,129 +1698,108 @@ export default function WeeklyBriefContent({
           favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
         />
 
-        <BarChart
-          title={`Closed sales — trailing ${closedLookbackLabel}`}
-          rows={closedRows}
-          valueOf={(r) => r.count}
-          valueKind="int"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "closed")}
-          barClassName={METRIC_COLORS.closed}
-          emptyMessage={
-            closedPending
-              ? "Loading closed sales for this lookback…"
-              : "No closed sales in this lookback window (or the count request failed — try another period)."
-          }
-          townHref={closedSalesTownHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.calc}
-          scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
-          formatValue={(_row, display) =>
-            formatClosedCountWithLookback(
-              closedLookbackLabel,
-              formatMetricValue("int", display),
-            )
-          }
-        />
+        {/*
+         * Lookback sets the window behind both months supply and closed, so the
+         * rail stands beside the pair it governs and spans them, rather than
+         * beside a panel it has nothing to do with.
+         */}
+        <div className="flex items-stretch gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1 space-y-6">
+          <BarChart
+            title="Months supply"
+            rows={inventoryRows}
+            valueOf={(r) => r.monthsSupply}
+            valueKind="mos"
+            emptyMessage="No months-supply figures for these towns yet."
+            townHref={monthsSupplyTownHref ?? townHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => r.monthsSupplyCalc}
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
+          />
 
-        <BarChart
-          title="Median"
-          rows={priceRows}
-          valueOf={(r) => r.medianPrice}
-          valueKind="money"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "medianPrice")}
-          barClassName={METRIC_COLORS.medianPrice}
-          emptyMessage="No median price rows in cache yet (rebuild market stats)."
-          townHref={townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.medianPriceCalc}
-          scaleMax={priceBarMax}
-        />
-
-        <BarChart
-          title="Delta"
-          rows={priceRows}
-          valueOf={(r) => {
-            const d = meanMinusMedian(r.averagePrice, r.medianPrice).dollars;
-            return d == null ? null : Math.abs(d);
-          }}
-          sortValueOf={(r) =>
-            meanMinusMedian(r.averagePrice, r.medianPrice).dollars
-          }
-          formatValue={(r, _display, index) => {
-            const d = meanMinusMedian(r.averagePrice, r.medianPrice);
-            return formatPriceDeltaK(
-              settleSignedNumber(d.dollars, settle, index, 0),
-            );
-          }}
-          formatValueAside={(r, index) =>
-            formatPriceDeltaPct(
-              settleSignedNumber(
-                meanMinusMedian(r.averagePrice, r.medianPrice).pct,
-                settle,
-                index + 19,
-                1,
-              ),
-            )
-          }
-          explainDelta
-          valueKind="int"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "priceDelta")}
-          barClassName={METRIC_COLORS.priceDelta}
-          emptyMessage="No average/median pair yet — run a stats rebuild to fill means."
-          townHref={townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => ({
-            summary: PRICE_DELTA_EXPLAIN,
-            detail: [
-              `Average ${fmtMoney(r.averagePrice)} − median ${fmtMoney(r.medianPrice)}`,
-            ],
-          })}
-          scaleMax={priceBarMax}
-          barSpanOf={(r) => ({
-            start: r.medianPrice,
-            end: r.averagePrice,
-          })}
-        />
-
-        <BarChart
-          title="Average"
-          rows={priceRows}
-          valueOf={(r) => r.averagePrice}
-          valueKind="money"
-          sortable
-          favorSortDir={unstackedFavorSortDir(favorSort, "averagePrice")}
-          barClassName={METRIC_COLORS.averagePrice}
-          emptyMessage="No average price rows yet — run a stats rebuild to fill means (median still shows from older cache)."
-          townHref={townHref}
-          settle={settle}
-          townsExpanded={townsExpanded}
-          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
-          calcOf={(r) => r.averagePriceCalc}
-          scaleMax={priceBarMax}
-        />
-          </>
-        )}
+          <BarChart
+            title={`${closedNoun.title} — trailing ${closedLookbackLabel}`}
+            rows={closedRows}
+            valueOf={(r) => r.count}
+            valueKind="int"
+            sortable
+            favorSortDir={unstackedFavorSortDir(favorSort, "closed")}
+            emptyMessage={
+              closedPending
+                ? `Loading ${closedNoun.lower} for this lookback…`
+                : `No ${closedNoun.lower} in this lookback window (or the count request failed — try another period).`
+            }
+            townHref={closedSalesTownHref}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            calcOf={(r) => r.calc}
+            scaleMax={closedBarMax > 0 ? closedBarMax : undefined}
+            formatValue={(_row, display) =>
+              formatClosedCountWithLookback(
+                closedLookbackLabel,
+                formatMetricValue("int", display),
+              )
+            }
+          />
           </div>
           {onLookbackIdChange ? (
             <ClosedLookbackSlider
               lookbackId={lookbackId}
               onChange={onLookbackIdChange}
               pending={closedPending}
+              fill
             />
           ) : null}
         </div>
 
+        <UnstackedPricePanel
+          rows={combinedRows}
+          scale={unstackedScale}
+          metrics={unstackedMetrics}
+          settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+          townHref={townHref}
+        />
+
+        <BarChart
+          title="List to ask"
+          rows={priceRows}
+          valueOf={(r) =>
+            r.saleToAskDollars == null ? null : Math.abs(r.saleToAskDollars)
+          }
+          sortValueOf={(r) => r.saleToAskPct ?? null}
+          formatValue={(r, _display, index) =>
+            formatPriceDeltaK(
+              settleSignedNumber(r.saleToAskDollars, settle, index, 0),
+            )
+          }
+          formatValueAside={(r, index) =>
+            formatSaleToAskPct(
+              settleSignedNumber(r.saleToAskPct, settle, index + 19, 1),
+            )
+          }
+          valueKind="int"
+          sortable
+          favorSortDir={unstackedFavorSortDir(favorSort, "saleToAsk")}
+          emptyMessage="No closings with a published asking price yet."
+          townHref={saleToAskTownHref ?? townHref}
+          settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+          calcOf={(r) => r.saleToAskCalc}
+        />
+          </>
+        </div>
+        )}
+        </div>
+
         {deal ? (
-          <section className="rounded-xl bg-[var(--mp-surface-deep)] overflow-hidden">
+          <section className="mt-8 rounded-xl bg-[var(--mp-surface-deep)] overflow-hidden">
             <div className="px-5 pt-5 pb-3 sm:px-6">
               <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-gold mb-1">
                 {dealHeading}
@@ -1834,31 +1900,22 @@ export default function WeeklyBriefContent({
             </div>
           </section>
         ) : showDealOfTheWeek ? (
-          <section>
+          <section className="mt-8">
             <p className="font-mono text-[11px] tracking-[0.16em] uppercase text-gold mb-2">
               {dealHeading}
             </p>
             <p className="font-serif text-sm text-slate">
-              No featured deal in cache for this category yet — check homepage /
-              stats rebuild.
+              No featured deal for this category yet.
             </p>
           </section>
         ) : null}
 
-        <div className="space-y-2 [font-family:var(--mp-mono-font)] text-[10px] leading-relaxed text-[var(--mp-muted-text)]">
+        <div className="mt-8 space-y-2 [font-family:var(--mp-mono-font)] text-[10px] leading-relaxed text-[var(--mp-muted-text)]">
           <p className="tracking-[0.12em] uppercase text-[var(--mp-text)]">
             How Seller / Buyer Friendly is scored
           </p>
-          <p>
-            Buyer Friendly ranks a town higher when months supply is larger, avg
-            days on market is larger, closed is smaller, median is smaller,
-            delta is smaller, and average is smaller.
-          </p>
-          <p>
-            Seller Friendly is the opposite of each of those — smaller months
-            supply and avg days on market, larger closed, median, delta, and
-            average.
-          </p>
+          <p>{MARKET_PULSE_BUYER_SCORE_COPY}</p>
+          <p>{MARKET_PULSE_SELLER_SCORE_COPY}</p>
         </div>
         <p className="font-mono text-[11px] leading-relaxed text-slate">
           MOS = active ÷ avg monthly closings (3 prior full months). Scope:{" "}
@@ -1871,30 +1928,6 @@ export default function WeeklyBriefContent({
         </p>
       </div>
 
-      {sortExplainOpen ? (
-        <ModalPortal
-          open
-          onClose={() => setSortExplainOpen(false)}
-          ariaLabel="How towns are sorted"
-        >
-          <div className={MODAL_PANEL_CLASS} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <h2 className="font-serif text-2xl text-navy">Town metrics</h2>
-              <button
-                type="button"
-                onClick={() => setSortExplainOpen(false)}
-                className="text-slate hover:text-navy transition-colors font-mono text-lg leading-none mt-1"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="text-sm text-charcoal leading-relaxed">
-              {marketPulseSortExplain(chartLayout, favorSort)}
-            </p>
-          </div>
-        </ModalPortal>
-      ) : null}
     </article>
   );
 }

@@ -1,16 +1,42 @@
 # mls-sync (Railway)
 
-Always-on service: **SmartMLS RETS → Neon**. Netlify is **not** in the pull path.
+Always-on service: the **sync job runner**. It owns SmartMLS RETS → Neon and the
+other long jobs; Netlify is **not** in the pull path.
 
 **Morning cutover canvas (step checklist):** open
 `railway-mls-sync-setup.canvas.tsx` beside chat (Cursor canvases folder).
 
 ## What it does
 
-- Every ~30 minutes (or `MLS_SYNC_INTERVAL_MS`): Incremental pull + upsert
-- `POST /run` (Bearer `SYNC_CRON_SECRET`): Admin **Sync now**
-- `GET /health`: process + Neon End/Start/heartbeat for peace of mind
-- Stamps `last_incremental_sync` on each finished pull, and `last_mls_sync_heartbeat` ~60s while idle plus during a run
+The process itself runs no job. It does two things:
+
+1. **Sweep** — notices a job's Configure slot has come round and puts a row on
+   the `sync_queue` table in Neon.
+2. **Drain** — claims the next queued row, **forks a child process** to do the
+   work, and writes the outcome back.
+
+Forking is the point. An out-of-memory kill takes the child, not the service; a
+job past its Budget can actually be killed (SIGTERM, then SIGKILL); and either
+way the queue row records `timeout` / `crashed` with the exit code instead of
+sitting on "running" forever.
+
+The queue is also the handoff that replaced the per-job Scheduler radio. Admin
+**Sync now**, the Netlify thin crons, EventBridge ingress and these sweeps all
+enqueue; this service claims. Netlify runs a job itself only when a row has sat
+unclaimed long enough to prove this service is gone.
+
+Endpoints (all writes need Bearer `SYNC_CRON_SECRET`):
+
+| Route | Does |
+| --- | --- |
+| `GET /health` | Runner state, current child, queue snapshot, Neon End/Start/heartbeat |
+| `POST /enqueue` | `{ "jobId": "incremental", … }` — put a row on the queue at manual priority |
+| `POST /drain` | Poke the drain now instead of waiting for the next poll |
+| `POST /run`, `/stats`, `/scores`, `/deal-of-the-day`, `/property-addresses`, `/market-digest` | Legacy per-job aliases; they enqueue like `/enqueue` |
+
+Stamps `last_incremental_sync` when a pull finishes, and
+`last_mls_sync_heartbeat` ~60s — including while a child is working, since an
+idle parent is exactly what a healthy run looks like now.
 
 ## Deploy (cheapest path — demain matin)
 
@@ -43,7 +69,9 @@ Railpack mounts cache dirs; `npm ci` trying to wipe `node_modules/.cache` →
 | `RETS_USERNAME` | From Netlify |
 | `RETS_PASSWORD` | From Netlify |
 | `SYNC_CRON_SECRET` | **Exact** same string as Netlify |
-| `MLS_SYNC_INTERVAL_MS` | Optional; default `1800000` (30m) |
+| `MLS_SYNC_INTERVAL_MS` | Optional; default `1800000` (30m) — Incremental liveness backstop |
+| `MLS_SYNC_CHILD_MAX_OLD_SPACE_MB` | Optional; heap cap passed to each forked child so a runaway job hits its own ceiling before the container's |
+| `RESEND_API_KEY` | Needed for the Monday brief — the service says so at boot if it is missing, not at 08:00 Monday |
 
 ### 3. Public domain
 
@@ -60,10 +88,14 @@ Browser-check: `https://<service>.up.railway.app/health` (JSON, `service: mls-sy
 
 Trigger a Netlify production deploy so Admin picks up the URL.
 
-### 5. Flip Admin + prove
+### 5. Prove it
 
-1. Admin → Syncs → **Configure** → Incremental → **Railway service**.
-2. **Sync now** — watch End move; Status should show Railway heartbeat.
+There is nothing to flip: this service claims whatever is on `sync_queue`.
+
+1. Admin → Syncs → **Dashboard** → Incremental → **Sync now**. The Queue column
+   should show it queued (with position), then running (with budget counting
+   down), then the outcome.
+2. Watch End move; Status should show the runner heartbeat.
 3. Smoke:
 
 ```bash
@@ -75,8 +107,8 @@ PASS = End ≤70m + both MLS#s in Neon. Do **not** trust disposable 202-queued.
 ### 6. Decommission EventBridge Incremental
 
 Pause/delete the AWS Incremental schedule (+ API destination path if unused).
-Keep the AWS account. Netlify thin Incremental cron / watchdog skip while
-Scheduler is Railway.
+Keep the AWS account. Leaving it armed is no longer harmful — ingress enqueues
+like everyone else, so a second clock only double-asks and deduplicates.
 
 ## Local
 
@@ -84,10 +116,14 @@ Scheduler is Railway.
 npm run start:mls-sync
 # other terminal:
 curl -s http://localhost:8080/health
-curl -s -X POST http://localhost:8080/run -H "Authorization: Bearer $SYNC_CRON_SECRET"
+curl -s -X POST http://localhost:8080/enqueue \
+  -H "Authorization: Bearer $SYNC_CRON_SECRET" \
+  -H 'content-type: application/json' \
+  -d '{"jobId":"incremental"}'
 ```
 
 ## Rollback
 
-Admin → Configure → Incremental → **Netlify cron** (temporary). Fix Railway
-logs / env, then flip back.
+Stop the service. Queued rows stay put, and once the heartbeat goes stale the
+Netlify thin crons pick up stranded rows and run them there. Fix Railway logs /
+env and redeploy; the runner resumes claiming.

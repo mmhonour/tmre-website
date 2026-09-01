@@ -343,6 +343,7 @@ type StatsRelevantRow = {
   mls_status: string | null
   status_bucket: string | null
   close_price: number | string | null
+  original_list_price: number | string | null
   close_date: Date | string | null
   list_date: Date | string | null
   dom: number | null
@@ -352,6 +353,11 @@ type StatsRelevantRow = {
  * The fields every stats payload is derived from. `dom` is in here deliberately:
  * the MLS increments it daily on their side, so including it is what gives every
  * town with inventory a once-a-day rebuild without a timer.
+ *
+ * `original_list_price` is the denominator of sale-to-original-ask, and agents
+ * correct it after the fact often enough to matter — without it here, a fixed
+ * original ask would never mark its town dirty and the ratio would stay wrong
+ * until something else about the listing changed.
  */
 function statsSignature(row: StatsRelevantRow): string {
   return [
@@ -359,6 +365,7 @@ function statsSignature(row: StatsRelevantRow): string {
     (row.mls_status ?? '').trim().toLowerCase(),
     (row.status_bucket ?? '').trim(),
     statsNumKey(row.close_price),
+    statsNumKey(row.original_list_price),
     statsTimeKey(row.close_date),
     statsTimeKey(row.list_date),
     row.dom ?? '',
@@ -390,7 +397,8 @@ export async function upsertListing(
 
   const { result, change } = await withTransaction(async (client) => {
     const existing = await client.query<StatsRelevantRow>(
-      `SELECT price, mls_status, status_bucket, close_price, close_date, list_date, dom
+      `SELECT price, mls_status, status_bucket, close_price, original_list_price,
+              close_date, list_date, dom
          FROM listings WHERE id = $1`,
       [id],
     )
@@ -410,6 +418,7 @@ export async function upsertListing(
           mls_status: nextStatus,
           status_bucket: statusBucket,
           close_price: nextClosePrice,
+          original_list_price: listing.originalListPrice ?? null,
           close_date: nextCloseDate,
           list_date: listing.listDate,
           dom: listing.dom,

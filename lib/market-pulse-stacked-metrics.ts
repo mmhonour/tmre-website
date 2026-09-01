@@ -1,3 +1,4 @@
+import type { ListingKind } from '@/lib/listing-kind'
 import type { MarketPulseCombinedTownRow } from '@/lib/market-pulse-combined-rows'
 import { formatClosedCountWithLookback } from '@/lib/market-pulse-lookback'
 import {
@@ -18,6 +19,7 @@ export const MARKET_PULSE_STACKED_METRIC_IDS = [
   'medianPrice',
   'priceDelta',
   'averagePrice',
+  'saleToAsk',
 ] as const
 
 export type MarketPulseStackedMetricId =
@@ -52,10 +54,22 @@ function absOrNull(n: number | null | undefined): number | null {
   return n != null && Number.isFinite(n) ? Math.abs(n) : null
 }
 
-/** Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `12 mos`. */
+/** Close ÷ original ask as a level, e.g. `97.4%`. */
+export function formatSaleToAskPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return 'n/a'
+  return `${n.toFixed(1)}%`
+}
+
+/**
+ * Default stacked metrics (page load + email). `closedLookbackLabel` e.g. `12 mos`.
+ * Rentals are leased rather than closed, so the tab renames that row; the email
+ * is always ALL sales and keeps the default.
+ */
 export function marketPulseStackedMetrics(
   closedLookbackLabel: string,
+  kind: ListingKind = 'sale',
 ): MarketPulseStackedMetricDef[] {
+  const leased = kind === 'rental'
   return [
     {
       id: 'inventory',
@@ -77,7 +91,7 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'closed',
-      label: 'Closed',
+      label: leased ? 'Leased' : 'Closed',
       barValueOf: (r) => r.closedCount,
       format: (r) =>
         formatClosedCountWithLookback(
@@ -104,15 +118,24 @@ export function marketPulseStackedMetrics(
       barValueOf: (r) => r.averagePrice,
       format: (r) => formatMarketPulseMoney(r.averagePrice),
     },
+    {
+      id: 'saleToAsk',
+      label: 'List to ask',
+      labelOf: (r) => `List to ask ${formatSaleToAskPct(r.saleToAskPct)}`,
+      // Percentages cluster in the high 90s, so the bar tracks the dollar gap
+      // (which separates towns) and the label carries the ratio.
+      barValueOf: (r) => absOrNull(r.saleToAskDollars),
+      format: (r) => formatPriceDeltaK(r.saleToAskDollars),
+    },
   ]
 }
 
 /** Shared dollar axis for Median, Delta, and Average (do not scale Delta to its own max). */
 export function marketPulsePriceBarMax(
-  rows: Array<{
+  rows: readonly {
     medianPrice: number | null
     averagePrice: number | null
-  }>,
+  }[],
 ): number {
   let max = 0
   for (const r of rows) {

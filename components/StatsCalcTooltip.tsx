@@ -52,7 +52,7 @@ export function StatsCalcTooltipShell({
             dark ? "text-white/35" : "text-black/35"
           }`}
         >
-          Methodology loads from the stats cache after a successful rebuild.
+          How this figure is worked out is not available for it yet.
         </p>
       )}
       {calc?.detail?.length ? (

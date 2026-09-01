@@ -7,6 +7,7 @@ import {
   SITE_URL,
 } from '@/lib/business-info'
 import { getBrokerageNameFresh } from '@/lib/brokerage-config'
+import { resendFrom } from '@/lib/resend-from'
 import { getMarketPulseThemeFresh } from '@/lib/page-theme-config'
 import {
   formatSavedSearchConfirmationHtml,
@@ -68,9 +69,7 @@ export async function notifySavedSearchByEmail(opts: {
   }
   if (opts.listings.length === 0) return false
 
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE Alerts <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE Alerts')
 
   const subject =
     opts.listings.length === 1
@@ -149,9 +148,7 @@ export async function notifySavedSearchConfirmation(opts: {
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) return false
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE Alerts <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE Alerts')
 
   const [theme, brokerage] = await Promise.all([
     getMarketPulseThemeFresh(),
@@ -218,9 +215,7 @@ export async function notifySavedSearchCreatedAdmin(opts: {
   const to = await getContactNotifyEmailFresh()
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) return false
-  const from =
-    process.env.CONTACT_FROM_EMAIL?.trim() ||
-    'TMRE Alerts <notifications@tmre-website.com>'
+  const from = resendFrom('TMRE Alerts')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS)
   try {

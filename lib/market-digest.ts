@@ -13,6 +13,7 @@ import {
 import { readDealOfTheWeekCache } from '@/lib/deal-of-the-week-cache'
 import { computeTopDeal, type DealPickPayload } from '@/lib/deal-pick'
 import { readStatsCacheRow } from '@/lib/db/stats-cache-repo'
+import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { fmtMoney } from '@/lib/listing-history'
 import {
   filterListingsByKind,
@@ -39,8 +40,13 @@ import {
 } from '@/lib/market-pulse-defaults'
 import {
   defaultMarketPulseCombinedRows,
+  isAllTownsCity,
   marketPulseAllTownsAvgDom,
 } from '@/lib/market-pulse-combined-rows'
+import {
+  marketPulseHeatByCity,
+  marketPulseHeatLabel,
+} from '@/lib/market-pulse-favorability'
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
@@ -232,12 +238,34 @@ async function priceByTownFromStats(
             ? market.averagePrice
             : null
         if (median == null && average == null) return null
+        const saleToAskPct =
+          market.saleToAskPct != null && Number.isFinite(market.saleToAskPct)
+            ? market.saleToAskPct
+            : null
+        const saleToAskDollars =
+          market.saleToAskDollars != null &&
+          Number.isFinite(market.saleToAskDollars)
+            ? market.saleToAskDollars
+            : null
         const row: MarketDigestPriceTownCount = {
           city: String(city),
           medianPrice: median,
           averagePrice: average,
+          priceDelta:
+            market.priceDelta != null && Number.isFinite(market.priceDelta)
+              ? market.priceDelta
+              : null,
+          priceDeltaPct:
+            market.priceDeltaPct != null &&
+            Number.isFinite(market.priceDeltaPct)
+              ? market.priceDeltaPct
+              : null,
+          priceDeltaCalc: market.priceDeltaCalc,
           medianPriceCalc: market.medianPriceCalc,
           averagePriceCalc: market.averagePriceCalc,
+          saleToAskPct,
+          saleToAskDollars,
+          saleToAskCalc: market.saleToAskCalc,
         }
         return row
       }),
@@ -427,9 +455,63 @@ function emptyCommercialCategorySlice(
   }
 }
 
+/**
+ * List to ask over a set of closings — Σ close ÷ Σ original ask, the same shape
+ * the cached sale path uses, so larger deals carry the weight they should.
+ */
+function saleToAskFromClosings(
+  city: string,
+  closings: readonly Listing[],
+): Pick<
+  MarketDigestPriceTownCount,
+  'saleToAskPct' | 'saleToAskDollars' | 'saleToAskCalc'
+> {
+  let count = 0
+  let closedSum = 0
+  let originalSum = 0
+  for (const l of closings) {
+    const closed = closedSalePrice(l)
+    const original = l.originalListPrice
+    if (closed == null || closed <= 0) continue
+    if (original == null || original <= 0) continue
+    count += 1
+    closedSum += closed
+    originalSum += original
+  }
+  if (count === 0 || originalSum <= 0) {
+    return { saleToAskPct: null, saleToAskDollars: null }
+  }
+  const saleToAskPct = (closedSum / originalSum) * 100
+  const saleToAskDollars = (closedSum - originalSum) / count
+  return {
+    saleToAskPct,
+    saleToAskDollars,
+    saleToAskCalc: {
+      summary: `Commercial closings in ${city} fetched ${saleToAskPct.toFixed(
+        1,
+      )}% of their original asking price across ${count.toLocaleString()} sales.`,
+      detail: [
+        "Total close prices ÷ total original asking prices — not the average of each sale's percentage, so larger sales carry the weight they should.",
+        `Average gap ${
+          saleToAskDollars < 0 ? '-' : '+'
+        }$${Math.round(Math.abs(saleToAskDollars)).toLocaleString()} per sale against the first asking price.`,
+        'Commercial reads the last four months of closings directly, rather than the longer window the residential tabs draw on.',
+      ],
+      inputs: {
+        source: 'commercial-closed-sale-to-original-ask',
+        sampleSize: count,
+        city,
+        saleToAskPct,
+        saleToAskDollars,
+      },
+    },
+  }
+}
+
 function priceRowFromListings(
   city: string,
   listings: readonly Listing[],
+  closings: readonly Listing[] = [],
 ): MarketDigestPriceTownCount | null {
   const prices = listings
     .map((l) => l.price)
@@ -447,6 +529,7 @@ function priceRowFromListings(
     city,
     medianPrice,
     averagePrice,
+    ...saleToAskFromClosings(city, closings),
     medianPriceCalc: {
       summary: `Median list price across ${prices.length.toLocaleString()} active commercial listings in ${city}.`,
       inputs: {
@@ -542,14 +625,29 @@ async function buildCommercialCategorySlice(
     }
     pushCommercialDom('All', commercialActive)
     const priceByTown: MarketDigestPriceTownCount[] = []
-    const allPrice = priceRowFromListings('All', commercialActive)
+    const commercialClosed = perTown
+      .flatMap((row) => row.closed)
+      .filter(isCommercialListing)
+      .filter((l) => !isRentalListing(l))
+    const allPrice = priceRowFromListings(
+      'All',
+      commercialActive,
+      commercialClosed,
+    )
     if (allPrice) priceByTown.push(allPrice)
     for (const row of perTown) {
       const townActive = row.active
         .filter(isCommercialListing)
         .filter((l) => !isRentalListing(l))
       pushCommercialDom(row.payload.city, townActive)
-      const townPrice = priceRowFromListings(row.payload.city, townActive)
+      const townClosed = row.closed
+        .filter(isCommercialListing)
+        .filter((l) => !isRentalListing(l))
+      const townPrice = priceRowFromListings(
+        row.payload.city,
+        townActive,
+        townClosed,
+      )
       if (townPrice) priceByTown.push(townPrice)
     }
     let deal: MarketDigestDealOfTheWeek | null = null
@@ -703,6 +801,19 @@ export function formatMarketDigestEmail(
   const stackedMetrics = marketPulseStackedMetrics(
     marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
   )
+  const heatByCity = marketPulseHeatByCity(
+    combined,
+    (r) => ({
+      monthsSupply: r.monthsSupply,
+      avgDaysOnMarket: r.avgDaysOnMarket,
+      closedCount: r.closedCount,
+      medianPrice: r.medianPrice,
+      priceDelta: r.priceDelta,
+      averagePrice: r.averagePrice,
+      saleToAskPct: r.saleToAskPct,
+    }),
+    (r) => isAllTownsCity(r.city),
+  )
   const stackedLines = [
     'TOWN METRICS STACKED (sales · Seller Friendly)',
     '---------------------------------------------',
@@ -710,8 +821,9 @@ export function formatMarketDigestEmail(
       ? ['(no town rows in cache yet)']
       : combined.flatMap((row) => {
           const city = row.city.trim() || '—'
+          const heat = heatByCity.get(row.city)
           return [
-            city,
+            heat == null ? city : `${city} — ${marketPulseHeatLabel(heat)}`,
             ...stackedMetrics.map((m) => `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${m.format(row)}`),
           ]
         })),

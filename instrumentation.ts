@@ -276,9 +276,7 @@ export async function register() {
     if (propertyAddressSyncEnabled && allowListingsSync) {
       const { msUntilNextMonday1amEt } = await import('./lib/property-address-schedule')
       const { syncPropertyAddresses } = await import('./lib/property-address-sync')
-      const { shouldSkipScheduledJobWrongProvider } = await import(
-        './lib/sync-schedule-config'
-      )
+      const { isSyncQueueRunnerJob } = await import('./lib/sync-queue-shared')
       let propertyAddressSyncRunning = false
       const schedulePropertyAddressSync = () => {
         const waitMs = msUntilNextMonday1amEt()
@@ -287,11 +285,13 @@ export async function register() {
         )
         setTimeout(() => {
           // This in-process timer is the long-lived-Node equivalent of the
-          // Netlify thin cron, so it stands down on the same signal: when
-          // Configure hands the job to Railway, only Railway runs it.
-          if (shouldSkipScheduledJobWrongProvider('property-addresses', 'netlify')) {
+          // Netlify thin cron, and the address directory is a sync-queue job:
+          // the always-on runner claims it and runs it in a forked child. A
+          // Next.js process (production or somebody's `next dev`) must not run
+          // a second copy in its own heap.
+          if (isSyncQueueRunnerJob('property-addresses')) {
             console.info(
-              '[property-address-sync] weekly verify skipped — another scheduler owns property-addresses',
+              '[property-address-sync] weekly verify skipped — the sync runner owns property-addresses',
             )
             schedulePropertyAddressSync()
             return

@@ -21,7 +21,15 @@ const WEEKDAYS = [
 ] as const;
 
 const LINK_BTN =
-  "shrink-0 bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors";
+  "shrink-0 bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy hover:text-gold transition-colors";
+
+/**
+ * Underline rides the trigger words, not the whole button: a parent's
+ * text-decoration paints through its children, so the hint after the hyphen
+ * could not opt out of it from here.
+ */
+const LINK_BTN_LABEL =
+  "underline decoration-navy/25 underline-offset-2 group-hover:decoration-gold/50";
 
 /**
  * Create a listing alert from unique searches stored in the visitor's filter
@@ -197,7 +205,7 @@ export default function LatestSearchAlertForm() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="latest-alerts-panel"
-        className={`${LINK_BTN} inline-flex items-center gap-1.5`}
+        className={`${LINK_BTN} group inline-flex items-center gap-1.5`}
       >
         <svg
           viewBox="0 0 12 12"
@@ -207,7 +215,18 @@ export default function LatestSearchAlertForm() {
         >
           <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
         </svg>
-        Listing alerts{open ? " · close" : ""}
+        <span className={LINK_BTN_LABEL}>
+          Listing alerts{open ? " · close" : ""}
+        </span>
+        {/* The open panel says what it wants; the nudge would only crowd it. */}
+        {open ? null : (
+          <>
+            <span aria-hidden>-</span>
+            <span className="normal-case italic text-navy/55">
+              choose from a previous search
+            </span>
+          </>
+        )}
       </button>
 
       {/* Desktop: inlaid dropdown */}

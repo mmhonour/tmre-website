@@ -11,6 +11,7 @@
 export const POSTGRES_KNOWN_TABLES = [
   'listings',
   'sync_meta',
+  'sync_queue',
   'stats_cache',
   'listing_tax_history',
   'listing_if_estimates',

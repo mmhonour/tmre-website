@@ -6,15 +6,23 @@ export default function StatsChartLazyMount({
   children,
   minHeightClass = "min-h-[280px]",
   rootMargin = "240px 0px",
+  eager = false,
 }: {
   children: ReactNode;
   minHeightClass?: string;
   rootMargin?: string;
+  /**
+   * Mount without waiting to be scrolled past. A deep link has to find its
+   * chart's anchor in the DOM before it can scroll to it, and a chart that has
+   * never been on screen has no anchor to find.
+   */
+  eager?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(eager);
 
   useEffect(() => {
+    if (eager) return;
     const el = ref.current;
     if (!el) return;
 
@@ -35,7 +43,7 @@ export default function StatsChartLazyMount({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [rootMargin]);
+  }, [rootMargin, eager]);
 
   return (
     <div ref={ref} className={minHeightClass}>
