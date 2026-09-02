@@ -87,55 +87,42 @@ function MapGlyph() {
 }
 
 /**
- * The five Market Pulse heat bands, folded into a yin-yang. Same coral → gold
- * → sage run the favorability strip draws (`HEAT_FROM` / `HEAT_VIA` / `HEAT_TO`
- * in the digest, `from-coral via-gold to-sage` on the page): seller-hot and
- * seller-warm on the left drop, buyer-hot and buyer-warm on the right, gold
- * (balanced) where the two meet. The mid-stops are the 25% / 75% mixes of
- * that same run so the icon and the heat map stay on one scale.
+ * Two heat-map teardrops filling the rail button: coral (seller) and sage
+ * (buyer), each holding its colour through the bulb and fading to gold down
+ * the tail. White rim, edge-to-edge in the square.
  */
-const HEAT_SELLER_WARM = "#C88246";
-const HEAT_BUYER_WARM = "#899360";
-
 function PulseGlyph() {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const seller = `${uid}-seller`;
   const buyer = `${uid}-buyer`;
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+    <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden>
       <defs>
-        <linearGradient id={seller} x1="0" y1="0" x2="1" y2="0">
+        <linearGradient id={seller} x1="0.5" y1="1" x2="0.5" y2="0">
           <stop offset="0" stopColor="var(--color-coral)" />
-          <stop offset="0.42" stopColor="var(--color-coral)" />
-          <stop offset="0.42" stopColor={HEAT_SELLER_WARM} />
-          <stop offset="0.78" stopColor={HEAT_SELLER_WARM} />
-          <stop offset="0.78" stopColor="var(--color-gold)" />
+          <stop offset="0.52" stopColor="var(--color-coral)" />
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
-        <linearGradient id={buyer} x1="1" y1="0" x2="0" y2="0">
+        <linearGradient id={buyer} x1="0.5" y1="0" x2="0.5" y2="1">
           <stop offset="0" stopColor="var(--color-sage)" />
-          <stop offset="0.42" stopColor="var(--color-sage)" />
-          <stop offset="0.42" stopColor={HEAT_BUYER_WARM} />
-          <stop offset="0.78" stopColor={HEAT_BUYER_WARM} />
-          <stop offset="0.78" stopColor="var(--color-gold)" />
+          <stop offset="0.52" stopColor="var(--color-sage)" />
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
       </defs>
-      <circle cx="12" cy="12" r="9.2" fill={`url(#${buyer})`} />
+      <circle cx="12" cy="12" r="11" fill={`url(#${buyer})`} />
       <path
-        d="M12 2.8 A9.2 9.2 0 0 0 12 21.2 A4.6 4.6 0 0 0 12 12 A4.6 4.6 0 0 1 12 2.8 Z"
+        d="M12 1 A11 11 0 0 0 12 23 A5.5 5.5 0 0 0 12 12 A5.5 5.5 0 0 1 12 1 Z"
         fill={`url(#${seller})`}
       />
-      <circle cx="12" cy="7.4" r="1.7" fill="var(--color-coral)" />
-      <circle cx="12" cy="16.6" r="1.7" fill="var(--color-sage)" />
-      {/* Rim last so the coral half does not paint over its inner edge. */}
+      <circle cx="12" cy="6.5" r="2.05" fill="var(--color-coral)" />
+      <circle cx="12" cy="17.5" r="2.05" fill="var(--color-sage)" />
       <circle
         cx="12"
         cy="12"
-        r="9.2"
+        r="11"
         fill="none"
-        stroke="var(--color-gold)"
-        strokeWidth="1.4"
+        stroke="white"
+        strokeWidth="1.5"
       />
     </svg>
   );
@@ -379,7 +366,7 @@ export default function ShowcaseSectionRail({
         aria-pressed={solo === "pulse"}
         aria-label={solo === "pulse" ? "Close town pulse" : "Show town pulse"}
         title="Town pulse"
-        className={railIconClass(solo === "pulse")}
+        className={`${railIconClass(solo === "pulse")} p-0`}
       >
         <PulseGlyph />
       </button>
