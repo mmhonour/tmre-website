@@ -28,16 +28,22 @@ function fmtCount(n: number): string {
   return Number.isInteger(n) ? String(n) : String(n);
 }
 
-function priceSentence(listing: InsightListing): string | null {
+function pricePhrase(listing: InsightListing): string | null {
   const price = primaryListingPrice(listing);
   if (price == null || price <= 0) return null;
   const amount = fmtUsd(price);
-  if (isRentalListing(listing)) return `Asking ${amount} a month.`;
-  if (primaryListingPriceIsClosed(listing)) return `Sold for ${amount}.`;
-  return `Listed at ${amount}.`;
+  if (isRentalListing(listing)) return `offered at ${amount} a month`;
+  if (primaryListingPriceIsClosed(listing)) return `sold for ${amount}`;
+  return `offered at ${amount}`;
 }
 
-function specsSentence(listing: InsightListing): string | null {
+/**
+ * Showcase-only facts line shown under the shared `buildInsight` copy.
+ * Price sits in the same sentence as beds, baths, sqft and acres.
+ */
+export function showcaseListingFactsProse(
+  listing: InsightListing,
+): string | null {
   const parts: string[] = [];
   if (listing.beds != null && listing.beds > 0) {
     parts.push(
@@ -51,39 +57,23 @@ function specsSentence(listing: InsightListing): string | null {
         : `${fmtCount(listing.baths)} bathrooms`,
     );
   }
+  const size: string[] = [];
   if (listing.sqft != null && listing.sqft > 0) {
-    parts.push(`${listing.sqft.toLocaleString("en-US")} square feet`);
+    size.push(`${listing.sqft.toLocaleString("en-US")} square feet`);
   }
   const acres = formatLotAcresLabel(listing.lotAcres);
-  if (acres) parts.push(`on ${acres}`);
+  if (acres) size.push(size.length ? `on ${acres}` : acres);
+  if (size.length) parts.push(size.join(" "));
+  const price = pricePhrase(listing);
+  if (price) parts.push(price);
 
   if (parts.length === 0) return null;
   if (parts.length === 1) return `${capitalize(parts[0])}.`;
+
   const last = parts.pop()!;
-  const lead = parts.join(", ");
-  const joiner = last.startsWith("on ") ? " " : ", and ";
-  return `${capitalize(lead)}${joiner}${last}.`;
+  return `${capitalize(parts.join(", "))}, ${last}.`;
 }
 
 function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
-}
-
-/**
- * Showcase-only lead: price, beds, baths, sqft and acres as prose, then the
- * same `buildInsight` string every other surface already shows. Does not
- * change `lib/goldilocks.ts`.
- */
-export function showcaseInsightText(
-  listing: InsightListing,
-  sharedInsight: string | null,
-): string | null {
-  const facts = [priceSentence(listing), specsSentence(listing)]
-    .filter((s): s is string => Boolean(s))
-    .join(" ");
-  const insight = sharedInsight?.trim() ?? "";
-  if (!facts && !insight) return null;
-  if (!facts) return insight;
-  if (!insight) return facts;
-  return `${facts} ${insight}`;
 }

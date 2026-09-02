@@ -7,7 +7,7 @@ import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsP
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
-import { showcaseInsightText } from "@/components/listing/showcase/showcase-insight-prose";
+import { showcaseListingFactsProse } from "@/components/listing/showcase/showcase-insight-prose";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
@@ -230,10 +230,8 @@ export default function ListingShowcaseClient({
   const street = listing.address.street || listing.address.full || addressHint || "";
   const city = townHint || listing.address.city;
   const status = formatMlsStatus(listing.status);
-  const insight = showcaseInsightText(
-    listing,
-    data?.insight?.trim() || null,
-  );
+  const insight = data?.insight?.trim() || null;
+  const insightFacts = showcaseListingFactsProse(listing);
   const primaryPrice = primaryListingPrice(listing);
   const priceIsClosed = primaryListingPriceIsClosed(listing);
   const headerPrice =
@@ -319,6 +317,7 @@ export default function ListingShowcaseClient({
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
           insight={insight}
+          insightFacts={insightFacts}
           detailRows={detailRows}
           townHint={city}
           postalCode={listing.address.postalCode}
@@ -483,6 +482,7 @@ export default function ListingShowcaseClient({
         city={city}
         addressHint={addressHint}
         insight={insight}
+        insightFacts={insightFacts}
         remarks={remarks}
         detailRows={detailRows}
         isRental={isRental}

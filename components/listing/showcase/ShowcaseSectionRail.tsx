@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
-import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import {
   LISTING_RECENTLY_SOLD_PANEL_ID,
@@ -11,6 +10,7 @@ import {
 } from "@/components/listing/listing-section-ids";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
+import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseDetailRow } from "@/components/listing/showcase/showcase-types";
@@ -168,6 +168,7 @@ type IfAmounts = { sale: number | null; rent: number | null };
 export default function ShowcaseSectionRail({
   mlsId,
   insight,
+  insightFacts,
   detailRows,
   subject,
   townHint,
@@ -179,6 +180,8 @@ export default function ShowcaseSectionRail({
 }: {
   mlsId: string;
   insight: string | null;
+  /** Showcase-only facts line, rendered under the shared insight. */
+  insightFacts?: string | null;
   detailRows: ShowcaseDetailRow[];
   subject: DealBoardMapListing | null;
   townHint?: string | null;
@@ -460,7 +463,18 @@ export default function ShowcaseSectionRail({
             {/* Icons first in this mode: the card can run to 70vh, which would
                 push the only way out below the fold. */}
             {iconRow}
-            <div className="mt-1 max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+            {overlay === "pulse" ? (
+              <button
+                type="button"
+                onClick={() => toggleOverlay("pulse")}
+                aria-expanded
+                className={`${pillClass(true, true)} mt-1`}
+              >
+                <span className="flex-1">Town pulse</span>
+                <Chevron open />
+              </button>
+            ) : null}
+            <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
               {overlay === "details" ? (
                 /* The dashboard's own Details card, not a second summary —
                    same component the deck below the photo renders. */
@@ -475,22 +489,9 @@ export default function ShowcaseSectionRail({
         ) : overlay === "map" ? null : (
           <>
         {cardPill(
-          "pulse",
-          "Town pulse",
-          <ShowcaseTownPulse city={townHint ?? ""} expanded={openCard === "pulse"} />,
-        )}
-
-        {cardPill(
           "insight",
           "Insight",
-          insight ? (
-            <ListingInsightCopy
-              text={insight}
-              className="text-sm leading-relaxed text-white/80"
-            />
-          ) : (
-            <p className="text-sm text-white/50">No insight for this listing.</p>
-          ),
+          <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />,
         )}
 
         {cardPill(

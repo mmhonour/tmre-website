@@ -24,7 +24,7 @@ import { ListingComparablesPageContent } from "@/components/listing/ListingCompa
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
-import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import ListingAdminAgentPanel from "@/components/listing/ListingAdminAgentPanel";
 import { extractListingAgentContact } from "@/lib/listing-agent-contact";
@@ -118,6 +118,7 @@ export default function ShowcaseDetailsPanel({
   city,
   addressHint,
   insight,
+  insightFacts = null,
   remarks,
   detailRows,
   isRental,
@@ -132,6 +133,7 @@ export default function ShowcaseDetailsPanel({
   city: string;
   addressHint?: string | null;
   insight: string | null;
+  insightFacts?: string | null;
   remarks: string;
   detailRows: ShowcaseDetailRow[];
   isRental: boolean;
@@ -324,7 +326,7 @@ export default function ShowcaseDetailsPanel({
               </div>
 
               {/* Production places Insight beside Property Details on desktop. */}
-              {insight ? (
+              {insight || insightFacts ? (
                 <aside
                   className="hidden min-w-0 lg:block lg:max-w-sm"
                   aria-label="Listing insight"
@@ -332,8 +334,9 @@ export default function ShowcaseDetailsPanel({
                   <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold lg:text-center">
                     Insight
                   </p>
-                  <ListingInsightCopy
-                    text={insight}
+                  <ShowcaseInsightBody
+                    insight={insight}
+                    facts={insightFacts ?? null}
                     className="text-left text-[11px] leading-snug text-white/70 break-words"
                   />
                 </aside>
@@ -404,13 +407,10 @@ export default function ShowcaseDetailsPanel({
               </section>
 
               <Section id={SHOWCASE_SECTION_IDS.insight} title="Insight">
-                {insight ? (
-                  <ListingInsightCopy text={insight} />
-                ) : (
-                  <p className="text-sm text-white/50">
-                    No insight for this listing.
-                  </p>
-                )}
+                <ShowcaseInsightBody
+                  insight={insight}
+                  facts={insightFacts ?? null}
+                />
               </Section>
 
               <div className="lg:hidden">
