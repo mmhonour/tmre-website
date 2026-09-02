@@ -482,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses and the Monday market brief go on sync_queue: the thin cron enqueues, the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Open houses and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -527,6 +527,23 @@ export function describeStartupProcess(): {
         timing: "1st of month ~10:00 UTC",
         detail:
           "syncAllTmreZipBoundaries() / Netlify sync-zip-boundaries. Skips when Pause is checked on Zip boundary maps (Database tab). Maps read GET /api/zip-boundaries.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
+
+  lanes.push({
+    id: "open-houses",
+    title: "Open houses",
+    subtitle: "SmartMLS OpenHouse → open_houses for /open-houses",
+    steps: [
+      {
+        id: "open-houses-hourly",
+        title: "Hourly OpenHouse window replace",
+        timing: "10-min sweep → hourly (Configure)",
+        detail:
+          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the old page queried RETS on every request and timed out. The pull replaces the rolling 7-day ET window wholesale so a cancelled open house disappears, and only writes when the RETS query succeeded, so a fault cannot empty the table. /open-houses is one SQL join against listings. Pause/Run/Reset on Admin → Syncs.",
         status: "scheduled",
         statusLabel: "Cron",
       },

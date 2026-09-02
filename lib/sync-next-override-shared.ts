@@ -23,6 +23,8 @@ export function syncNextOverrideStepMs(jobId: SyncNextOverrideJobId): number {
       return 60 * 60_000
     case 'zip-boundaries':
       return 24 * 60 * 60_000
+    case 'open-houses':
+      return 60 * 60_000
     case 'fomc-sync':
     case 'cpi-sync':
       return 30 * 60_000
@@ -70,6 +72,8 @@ export function nextPracticalTakeHoldIso(
       return nextMondayEtSlotAtOrAfter(8, 0, base).toISOString()
     case 'zip-boundaries':
       return nextMonthDayUtcAtOrAfter(1, 10, base).toISOString()
+    case 'open-houses':
+      return nextHalfHourSlotAtOrAfter(base).toISOString()
     case 'fomc-sync':
     case 'cpi-sync':
       return nextHalfHourSlotAtOrAfter(base).toISOString()

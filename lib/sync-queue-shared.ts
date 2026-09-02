@@ -24,6 +24,7 @@ export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'deal-of-the-day',
   'property-addresses',
   'market-digest',
+  'open-houses',
 ]
 
 export function isSyncQueueRunnerJob(
@@ -121,6 +122,8 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     'property-addresses': 120,
     'vision-addresses': 90,
     'zip-boundaries': 45,
+    // A single OpenHouse query plus a window replace — minutes, not tens.
+    'open-houses': 15,
     'fomc-sync': 10,
     'cpi-sync': 10,
     'market-digest': 15,

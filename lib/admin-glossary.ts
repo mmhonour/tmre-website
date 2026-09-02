@@ -436,6 +436,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Admin Syncs → Configure: Frequency picklist + Start time (ET) + per-job Budget (minutes) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers check due, then enqueue onto sync_queue instead of picking a host. The per-job Scheduler radio is gone — the Railway runner claims whatever is queued, and Netlify only executes a row itself when the runner heartbeat proves it is gone. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard shows a Queue column (running with budget left, queued with position + Cancel, or the last outcome); Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
   },
   {
+    term: 'open_houses',
+    category: 'sync-admin',
+    definition:
+      'Neon table holding the rolling seven-day ET window of public open houses from the SmartMLS OpenHouse resource (db/migrations/0023_open_houses.sql). /open-houses used to query RETS on every page request — a login, then a per-listing lookup that fell back to RETS again for anything not already stored, twelve at a time — which is why a shipped page answered HTTP 502 whenever the MLS was slow. Now a queue job pulls the window hourly and the page is one SQL join against listings, matching on OHListingId → mls_id or OHListingKey → listing_key. Each run replaces the whole window rather than upserting, because a cancelled open house is an absence with no delete event to react to; the replace only runs when the RETS pull actually succeeded, so a query fault cannot wipe the weekend off the site. MLS times are stored as text, not timestamps, so an 11am open house stays 11am in Connecticut.',
+  },
+  {
     term: 'sync_queue',
     category: 'sync-admin',
     definition:

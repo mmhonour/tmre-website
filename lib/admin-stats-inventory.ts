@@ -706,6 +706,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'sync_runs' },
   },
   {
+    id: 'open-houses',
+    name: 'Open house events',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'open_houses',
+    keyPattern: 'table rows (rolling 7-day ET window)',
+    owner: 'lib/open-houses-sync.ts',
+    notes:
+      'SmartMLS OpenHouse resource, synced hourly and joined to listings by /open-houses. The window is replaced wholesale each run so a cancelled open house disappears — but only when the RETS pull succeeded, since an empty result from a failed query must not empty the table.',
+    live: { kind: 'postgres_table', table: 'open_houses' },
+  },
+  {
     id: 'sync-queue',
     name: 'Sync job queue',
     category: 'sync-control',
@@ -787,12 +799,14 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
   },
   {
     id: 'open-houses-memory',
-    name: 'Open houses window cache',
+    name: 'Open houses RETS helper cache',
     category: 'ephemeral',
     medium: 'memory',
     location: 'Process Map',
     keyPattern: 'oh:{start}:{end}',
     owner: 'lib/open-houses-server.ts',
+    notes:
+      'Only the leftover forgiving RETS helper caches here. The /open-houses page reads Neon.',
     live: { kind: 'none' },
   },
   {

@@ -55,6 +55,16 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     to: { table: 'listing_price_history', column: 'listing_id' },
     source: 'documented',
   },
+  {
+    from: { table: 'listings', column: 'mls_id' },
+    to: { table: 'open_houses', column: 'listing_id' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'listings', column: 'listing_key' },
+    to: { table: 'open_houses', column: 'listing_key' },
+    source: 'documented',
+  },
 ]
 
 /** Expected columns when a known table is absent from Neon (migrations lag). */
@@ -88,6 +98,17 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'mls_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'source', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'verified_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  open_houses: [
+    { name: 'id', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'listing_key', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'listing_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'oh_date', type: 'date', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'start_datetime', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'end_datetime', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'oh_type', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'comment', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
   ],
 }
