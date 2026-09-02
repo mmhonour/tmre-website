@@ -936,6 +936,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Price per square foot — a Goldilocks factor and a common listing metadata column.',
   },
   {
+    term: 'Land stretch',
+    category: 'scoring',
+    definition:
+      'A 1/4-mile corridor of land (not a radius) used to read whether a listing’s premium to the town median PPSF is in line with recent solds on that dirt — typically a waterfront strip, an in-town approach, or the same street. Computed per listing into listing_land_premiums; Insight only attributes the premium to land when the stretch itself also trades above the town median. See PPSF.',
+  },
+  {
+    term: 'Location premium',
+    category: 'scoring',
+    definition:
+      'Hand-tuned proximity boosts (water, town/zip center, golf) used to weight What-if comps. Different from land stretch, which reads the same amenities from historical solds on a corridor. See Land stretch, What if.',
+  },
+  {
     term: 'Score breakdown',
     category: 'scoring',
     definition:

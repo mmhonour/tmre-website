@@ -22,6 +22,11 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
   },
   {
     from: { table: 'listings', column: 'id' },
+    to: { table: 'listing_land_premiums', column: 'listing_id' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'listings', column: 'id' },
     to: { table: 'listing_relations', column: 'subject_id' },
     source: 'documented',
   },
@@ -110,6 +115,21 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'oh_type', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'comment', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  listing_land_premiums: [
+    { name: 'listing_id', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'algo_version', type: 'integer', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'axis', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'sold_count', type: 'integer', notNull: true, primaryKey: false, defaultValue: '0' },
+    { name: 'stretch_median_ppsf', type: 'numeric', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'city_median_ppsf', type: 'numeric', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'listing_ppsf', type: 'numeric', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'stretch_premium_pct', type: 'numeric', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'listing_premium_pct', type: 'numeric', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'explains_land', type: 'boolean', notNull: true, primaryKey: false, defaultValue: 'false' },
+    { name: 'labels', type: 'jsonb', notNull: true, primaryKey: false, defaultValue: "'[]'::jsonb" },
+    { name: 'payload', type: 'jsonb', notNull: true, primaryKey: false, defaultValue: "'{}'::jsonb" },
+    { name: 'computed_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
   ],
 }
 

@@ -567,6 +567,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'listing_if_estimates' },
   },
   {
+    id: 'listing-land-premiums',
+    name: 'Land stretch premiums',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'listing_land_premiums',
+    keyPattern: 'table rows by listing_id',
+    owner: 'lib/listing-land-stretch-resolve.ts',
+    notes:
+      'Sold PPSF on a 1/4-mile amenity corridor (water / town-center / street), not a radius. Compared to the town median already on Insight.',
+    live: { kind: 'postgres_table', table: 'listing_land_premiums' },
+  },
+  {
     id: 'if-detail-cache',
     name: 'IF detail payload cache',
     category: 'listing-derived',

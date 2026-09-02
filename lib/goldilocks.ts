@@ -8,6 +8,10 @@ import {
 import { isFreshFirstSaleNewConstruction } from './new-construction'
 import { matchedRemarkPhrases } from './remarks-phrase-match'
 import { formatInsightMedianPpsf } from './insight-median-ppsf'
+import {
+  formatLandStretchInsightTail,
+  type LandStretchInsight,
+} from './listing-land-stretch'
 
 export type { GoldilocksScoringConfig } from './goldilocks-config-shared'
 
@@ -148,6 +152,8 @@ export type ScoredListing = {
     goodLayout: string[]
     badLayout: string[]
   }
+  /** Sold-comp land stretch vs town median; optional, listing-agnostic. */
+  landStretch?: LandStretchInsight | null
 }
 
 function collectRemarks(l: Listing): string {
@@ -516,8 +522,11 @@ function buildSaleInsight(s: ScoredListing): string {
         `On price-per-sqft it comes in ${pct(diff * 100)} below the ${city} median (${med}) — value for its price band.`,
       )
     } else if (diff > 0.05) {
+      const landTail = formatLandStretchInsightTail(s.landStretch)
       sentences.push(
-        `It carries a ${pct(diff * 100)} premium to the ${city} median price-per-sqft (${med}), in line with a higher-finish tier.`,
+        landTail
+          ? `It carries a ${pct(diff * 100)} premium to the ${city} median price-per-sqft (${med}), ${landTail}.`
+          : `It carries a ${pct(diff * 100)} premium to the ${city} median price-per-sqft (${med}).`,
       )
     } else {
       sentences.push(
