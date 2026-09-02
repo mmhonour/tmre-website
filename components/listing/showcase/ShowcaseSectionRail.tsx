@@ -90,28 +90,29 @@ function MapGlyph() {
 const PULSE_RED = "#FF2A22";
 
 /**
- * Two teardrops on the 10 / 4 axis, edge-to-edge with no rim. Yin (sage) runs green
- * → red with a red eye; yang (red) runs red → gold. Gold hairline on the S.
+ * Two teardrops on the 10 / 4 axis, no rims or S-stroke. Yin is sage
+ * fading to red where it meets the yang tail; yang is red with a gold eye.
  */
 function PulseGlyph() {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const seller = `${uid}-seller`;
-  const buyer = `${uid}-buyer`;
+  const yin = `${uid}-yin`;
   const eyeOnGreen = `${uid}-eye-green`;
   const eyeOnRed = `${uid}-eye-red`;
   return (
     <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden>
       <defs>
-        <linearGradient id={seller} x1="0.5" y1="1" x2="0.5" y2="0">
-          <stop offset="0" stopColor={PULSE_RED} />
-          <stop offset="0.5" stopColor={PULSE_RED} />
-          <stop offset="1" stopColor="var(--color-gold)" />
-        </linearGradient>
-        <linearGradient id={buyer} x1="0.5" y1="0" x2="0.5" y2="1">
+        {/* Green bulb → red at the S, where it meets the yang tail. */}
+        <radialGradient
+          id={yin}
+          cx="12"
+          cy="6"
+          r="11"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop offset="0" stopColor="var(--color-sage)" />
-          <stop offset="0.5" stopColor="var(--color-sage)" />
+          <stop offset="0.42" stopColor="var(--color-sage)" />
           <stop offset="1" stopColor={PULSE_RED} />
-        </linearGradient>
+        </radialGradient>
         <radialGradient id={eyeOnGreen}>
           <stop offset="0" stopColor={PULSE_RED} />
           <stop offset="0.34" stopColor={PULSE_RED} />
@@ -124,17 +125,10 @@ function PulseGlyph() {
         </radialGradient>
       </defs>
       <g transform="rotate(-60 12 12)">
-        <circle cx="12" cy="12" r="12" fill={`url(#${buyer})`} />
+        <circle cx="12" cy="12" r="12" fill={`url(#${yin})`} />
         <path
           d="M12 0 A12 12 0 0 0 12 24 A6 6 0 0 0 12 12 A6 6 0 0 1 12 0 Z"
-          fill={`url(#${seller})`}
-        />
-        <path
-          d="M12 0 A6 6 0 0 1 12 12 A6 6 0 0 0 12 24"
-          fill="none"
-          stroke="var(--color-gold)"
-          strokeWidth="0.55"
-          strokeLinecap="round"
+          fill={PULSE_RED}
         />
         <circle cx="12" cy="6" r="3.1" fill={`url(#${eyeOnGreen})`} />
         <circle cx="12" cy="18" r="3.1" fill={`url(#${eyeOnRed})`} />
