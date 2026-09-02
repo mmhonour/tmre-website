@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db/postgres'
-import { ensureOpenHousesTable } from '@/lib/db/open-houses-repo'
+import {
+  ensureOpenHousesTable,
+  readOpenHouseCountsForListings,
+} from '@/lib/db/open-houses-repo'
 import { OPEN_HOUSES_SYNCED_AT_KEY } from '@/lib/open-houses-sync'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import {
+  etCalendarDate,
   openHouseDateWindow,
   type OpenHouseEvent,
   type OpenHouseListing,
@@ -121,6 +125,15 @@ export async function GET() {
       byMls.set(row.mls_id, entry)
     }
 
+    const today = etCalendarDate()
+    const countByToken = await readOpenHouseCountsForListings(
+      [...byMls.values()].map(({ listing }) => ({
+        mlsId: listing.mlsId,
+        listingKey: listing.listingKey,
+      })),
+      today,
+    )
+
     const listings: OpenHouseListing[] = []
     for (const { listing, events, dom } of byMls.values()) {
       const sorted = sortEvents([...events.values()])
@@ -128,6 +141,12 @@ export async function GET() {
       if (!next) continue
       const city =
         resolveListingTown(listing.address.city) ?? listing.address.city
+      const counts =
+        countByToken.get(listing.mlsId.trim()) ??
+        (listing.listingKey
+          ? countByToken.get(listing.listingKey.trim())
+          : undefined) ??
+        { past: 0, upcoming: sorted.length }
       listings.push({
         mlsId: listing.mlsId,
         listingKey: listing.listingKey ?? null,
@@ -149,6 +168,8 @@ export async function GET() {
         ownerName: listing.ownerName,
         openHouses: sorted,
         nextOpenHouse: next,
+        pastCount: counts.past,
+        upcomingCount: Math.max(counts.upcoming, sorted.length),
       })
     }
 

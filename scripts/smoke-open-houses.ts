@@ -10,9 +10,11 @@
 import {
   ensureOpenHousesTable,
   pruneOpenHousesBefore,
+  readOpenHouseCountsForListings,
   readOpenHouseStats,
   readOpenHousesInWindow,
   replaceOpenHouseWindow,
+  upsertOpenHouses,
 } from '../lib/db/open-houses-repo'
 import { query } from '../lib/db/postgres'
 
@@ -74,14 +76,44 @@ async function main() {
   console.log('PASS  successful empty pull clears the window')
 
   await replaceOpenHouseWindow(WINDOW, EVENTS)
-  const pruned = await pruneOpenHousesBefore('2099-01-03')
-  assert(pruned >= 1, 'expected prune of the past day')
-  const read4 = await readOpenHousesInWindow(WINDOW)
+  const history = await upsertOpenHouses([
+    {
+      id: 'smoke-oh-past',
+      listingKey: 'KEY-SMOKE-1',
+      listingId: 'MLS-SMOKE-1',
+      date: '2098-12-15',
+      startDateTime: '2098-12-15T11:00:00',
+      endDateTime: '2098-12-15T13:00:00',
+      type: 'O',
+      comment: 'past',
+    },
+  ])
+  assert(history === 1, `expected 1 history upsert, got ${history}`)
+  const afterUpcomingReplace = await replaceOpenHouseWindow(WINDOW, [EVENTS[0]])
+  assert(afterUpcomingReplace.written === 1, 'upcoming replace should write 1')
+  const stillThere = await readOpenHousesInWindow({
+    start: '2098-12-01',
+    end: '2098-12-31',
+  })
   assert(
-    read4.length === 1 && read4[0]?.id === 'smoke-oh-2',
-    `prune left the wrong rows: ${JSON.stringify(read4)}`,
+    stillThere.some((row) => row.id === 'smoke-oh-past'),
+    'lookback upsert must survive an upcoming-window replace',
   )
-  console.log('PASS  prune drops dates before the rolling window')
+  console.log('PASS  history upsert survives upcoming replace')
+
+  const counts = await readOpenHouseCountsForListings(
+    [{ mlsId: 'MLS-SMOKE-1', listingKey: 'KEY-SMOKE-1' }],
+    '2099-01-01',
+  )
+  const smoke = counts.get('MLS-SMOKE-1')
+  assert(smoke, 'expected counts for MLS-SMOKE-1')
+  assert(smoke.past === 1, `expected 1 past, got ${smoke.past}`)
+  assert(smoke.upcoming === 1, `expected 1 upcoming, got ${smoke.upcoming}`)
+  console.log('PASS  past / upcoming counts')
+
+  const pruned = await pruneOpenHousesBefore('2098-12-20')
+  assert(pruned >= 1, 'expected prune of the aged-out history row')
+  console.log('PASS  prune drops dates before the lookback horizon')
 
   const joinRows = await query<{ oh_id: string }>(
     `SELECT oh.id AS oh_id
@@ -96,6 +128,7 @@ async function main() {
   console.log('PASS  listings join shape parses')
 
   await replaceOpenHouseWindow(WINDOW, [])
+  await replaceOpenHouseWindow({ start: '2098-12-01', end: '2098-12-31' }, [])
   const stats = await readOpenHouseStats()
   console.log(`PASS  cleanup · table holds ${stats.total} live row(s)`)
   console.log('PASSED')

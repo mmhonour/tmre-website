@@ -47,7 +47,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'open-houses': {
     label: 'Open houses',
     description:
-      'SmartMLS OpenHouse resource → open_houses for the rolling 7-day /open-houses page',
+      'SmartMLS OpenHouse → open_houses (90-day upcoming replace + 1-year lookback) for /open-houses counts',
   },
   'fomc-sync': {
     label: 'FOMC statement sync',

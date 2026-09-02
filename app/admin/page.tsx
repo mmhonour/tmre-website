@@ -572,7 +572,7 @@ export default async function AdminPage() {
       finishedAt: openHousesSyncedAt,
       sortMs: timestampSortMs(openHousesSyncedAt),
       detail:
-        "SmartMLS OpenHouse resource → open_houses for the rolling 7-day /open-houses page (hourly)",
+        "SmartMLS OpenHouse → open_houses (90-day upcoming + 1-year lookback) for /open-houses counts (hourly)",
       actionId: "open-houses",
       nextRunAt: nextRuns["open-houses"],
     },

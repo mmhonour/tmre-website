@@ -36,6 +36,10 @@ export type OpenHouseListing = {
   ownerName: string | null
   openHouses: OpenHouseEvent[]
   nextOpenHouse: OpenHouseEvent
+  /** Public events on file with OHDate before today (ET). */
+  pastCount: number
+  /** Public events on file with OHDate today or later (ET), not only this week. */
+  upcomingCount: number
 }
 
 /** Calendar date (YYYY-MM-DD) in America/New_York. */
@@ -52,10 +56,54 @@ export function addCalendarDays(isoDate: string, days: number): string {
   return `${yy}-${mm}-${dd}`
 }
 
+/** How far back a sync asks RETS for events the MLS still holds. */
+export const OPEN_HOUSE_LOOKBACK_DAYS = 365
+/** How far ahead a sync stores scheduled events for the upcoming count. */
+export const OPEN_HOUSE_LOOKAHEAD_DAYS = 90
+
 /** Today through +6 days in ET — 7 calendar days inclusive. */
 export function openHouseDateWindow(from = new Date()): { start: string; end: string } {
   const start = etCalendarDate(from)
   return { start, end: addCalendarDays(start, 6) }
+}
+
+/** Yesterday back through the lookback horizon (empty when lookback is 0). */
+export function openHouseLookbackWindow(from = new Date()): { start: string; end: string } {
+  const today = etCalendarDate(from)
+  return {
+    start: addCalendarDays(today, -OPEN_HOUSE_LOOKBACK_DAYS),
+    end: addCalendarDays(today, -1),
+  }
+}
+
+/** Today through the lookahead horizon. */
+export function openHouseHorizonWindow(from = new Date()): { start: string; end: string } {
+  const start = etCalendarDate(from)
+  return { start, end: addCalendarDays(start, OPEN_HOUSE_LOOKAHEAD_DAYS) }
+}
+
+/** Split an inclusive date window into chunks so a RETS range stays small. */
+export function splitDateWindow(
+  window: { start: string; end: string },
+  chunkDays = 31,
+): { start: string; end: string }[] {
+  if (window.start > window.end) return []
+  const size = Number.isFinite(chunkDays) && chunkDays > 0 ? Math.floor(chunkDays) : 31
+  const chunks: { start: string; end: string }[] = []
+  let cursor = window.start
+  while (cursor <= window.end) {
+    const rawEnd = addCalendarDays(cursor, size - 1)
+    const end = rawEnd < window.end ? rawEnd : window.end
+    chunks.push({ start: cursor, end })
+    cursor = addCalendarDays(end, 1)
+  }
+  return chunks
+}
+
+export function formatOpenHouseHistory(past: number, upcoming: number): string {
+  const pastLabel = past === 1 ? '1 past' : `${past} past`
+  const upcomingLabel = upcoming === 1 ? '1 upcoming' : `${upcoming} upcoming`
+  return `${pastLabel} · ${upcomingLabel}`
 }
 
 export function isDateInOpenHouseWindow(

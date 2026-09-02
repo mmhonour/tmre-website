@@ -235,8 +235,9 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         frequency: 'monthly',
         startTimeEt: '06:00',
       },
-      // Open houses are announced and cancelled through the week, and the page
-      // shows a rolling seven days, so this wants to be frequent and cheap.
+      // Open houses are announced and cancelled through the week. The page
+      // lists the next 7 days; the job also stores 90 days ahead and a year
+      // of history for the past / upcoming counts.
       'open-houses': {
         frequency: '60m',
         startTimeEt: '00:00',

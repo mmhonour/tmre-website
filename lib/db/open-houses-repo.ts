@@ -130,10 +130,129 @@ export async function replaceOpenHouseWindow(
   })
 }
 
-/** Drop events that have fallen out of the rolling window. */
+/**
+ * Insert or refresh events without deleting anything.
+ * Used for the lookback pull: MLS dropping an old row must not erase history
+ * we already stored.
+ */
+export async function upsertOpenHouses(
+  events: readonly OpenHouseEvent[],
+): Promise<number> {
+  await ensureOpenHousesTable()
+  if (events.length === 0) return 0
+
+  return withTransaction(async (client) => {
+    let written = 0
+    for (const event of events) {
+      await client.query(
+        `INSERT INTO open_houses
+           (id, listing_key, listing_id, oh_date, start_datetime, end_datetime,
+            oh_type, comment, synced_at)
+         VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, now())
+         ON CONFLICT (id) DO UPDATE SET
+           listing_key    = EXCLUDED.listing_key,
+           listing_id     = EXCLUDED.listing_id,
+           oh_date        = EXCLUDED.oh_date,
+           start_datetime = EXCLUDED.start_datetime,
+           end_datetime   = EXCLUDED.end_datetime,
+           oh_type        = EXCLUDED.oh_type,
+           comment        = EXCLUDED.comment,
+           synced_at      = now()`,
+        [
+          event.id,
+          event.listingKey || null,
+          event.listingId || null,
+          event.date,
+          event.startDateTime,
+          event.endDateTime,
+          event.type || null,
+          event.comment,
+        ],
+      )
+      written += 1
+    }
+    return written
+  })
+}
+
+/**
+ * Drop events older than the lookback horizon. Upcoming cancellations are
+ * handled by {@link replaceOpenHouseWindow}; history is kept until it ages out.
+ */
 export async function pruneOpenHousesBefore(isoDay: string): Promise<number> {
   await ensureOpenHousesTable()
   return execute(`DELETE FROM open_houses WHERE oh_date < $1::date`, [isoDay])
+}
+
+export type OpenHouseListingCounts = {
+  past: number
+  upcoming: number
+}
+
+/**
+ * Past = OHDate before today; upcoming = today or later. Counted by unique
+ * event id, then attributed to every listing token that matches so the page
+ * can look up by mlsId or listingKey without double-counting one home.
+ */
+export async function readOpenHouseCountsForListings(
+  listings: readonly { mlsId?: string | null; listingKey?: string | null }[],
+  today: string,
+): Promise<Map<string, OpenHouseListingCounts>> {
+  await ensureOpenHousesTable()
+  const ids = [
+    ...new Set(
+      listings.map((row) => row.mlsId?.trim()).filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  const keys = [
+    ...new Set(
+      listings
+        .map((row) => row.listingKey?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  const counts = new Map<string, OpenHouseListingCounts>()
+  if (ids.length === 0 && keys.length === 0) return counts
+
+  const rows = await query<{
+    id: string
+    listing_id: string | null
+    listing_key: string | null
+    oh_date: Date | string
+  }>(
+    `SELECT id, listing_id, listing_key, oh_date
+       FROM open_houses
+      WHERE (listing_id IS NOT NULL AND listing_id = ANY($1::text[]))
+         OR (listing_key IS NOT NULL AND listing_key = ANY($2::text[]))`,
+    [ids, keys],
+  )
+
+  const tally = (token: string | null | undefined, date: string) => {
+    const id = token?.trim()
+    if (!id) return
+    const prev = counts.get(id) ?? { past: 0, upcoming: 0 }
+    if (date < today) prev.past += 1
+    else prev.upcoming += 1
+    counts.set(id, prev)
+  }
+
+  for (const row of rows) {
+    const date = isoDate(row.oh_date)
+    tally(row.listing_id, date)
+    // One event, one increment. Prefer listing_id; fall back to listing_key
+    // when the MLS row has no listing_id.
+    if (!row.listing_id) tally(row.listing_key, date)
+  }
+
+  for (const listing of listings) {
+    const mlsId = listing.mlsId?.trim()
+    const listingKey = listing.listingKey?.trim()
+    if (mlsId && listingKey && counts.has(mlsId) && !counts.has(listingKey)) {
+      counts.set(listingKey, counts.get(mlsId)!)
+    }
+  }
+
+  return counts
 }
 
 export async function readOpenHousesInWindow(

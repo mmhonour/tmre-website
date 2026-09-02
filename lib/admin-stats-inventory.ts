@@ -711,10 +711,10 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'sync-control',
     medium: 'postgres',
     location: 'open_houses',
-    keyPattern: 'table rows (rolling 7-day ET window)',
+    keyPattern: 'table rows (90-day upcoming + 1-year lookback)',
     owner: 'lib/open-houses-sync.ts',
     notes:
-      'SmartMLS OpenHouse resource, synced hourly and joined to listings by /open-houses. The window is replaced wholesale each run so a cancelled open house disappears — but only when the RETS pull succeeded, since an empty result from a failed query must not empty the table.',
+      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today .. +90d) is replaced so cancellations disappear; the prior year is upserted so past counts survive. /open-houses joins the next 7 days to listings and reads past / upcoming counts from this table. A failed RETS pull must not empty a window.',
     live: { kind: 'postgres_table', table: 'open_houses' },
   },
   {
