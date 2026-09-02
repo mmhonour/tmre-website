@@ -87,14 +87,16 @@ function MapGlyph() {
 }
 
 /**
- * Two heat-map teardrops, ~10% inside the hit square so the photo shows
- * through: coral (seller) and sage (buyer), gold through each tail and as
- * the eyes. Pencil-thin white rim; a gold hairline traces the S.
+ * Two heat-map teardrops on the 10 / 4 axis: coral (seller) and sage
+ * (buyer), gold down each tail. Each eye is gold fading into the bulb
+ * around it. Pencil-thin white rim; a gold hairline traces the S.
  */
 function PulseGlyph() {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const seller = `${uid}-seller`;
   const buyer = `${uid}-buyer`;
+  const eyeSage = `${uid}-eye-sage`;
+  const eyeCoral = `${uid}-eye-coral`;
   return (
     <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden>
       <defs>
@@ -108,29 +110,41 @@ function PulseGlyph() {
           <stop offset="0.52" stopColor="var(--color-sage)" />
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
+        <radialGradient id={eyeSage}>
+          <stop offset="0" stopColor="var(--color-gold)" />
+          <stop offset="0.34" stopColor="var(--color-gold)" />
+          <stop offset="1" stopColor="var(--color-sage)" />
+        </radialGradient>
+        <radialGradient id={eyeCoral}>
+          <stop offset="0" stopColor="var(--color-gold)" />
+          <stop offset="0.34" stopColor="var(--color-gold)" />
+          <stop offset="1" stopColor="var(--color-coral)" />
+        </radialGradient>
       </defs>
-      <circle cx="12" cy="12" r="10" fill={`url(#${buyer})`} />
-      <path
-        d="M12 2 A10 10 0 0 0 12 22 A5 5 0 0 0 12 12 A5 5 0 0 1 12 2 Z"
-        fill={`url(#${seller})`}
-      />
-      <path
-        d="M12 2 A5 5 0 0 1 12 12 A5 5 0 0 0 12 22"
-        fill="none"
-        stroke="var(--color-gold)"
-        strokeWidth="0.55"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="7" r="1.7" fill="var(--color-gold)" />
-      <circle cx="12" cy="17" r="1.7" fill="var(--color-gold)" />
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        fill="none"
-        stroke="white"
-        strokeWidth="0.4"
-      />
+      <g transform="rotate(-60 12 12)">
+        <circle cx="12" cy="12" r="10" fill={`url(#${buyer})`} />
+        <path
+          d="M12 2 A10 10 0 0 0 12 22 A5 5 0 0 0 12 12 A5 5 0 0 1 12 2 Z"
+          fill={`url(#${seller})`}
+        />
+        <path
+          d="M12 2 A5 5 0 0 1 12 12 A5 5 0 0 0 12 22"
+          fill="none"
+          stroke="var(--color-gold)"
+          strokeWidth="0.55"
+          strokeLinecap="round"
+        />
+        <circle cx="12" cy="7" r="2.6" fill={`url(#${eyeSage})`} />
+        <circle cx="12" cy="17" r="2.6" fill={`url(#${eyeCoral})`} />
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          fill="none"
+          stroke="white"
+          strokeWidth="0.4"
+        />
+      </g>
     </svg>
   );
 }
