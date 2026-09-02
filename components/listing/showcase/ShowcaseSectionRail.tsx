@@ -86,6 +86,34 @@ function MapGlyph() {
   );
 }
 
+/**
+ * Yin-yang for Town pulse, carrying the favorability bar's own palette: coral
+ * (seller) on the left, sage (buyer) on the right, in the same order the
+ * gradient runs, with the gold mid-band as the rim.
+ */
+function PulseGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+      <circle cx="12" cy="12" r="9.2" fill="var(--color-sage)" />
+      <path
+        d="M12 2.8 A9.2 9.2 0 0 0 12 21.2 A4.6 4.6 0 0 0 12 12 A4.6 4.6 0 0 1 12 2.8 Z"
+        fill="var(--color-coral)"
+      />
+      <circle cx="12" cy="7.4" r="1.7" fill="var(--color-coral)" />
+      <circle cx="12" cy="16.6" r="1.7" fill="var(--color-sage)" />
+      {/* Rim last so the coral half does not paint over its inner edge. */}
+      <circle
+        cx="12"
+        cy="12"
+        r="9.2"
+        fill="none"
+        stroke="var(--color-gold)"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
 function DetailsGlyph() {
   return (
     <svg
@@ -310,6 +338,24 @@ export default function ShowcaseSectionRail({
         className={railIconClass(false)}
       >
         <MapGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          // Leaving details-only puts the tile stack back, which is where the
+          // pulse card renders.
+          if (detailsOnly) {
+            setDetailsOnly(false);
+            onDetailsOnlyChange?.(false);
+          }
+          setOpenCard((cur) => (cur === "pulse" ? null : "pulse"));
+        }}
+        aria-pressed={openCard === "pulse"}
+        aria-label={openCard === "pulse" ? "Close town pulse" : "Show town pulse"}
+        title="Town pulse"
+        className={railIconClass(openCard === "pulse")}
+      >
+        <PulseGlyph />
       </button>
       <button
         type="button"
