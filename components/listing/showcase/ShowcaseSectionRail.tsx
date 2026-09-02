@@ -90,8 +90,8 @@ function MapGlyph() {
 const PULSE_RED = "#FF2A22";
 
 /**
- * Two teardrops on the 10 / 4 axis, 30% inset in the square. Yin is sage
- * fading to red where it meets the yang tail; yang is red with a gold eye.
+ * Two teardrops on the 10 / 4 axis, 30% inset. Yin is 85% sage, then
+ * yellow at the tail. Yang is red, with a yellow eye ringed in red.
  */
 function PulseGlyph() {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -101,26 +101,27 @@ function PulseGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden>
       <defs>
-        {/* Green bulb → red at the S, where it meets the yang tail. */}
         <radialGradient
           id={yin}
           cx="12"
           cy="7.8"
-          r="7.7"
+          r="8.4"
           gradientUnits="userSpaceOnUse"
         >
           <stop offset="0" stopColor="var(--color-sage)" />
           <stop offset="0.85" stopColor="var(--color-sage)" />
-          <stop offset="1" stopColor={PULSE_RED} />
+          <stop offset="1" stopColor="var(--color-gold)" />
         </radialGradient>
         <radialGradient id={eyeOnGreen}>
           <stop offset="0" stopColor={PULSE_RED} />
           <stop offset="0.34" stopColor={PULSE_RED} />
           <stop offset="1" stopColor="var(--color-sage)" />
         </radialGradient>
+        {/* Yellow core, then red collar so the yang head stays red around the dot. */}
         <radialGradient id={eyeOnRed}>
           <stop offset="0" stopColor="var(--color-gold)" />
-          <stop offset="0.34" stopColor="var(--color-gold)" />
+          <stop offset="0.22" stopColor="var(--color-gold)" />
+          <stop offset="0.48" stopColor={PULSE_RED} />
           <stop offset="1" stopColor={PULSE_RED} />
         </radialGradient>
       </defs>
@@ -131,7 +132,7 @@ function PulseGlyph() {
           fill={PULSE_RED}
         />
         <circle cx="12" cy="7.8" r="2.17" fill={`url(#${eyeOnGreen})`} />
-        <circle cx="12" cy="16.2" r="2.17" fill={`url(#${eyeOnRed})`} />
+        <circle cx="12" cy="16.2" r="2.7" fill={`url(#${eyeOnRed})`} />
       </g>
     </svg>
   );
