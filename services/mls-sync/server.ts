@@ -101,6 +101,12 @@ const SWEEPS: {
     bootDelayMs: 6 * 60_000,
     label: 'market digest',
   },
+  {
+    jobId: 'open-houses',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 7 * 60_000,
+    label: 'open houses',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {

@@ -63,6 +63,7 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
     'vision_addresses_synced_at',
     'vision_addresses_live',
   ],
+  'open-houses': ['open_houses_synced_at'],
   'zip-boundaries': [
     'last_zip_boundaries_sync',
     'last_zip_boundaries_sync_started',

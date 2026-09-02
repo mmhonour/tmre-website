@@ -10,6 +10,7 @@ export type AdminSyncPanelRowId =
   | 'property-addresses'
   | 'vision-addresses'
   | 'zip-boundaries'
+  | 'open-houses'
   | 'fomc-sync'
   | 'cpi-sync'
   | 'market-digest'

@@ -44,6 +44,11 @@ export const ADMIN_SYNC_ACTIONS = {
     label: 'Zip boundary maps',
     description: 'Census TIGERweb ZCTA rings → Postgres for Intelligence / Latest maps',
   },
+  'open-houses': {
+    label: 'Open houses',
+    description:
+      'SmartMLS OpenHouse resource → open_houses for the rolling 7-day /open-houses page',
+  },
   'fomc-sync': {
     label: 'FOMC statement sync',
     description:
@@ -81,6 +86,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'property-addresses',
   'vision-addresses',
   'zip-boundaries',
+  'open-houses',
   // fomc-sync / cpi-sync / market-digest omitted — event/email jobs
   // full-resync omitted — retired (bucket replace deletes older MLS rows)
 ] as const satisfies readonly AdminSyncActionId[]
@@ -105,9 +111,10 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'property-addresses': 6,
   'vision-addresses': 7,
   'zip-boundaries': 8,
-  'fomc-sync': 9,
-  'cpi-sync': 10,
-  'market-digest': 11,
+  'open-houses': 9,
+  'fomc-sync': 10,
+  'cpi-sync': 11,
+  'market-digest': 12,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

@@ -709,6 +709,7 @@ export type PanelStatus = {
   visionAddressesLiveStatus?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
+  openHousesSyncedAt?: string | null;
   fomcLastSyncedAt?: string | null;
   cpiLastSyncedAt?: string | null;
   marketDigestLastSentAt?: string | null;
@@ -1062,6 +1063,8 @@ function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
         started: status.zipBoundariesSyncStartedAt ?? null,
         finished: status.zipBoundariesSyncedAt ?? null,
       };
+    case "open-houses":
+      return { started: null, finished: status.openHousesSyncedAt ?? null };
     case "fomc-sync":
       return { started: null, finished: status.fomcLastSyncedAt ?? null };
     case "cpi-sync":
@@ -1356,6 +1359,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "property-addresses": "property-addresses",
   "vision-addresses": "vision-addresses",
   "zip-boundaries": "zip-boundaries",
+  "open-houses": "open-houses",
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
   "market-digest": "market-digest",
@@ -3366,6 +3370,7 @@ export default function AdminSyncTable({
                 row.id === "property-addresses" ||
                 row.id === "vision-addresses" ||
                 row.id === "zip-boundaries" ||
+                row.id === "open-houses" ||
                 row.id === "market-digest";
               const nextRunAt = nextRunForRow(row, status);
               const pauseJob = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];

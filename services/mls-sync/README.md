@@ -34,6 +34,8 @@ Endpoints (all writes need Bearer `SYNC_CRON_SECRET`):
 | `POST /drain` | Poke the drain now instead of waiting for the next poll |
 | `POST /run`, `/stats`, `/scores`, `/deal-of-the-day`, `/property-addresses`, `/market-digest` | Legacy per-job aliases; they enqueue like `/enqueue` |
 
+Runner jobs on the queue: incremental, listing-scores, stats-cache, deal-of-the-day, property-addresses, market-digest, **open-houses**. Open houses has no Netlify worker — the page used to query RETS per request; the runner is the only pull.
+
 Stamps `last_incremental_sync` when a pull finishes, and
 `last_mls_sync_heartbeat` ~60s — including while a child is working, since an
 idle parent is exactly what a healthy run looks like now.

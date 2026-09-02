@@ -250,6 +250,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'property-addresses': 'addresses',
   'vision-addresses': 'vision',
   'zip-boundaries': 'zip-maps',
+  'open-houses': 'open-houses',
   'fomc-sync': 'fomc',
   'cpi-sync': 'cpi',
   'market-digest': 'digest',
@@ -1206,6 +1207,51 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.parcelsFetched,
         message: `${result.town}: ${result.totalRows.toLocaleString()} vision rows (${result.phase})`,
         detail: result.detail,
+      }
+    }
+    case 'open-houses': {
+      if (shouldQueueOnServerless(options)) {
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'open-houses',
+          // No Netlify worker for this job — it only ever ran inline, which is
+          // what made the page time out. The queue is the only handoff.
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so open houses cannot be refreshed right now.',
+          }),
+        )
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? `Open houses queued (${via}) — End updates when the pull finishes`
+            : `Open houses queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { syncOpenHouses } = await import('@/lib/open-houses-sync')
+      const result = await syncOpenHouses()
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.eventsFetched,
+        message: result.ok
+          ? `${result.written} open house event(s) for ${result.window.start} → ${result.window.end}`
+          : `Open house sync failed: ${result.error ?? 'unknown'}`,
+        detail: result.ok
+          ? `Replaced the window (${result.removed} removed, ${result.written} written)${
+              result.pruned > 0 ? ` · pruned ${result.pruned} past` : ''
+            }`
+          : result.error,
       }
     }
     case 'zip-boundaries': {

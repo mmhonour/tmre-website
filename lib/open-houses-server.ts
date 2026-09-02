@@ -120,7 +120,38 @@ async function searchOpenHouse(
   }
 }
 
-/** Public active open houses with OHDate in the inclusive ET calendar window. */
+/**
+ * Public active open houses with OHDate in the inclusive ET calendar window,
+ * straight from RETS.
+ *
+ * Throws on a RETS fault rather than returning an empty list. The sync needs
+ * that distinction: "the MLS has no open houses this week" and "the query
+ * failed" are the same empty array, and only one of them may be allowed to
+ * clear the table.
+ */
+export async function fetchUpcomingOpenHousesStrict(
+  window = openHouseDateWindow(),
+): Promise<OpenHouseEvent[]> {
+  const records = await withRetsClient(async (client) => {
+    for (const dmql of openHouseDmqlCandidates(window)) {
+      const rows = await searchOpenHouse(client, dmql)
+      if (rows.length > 0) return rows
+    }
+    return []
+  })
+
+  return sortOpenHouseEvents(
+    records
+      .map(mapOpenHouse)
+      .filter((e): e is OpenHouseEvent => e != null)
+      .filter((e) => isDateInOpenHouseWindow(e.date, window)),
+  )
+}
+
+/**
+ * Forgiving variant kept for callers that would rather show nothing than fail.
+ * Page requests no longer use this — they read Neon.
+ */
 export async function fetchUpcomingOpenHouses(
   window = openHouseDateWindow(),
 ): Promise<OpenHouseEvent[]> {
