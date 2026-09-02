@@ -939,7 +939,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Land stretch',
     category: 'scoring',
     definition:
-      'A 1/4-mile corridor of land (not a radius) used to read whether a listing’s premium to the town median PPSF is in line with recent solds on that dirt — typically a waterfront strip, an in-town approach, or the same street. Computed per listing into listing_land_premiums; Insight only attributes the premium to land when the stretch itself also trades above the town median. See PPSF.',
+      'A 1/4-mile corridor of land (not a radius) used to read whether a listing’s premium to the town median PPSF is in line with recent solds on that dirt — typically a waterfront strip, an in-town approach, or the same street. Written with What-if estimates into listing_land_premiums and stats_cache land:stretch:vN:{listingId}. Listing pages only read. Not town market-stats. See PPSF, What if.',
   },
   {
     term: 'Location premium',

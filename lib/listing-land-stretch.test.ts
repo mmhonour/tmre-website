@@ -4,7 +4,9 @@ import { haversineMiles } from './geo-distance'
 import {
   LAND_STRETCH_HALF_WIDTH_MILES,
   LAND_STRETCH_LENGTH_MILES,
+  applyTownMedianToLandStretch,
   computeLandStretchInsight,
+  emptyLandStretchInsight,
   inLandStretch,
   landStretchExplainsPremium,
   localEastNorth,
@@ -147,5 +149,20 @@ describe('computeLandStretchInsight', () => {
     assert.ok(insight.soldCount >= 3)
     assert.equal(insight.explainsLandPremium, true)
     assert.ok((insight.stretchMedianPpsf ?? 0) > 800)
+  })
+})
+
+describe('applyTownMedianToLandStretch', () => {
+  it('applies the town median at read time without recomputing solds', () => {
+    const stored = {
+      ...emptyLandStretchInsight(900, null),
+      axis: 'street' as const,
+      soldCount: 4,
+      stretchMedianPpsf: 880,
+    }
+    const applied = applyTownMedianToLandStretch(stored, 450, 900)
+    assert.equal(applied.explainsLandPremium, true)
+    assert.ok((applied.stretchPremiumPct ?? 0) > 0.5)
+    assert.equal(applied.stretchMedianPpsf, 880)
   })
 })

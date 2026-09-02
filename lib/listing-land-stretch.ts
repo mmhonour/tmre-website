@@ -326,19 +326,17 @@ function candidateFromSales(
   axis: LandStretchAxis,
   onStretch: readonly StretchSale[],
   subject: StretchSubject,
-  cityMedianPpsf: number,
+  cityMedianPpsf: number | null,
 ): LandStretchCandidate | null {
   const similar = onStretch.filter((sale) => similarHouse(subject, sale))
   const pool = similar.length >= LAND_STRETCH_MIN_SOLDS ? similar : onStretch
   const medianPpsf = medianNumber(pool.map((sale) => sale.pricePerSqft))
   if (medianPpsf == null || pool.length === 0) return null
-  const stretchPremiumPct = premiumPct(medianPpsf, cityMedianPpsf)
-  if (stretchPremiumPct == null) return null
   return {
     axis,
     soldCount: pool.length,
     stretchMedianPpsf: medianPpsf,
-    stretchPremiumPct,
+    stretchPremiumPct: premiumPct(medianPpsf, cityMedianPpsf) ?? 0,
   }
 }
 
@@ -381,8 +379,8 @@ function pickCandidate(
   )
   const pool = explaining.length > 0 ? explaining : candidates
   return [...pool].sort((a, b) => {
-    if (b.stretchPremiumPct !== a.stretchPremiumPct) {
-      return b.stretchPremiumPct - a.stretchPremiumPct
+    if (b.stretchMedianPpsf !== a.stretchMedianPpsf) {
+      return b.stretchMedianPpsf - a.stretchMedianPpsf
     }
     return b.soldCount - a.soldCount
   })[0] ?? null
@@ -419,9 +417,7 @@ export function computeLandStretchInsight(
   const empty = emptyLandStretchInsight(listingPpsf, cityMedianPpsf)
   if (
     !Number.isFinite(subject.latitude) ||
-    !Number.isFinite(subject.longitude) ||
-    cityMedianPpsf == null ||
-    cityMedianPpsf <= 0
+    !Number.isFinite(subject.longitude)
   ) {
     return empty
   }
@@ -459,25 +455,57 @@ export function computeLandStretchInsight(
 
   const picked = pickCandidate(candidates, listingPpsf, cityMedianPpsf)
   if (!picked) {
-    return { ...empty, labels: labelsFor(axes, null), candidates }
+    return applyTownMedianToLandStretch(
+      { ...empty, labels: labelsFor(axes, null), candidates },
+      cityMedianPpsf,
+      listingPpsf,
+    )
   }
 
-  return {
-    algoVersion: LAND_STRETCH_ALGO_VERSION,
-    axis: picked.axis,
-    soldCount: picked.soldCount,
-    stretchMedianPpsf: picked.stretchMedianPpsf,
+  return applyTownMedianToLandStretch(
+    {
+      algoVersion: LAND_STRETCH_ALGO_VERSION,
+      axis: picked.axis,
+      soldCount: picked.soldCount,
+      stretchMedianPpsf: picked.stretchMedianPpsf,
+      cityMedianPpsf: null,
+      listingPpsf,
+      stretchPremiumPct: null,
+      listingPremiumPct: null,
+      explainsLandPremium: false,
+      labels: labelsFor(axes, picked.axis),
+      candidates,
+    },
     cityMedianPpsf,
     listingPpsf,
-    stretchPremiumPct: picked.stretchPremiumPct,
+  )
+}
+
+/**
+ * Town-median comparison is applied at read time so the estimate cache can
+ * store the stretch without depending on Goldilocks peer medians.
+ */
+export function applyTownMedianToLandStretch(
+  land: LandStretchInsight,
+  cityMedianPpsf: number | null,
+  listingPpsf: number | null,
+): LandStretchInsight {
+  const candidates = land.candidates.map((c) => ({
+    ...c,
+    stretchPremiumPct: premiumPct(c.stretchMedianPpsf, cityMedianPpsf) ?? 0,
+  }))
+  return {
+    ...land,
+    cityMedianPpsf,
+    listingPpsf,
+    stretchPremiumPct: premiumPct(land.stretchMedianPpsf, cityMedianPpsf),
     listingPremiumPct: premiumPct(listingPpsf, cityMedianPpsf),
     explainsLandPremium: landStretchExplainsPremium(
       listingPpsf,
       cityMedianPpsf,
-      picked.stretchMedianPpsf,
-      picked.soldCount,
+      land.stretchMedianPpsf,
+      land.soldCount,
     ),
-    labels: labelsFor(axes, picked.axis),
     candidates,
   }
 }

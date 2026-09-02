@@ -575,8 +575,20 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows by listing_id',
     owner: 'lib/listing-land-stretch-resolve.ts',
     notes:
-      'Sold PPSF on a 1/4-mile amenity corridor (water / town-center / street), not a radius. Compared to the town median already on Insight.',
+      'Per-listing stretch facts written with What-if estimates (rebuildListingIfEstimates / cacheIfEstimatesForListing). Listing pages only read. Town-median comparison is applied at read time. Not a town market-stats payload.',
     live: { kind: 'postgres_table', table: 'listing_land_premiums' },
+  },
+  {
+    id: 'land-stretch-cache',
+    name: 'Land stretch estimate cache',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'land:stretch:v{N}:{listingId}',
+    owner: 'lib/listing-land-stretch-resolve.ts',
+    notes:
+      'Same payload as listing_land_premiums, keyed like if:detail. Sibling of the What-if estimate cache — not town market-stats rows.',
+    live: { kind: 'stats_cache_prefix', prefix: 'land:stretch:' },
   },
   {
     id: 'if-detail-cache',
