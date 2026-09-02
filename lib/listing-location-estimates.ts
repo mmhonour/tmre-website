@@ -14,28 +14,44 @@ import { withinLookbackMonths } from '@/lib/listing-comparables-shared'
  * Location estimates — sold PPSF in coastal areas and town centers.
  *
  * Two places typically trade above the town median: coastal areas and
- * town centers. The method is a 1/4-mile corridor of nearby solds (not a
- * radius). Listing-agnostic. Distinct from What-if location-premium weights.
+ * town centers. Geometry differs:
+ *   - Town center: 1/4-mile radius disk around the village / zip center.
+ *   - Coastal: shore-parallel land strips that step inland from the water.
+ *     Each inland strip is treated as ~25% less valuable than the one in
+ *     front of it, out to about 3/4–1 mile. Solds are matched in the same
+ *     strip along a 1/4-mile coastal stretch — not a radius.
+ * Street corridors are an internal fallback only.
+ * Listing-agnostic. Distinct from What-if location-premium weights.
  */
 
-/** Full length of the corridor, miles. */
-export const LOCATION_CORRIDOR_LENGTH_MILES = 0.25
-/** Half-width of the corridor (~320 ft). A 1/4-mile *radius* would be much wider. */
+/** Along-shore length of a coastal strip, and the old street-corridor length. */
+export const LOCATION_STRETCH_LENGTH_MILES = 0.25
+/** @deprecated Use LOCATION_STRETCH_LENGTH_MILES — kept for street corridor math. */
+export const LOCATION_CORRIDOR_LENGTH_MILES = LOCATION_STRETCH_LENGTH_MILES
+/** Half-width of the street fallback corridor (~320 ft). */
 export const LOCATION_CORRIDOR_HALF_WIDTH_MILES = 0.06
+/** Town-center comparable disk. */
+export const TOWN_CENTER_RADIUS_MILES = 0.25
+/** Inland depth of one coastal strip. */
+export const COASTAL_STRIP_WIDTH_MILES = 0.25
+/** Stop stepping inland around 1 mile from the water. */
+export const COASTAL_INLAND_MAX_MILES = 1
+/** Each inland strip is ~25% less valuable than the one closer to water. */
+export const COASTAL_STRIP_VALUE_FACTOR = 0.75
 /** Minimum solds before we will claim the stretch explains a premium. */
 export const LOCATION_ESTIMATE_MIN_SOLDS = 3
 /** Same default look-back as comps — recent sales, not the 36-month reservoir. */
 export const LOCATION_ESTIMATE_LOOKBACK_MONTHS = COMPARABLES_DEFAULT_LOOKBACK_MONTHS
-export const LOCATION_ESTIMATE_ALGO_VERSION = 1
-
-/** Water tiers already used by location premium (coastal neighborhood = 1.4 mi). */
-const COASTAL_MAX_MILES = 1.4
-/** Town/zip-center tiers already used by location premium. */
-const TOWN_CENTER_MAX_MILES = 2.0
+/** Bumped when town-center radius + coastal strips replaced a single corridor. */
+export const LOCATION_ESTIMATE_ALGO_VERSION = 2
 
 const MILES_PER_DEG_LAT = 69.172
+const COASTAL_STRIP_MAX_INDEX = Math.floor(
+  (COASTAL_INLAND_MAX_MILES - 1e-9) / COASTAL_STRIP_WIDTH_MILES,
+)
 
 export type LocationEstimateKind = 'coastal' | 'town_center' | 'street'
+export type LocationEstimateGeometry = 'radius' | 'strip' | 'corridor'
 
 export type EstimateSale = {
   id: string
@@ -69,12 +85,22 @@ export type LocationEstimateCandidate = {
   soldPremiumPct: number
 }
 
+export type CoastalStripInfo = {
+  /** 0 = first coastal strip; 1 = next inland; … */
+  index: number
+  inlandMiles: number
+  /** Rule of thumb vs the waterfront strip: 0.75^index. */
+  relativeValue: number
+}
+
 export type LocationEstimate = {
   algoVersion: number
   /** coastal | town_center (product); street is an internal fallback only. */
   kind: LocationEstimateKind | null
-  /** Same as kind — corridor axis used by the estimator. */
+  /** Same as kind — kept for older cache rows. */
   axis: LocationEstimateKind | null
+  geometry: LocationEstimateGeometry | null
+  coastalStrip: CoastalStripInfo | null
   soldCount: number
   soldMedianPpsf: number | null
   cityMedianPpsf: number | null
@@ -94,6 +120,8 @@ export function emptyLocationEstimate(
     algoVersion: LOCATION_ESTIMATE_ALGO_VERSION,
     kind: null,
     axis: null,
+    geometry: null,
+    coastalStrip: null,
     soldCount: 0,
     soldMedianPpsf: null,
     cityMedianPpsf,
@@ -104,6 +132,15 @@ export function emptyLocationEstimate(
     labels: [],
     candidates: [],
   }
+}
+
+export function geometryForKind(
+  kind: LocationEstimateKind | null,
+): LocationEstimateGeometry | null {
+  if (kind === 'town_center') return 'radius'
+  if (kind === 'coastal') return 'strip'
+  if (kind === 'street') return 'corridor'
+  return null
 }
 
 /** Street name without house number, for same-street stretch matching. */
@@ -173,6 +210,87 @@ export function inLocationCorridor(
   return Math.abs(along) <= halfLengthMiles && Math.abs(across) <= halfWidthMiles
 }
 
+export function inTownCenterRadius(
+  centerLat: number,
+  centerLon: number,
+  lat: number,
+  lon: number,
+  radiusMiles: number = TOWN_CENTER_RADIUS_MILES,
+): boolean {
+  const { east, north } = localEastNorth(centerLat, centerLon, lat, lon)
+  return Math.hypot(east, north) <= radiusMiles
+}
+
+/**
+ * Signed miles inland of the local shore line through `water`.
+ * `towardWater` is the subject→water unit; positive is inland.
+ */
+export function inlandMilesFromWaterLine(
+  waterLat: number,
+  waterLon: number,
+  towardWater: AxisUnit,
+  lat: number,
+  lon: number,
+): number {
+  const { east, north } = localEastNorth(waterLat, waterLon, lat, lon)
+  return -(east * towardWater.east + north * towardWater.north)
+}
+
+export function coastalStripIndex(inlandMiles: number): number | null {
+  if (!Number.isFinite(inlandMiles)) return null
+  const inland = Math.max(0, inlandMiles)
+  if (inland > COASTAL_INLAND_MAX_MILES) return null
+  const capped = Math.min(inland, COASTAL_INLAND_MAX_MILES - 1e-9)
+  return Math.min(
+    Math.floor(capped / COASTAL_STRIP_WIDTH_MILES),
+    COASTAL_STRIP_MAX_INDEX,
+  )
+}
+
+export function coastalStripRelativeValue(stripIndex: number): number {
+  if (!Number.isFinite(stripIndex) || stripIndex <= 0) return 1
+  return COASTAL_STRIP_VALUE_FACTOR ** stripIndex
+}
+
+export function coastalStripInfo(inlandMiles: number): CoastalStripInfo | null {
+  const index = coastalStripIndex(inlandMiles)
+  if (index == null) return null
+  return {
+    index,
+    inlandMiles: Math.max(0, inlandMiles),
+    relativeValue: coastalStripRelativeValue(index),
+  }
+}
+
+export function inCoastalStrip(
+  water: GeoPoint,
+  towardWater: AxisUnit,
+  shoreAxis: AxisUnit,
+  subjectLat: number,
+  subjectLon: number,
+  saleLat: number,
+  saleLon: number,
+  subjectStrip: number,
+): boolean {
+  const inland = inlandMilesFromWaterLine(
+    water.lat,
+    water.lon,
+    towardWater,
+    saleLat,
+    saleLon,
+  )
+  const strip = coastalStripIndex(inland)
+  if (strip == null || strip !== subjectStrip) return false
+  const { along } = projectOnAxis(
+    subjectLat,
+    subjectLon,
+    saleLat,
+    saleLon,
+    shoreAxis,
+  )
+  return Math.abs(along) <= LOCATION_STRETCH_LENGTH_MILES / 2
+}
+
 export function medianNumber(values: readonly number[]): number | null {
   if (values.length === 0) return null
   const sorted = [...values].sort((a, b) => a - b)
@@ -201,15 +319,23 @@ function townCenterPoint(
   return null
 }
 
+export type CoastalAxis = {
+  axis: AxisUnit
+  towardWater: AxisUnit
+  water: GeoPoint
+  inlandMiles: number
+  stripIndex: number
+}
+
 export type AmenityAxes = {
-  coastal: { axis: AxisUnit; miles: number } | null
-  townCenter: { axis: AxisUnit; miles: number } | null
+  coastal: CoastalAxis | null
+  townCenter: { center: GeoPoint; miles: number } | null
   street: AxisUnit | null
 }
 
 /**
- * Axes for any lat/lon. Coastal = shore-parallel (not inland).
- * Town center = corridor toward the village. Street is an internal fallback only.
+ * Axes for any lat/lon. Coastal = shore-parallel strips from the nearest
+ * water point. Town center = village disk. Street is an internal fallback only.
  */
 export function locationAxesForSubject(
   subject: EstimateSubject,
@@ -220,16 +346,30 @@ export function locationAxesForSubject(
   const centerPt = townCenterPoint(subject.postalCode, town)
 
   let coastal: AmenityAxes['coastal'] = null
-  if (coastalHit && coastalHit.miles <= COASTAL_MAX_MILES) {
+  if (coastalHit) {
     const inland = localEastNorth(
       subject.latitude,
       subject.longitude,
       coastalHit.point.lat,
       coastalHit.point.lon,
     )
-    const inlandAxis = unitOffset(inland.east, inland.north)
-    if (inlandAxis) {
-      coastal = { axis: perpendicularAxis(inlandAxis), miles: coastalHit.miles }
+    const towardWater = unitOffset(inland.east, inland.north)
+    const inlandMiles = inlandMilesFromWaterLine(
+      coastalHit.point.lat,
+      coastalHit.point.lon,
+      towardWater ?? { east: 0, north: 1 },
+      subject.latitude,
+      subject.longitude,
+    )
+    const strip = towardWater ? coastalStripIndex(inlandMiles) : null
+    if (towardWater && strip != null) {
+      coastal = {
+        axis: perpendicularAxis(towardWater),
+        towardWater,
+        water: coastalHit.point,
+        inlandMiles: Math.max(0, inlandMiles),
+        stripIndex: strip,
+      }
     }
   }
 
@@ -241,10 +381,9 @@ export function locationAxesForSubject(
       centerPt.lat,
       centerPt.lon,
     )
-    const centerAxis = unitOffset(toCenter.east, toCenter.north)
     const miles = Math.hypot(toCenter.east, toCenter.north)
-    if (centerAxis && miles <= TOWN_CENTER_MAX_MILES) {
-      townCenter = { axis: centerAxis, miles }
+    if (miles <= TOWN_CENTER_RADIUS_MILES) {
+      townCenter = { center: centerPt, miles }
     }
   }
 
@@ -304,6 +443,16 @@ function similarHouse(subject: EstimateSubject, sale: EstimateSale): boolean {
   return true
 }
 
+function isEligibleSale(
+  subject: EstimateSubject,
+  sale: EstimateSale,
+  nowMs: number,
+): boolean {
+  if (sale.id === subject.id) return false
+  if (!(sale.pricePerSqft > 0)) return false
+  return withinLookbackMonths(sale.closeDate, LOCATION_ESTIMATE_LOOKBACK_MONTHS, nowMs)
+}
+
 function salesOnCorridor(
   subject: EstimateSubject,
   sales: readonly EstimateSale[],
@@ -311,11 +460,7 @@ function salesOnCorridor(
   nowMs: number,
 ): EstimateSale[] {
   return sales.filter((sale) => {
-    if (sale.id === subject.id) return false
-    if (!(sale.pricePerSqft > 0)) return false
-    if (!withinLookbackMonths(sale.closeDate, LOCATION_ESTIMATE_LOOKBACK_MONTHS, nowMs)) {
-      return false
-    }
+    if (!isEligibleSale(subject, sale, nowMs)) return false
     return inLocationCorridor(
       subject.latitude,
       subject.longitude,
@@ -323,6 +468,39 @@ function salesOnCorridor(
       sale.longitude,
       axis,
     )
+  })
+}
+
+function salesOnCoastalStrip(
+  subject: EstimateSubject,
+  sales: readonly EstimateSale[],
+  coastal: CoastalAxis,
+  nowMs: number,
+): EstimateSale[] {
+  return sales.filter((sale) => {
+    if (!isEligibleSale(subject, sale, nowMs)) return false
+    return inCoastalStrip(
+      coastal.water,
+      coastal.towardWater,
+      coastal.axis,
+      subject.latitude,
+      subject.longitude,
+      sale.latitude,
+      sale.longitude,
+      coastal.stripIndex,
+    )
+  })
+}
+
+function salesInTownCenterRadius(
+  subject: EstimateSubject,
+  sales: readonly EstimateSale[],
+  center: GeoPoint,
+  nowMs: number,
+): EstimateSale[] {
+  return sales.filter((sale) => {
+    if (!isEligibleSale(subject, sale, nowMs)) return false
+    return inTownCenterRadius(center.lat, center.lon, sale.latitude, sale.longitude)
   })
 }
 
@@ -412,7 +590,7 @@ function labelsFor(axes: AmenityAxes, picked: LocationEstimateKind | null): stri
 }
 
 /**
- * Score coastal / town-center sold PPSF from a 1/4-mile corridor. No listing-specific rules.
+ * Score coastal-strip / town-center-radius sold PPSF. No listing-specific rules.
  */
 export function computeLocationEstimate(
   subject: EstimateSubject,
@@ -435,7 +613,7 @@ export function computeLocationEstimate(
   if (axes.coastal) {
     const c = candidateFromSales(
       'coastal',
-      salesOnCorridor(subject, sales, axes.coastal.axis, nowMs),
+      salesOnCoastalStrip(subject, sales, axes.coastal, nowMs),
       subject,
       cityMedianPpsf,
     )
@@ -444,7 +622,7 @@ export function computeLocationEstimate(
   if (axes.townCenter) {
     const c = candidateFromSales(
       'town_center',
-      salesOnCorridor(subject, sales, axes.townCenter.axis, nowMs),
+      salesInTownCenterRadius(subject, sales, axes.townCenter.center, nowMs),
       subject,
       cityMedianPpsf,
     )
@@ -463,7 +641,14 @@ export function computeLocationEstimate(
   const picked = pickCandidate(candidates, listingPpsf, cityMedianPpsf)
   if (!picked) {
     return applyTownMedianToLocationEstimate(
-      { ...empty, labels: labelsFor(axes, null), candidates },
+      {
+        ...empty,
+        coastalStrip: axes.coastal
+          ? coastalStripInfo(axes.coastal.inlandMiles)
+          : null,
+        labels: labelsFor(axes, null),
+        candidates,
+      },
       cityMedianPpsf,
       listingPpsf,
     )
@@ -474,6 +659,11 @@ export function computeLocationEstimate(
       algoVersion: LOCATION_ESTIMATE_ALGO_VERSION,
       kind: picked.axis,
       axis: picked.axis,
+      geometry: geometryForKind(picked.axis),
+      coastalStrip:
+        picked.axis === 'coastal' && axes.coastal
+          ? coastalStripInfo(axes.coastal.inlandMiles)
+          : null,
       soldCount: picked.soldCount,
       soldMedianPpsf: picked.soldMedianPpsf,
       cityMedianPpsf: null,
@@ -498,14 +688,17 @@ export function applyTownMedianToLocationEstimate(
   cityMedianPpsf: number | null,
   listingPpsf: number | null,
 ): LocationEstimate {
+  const kind = land.kind ?? land.axis
   const candidates = land.candidates.map((c) => ({
     ...c,
     soldPremiumPct: premiumPct(c.soldMedianPpsf, cityMedianPpsf) ?? 0,
   }))
   return {
     ...land,
-    kind: land.kind ?? land.axis,
+    kind,
     axis: land.axis ?? land.kind,
+    geometry: land.geometry ?? geometryForKind(kind),
+    coastalStrip: land.coastalStrip ?? null,
     cityMedianPpsf,
     listingPpsf,
     soldPremiumPct: premiumPct(land.soldMedianPpsf, cityMedianPpsf),

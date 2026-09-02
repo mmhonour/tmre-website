@@ -15,8 +15,9 @@ import {
 import { closeFieldsFromListing } from '@/lib/listing-history'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
-  LOCATION_CORRIDOR_LENGTH_MILES,
+  COASTAL_INLAND_MAX_MILES,
   LOCATION_ESTIMATE_ALGO_VERSION,
+  TOWN_CENTER_RADIUS_MILES,
   LOCATION_ESTIMATE_LOOKBACK_MONTHS,
   applyTownMedianToLocationEstimate,
   computeLocationEstimate,
@@ -30,7 +31,8 @@ import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { resolveListingTown, townForZip } from '@/lib/tmre-towns'
 
-const FETCH_HALF_EXTENT_MILES = LOCATION_CORRIDOR_LENGTH_MILES * 0.7
+/** Cover a town-center disk from the far edge, or one coastal strip + stretch. */
+const FETCH_HALF_EXTENT_MILES = Math.max(TOWN_CENTER_RADIUS_MILES * 2, COASTAL_INLAND_MAX_MILES / 2)
 const MILES_PER_DEG_LAT = 69.172
 
 export function locationEstimateCacheKey(listingId: string): string {

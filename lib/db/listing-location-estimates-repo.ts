@@ -2,7 +2,13 @@ import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
 import { isRentalListing } from '@/lib/listing-kind'
-import type { LocationEstimate, EstimateSale } from '@/lib/listing-location-estimates'
+import {
+  geometryForKind,
+  type CoastalStripInfo,
+  type EstimateSale,
+  type LocationEstimate,
+  type LocationEstimateGeometry,
+} from '@/lib/listing-location-estimates'
 
 /**
  * Current location estimate + snapshots (coastal areas / town centers).
@@ -78,6 +84,21 @@ function parseKind(value: string | null): LocationEstimate['kind'] {
   return null
 }
 
+function parseGeometry(value: unknown): LocationEstimateGeometry | null {
+  if (value === 'radius' || value === 'strip' || value === 'corridor') return value
+  return null
+}
+
+function parseCoastalStrip(value: unknown): CoastalStripInfo | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Partial<CoastalStripInfo>
+  const index = numOrNull(row.index)
+  const inlandMiles = numOrNull(row.inlandMiles)
+  const relativeValue = numOrNull(row.relativeValue)
+  if (index == null || inlandMiles == null || relativeValue == null) return null
+  return { index, inlandMiles, relativeValue }
+}
+
 export type LocationEstimateRow = LocationEstimate & {
   listingId: string
   computedAt: string
@@ -124,7 +145,11 @@ export async function upsertLocationEstimate(row: {
       estimate.listingPremiumPct,
       estimate.explainsLocation,
       JSON.stringify(estimate.labels),
-      JSON.stringify({ candidates: estimate.candidates }),
+      JSON.stringify({
+        candidates: estimate.candidates,
+        geometry: estimate.geometry,
+        coastalStrip: estimate.coastalStrip,
+      }),
       computedAt,
     ],
   )
@@ -149,7 +174,12 @@ export async function upsertLocationEstimate(row: {
       estimate.soldPremiumPct,
       estimate.listingPremiumPct,
       estimate.explainsLocation,
-      JSON.stringify({ candidates: estimate.candidates, labels: estimate.labels }),
+      JSON.stringify({
+        candidates: estimate.candidates,
+        labels: estimate.labels,
+        geometry: estimate.geometry,
+        coastalStrip: estimate.coastalStrip,
+      }),
     ],
   )
 }
@@ -187,7 +217,11 @@ export async function readLocationEstimateRow(
   if (!row) return null
   const payload =
     row.payload && typeof row.payload === 'object'
-      ? (row.payload as { candidates?: LocationEstimate['candidates'] })
+      ? (row.payload as {
+          candidates?: LocationEstimate['candidates']
+          geometry?: unknown
+          coastalStrip?: unknown
+        })
       : {}
   const kind = parseKind(row.kind)
   return {
@@ -195,6 +229,8 @@ export async function readLocationEstimateRow(
     algoVersion: row.algo_version,
     kind,
     axis: kind,
+    geometry: parseGeometry(payload.geometry) ?? geometryForKind(kind),
+    coastalStrip: parseCoastalStrip(payload.coastalStrip),
     soldCount: row.sold_count,
     soldMedianPpsf: numOrNull(row.sold_median_ppsf),
     cityMedianPpsf: numOrNull(row.city_median_ppsf),

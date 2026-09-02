@@ -575,7 +575,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows by listing_id',
     owner: 'lib/listing-location-estimates-resolve.ts',
     notes:
-      'Coastal-area and town-center sold PPSF vs the town median. Written by the overnight backfill (and opportunistically with What-if estimates). Listing pages only read. Not a town market-stats payload.',
+      'Coastal-strip and town-center-radius sold PPSF vs the town median. Written by the overnight backfill (and opportunistically with What-if estimates). Listing pages only read. Not a town market-stats payload.',
     live: { kind: 'postgres_table', table: 'listing_location_estimates' },
   },
   {

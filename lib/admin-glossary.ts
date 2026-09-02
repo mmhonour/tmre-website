@@ -939,7 +939,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Location estimates',
     category: 'scoring',
     definition:
-      'Sold-derived PPSF for the two areas that typically trade above the town median: coastal areas and town centers. Method is a 1/4-mile corridor of nearby solds, not a radius. Cached on listing_location_estimates; snapshots go to listing_location_estimate_snapshots for a later estimates time series. Overnight backfill writes slowly; listing pages only read. Distinct from What-if location-premium weights. See PPSF, Location premium, What if.',
+      'Sold-derived PPSF for the two areas that typically trade above the town median: coastal areas and town centers. Town-center comps use a 1/4-mile radius around the village / zip center. Coastal comps use stacked 1/4-mile shore-parallel strips (each inland strip ~25% less valuable than the one in front, out to about 1 mile) along a 1/4-mile stretch — not a radius. Cached on listing_location_estimates; snapshots go to listing_location_estimate_snapshots for a later estimates time series. Overnight backfill writes slowly; listing pages only read. Distinct from What-if location-premium weights. See PPSF, Location premium, What if.',
   },
   {
     term: 'Location premium',
