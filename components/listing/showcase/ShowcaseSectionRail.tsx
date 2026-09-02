@@ -110,7 +110,7 @@ function PulseGlyph() {
           gradientUnits="userSpaceOnUse"
         >
           <stop offset="0" stopColor="var(--color-sage)" />
-          <stop offset="0.42" stopColor="var(--color-sage)" />
+          <stop offset="0.85" stopColor="var(--color-sage)" />
           <stop offset="1" stopColor={PULSE_RED} />
         </radialGradient>
         <radialGradient id={eyeOnGreen}>
