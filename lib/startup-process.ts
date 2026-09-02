@@ -198,7 +198,7 @@ export function describeStartupProcess(): {
           title: "Stats + Deal of the Day caches",
           timing: "after superlatives",
           detail:
-            "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price, avg-score-by-vintage) + Deal of the Day/Week caches + If estimates + comps edges + edge scores, then stamp refresh finished.",
+            "rebuildStatsCache (market stats, sales-by-month, active-by-month, vintage, price, avg-score-by-vintage) + Deal of the Day/Week caches + If estimates + land-stretch estimate cache + comps edges + edge scores, then stamp refresh finished.",
           status: startupFullEnabled ? "scheduled" : "skipped",
           statusLabel: startupFullEnabled ? "Chained" : "—",
         },

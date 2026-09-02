@@ -6,6 +6,8 @@ import {
   medianPpsfBand,
   type MedianPpsfBand,
 } from '@/lib/insight-median-ppsf'
+import type { LandStretchInsight } from '@/lib/listing-land-stretch'
+import { readLandStretchForListing } from '@/lib/listing-land-stretch-resolve'
 import type { Listing } from '@/lib/rets'
 import { resolveListingTown } from '@/lib/tmre-towns'
 
@@ -15,6 +17,7 @@ export type ListingDetailScore = {
   cityMedianPpsf: number | null
   pricePerSqft: number | null
   medianPpsfBand: MedianPpsfBand | null
+  landStretch: LandStretchInsight | null
 }
 
 export async function scoreListingForDetailPage(
@@ -34,12 +37,20 @@ export async function scoreListingForDetailPage(
       pricePerSqft != null && cityMedianPpsf != null && cityMedianPpsf > 0
         ? medianPpsfBand(pricePerSqft, cityMedianPpsf)
         : null
+    const landStretch = await readLandStretchForListing(
+      listing,
+      cityMedianPpsf,
+    ).catch((err) => {
+      console.warn('[listing-detail-score] land stretch read failed', err)
+      return null
+    })
     return {
       breakdown: row.score,
-      insight: buildInsight(row),
+      insight: buildInsight({ ...row, landStretch }),
       cityMedianPpsf,
       pricePerSqft,
       medianPpsfBand: band,
+      landStretch,
     }
   } catch (err) {
     console.warn('[listing-detail-score] score failed', err)

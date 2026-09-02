@@ -567,6 +567,30 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'listing_if_estimates' },
   },
   {
+    id: 'listing-land-premiums',
+    name: 'Land stretch premiums',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'listing_land_premiums',
+    keyPattern: 'table rows by listing_id',
+    owner: 'lib/listing-land-stretch-resolve.ts',
+    notes:
+      'Per-listing stretch facts written with What-if estimates (rebuildListingIfEstimates / cacheIfEstimatesForListing). Listing pages only read. Town-median comparison is applied at read time. Not a town market-stats payload.',
+    live: { kind: 'postgres_table', table: 'listing_land_premiums' },
+  },
+  {
+    id: 'land-stretch-cache',
+    name: 'Land stretch estimate cache',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'land:stretch:v{N}:{listingId}',
+    owner: 'lib/listing-land-stretch-resolve.ts',
+    notes:
+      'Same payload as listing_land_premiums, keyed like if:detail. Sibling of the What-if estimate cache — not town market-stats rows.',
+    live: { kind: 'stats_cache_prefix', prefix: 'land:stretch:' },
+  },
+  {
     id: 'if-detail-cache',
     name: 'IF detail payload cache',
     category: 'listing-derived',

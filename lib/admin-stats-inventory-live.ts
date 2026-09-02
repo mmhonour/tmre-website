@@ -19,6 +19,7 @@ const ALLOWED_TABLES = new Set([
   'listing_superlatives',
   'listing_relations',
   'listing_if_estimates',
+  'listing_land_premiums',
   'listing_tax_history',
   'listing_price_history',
   'listing_photo_index',

@@ -15,6 +15,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'stats_cache',
   'listing_tax_history',
   'listing_if_estimates',
+  'listing_land_premiums',
   'listing_relations',
   'listing_edge_scores',
   'listing_superlatives',
