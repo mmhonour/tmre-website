@@ -51,6 +51,11 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     source: 'documented',
   },
   {
+    from: { table: 'vision_addresses', column: 'town' },
+    to: { table: 'vision_streets', column: 'town' },
+    source: 'documented',
+  },
+  {
     from: { table: 'listings', column: 'id' },
     to: { table: 'listing_price_history', column: 'listing_id' },
     source: 'documented',
@@ -109,6 +114,13 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'end_datetime', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'oh_type', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'comment', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  vision_streets: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'street_name', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'letter', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'source_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
   ],
 }

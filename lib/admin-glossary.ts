@@ -278,6 +278,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and mirrored onto every `listings.vision_pid` at that address when the Vision listing-match stack finds exactly one Vision PID (re-lists included; 2+ PIDs stay unmatched). See Vision listing match.',
   },
   {
+    term: 'vision_streets',
+    category: 'sync-admin',
+    definition:
+      'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Written by the Vision crawler when it fetches Streets.aspx?Letter=… — the same pages it already uses to walk parcels. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. This is the source of truth for a Westport street list; `vision_addresses.street_name` is only streets whose parcels have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
+  },
+  {
     term: 'Westport Vision GIS homepage',
     category: 'sync-admin',
     definition:
@@ -293,7 +299,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision-addresses (sync)',
     category: 'sync-admin',
     definition:
-      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. Each letter page also writes `vision_streets` (the official street-name index) before the parcel walk continues. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
   },
   {
     term: 'Brokerage name',

@@ -35,6 +35,7 @@
     "smoke:incremental": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/smoke-incremental-sync.ts",
     "smoke:sync-queue": "tsx --require ./scripts/stub-server-only.cjs scripts/smoke-sync-queue.ts",
     "smoke:open-houses": "tsx --require ./scripts/stub-server-only.cjs scripts/smoke-open-houses.ts",
+    "smoke:vision-streets": "tsx --require ./scripts/stub-server-only.cjs scripts/smoke-vision-streets.ts",
     "why:latest": "tsx --require ./scripts/stub-server-only.cjs scripts/why-not-latest.ts",
     "start:mls-sync": "tsx --require ./scripts/stub-server-only.cjs services/mls-sync/server.ts",
     "sync:spotlight-status": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-spotlight-status.ts",
