@@ -90,35 +90,34 @@ function MapGlyph() {
 const PULSE_RED = "#FF2A22";
 
 /**
- * Two heat-map teardrops on the 10 / 4 axis: red (seller) and sage
- * (buyer), gold down each tail. Each eye is gold fading into the bulb
- * around it. Pencil-thin white rim; a gold hairline traces the S.
+ * Two teardrops on the 10 / 4 axis, no outer ring. Yin (sage) runs green
+ * → red with a red eye; yang (red) runs red → gold. Gold hairline on the S.
  */
 function PulseGlyph() {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const seller = `${uid}-seller`;
   const buyer = `${uid}-buyer`;
-  const eyeSage = `${uid}-eye-sage`;
-  const eyeRed = `${uid}-eye-red`;
+  const eyeOnGreen = `${uid}-eye-green`;
+  const eyeOnRed = `${uid}-eye-red`;
   return (
     <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden>
       <defs>
         <linearGradient id={seller} x1="0.5" y1="1" x2="0.5" y2="0">
           <stop offset="0" stopColor={PULSE_RED} />
-          <stop offset="0.64" stopColor={PULSE_RED} />
+          <stop offset="0.5" stopColor={PULSE_RED} />
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
         <linearGradient id={buyer} x1="0.5" y1="0" x2="0.5" y2="1">
           <stop offset="0" stopColor="var(--color-sage)" />
-          <stop offset="0.52" stopColor="var(--color-sage)" />
-          <stop offset="1" stopColor="var(--color-gold)" />
+          <stop offset="0.5" stopColor="var(--color-sage)" />
+          <stop offset="1" stopColor={PULSE_RED} />
         </linearGradient>
-        <radialGradient id={eyeSage}>
-          <stop offset="0" stopColor="var(--color-gold)" />
-          <stop offset="0.34" stopColor="var(--color-gold)" />
+        <radialGradient id={eyeOnGreen}>
+          <stop offset="0" stopColor={PULSE_RED} />
+          <stop offset="0.34" stopColor={PULSE_RED} />
           <stop offset="1" stopColor="var(--color-sage)" />
         </radialGradient>
-        <radialGradient id={eyeRed}>
+        <radialGradient id={eyeOnRed}>
           <stop offset="0" stopColor="var(--color-gold)" />
           <stop offset="0.34" stopColor="var(--color-gold)" />
           <stop offset="1" stopColor={PULSE_RED} />
@@ -137,16 +136,8 @@ function PulseGlyph() {
           strokeWidth="0.55"
           strokeLinecap="round"
         />
-        <circle cx="12" cy="7" r="2.6" fill={`url(#${eyeSage})`} />
-        <circle cx="12" cy="17" r="2.6" fill={`url(#${eyeRed})`} />
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          fill="none"
-          stroke="white"
-          strokeWidth="0.4"
-        />
+        <circle cx="12" cy="7" r="2.6" fill={`url(#${eyeOnGreen})`} />
+        <circle cx="12" cy="17" r="2.6" fill={`url(#${eyeOnRed})`} />
       </g>
     </svg>
   );
