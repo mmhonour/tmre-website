@@ -90,7 +90,7 @@ function MapGlyph() {
 const PULSE_RED = "#FF2A22";
 
 /**
- * Two teardrops on the 10 / 4 axis, no outer ring. Yin (sage) runs green
+ * Two teardrops on the 10 / 4 axis, edge-to-edge with no rim. Yin (sage) runs green
  * → red with a red eye; yang (red) runs red → gold. Gold hairline on the S.
  */
 function PulseGlyph() {
@@ -124,20 +124,20 @@ function PulseGlyph() {
         </radialGradient>
       </defs>
       <g transform="rotate(-60 12 12)">
-        <circle cx="12" cy="12" r="10" fill={`url(#${buyer})`} />
+        <circle cx="12" cy="12" r="12" fill={`url(#${buyer})`} />
         <path
-          d="M12 2 A10 10 0 0 0 12 22 A5 5 0 0 0 12 12 A5 5 0 0 1 12 2 Z"
+          d="M12 0 A12 12 0 0 0 12 24 A6 6 0 0 0 12 12 A6 6 0 0 1 12 0 Z"
           fill={`url(#${seller})`}
         />
         <path
-          d="M12 2 A5 5 0 0 1 12 12 A5 5 0 0 0 12 22"
+          d="M12 0 A6 6 0 0 1 12 12 A6 6 0 0 0 12 24"
           fill="none"
           stroke="var(--color-gold)"
           strokeWidth="0.55"
           strokeLinecap="round"
         />
-        <circle cx="12" cy="7" r="2.6" fill={`url(#${eyeOnGreen})`} />
-        <circle cx="12" cy="17" r="2.6" fill={`url(#${eyeOnRed})`} />
+        <circle cx="12" cy="6" r="3.1" fill={`url(#${eyeOnGreen})`} />
+        <circle cx="12" cy="18" r="3.1" fill={`url(#${eyeOnRed})`} />
       </g>
     </svg>
   );
@@ -385,7 +385,7 @@ export default function ShowcaseSectionRail({
         aria-pressed={overlay === "pulse"}
         aria-label={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
         title="Town pulse"
-        className={`${railIconClass(overlay === "pulse")} p-0`}
+        className={`${railIconClass(overlay === "pulse")} overflow-hidden p-0`}
       >
         <PulseGlyph />
       </button>
