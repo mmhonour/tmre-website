@@ -87,9 +87,9 @@ function MapGlyph() {
 }
 
 /**
- * Two heat-map teardrops filling the rail button: coral (seller) and sage
- * (buyer), each holding its colour through the bulb and fading to gold down
- * the tail. White rim, edge-to-edge in the square.
+ * Two heat-map teardrops, ~10% inside the hit square so the photo shows
+ * through: coral (seller) and sage (buyer), gold through each tail and as
+ * the eyes. Pencil-thin white rim; a gold hairline traces the S.
  */
 function PulseGlyph() {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -109,20 +109,27 @@ function PulseGlyph() {
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
       </defs>
-      <circle cx="12" cy="12" r="11" fill={`url(#${buyer})`} />
+      <circle cx="12" cy="12" r="10" fill={`url(#${buyer})`} />
       <path
-        d="M12 1 A11 11 0 0 0 12 23 A5.5 5.5 0 0 0 12 12 A5.5 5.5 0 0 1 12 1 Z"
+        d="M12 2 A10 10 0 0 0 12 22 A5 5 0 0 0 12 12 A5 5 0 0 1 12 2 Z"
         fill={`url(#${seller})`}
       />
-      <circle cx="12" cy="6.5" r="2.05" fill="var(--color-coral)" />
-      <circle cx="12" cy="17.5" r="2.05" fill="var(--color-sage)" />
+      <path
+        d="M12 2 A5 5 0 0 1 12 12 A5 5 0 0 0 12 22"
+        fill="none"
+        stroke="var(--color-gold)"
+        strokeWidth="0.55"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="7" r="1.7" fill="var(--color-gold)" />
+      <circle cx="12" cy="17" r="1.7" fill="var(--color-gold)" />
       <circle
         cx="12"
         cy="12"
-        r="11"
+        r="10"
         fill="none"
         stroke="white"
-        strokeWidth="1.5"
+        strokeWidth="0.4"
       />
     </svg>
   );
@@ -366,7 +373,7 @@ export default function ShowcaseSectionRail({
         aria-pressed={solo === "pulse"}
         aria-label={solo === "pulse" ? "Close town pulse" : "Show town pulse"}
         title="Town pulse"
-        className={`${railIconClass(solo === "pulse")} p-0`}
+        className="inline-flex h-11 w-11 items-center justify-center bg-transparent p-0 shadow-none"
       >
         <PulseGlyph />
       </button>
