@@ -202,8 +202,8 @@ export default function ShowcaseSectionRail({
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
-  /** Swaps the tile stack for a standalone Details summary over the photo. */
-  const [detailsOnly, setDetailsOnly] = useState(false);
+  /** Swaps the tile stack for one standalone card over the photo. */
+  const [solo, setSolo] = useState<"details" | "pulse" | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
 
@@ -260,6 +260,13 @@ export default function ShowcaseSectionRail({
   }, [amounts]);
 
   const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
+
+  const toggleSolo = (id: "details" | "pulse") =>
+    setSolo((cur) => {
+      const next = cur === id ? null : id;
+      onDetailsOnlyChange?.(next !== null);
+      return next;
+    });
 
   const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
     const open = openCard === id;
@@ -341,34 +348,21 @@ export default function ShowcaseSectionRail({
       </button>
       <button
         type="button"
-        onClick={() => {
-          // Leaving details-only puts the tile stack back, which is where the
-          // pulse card renders.
-          if (detailsOnly) {
-            setDetailsOnly(false);
-            onDetailsOnlyChange?.(false);
-          }
-          setOpenCard((cur) => (cur === "pulse" ? null : "pulse"));
-        }}
-        aria-pressed={openCard === "pulse"}
-        aria-label={openCard === "pulse" ? "Close town pulse" : "Show town pulse"}
+        onClick={() => toggleSolo("pulse")}
+        aria-pressed={solo === "pulse"}
+        aria-label={solo === "pulse" ? "Close town pulse" : "Show town pulse"}
         title="Town pulse"
-        className={railIconClass(openCard === "pulse")}
+        className={railIconClass(solo === "pulse")}
       >
         <PulseGlyph />
       </button>
       <button
         type="button"
-        onClick={() =>
-          setDetailsOnly((on) => {
-            onDetailsOnlyChange?.(!on);
-            return !on;
-          })
-        }
-        aria-pressed={detailsOnly}
-        aria-label={detailsOnly ? "Close details" : "Show details"}
-        title={detailsOnly ? "Close details" : "Details"}
-        className={railIconClass(detailsOnly)}
+        onClick={() => toggleSolo("details")}
+        aria-pressed={solo === "details"}
+        aria-label={solo === "details" ? "Close details" : "Show details"}
+        title={solo === "details" ? "Close details" : "Details"}
+        className={railIconClass(solo === "details")}
       >
         <DetailsGlyph />
       </button>
@@ -476,15 +470,21 @@ export default function ShowcaseSectionRail({
       <div
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
-        {detailsOnly ? (
+        {solo ? (
           <>
             {/* Icons first in this mode: the card can run to 70vh, which would
                 push the only way out below the fold. */}
             {iconRow}
-            {/* The dashboard's own Details card, not a second summary — same
-                component the deck below the photo renders. */}
             <div className="mt-1 max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
-              <ListingSidebar details={detailsPanelProps} />
+              {solo === "details" ? (
+                /* The dashboard's own Details card, not a second summary —
+                   same component the deck below the photo renders. */
+                <ListingSidebar details={detailsPanelProps} />
+              ) : (
+                <div className="p-4">
+                  <ShowcaseTownPulse city={townHint ?? ""} expanded />
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -537,7 +537,7 @@ export default function ShowcaseSectionRail({
           </>
         )}
 
-        {detailsOnly ? null : iconRow}
+        {solo ? null : iconRow}
       </div>
     </>
   );
