@@ -2,19 +2,19 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { haversineMiles } from './geo-distance'
 import {
-  LAND_STRETCH_HALF_WIDTH_MILES,
-  LAND_STRETCH_LENGTH_MILES,
-  applyTownMedianToLandStretch,
-  computeLandStretchInsight,
-  emptyLandStretchInsight,
-  inLandStretch,
-  landStretchExplainsPremium,
+  LOCATION_CORRIDOR_HALF_WIDTH_MILES,
+  LOCATION_CORRIDOR_LENGTH_MILES,
+  applyTownMedianToLocationEstimate,
+  computeLocationEstimate,
+  emptyLocationEstimate,
+  inLocationCorridor,
+  locationEstimateExplains,
   localEastNorth,
   medianNumber,
   streetNameKey,
-  type StretchSale,
-  type StretchSubject,
-} from './listing-land-stretch'
+  type EstimateSale,
+  type EstimateSubject,
+} from './listing-location-estimates'
 
 /** Arbitrary origin — tests are about geometry, not a real listing. */
 const ORIGIN = { lat: 41.14, lon: -73.26 }
@@ -35,33 +35,33 @@ function isoDaysAgo(days: number, nowMs: number): string {
   return new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString()
 }
 
-describe('inLandStretch vs radius', () => {
+describe('inLocationCorridor vs radius', () => {
   it('keeps a point along the axis and drops an inland point the same distance away', () => {
     const axis = { east: 1, north: 0 }
     const along = offsetPoint(ORIGIN, 0.1, 0)
     const inland = offsetPoint(ORIGIN, 0, 0.1)
 
     assert.equal(
-      inLandStretch(ORIGIN.lat, ORIGIN.lon, along.lat, along.lon, axis),
+      inLocationCorridor(ORIGIN.lat, ORIGIN.lon, along.lat, along.lon, axis),
       true,
     )
     assert.equal(
-      inLandStretch(ORIGIN.lat, ORIGIN.lon, inland.lat, inland.lon, axis),
+      inLocationCorridor(ORIGIN.lat, ORIGIN.lon, inland.lat, inland.lon, axis),
       false,
     )
 
     const alongMiles = haversineMiles(ORIGIN.lat, ORIGIN.lon, along.lat, along.lon)
     const inlandMiles = haversineMiles(ORIGIN.lat, ORIGIN.lon, inland.lat, inland.lon)
-    assert.ok(alongMiles < LAND_STRETCH_LENGTH_MILES)
-    assert.ok(inlandMiles < LAND_STRETCH_LENGTH_MILES)
-    assert.ok(inlandMiles > LAND_STRETCH_HALF_WIDTH_MILES)
+    assert.ok(alongMiles < LOCATION_CORRIDOR_LENGTH_MILES)
+    assert.ok(inlandMiles < LOCATION_CORRIDOR_LENGTH_MILES)
+    assert.ok(inlandMiles > LOCATION_CORRIDOR_HALF_WIDTH_MILES)
   })
 
   it('rejects a point past the 1/4-mile stretch even if a 1/4-mile radius would miss it the other way', () => {
     const axis = { east: 1, north: 0 }
     const pastEnd = offsetPoint(ORIGIN, 0.2, 0)
     assert.equal(
-      inLandStretch(ORIGIN.lat, ORIGIN.lon, pastEnd.lat, pastEnd.lon, axis),
+      inLocationCorridor(ORIGIN.lat, ORIGIN.lon, pastEnd.lat, pastEnd.lon, axis),
       false,
     )
   })
@@ -82,15 +82,15 @@ describe('medianNumber / explains', () => {
   })
 
   it('attributes a listing premium to land when the stretch trades at a similar premium', () => {
-    assert.equal(landStretchExplainsPremium(1440, 484, 1300, 5), true)
+    assert.equal(locationEstimateExplains(1440, 484, 1300, 5), true)
   })
 
   it('does not invent a land story when the stretch itself is near the town median', () => {
-    assert.equal(landStretchExplainsPremium(1440, 484, 510, 5), false)
+    assert.equal(locationEstimateExplains(1440, 484, 510, 5), false)
   })
 
   it('needs enough solds', () => {
-    assert.equal(landStretchExplainsPremium(1440, 484, 1300, 2), false)
+    assert.equal(locationEstimateExplains(1440, 484, 1300, 2), false)
   })
 })
 
@@ -100,12 +100,12 @@ describe('streetNameKey', () => {
   })
 })
 
-describe('computeLandStretchInsight', () => {
+describe('computeLocationEstimate', () => {
   it('picks a street stretch from same-street solds for any subject', () => {
     const now = Date.parse('2026-09-02T12:00:00.000Z')
     // Far from TMRE water/center points so only the street axis is available.
     const here = { lat: 41.55, lon: -73.85 }
-    const subject: StretchSubject = {
+    const subject: EstimateSubject = {
       id: 's1',
       latitude: here.lat,
       longitude: here.lon,
@@ -122,7 +122,7 @@ describe('computeLandStretchInsight', () => {
       north: number,
       ppsf: number,
       street: string,
-    ): StretchSale => {
+    ): EstimateSale => {
       const pt = offsetPoint(here, east, north)
       return {
         id,
@@ -144,25 +144,25 @@ describe('computeLandStretchInsight', () => {
       mk('inland', 0.01, 0.12, 400, '9 Other Rd'),
     ]
 
-    const insight = computeLandStretchInsight(subject, sales, 450, now)
-    assert.equal(insight.axis, 'street')
+    const insight = computeLocationEstimate(subject, sales, 450, now)
+    assert.equal(insight.kind, 'street')
     assert.ok(insight.soldCount >= 3)
-    assert.equal(insight.explainsLandPremium, true)
-    assert.ok((insight.stretchMedianPpsf ?? 0) > 800)
+    assert.equal(insight.explainsLocation, true)
+    assert.ok((insight.soldMedianPpsf ?? 0) > 800)
   })
 })
 
-describe('applyTownMedianToLandStretch', () => {
+describe('applyTownMedianToLocationEstimate', () => {
   it('applies the town median at read time without recomputing solds', () => {
     const stored = {
-      ...emptyLandStretchInsight(900, null),
-      axis: 'street' as const,
+      ...emptyLocationEstimate(900, null),
+      kind: 'street' as const, axis: 'street' as const,
       soldCount: 4,
-      stretchMedianPpsf: 880,
+      soldMedianPpsf: 880,
     }
-    const applied = applyTownMedianToLandStretch(stored, 450, 900)
-    assert.equal(applied.explainsLandPremium, true)
-    assert.ok((applied.stretchPremiumPct ?? 0) > 0.5)
-    assert.equal(applied.stretchMedianPpsf, 880)
+    const applied = applyTownMedianToLocationEstimate(stored, 450, 900)
+    assert.equal(applied.explainsLocation, true)
+    assert.ok((applied.soldPremiumPct ?? 0) > 0.5)
+    assert.equal(applied.soldMedianPpsf, 880)
   })
 })

@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         cityMedianPpsf: detailScore?.cityMedianPpsf ?? null,
         pricePerSqft: detailScore?.pricePerSqft ?? null,
         medianPpsfBand: detailScore?.medianPpsfBand ?? null,
-        landStretch: detailScore?.landStretch ?? null,
+        locationEstimate: detailScore?.locationEstimate ?? null,
         marketBandLabel,
         /** VGSI parcel pairing for the Admin panel; null outside Westport. */
         vision,

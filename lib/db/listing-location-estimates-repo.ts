@@ -2,36 +2,55 @@ import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
 import { isRentalListing } from '@/lib/listing-kind'
-import type { LandStretchInsight, StretchSale } from '@/lib/listing-land-stretch'
+import type { LocationEstimate, EstimateSale } from '@/lib/listing-location-estimates'
 
 /**
- * Per-listing land-stretch premium (sold PPSF on a 1/4-mile corridor).
- * Netlify does not auto-migrate; ensure the table on first use.
+ * Current location estimate + snapshots (coastal areas / town centers).
+ * Netlify does not auto-migrate; ensure tables on first use.
  */
 
-const CREATE_SQL = `
-CREATE TABLE IF NOT EXISTS listing_land_premiums (
+const CREATE_CURRENT_SQL = `
+CREATE TABLE IF NOT EXISTS listing_location_estimates (
   listing_id text PRIMARY KEY,
   algo_version integer NOT NULL,
-  axis text,
+  kind text,
   sold_count integer NOT NULL DEFAULT 0,
-  stretch_median_ppsf numeric,
+  sold_median_ppsf numeric,
   city_median_ppsf numeric,
   listing_ppsf numeric,
-  stretch_premium_pct numeric,
+  sold_premium_pct numeric,
   listing_premium_pct numeric,
-  explains_land boolean NOT NULL DEFAULT false,
+  explains_location boolean NOT NULL DEFAULT false,
   labels jsonb NOT NULL DEFAULT '[]'::jsonb,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   computed_at timestamptz NOT NULL
 )
 `
 
+const CREATE_SNAPSHOTS_SQL = `
+CREATE TABLE IF NOT EXISTS listing_location_estimate_snapshots (
+  listing_id text NOT NULL,
+  computed_at timestamptz NOT NULL,
+  algo_version integer NOT NULL,
+  kind text,
+  sold_count integer NOT NULL DEFAULT 0,
+  sold_median_ppsf numeric,
+  city_median_ppsf numeric,
+  listing_ppsf numeric,
+  sold_premium_pct numeric,
+  listing_premium_pct numeric,
+  explains_location boolean NOT NULL DEFAULT false,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (listing_id, computed_at)
+)
+`
+
 let ensured = false
 
-export async function ensureListingLandPremiumsTable(): Promise<void> {
+export async function ensureLocationEstimateTables(): Promise<void> {
   if (ensured) return
-  await query(CREATE_SQL)
+  await query(CREATE_CURRENT_SQL)
+  await query(CREATE_SNAPSHOTS_SQL)
   ensured = true
 }
 
@@ -52,108 +71,137 @@ function labelsFromJson(value: unknown): string[] {
   return value.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
 }
 
-export type ListingLandPremiumRow = LandStretchInsight & {
+function parseKind(value: string | null): LocationEstimate['kind'] {
+  if (value === 'coastal' || value === 'town_center' || value === 'street') {
+    return value
+  }
+  return null
+}
+
+export type LocationEstimateRow = LocationEstimate & {
   listingId: string
   computedAt: string
 }
 
-export async function upsertListingLandPremium(row: {
+export async function upsertLocationEstimate(row: {
   listingId: string
-  insight: LandStretchInsight
+  estimate: LocationEstimate
   computedAt: string
 }): Promise<void> {
-  await ensureListingLandPremiumsTable()
-  const { insight, listingId, computedAt } = row
+  await ensureLocationEstimateTables()
+  const { estimate, listingId, computedAt } = row
   await query(
-    `INSERT INTO listing_land_premiums (
-       listing_id, algo_version, axis, sold_count,
-       stretch_median_ppsf, city_median_ppsf, listing_ppsf,
-       stretch_premium_pct, listing_premium_pct, explains_land,
+    `INSERT INTO listing_location_estimates (
+       listing_id, algo_version, kind, sold_count,
+       sold_median_ppsf, city_median_ppsf, listing_ppsf,
+       sold_premium_pct, listing_premium_pct, explains_location,
        labels, payload, computed_at
      ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13
      )
      ON CONFLICT (listing_id) DO UPDATE SET
        algo_version = EXCLUDED.algo_version,
-       axis = EXCLUDED.axis,
+       kind = EXCLUDED.kind,
        sold_count = EXCLUDED.sold_count,
-       stretch_median_ppsf = EXCLUDED.stretch_median_ppsf,
+       sold_median_ppsf = EXCLUDED.sold_median_ppsf,
        city_median_ppsf = EXCLUDED.city_median_ppsf,
        listing_ppsf = EXCLUDED.listing_ppsf,
-       stretch_premium_pct = EXCLUDED.stretch_premium_pct,
+       sold_premium_pct = EXCLUDED.sold_premium_pct,
        listing_premium_pct = EXCLUDED.listing_premium_pct,
-       explains_land = EXCLUDED.explains_land,
+       explains_location = EXCLUDED.explains_location,
        labels = EXCLUDED.labels,
        payload = EXCLUDED.payload,
        computed_at = EXCLUDED.computed_at`,
     [
       listingId,
-      insight.algoVersion,
-      insight.axis,
-      insight.soldCount,
-      insight.stretchMedianPpsf,
-      insight.cityMedianPpsf,
-      insight.listingPpsf,
-      insight.stretchPremiumPct,
-      insight.listingPremiumPct,
-      insight.explainsLandPremium,
-      JSON.stringify(insight.labels),
-      JSON.stringify({ candidates: insight.candidates }),
+      estimate.algoVersion,
+      estimate.kind ?? estimate.axis,
+      estimate.soldCount,
+      estimate.soldMedianPpsf,
+      estimate.cityMedianPpsf,
+      estimate.listingPpsf,
+      estimate.soldPremiumPct,
+      estimate.listingPremiumPct,
+      estimate.explainsLocation,
+      JSON.stringify(estimate.labels),
+      JSON.stringify({ candidates: estimate.candidates }),
       computedAt,
+    ],
+  )
+  await query(
+    `INSERT INTO listing_location_estimate_snapshots (
+       listing_id, computed_at, algo_version, kind, sold_count,
+       sold_median_ppsf, city_median_ppsf, listing_ppsf,
+       sold_premium_pct, listing_premium_pct, explains_location, payload
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb
+     )
+     ON CONFLICT (listing_id, computed_at) DO NOTHING`,
+    [
+      listingId,
+      computedAt,
+      estimate.algoVersion,
+      estimate.kind ?? estimate.axis,
+      estimate.soldCount,
+      estimate.soldMedianPpsf,
+      estimate.cityMedianPpsf,
+      estimate.listingPpsf,
+      estimate.soldPremiumPct,
+      estimate.listingPremiumPct,
+      estimate.explainsLocation,
+      JSON.stringify({ candidates: estimate.candidates, labels: estimate.labels }),
     ],
   )
 }
 
-export async function readListingLandPremium(
+export async function readLocationEstimateRow(
   listingId: string,
-): Promise<ListingLandPremiumRow | null> {
+): Promise<LocationEstimateRow | null> {
   const id = listingId.trim()
   if (!id) return null
-  await ensureListingLandPremiumsTable()
+  await ensureLocationEstimateTables()
   const row = await queryOne<{
     listing_id: string
     algo_version: number
-    axis: string | null
+    kind: string | null
     sold_count: number
-    stretch_median_ppsf: unknown
+    sold_median_ppsf: unknown
     city_median_ppsf: unknown
     listing_ppsf: unknown
-    stretch_premium_pct: unknown
+    sold_premium_pct: unknown
     listing_premium_pct: unknown
-    explains_land: boolean
+    explains_location: boolean
     labels: unknown
     payload: unknown
     computed_at: Date | null
   }>(
-    `SELECT listing_id, algo_version, axis, sold_count,
-            stretch_median_ppsf, city_median_ppsf, listing_ppsf,
-            stretch_premium_pct, listing_premium_pct, explains_land,
+    `SELECT listing_id, algo_version, kind, sold_count,
+            sold_median_ppsf, city_median_ppsf, listing_ppsf,
+            sold_premium_pct, listing_premium_pct, explains_location,
             labels, payload, computed_at
-       FROM listing_land_premiums
+       FROM listing_location_estimates
       WHERE listing_id = $1
       LIMIT 1`,
     [id],
   )
   if (!row) return null
-
   const payload =
     row.payload && typeof row.payload === 'object'
-      ? (row.payload as { candidates?: LandStretchInsight['candidates'] })
+      ? (row.payload as { candidates?: LocationEstimate['candidates'] })
       : {}
-
-  const axis = row.axis
+  const kind = parseKind(row.kind)
   return {
     listingId: row.listing_id,
     algoVersion: row.algo_version,
-    axis:
-      axis === 'water' || axis === 'center' || axis === 'street' ? axis : null,
+    kind,
+    axis: kind,
     soldCount: row.sold_count,
-    stretchMedianPpsf: numOrNull(row.stretch_median_ppsf),
+    soldMedianPpsf: numOrNull(row.sold_median_ppsf),
     cityMedianPpsf: numOrNull(row.city_median_ppsf),
     listingPpsf: numOrNull(row.listing_ppsf),
-    stretchPremiumPct: numOrNull(row.stretch_premium_pct),
+    soldPremiumPct: numOrNull(row.sold_premium_pct),
     listingPremiumPct: numOrNull(row.listing_premium_pct),
-    explainsLandPremium: row.explains_land === true,
+    explainsLocation: row.explains_location === true,
     labels: labelsFromJson(row.labels),
     candidates: Array.isArray(payload.candidates) ? payload.candidates : [],
     computedAt: tsToIso(row.computed_at) ?? '',
@@ -174,10 +222,6 @@ export type ClosedSaleGeoRow = {
   propertyType: string
 }
 
-/**
- * Closed sales in a small lat/lon box for one town. Used only as a fetch
- * window — the stretch filter (not this box) defines the land corridor.
- */
 export async function readClosedSalesInBounds(args: {
   town: string
   minLat: number
@@ -255,7 +299,7 @@ export async function readClosedSalesInBounds(args: {
   return out
 }
 
-export function closedSaleToStretchSale(row: ClosedSaleGeoRow): StretchSale {
+export function closedSaleToEstimateSale(row: ClosedSaleGeoRow): EstimateSale {
   return {
     id: row.id,
     latitude: row.latitude,

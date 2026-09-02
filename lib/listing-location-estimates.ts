@@ -11,33 +11,33 @@ import { COMPARABLES_DEFAULT_LOOKBACK_MONTHS } from '@/lib/listing-comparables-s
 import { withinLookbackMonths } from '@/lib/listing-comparables-shared'
 
 /**
- * Land-value stretch — a corridor of land, not a radius around the house.
+ * Location estimates — sold PPSF in coastal areas and town centers.
  *
- * Suburban sale prices often follow the dirt (water, in-town) more than
- * finishes. This module scores that from historical solds on a 1/4-mile
- * stretch. It is listing-agnostic: same rules for every subject.
+ * Two places typically trade above the town median: coastal areas and
+ * town centers. The method is a 1/4-mile corridor of nearby solds (not a
+ * radius). Listing-agnostic. Distinct from What-if location-premium weights.
  */
 
 /** Full length of the corridor, miles. */
-export const LAND_STRETCH_LENGTH_MILES = 0.25
+export const LOCATION_CORRIDOR_LENGTH_MILES = 0.25
 /** Half-width of the corridor (~320 ft). A 1/4-mile *radius* would be much wider. */
-export const LAND_STRETCH_HALF_WIDTH_MILES = 0.06
+export const LOCATION_CORRIDOR_HALF_WIDTH_MILES = 0.06
 /** Minimum solds before we will claim the stretch explains a premium. */
-export const LAND_STRETCH_MIN_SOLDS = 3
+export const LOCATION_ESTIMATE_MIN_SOLDS = 3
 /** Same default look-back as comps — recent sales, not the 36-month reservoir. */
-export const LAND_STRETCH_LOOKBACK_MONTHS = COMPARABLES_DEFAULT_LOOKBACK_MONTHS
-export const LAND_STRETCH_ALGO_VERSION = 1
+export const LOCATION_ESTIMATE_LOOKBACK_MONTHS = COMPARABLES_DEFAULT_LOOKBACK_MONTHS
+export const LOCATION_ESTIMATE_ALGO_VERSION = 1
 
 /** Water tiers already used by location premium (coastal neighborhood = 1.4 mi). */
-const WATER_STRETCH_MAX_MILES = 1.4
+const COASTAL_MAX_MILES = 1.4
 /** Town/zip-center tiers already used by location premium. */
-const CENTER_STRETCH_MAX_MILES = 2.0
+const TOWN_CENTER_MAX_MILES = 2.0
 
 const MILES_PER_DEG_LAT = 69.172
 
-export type LandStretchAxis = 'water' | 'center' | 'street'
+export type LocationEstimateKind = 'coastal' | 'town_center' | 'street'
 
-export type StretchSale = {
+export type EstimateSale = {
   id: string
   latitude: number
   longitude: number
@@ -49,7 +49,7 @@ export type StretchSale = {
   street: string | null
 }
 
-export type StretchSubject = {
+export type EstimateSubject = {
   id: string
   latitude: number
   longitude: number
@@ -62,41 +62,45 @@ export type StretchSubject = {
   pricePerSqft: number | null
 }
 
-export type LandStretchCandidate = {
-  axis: LandStretchAxis
+export type LocationEstimateCandidate = {
+  axis: LocationEstimateKind
   soldCount: number
-  stretchMedianPpsf: number
-  stretchPremiumPct: number
+  soldMedianPpsf: number
+  soldPremiumPct: number
 }
 
-export type LandStretchInsight = {
+export type LocationEstimate = {
   algoVersion: number
-  axis: LandStretchAxis | null
+  /** coastal | town_center (product); street is an internal fallback only. */
+  kind: LocationEstimateKind | null
+  /** Same as kind — corridor axis used by the estimator. */
+  axis: LocationEstimateKind | null
   soldCount: number
-  stretchMedianPpsf: number | null
+  soldMedianPpsf: number | null
   cityMedianPpsf: number | null
   listingPpsf: number | null
-  stretchPremiumPct: number | null
+  soldPremiumPct: number | null
   listingPremiumPct: number | null
-  explainsLandPremium: boolean
+  explainsLocation: boolean
   labels: string[]
-  candidates: LandStretchCandidate[]
+  candidates: LocationEstimateCandidate[]
 }
 
-export function emptyLandStretchInsight(
+export function emptyLocationEstimate(
   listingPpsf: number | null = null,
   cityMedianPpsf: number | null = null,
-): LandStretchInsight {
+): LocationEstimate {
   return {
-    algoVersion: LAND_STRETCH_ALGO_VERSION,
+    algoVersion: LOCATION_ESTIMATE_ALGO_VERSION,
+    kind: null,
     axis: null,
     soldCount: 0,
-    stretchMedianPpsf: null,
+    soldMedianPpsf: null,
     cityMedianPpsf,
     listingPpsf,
-    stretchPremiumPct: null,
+    soldPremiumPct: null,
     listingPremiumPct: premiumPct(listingPpsf, cityMedianPpsf),
-    explainsLandPremium: false,
+    explainsLocation: false,
     labels: [],
     candidates: [],
   }
@@ -141,7 +145,7 @@ export function perpendicularAxis(axis: AxisUnit): AxisUnit {
 
 /**
  * Project a point onto a corridor through the origin.
- * `along` is distance on the stretch; `across` is the inland/side offset.
+ * `along` is distance on the corridor; `across` is the inland/side offset.
  */
 export function projectOnAxis(
   originLat: number,
@@ -156,14 +160,14 @@ export function projectOnAxis(
   return { along, across }
 }
 
-export function inLandStretch(
+export function inLocationCorridor(
   originLat: number,
   originLon: number,
   lat: number,
   lon: number,
   axis: AxisUnit,
-  halfLengthMiles: number = LAND_STRETCH_LENGTH_MILES / 2,
-  halfWidthMiles: number = LAND_STRETCH_HALF_WIDTH_MILES,
+  halfLengthMiles: number = LOCATION_CORRIDOR_LENGTH_MILES / 2,
+  halfWidthMiles: number = LOCATION_CORRIDOR_HALF_WIDTH_MILES,
 ): boolean {
   const { along, across } = projectOnAxis(originLat, originLon, lat, lon, axis)
   return Math.abs(along) <= halfLengthMiles && Math.abs(across) <= halfWidthMiles
@@ -198,38 +202,38 @@ function townCenterPoint(
 }
 
 export type AmenityAxes = {
-  water: { axis: AxisUnit; miles: number } | null
-  center: { axis: AxisUnit; miles: number } | null
+  coastal: { axis: AxisUnit; miles: number } | null
+  townCenter: { axis: AxisUnit; miles: number } | null
   street: AxisUnit | null
 }
 
 /**
- * Generic amenity axes for any lat/lon. Water = shore-parallel (not inland).
- * Center = corridor toward the village. Street = bearing of same-street solds.
+ * Axes for any lat/lon. Coastal = shore-parallel (not inland).
+ * Town center = corridor toward the village. Street is an internal fallback only.
  */
-export function amenityAxesForSubject(
-  subject: StretchSubject,
-  sales: readonly StretchSale[],
+export function locationAxesForSubject(
+  subject: EstimateSubject,
+  sales: readonly EstimateSale[],
 ): AmenityAxes {
   const town = townForZip(subject.postalCode) ?? null
-  const waterHit = nearestPoint(subject.latitude, subject.longitude, WATER_ACCESS_POINTS)
+  const coastalHit = nearestPoint(subject.latitude, subject.longitude, WATER_ACCESS_POINTS)
   const centerPt = townCenterPoint(subject.postalCode, town)
 
-  let water: AmenityAxes['water'] = null
-  if (waterHit && waterHit.miles <= WATER_STRETCH_MAX_MILES) {
+  let coastal: AmenityAxes['coastal'] = null
+  if (coastalHit && coastalHit.miles <= COASTAL_MAX_MILES) {
     const inland = localEastNorth(
       subject.latitude,
       subject.longitude,
-      waterHit.point.lat,
-      waterHit.point.lon,
+      coastalHit.point.lat,
+      coastalHit.point.lon,
     )
     const inlandAxis = unitOffset(inland.east, inland.north)
     if (inlandAxis) {
-      water = { axis: perpendicularAxis(inlandAxis), miles: waterHit.miles }
+      coastal = { axis: perpendicularAxis(inlandAxis), miles: coastalHit.miles }
     }
   }
 
-  let center: AmenityAxes['center'] = null
+  let townCenter: AmenityAxes['townCenter'] = null
   if (centerPt) {
     const toCenter = localEastNorth(
       subject.latitude,
@@ -239,21 +243,21 @@ export function amenityAxesForSubject(
     )
     const centerAxis = unitOffset(toCenter.east, toCenter.north)
     const miles = Math.hypot(toCenter.east, toCenter.north)
-    if (centerAxis && miles <= CENTER_STRETCH_MAX_MILES) {
-      center = { axis: centerAxis, miles }
+    if (centerAxis && miles <= TOWN_CENTER_MAX_MILES) {
+      townCenter = { axis: centerAxis, miles }
     }
   }
 
   return {
-    water,
-    center,
+    coastal,
+    townCenter,
     street: streetAxisFromSales(subject, sales),
   }
 }
 
 function streetAxisFromSales(
-  subject: StretchSubject,
-  sales: readonly StretchSale[],
+  subject: EstimateSubject,
+  sales: readonly EstimateSale[],
 ): AxisUnit | null {
   const key = streetNameKey(subject.street)
   if (!key) return null
@@ -280,7 +284,7 @@ function streetAxisFromSales(
   return unitOffset(east, north)
 }
 
-function similarHouse(subject: StretchSubject, sale: StretchSale): boolean {
+function similarHouse(subject: EstimateSubject, sale: EstimateSale): boolean {
   if (
     subject.beds != null &&
     sale.beds != null &&
@@ -300,19 +304,19 @@ function similarHouse(subject: StretchSubject, sale: StretchSale): boolean {
   return true
 }
 
-function salesOnStretch(
-  subject: StretchSubject,
-  sales: readonly StretchSale[],
+function salesOnCorridor(
+  subject: EstimateSubject,
+  sales: readonly EstimateSale[],
   axis: AxisUnit,
   nowMs: number,
-): StretchSale[] {
+): EstimateSale[] {
   return sales.filter((sale) => {
     if (sale.id === subject.id) return false
     if (!(sale.pricePerSqft > 0)) return false
-    if (!withinLookbackMonths(sale.closeDate, LAND_STRETCH_LOOKBACK_MONTHS, nowMs)) {
+    if (!withinLookbackMonths(sale.closeDate, LOCATION_ESTIMATE_LOOKBACK_MONTHS, nowMs)) {
       return false
     }
-    return inLandStretch(
+    return inLocationCorridor(
       subject.latitude,
       subject.longitude,
       sale.latitude,
@@ -323,98 +327,101 @@ function salesOnStretch(
 }
 
 function candidateFromSales(
-  axis: LandStretchAxis,
-  onStretch: readonly StretchSale[],
-  subject: StretchSubject,
+  axis: LocationEstimateKind,
+  onStretch: readonly EstimateSale[],
+  subject: EstimateSubject,
   cityMedianPpsf: number | null,
-): LandStretchCandidate | null {
+): LocationEstimateCandidate | null {
   const similar = onStretch.filter((sale) => similarHouse(subject, sale))
-  const pool = similar.length >= LAND_STRETCH_MIN_SOLDS ? similar : onStretch
+  const pool = similar.length >= LOCATION_ESTIMATE_MIN_SOLDS ? similar : onStretch
   const medianPpsf = medianNumber(pool.map((sale) => sale.pricePerSqft))
   if (medianPpsf == null || pool.length === 0) return null
   return {
     axis,
     soldCount: pool.length,
-    stretchMedianPpsf: medianPpsf,
-    stretchPremiumPct: premiumPct(medianPpsf, cityMedianPpsf) ?? 0,
+    soldMedianPpsf: medianPpsf,
+    soldPremiumPct: premiumPct(medianPpsf, cityMedianPpsf) ?? 0,
   }
 }
 
-export function landStretchExplainsPremium(
+export function locationEstimateExplains(
   listingPpsf: number | null,
   cityMedianPpsf: number | null,
-  stretchMedianPpsf: number | null,
+  soldMedianPpsf: number | null,
   soldCount: number,
 ): boolean {
-  if (soldCount < LAND_STRETCH_MIN_SOLDS) return false
+  if (soldCount < LOCATION_ESTIMATE_MIN_SOLDS) return false
   const listingPremium = premiumPct(listingPpsf, cityMedianPpsf)
-  const stretchPremium = premiumPct(stretchMedianPpsf, cityMedianPpsf)
+  const stretchPremium = premiumPct(soldMedianPpsf, cityMedianPpsf)
   if (
     listingPremium == null ||
     stretchPremium == null ||
     listingPpsf == null ||
-    stretchMedianPpsf == null
+    soldMedianPpsf == null
   ) {
     return false
   }
   if (listingPremium <= 0.05 || stretchPremium <= 0.05) return false
   const closeToStretch =
-    Math.abs(listingPpsf - stretchMedianPpsf) / stretchMedianPpsf <= 0.35
+    Math.abs(listingPpsf - soldMedianPpsf) / soldMedianPpsf <= 0.35
   return closeToStretch || stretchPremium >= 0.4 * listingPremium
 }
 
 function pickCandidate(
-  candidates: LandStretchCandidate[],
+  candidates: LocationEstimateCandidate[],
   listingPpsf: number | null,
   cityMedianPpsf: number | null,
-): LandStretchCandidate | null {
+): LocationEstimateCandidate | null {
   if (candidates.length === 0) return null
   const explaining = candidates.filter((c) =>
-    landStretchExplainsPremium(
+    locationEstimateExplains(
       listingPpsf,
       cityMedianPpsf,
-      c.stretchMedianPpsf,
+      c.soldMedianPpsf,
       c.soldCount,
     ),
   )
-  const pool = explaining.length > 0 ? explaining : candidates
+  const product = (explaining.length > 0 ? explaining : candidates).filter(
+    (c) => c.axis === 'coastal' || c.axis === 'town_center',
+  )
+  const pool = product.length > 0 ? product : explaining.length > 0 ? explaining : candidates
   return [...pool].sort((a, b) => {
-    if (b.stretchMedianPpsf !== a.stretchMedianPpsf) {
-      return b.stretchMedianPpsf - a.stretchMedianPpsf
+    if (b.soldMedianPpsf !== a.soldMedianPpsf) {
+      return b.soldMedianPpsf - a.soldMedianPpsf
     }
     return b.soldCount - a.soldCount
   })[0] ?? null
 }
 
-function labelsFor(axes: AmenityAxes, picked: LandStretchAxis | null): string[] {
+function labelsFor(axes: AmenityAxes, picked: LocationEstimateKind | null): string[] {
   const labels: string[] = []
-  if (axes.water && (picked === 'water' || picked == null)) {
-    labels.push('Near the water')
+  if (axes.coastal && (picked === 'coastal' || picked == null)) {
+    labels.push('Coastal area')
   }
-  if (axes.center && (picked === 'center' || picked == null)) {
-    labels.push('Near town center')
+  if (axes.townCenter && (picked === 'town_center' || picked == null)) {
+    labels.push('Town center')
   }
-  if (picked === 'street') labels.push('Same-street stretch')
-  if (picked === 'water' && !labels.includes('Near the water')) {
-    labels.unshift('Near the water')
+  if (picked === 'street') labels.push('Same street')
+  if (picked === 'coastal' && !labels.includes('Coastal area')) {
+    labels.unshift('Coastal area')
   }
-  if (picked === 'center' && !labels.includes('Near town center')) {
-    labels.unshift('Near town center')
+  if (picked === 'town_center' && !labels.includes('Town center')) {
+    labels.unshift('Town center')
   }
   return labels
 }
 
 /**
- * Score land value from solds on amenity stretches. No listing-specific rules.
+ * Score coastal / town-center sold PPSF from a 1/4-mile corridor. No listing-specific rules.
  */
-export function computeLandStretchInsight(
-  subject: StretchSubject,
-  sales: readonly StretchSale[],
+export function computeLocationEstimate(
+  subject: EstimateSubject,
+  sales: readonly EstimateSale[],
   cityMedianPpsf: number | null,
   nowMs: number = Date.now(),
-): LandStretchInsight {
+): LocationEstimate {
   const listingPpsf = subject.pricePerSqft
-  const empty = emptyLandStretchInsight(listingPpsf, cityMedianPpsf)
+  const empty = emptyLocationEstimate(listingPpsf, cityMedianPpsf)
   if (
     !Number.isFinite(subject.latitude) ||
     !Number.isFinite(subject.longitude)
@@ -422,22 +429,22 @@ export function computeLandStretchInsight(
     return empty
   }
 
-  const axes = amenityAxesForSubject(subject, sales)
-  const candidates: LandStretchCandidate[] = []
+  const axes = locationAxesForSubject(subject, sales)
+  const candidates: LocationEstimateCandidate[] = []
 
-  if (axes.water) {
+  if (axes.coastal) {
     const c = candidateFromSales(
-      'water',
-      salesOnStretch(subject, sales, axes.water.axis, nowMs),
+      'coastal',
+      salesOnCorridor(subject, sales, axes.coastal.axis, nowMs),
       subject,
       cityMedianPpsf,
     )
     if (c) candidates.push(c)
   }
-  if (axes.center) {
+  if (axes.townCenter) {
     const c = candidateFromSales(
-      'center',
-      salesOnStretch(subject, sales, axes.center.axis, nowMs),
+      'town_center',
+      salesOnCorridor(subject, sales, axes.townCenter.axis, nowMs),
       subject,
       cityMedianPpsf,
     )
@@ -446,7 +453,7 @@ export function computeLandStretchInsight(
   if (axes.street) {
     const c = candidateFromSales(
       'street',
-      salesOnStretch(subject, sales, axes.street, nowMs),
+      salesOnCorridor(subject, sales, axes.street, nowMs),
       subject,
       cityMedianPpsf,
     )
@@ -455,24 +462,25 @@ export function computeLandStretchInsight(
 
   const picked = pickCandidate(candidates, listingPpsf, cityMedianPpsf)
   if (!picked) {
-    return applyTownMedianToLandStretch(
+    return applyTownMedianToLocationEstimate(
       { ...empty, labels: labelsFor(axes, null), candidates },
       cityMedianPpsf,
       listingPpsf,
     )
   }
 
-  return applyTownMedianToLandStretch(
+  return applyTownMedianToLocationEstimate(
     {
-      algoVersion: LAND_STRETCH_ALGO_VERSION,
+      algoVersion: LOCATION_ESTIMATE_ALGO_VERSION,
+      kind: picked.axis,
       axis: picked.axis,
       soldCount: picked.soldCount,
-      stretchMedianPpsf: picked.stretchMedianPpsf,
+      soldMedianPpsf: picked.soldMedianPpsf,
       cityMedianPpsf: null,
       listingPpsf,
-      stretchPremiumPct: null,
+      soldPremiumPct: null,
       listingPremiumPct: null,
-      explainsLandPremium: false,
+      explainsLocation: false,
       labels: labelsFor(axes, picked.axis),
       candidates,
     },
@@ -483,27 +491,29 @@ export function computeLandStretchInsight(
 
 /**
  * Town-median comparison is applied at read time so the estimate cache can
- * store the stretch without depending on Goldilocks peer medians.
+ * store the estimate without depending on Goldilocks peer medians.
  */
-export function applyTownMedianToLandStretch(
-  land: LandStretchInsight,
+export function applyTownMedianToLocationEstimate(
+  land: LocationEstimate,
   cityMedianPpsf: number | null,
   listingPpsf: number | null,
-): LandStretchInsight {
+): LocationEstimate {
   const candidates = land.candidates.map((c) => ({
     ...c,
-    stretchPremiumPct: premiumPct(c.stretchMedianPpsf, cityMedianPpsf) ?? 0,
+    soldPremiumPct: premiumPct(c.soldMedianPpsf, cityMedianPpsf) ?? 0,
   }))
   return {
     ...land,
+    kind: land.kind ?? land.axis,
+    axis: land.axis ?? land.kind,
     cityMedianPpsf,
     listingPpsf,
-    stretchPremiumPct: premiumPct(land.stretchMedianPpsf, cityMedianPpsf),
+    soldPremiumPct: premiumPct(land.soldMedianPpsf, cityMedianPpsf),
     listingPremiumPct: premiumPct(listingPpsf, cityMedianPpsf),
-    explainsLandPremium: landStretchExplainsPremium(
+    explainsLocation: locationEstimateExplains(
       listingPpsf,
       cityMedianPpsf,
-      land.stretchMedianPpsf,
+      land.soldMedianPpsf,
       land.soldCount,
     ),
     candidates,
@@ -511,15 +521,16 @@ export function applyTownMedianToLandStretch(
 }
 
 /** Insight tail when the stretch itself trades at a premium. Null = no causal claim. */
-export function formatLandStretchInsightTail(
-  land: LandStretchInsight | null | undefined,
+export function formatLocationEstimateInsightTail(
+  land: LocationEstimate | null | undefined,
 ): string | null {
-  if (!land?.explainsLandPremium) return null
-  if (land.axis === 'water') {
-    return 'in line with recent sales on this waterfront stretch of land'
+  if (!land?.explainsLocation) return null
+  const kind = land.kind ?? land.axis
+  if (kind === 'coastal') {
+    return 'in line with recent sales in this coastal area'
   }
-  if (land.axis === 'center') {
-    return 'in line with recent sales on this in-town stretch of land'
+  if (kind === 'town_center') {
+    return 'in line with recent sales near the town center'
   }
-  return 'in line with recent sales on this stretch of land'
+  return null
 }

@@ -35,7 +35,7 @@ import {
   readAllListingsFromDb,
   upsertListingIfEstimate,
 } from '@/lib/db/listings-repo'
-import { cacheLandStretchForListing } from '@/lib/listing-land-stretch-resolve'
+import { cacheLocationEstimateForListing } from '@/lib/listing-location-estimates-resolve'
 import {
   readStatsCacheRow,
   writeStatsCacheRow,
@@ -244,7 +244,7 @@ export async function cacheIfEstimatesForListing(
     await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
       () => undefined,
     )
-    await cacheLandStretchForListing(subject, soldPool).catch(() => undefined)
+    await cacheLocationEstimateForListing(subject, soldPool).catch(() => undefined)
   }
   setSyncMeta('if_estimates_algo_version', String(IF_ESTIMATES_ALGO_VERSION))
   return payload
@@ -340,7 +340,7 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
       await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
         () => undefined,
       )
-      await cacheLandStretchForListing(subject, soldPool).catch(() => undefined)
+      await cacheLocationEstimateForListing(subject, soldPool).catch(() => undefined)
       count += 1
     }
   }
@@ -406,7 +406,7 @@ async function persistIfPayload(
     await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
       () => undefined,
     )
-    await cacheLandStretchForListing(listing).catch(() => undefined)
+    await cacheLocationEstimateForListing(listing).catch(() => undefined)
   }
   setSyncMeta('if_estimates_algo_version', String(IF_ESTIMATES_ALGO_VERSION))
   return payload

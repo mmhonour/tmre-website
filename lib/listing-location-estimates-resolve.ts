@@ -1,12 +1,12 @@
 import 'server-only'
 
 import {
-  closedSaleToStretchSale,
+  closedSaleToEstimateSale,
   readClosedSalesInBounds,
-  readListingLandPremium,
-  upsertListingLandPremium,
+  readLocationEstimateRow,
+  upsertLocationEstimate,
   type ClosedSaleGeoRow,
-} from '@/lib/db/listing-land-premiums-repo'
+} from '@/lib/db/listing-location-estimates-repo'
 import { listingRowId } from '@/lib/db/listings-repo'
 import {
   readStatsCacheRow,
@@ -15,26 +15,26 @@ import {
 import { closeFieldsFromListing } from '@/lib/listing-history'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
-  LAND_STRETCH_ALGO_VERSION,
-  LAND_STRETCH_LENGTH_MILES,
-  LAND_STRETCH_LOOKBACK_MONTHS,
-  applyTownMedianToLandStretch,
-  computeLandStretchInsight,
-  emptyLandStretchInsight,
-  type LandStretchInsight,
-  type StretchSale,
-  type StretchSubject,
-} from '@/lib/listing-land-stretch'
+  LOCATION_CORRIDOR_LENGTH_MILES,
+  LOCATION_ESTIMATE_ALGO_VERSION,
+  LOCATION_ESTIMATE_LOOKBACK_MONTHS,
+  applyTownMedianToLocationEstimate,
+  computeLocationEstimate,
+  emptyLocationEstimate,
+  type EstimateSale,
+  type EstimateSubject,
+  type LocationEstimate,
+} from '@/lib/listing-location-estimates'
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { resolveListingTown, townForZip } from '@/lib/tmre-towns'
 
-const FETCH_HALF_EXTENT_MILES = LAND_STRETCH_LENGTH_MILES * 0.7
+const FETCH_HALF_EXTENT_MILES = LOCATION_CORRIDOR_LENGTH_MILES * 0.7
 const MILES_PER_DEG_LAT = 69.172
 
-export function landStretchCacheKey(listingId: string): string {
-  return `land:stretch:v${LAND_STRETCH_ALGO_VERSION}:${listingId}`
+export function locationEstimateCacheKey(listingId: string): string {
+  return `location:estimate:v${LOCATION_ESTIMATE_ALGO_VERSION}:${listingId}`
 }
 
 function listingPpsf(listing: Listing): number | null {
@@ -44,7 +44,7 @@ function listingPpsf(listing: Listing): number | null {
   return price / sqft
 }
 
-function subjectFromListing(listing: Listing): StretchSubject | null {
+function subjectFromListing(listing: Listing): EstimateSubject | null {
   const lat = listing.latitude != null ? Number(listing.latitude) : null
   const lon = listing.longitude != null ? Number(listing.longitude) : null
   if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
@@ -77,7 +77,7 @@ function boundsAround(lat: number, lon: number, halfMiles: number) {
   }
 }
 
-export function listingToStretchSale(listing: Listing): StretchSale | null {
+export function listingToEstimateSale(listing: Listing): EstimateSale | null {
   if (isRentalListing(listing)) return null
   if (!isClosedListing(listing)) return null
   const id = listingRowId(listing)
@@ -110,32 +110,12 @@ export function listingToStretchSale(listing: Listing): StretchSale | null {
   }
 }
 
-function insightFromCacheRow(row: {
-  algoVersion: number
-  axis: LandStretchInsight['axis']
-  soldCount: number
-  stretchMedianPpsf: number | null
-  cityMedianPpsf: number | null
-  listingPpsf: number | null
-  stretchPremiumPct: number | null
-  listingPremiumPct: number | null
-  explainsLandPremium: boolean
-  labels: string[]
-  candidates: LandStretchInsight['candidates']
-}): LandStretchInsight | null {
-  if (row.algoVersion !== LAND_STRETCH_ALGO_VERSION) return null
+function estimateFromCacheRow(row: LocationEstimate): LocationEstimate | null {
+  if (row.algoVersion !== LOCATION_ESTIMATE_ALGO_VERSION) return null
   return {
-    algoVersion: row.algoVersion,
-    axis: row.axis,
-    soldCount: row.soldCount,
-    stretchMedianPpsf: row.stretchMedianPpsf,
-    cityMedianPpsf: row.cityMedianPpsf,
-    listingPpsf: row.listingPpsf,
-    stretchPremiumPct: row.stretchPremiumPct,
-    listingPremiumPct: row.listingPremiumPct,
-    explainsLandPremium: row.explainsLandPremium,
-    labels: row.labels,
-    candidates: row.candidates,
+    ...row,
+    kind: row.kind ?? row.axis,
+    axis: row.axis ?? row.kind,
   }
 }
 
@@ -143,95 +123,98 @@ function insightFromCacheRow(row: {
  * Read-only. Listing / Insight pages never query solds or write.
  * Town-median comparison is applied here from the already-scored listing.
  */
-export async function readLandStretchForListing(
+export async function readLocationEstimateForListing(
   listing: Listing,
   cityMedianPpsf: number | null,
-): Promise<LandStretchInsight> {
+): Promise<LocationEstimate> {
   const pricePerSqft = listingPpsf(listing)
   const id = listingRowId(listing)
-  if (!id) return emptyLandStretchInsight(pricePerSqft, cityMedianPpsf)
+  if (!id) return emptyLocationEstimate(pricePerSqft, cityMedianPpsf)
 
-  const table = await readListingLandPremium(id).catch(() => null)
-  const fromTable = table ? insightFromCacheRow(table) : null
+  const table = await readLocationEstimateRow(id).catch(() => null)
+  const fromTable = table ? estimateFromCacheRow(table) : null
   if (fromTable) {
-    return applyTownMedianToLandStretch(fromTable, cityMedianPpsf, pricePerSqft)
+    return applyTownMedianToLocationEstimate(fromTable, cityMedianPpsf, pricePerSqft)
   }
 
   try {
-    const row = await readStatsCacheRow(landStretchCacheKey(id))
+    const row = await readStatsCacheRow(locationEstimateCacheKey(id))
     if (row?.payload) {
-      const parsed = JSON.parse(row.payload) as LandStretchInsight
-      const fromCache = insightFromCacheRow(parsed)
+      const parsed = JSON.parse(row.payload) as LocationEstimate
+      const fromCache = estimateFromCacheRow(parsed)
       if (fromCache) {
-        return applyTownMedianToLandStretch(fromCache, cityMedianPpsf, pricePerSqft)
+        return applyTownMedianToLocationEstimate(
+          fromCache,
+          cityMedianPpsf,
+          pricePerSqft,
+        )
       }
     }
   } catch {
     // fall through to empty
   }
 
-  return emptyLandStretchInsight(pricePerSqft, cityMedianPpsf)
+  return emptyLocationEstimate(pricePerSqft, cityMedianPpsf)
 }
 
-async function persistLandStretch(
+async function persistLocationEstimate(
   listingId: string,
-  insight: LandStretchInsight,
+  estimate: LocationEstimate,
 ): Promise<void> {
   const computedAt = new Date().toISOString()
-  await upsertListingLandPremium({ listingId, insight, computedAt })
-  await writeStatsCacheRow(landStretchCacheKey(listingId), insight).catch(
+  await upsertLocationEstimate({ listingId, estimate, computedAt })
+  await writeStatsCacheRow(locationEstimateCacheKey(listingId), estimate).catch(
     () => undefined,
   )
 }
 
-async function salesFromBounds(subject: StretchSubject, listing: Listing): Promise<StretchSale[]> {
+async function salesFromBounds(
+  subject: EstimateSubject,
+  listing: Listing,
+): Promise<EstimateSale[]> {
   const town =
     townForZip(listing.address.postalCode) ??
     resolveListingTown(listing.address.city)
   if (!town) return []
   const lookbackMs =
-    LAND_STRETCH_LOOKBACK_MONTHS * 30.44 * 24 * 60 * 60 * 1000
-  const box = boundsAround(subject.latitude, subject.longitude, FETCH_HALF_EXTENT_MILES)
+    LOCATION_ESTIMATE_LOOKBACK_MONTHS * 30.44 * 24 * 60 * 60 * 1000
+  const box = boundsAround(
+    subject.latitude,
+    subject.longitude,
+    FETCH_HALF_EXTENT_MILES,
+  )
   const closed: ClosedSaleGeoRow[] = await readClosedSalesInBounds({
     town,
     ...box,
     closeDateFromIso: new Date(Date.now() - lookbackMs).toISOString(),
   })
-  return closed.filter((row) => row.id !== subject.id).map(closedSaleToStretchSale)
+  return closed.filter((row) => row.id !== subject.id).map(closedSaleToEstimateSale)
 }
 
 /**
- * Write path — same lane as What-if estimates. Prefer the town Closed pool
- * already loaded for If; fall back to a boxed closed-sale read.
+ * Write path — overnight backfill and What-if estimate cache.
+ * Prefer the town Closed pool already in memory.
  */
-export async function cacheLandStretchForListing(
+export async function cacheLocationEstimateForListing(
   listing: Listing,
   soldPool?: readonly Listing[],
-): Promise<LandStretchInsight> {
+): Promise<LocationEstimate> {
   const subject = subjectFromListing(listing)
   const pricePerSqft = subject?.pricePerSqft ?? listingPpsf(listing)
-  if (!subject) return emptyLandStretchInsight(pricePerSqft, null)
+  if (!subject) return emptyLocationEstimate(pricePerSqft, null)
 
   const fromPool = (soldPool ?? [])
-    .map(listingToStretchSale)
-    .filter((sale): sale is StretchSale => sale != null && sale.id !== subject.id)
+    .map(listingToEstimateSale)
+    .filter((sale): sale is EstimateSale => sale != null && sale.id !== subject.id)
   const sales =
     fromPool.length > 0 ? fromPool : await salesFromBounds(subject, listing)
 
-  const insight = computeLandStretchInsight(subject, sales, null)
-  await persistLandStretch(subject.id, insight).catch((err) => {
+  const estimate = computeLocationEstimate(subject, sales, null)
+  await persistLocationEstimate(subject.id, estimate).catch((err) => {
     console.warn(
-      '[land-stretch] persist failed',
+      '[location-estimates] persist failed',
       err instanceof Error ? err.message : err,
     )
   })
-  return insight
-}
-
-/** @deprecated Use readLandStretchForListing on request paths. */
-export async function resolveLandStretchForListing(
-  listing: Listing,
-  cityMedianPpsf: number | null,
-): Promise<LandStretchInsight> {
-  return readLandStretchForListing(listing, cityMedianPpsf)
+  return estimate
 }

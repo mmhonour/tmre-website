@@ -77,7 +77,7 @@ export async function GET(
         cityMedianPpsf: detailScore?.cityMedianPpsf ?? null,
         pricePerSqft: detailScore?.pricePerSqft ?? null,
         medianPpsfBand: detailScore?.medianPpsfBand ?? null,
-        landStretch: detailScore?.landStretch ?? null,
+        locationEstimate: detailScore?.locationEstimate ?? null,
         marketBandLabel,
         edgeScore: edgeScoreRow?.edgeScore ?? null,
         edgeScoreBreakdown: edgeScoreRow?.breakdownJson

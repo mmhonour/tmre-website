@@ -936,16 +936,16 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Price per square foot — a Goldilocks factor and a common listing metadata column.',
   },
   {
-    term: 'Land stretch',
+    term: 'Location estimates',
     category: 'scoring',
     definition:
-      'A 1/4-mile corridor of land (not a radius) used to read whether a listing’s premium to the town median PPSF is in line with recent solds on that dirt — typically a waterfront strip, an in-town approach, or the same street. Written with What-if estimates into listing_land_premiums and stats_cache land:stretch:vN:{listingId}. Listing pages only read. Not town market-stats. See PPSF, What if.',
+      'Sold-derived PPSF for the two areas that typically trade above the town median: coastal areas and town centers. Method is a 1/4-mile corridor of nearby solds, not a radius. Cached on listing_location_estimates; snapshots go to listing_location_estimate_snapshots for a later estimates time series. Overnight backfill writes slowly; listing pages only read. Distinct from What-if location-premium weights. See PPSF, Location premium, What if.',
   },
   {
     term: 'Location premium',
     category: 'scoring',
     definition:
-      'Hand-tuned proximity boosts (water, town/zip center, golf) used to weight What-if comps. Different from land stretch, which reads the same amenities from historical solds on a corridor. See Land stretch, What if.',
+      'Hand-tuned proximity boosts (water, town/zip center, golf) used to weight What-if comps. Different from location estimates, which read coastal areas and town centers from historical solds. See Location estimates, What if.',
   },
   {
     term: 'Score breakdown',
