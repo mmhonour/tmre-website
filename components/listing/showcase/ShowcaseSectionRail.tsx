@@ -90,7 +90,7 @@ function MapGlyph() {
 const PULSE_RED = "#FF2A22";
 
 /**
- * Two teardrops on the 10 / 4 axis, no rims or S-stroke. Yin is sage
+ * Two teardrops on the 10 / 4 axis, 30% inset in the square. Yin is sage
  * fading to red where it meets the yang tail; yang is red with a gold eye.
  */
 function PulseGlyph() {
@@ -105,8 +105,8 @@ function PulseGlyph() {
         <radialGradient
           id={yin}
           cx="12"
-          cy="6"
-          r="11"
+          cy="7.8"
+          r="7.7"
           gradientUnits="userSpaceOnUse"
         >
           <stop offset="0" stopColor="var(--color-sage)" />
@@ -125,13 +125,13 @@ function PulseGlyph() {
         </radialGradient>
       </defs>
       <g transform="rotate(-60 12 12)">
-        <circle cx="12" cy="12" r="12" fill={`url(#${yin})`} />
+        <circle cx="12" cy="12" r="8.4" fill={`url(#${yin})`} />
         <path
-          d="M12 0 A12 12 0 0 0 12 24 A6 6 0 0 0 12 12 A6 6 0 0 1 12 0 Z"
+          d="M12 3.6 A8.4 8.4 0 0 0 12 20.4 A4.2 4.2 0 0 0 12 12 A4.2 4.2 0 0 1 12 3.6 Z"
           fill={PULSE_RED}
         />
-        <circle cx="12" cy="6" r="3.1" fill={`url(#${eyeOnGreen})`} />
-        <circle cx="12" cy="18" r="3.1" fill={`url(#${eyeOnRed})`} />
+        <circle cx="12" cy="7.8" r="2.17" fill={`url(#${eyeOnGreen})`} />
+        <circle cx="12" cy="16.2" r="2.17" fill={`url(#${eyeOnRed})`} />
       </g>
     </svg>
   );
