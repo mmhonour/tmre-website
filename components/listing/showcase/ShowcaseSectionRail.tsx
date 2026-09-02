@@ -86,8 +86,8 @@ function MapGlyph() {
   );
 }
 
-/** Truer red than `--color-coral` (#C85A3A), which reads burnt orange. */
-const PULSE_RED = "#E02420";
+/** Saturated red — `--color-coral` (#C85A3A) reads burnt orange at icon size. */
+const PULSE_RED = "#FF2A22";
 
 /**
  * Two heat-map teardrops on the 10 / 4 axis: red (seller) and sage
@@ -105,7 +105,7 @@ function PulseGlyph() {
       <defs>
         <linearGradient id={seller} x1="0.5" y1="1" x2="0.5" y2="0">
           <stop offset="0" stopColor={PULSE_RED} />
-          <stop offset="0.52" stopColor={PULSE_RED} />
+          <stop offset="0.64" stopColor={PULSE_RED} />
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
         <linearGradient id={buyer} x1="0.5" y1="0" x2="0.5" y2="1">
