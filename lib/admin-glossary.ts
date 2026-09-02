@@ -439,7 +439,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'open_houses',
     category: 'sync-admin',
     definition:
-      'Neon table holding the rolling seven-day ET window of public open houses from the SmartMLS OpenHouse resource (db/migrations/0023_open_houses.sql). /open-houses used to query RETS on every page request — a login, then a per-listing lookup that fell back to RETS again for anything not already stored, twelve at a time — which is why a shipped page answered HTTP 502 whenever the MLS was slow. Now a queue job pulls the window hourly and the page is one SQL join against listings, matching on OHListingId → mls_id or OHListingKey → listing_key. Each run replaces the whole window rather than upserting, because a cancelled open house is an absence with no delete event to react to; the replace only runs when the RETS pull actually succeeded, so a query fault cannot wipe the weekend off the site. MLS times are stored as text, not timestamps, so an 11am open house stays 11am in Connecticut.',
+      'Neon table of public SmartMLS OpenHouse events (db/migrations/0023_open_houses.sql). /open-houses reads this table only — no RETS on the page. The hourly queue job replaces today through +90 days (so a cancelled showing disappears) and upserts the prior year (so MLS dropping an old row cannot erase a past count). Rows older than the lookback horizon are pruned. The page still lists homes with a showing in the next 7 days, and each card shows past / upcoming counts from everything stored. MLS times stay text, not timestamps, so 11am stays 11am in Connecticut.',
   },
   {
     term: 'sync_queue',

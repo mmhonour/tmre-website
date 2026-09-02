@@ -1245,11 +1245,11 @@ async function runAdminSyncActionImpl(
         durationMs: result.durationMs || Date.now() - t0,
         recordsFetched: result.eventsFetched,
         message: result.ok
-          ? `${result.written} open house event(s) for ${result.window.start} → ${result.window.end}`
+          ? `${result.written} upcoming · ${result.historyWritten} past for ${result.window.start} → ${result.window.end}`
           : `Open house sync failed: ${result.error ?? 'unknown'}`,
         detail: result.ok
-          ? `Replaced the window (${result.removed} removed, ${result.written} written)${
-              result.pruned > 0 ? ` · pruned ${result.pruned} past` : ''
+          ? `Replaced upcoming ${result.window.start}–${result.window.end} (${result.removed} removed, ${result.written} written) · upserted ${result.historyWritten} lookback${
+              result.pruned > 0 ? ` · pruned ${result.pruned} older than lookback` : ''
             }`
           : result.error,
       }

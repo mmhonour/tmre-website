@@ -25,6 +25,7 @@ import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { isRentalListing } from "@/lib/listing-kind";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 import {
+  formatOpenHouseHistory,
   formatOpenHouseWhen,
   type OpenHouseEvent,
   type OpenHouseListing,
@@ -234,7 +235,9 @@ export default function OpenHousesClient() {
             <span className="italic gold-shimmer">this week.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Public open houses across {formatTownList(TOWN_NAMES)} in the next 7 calendar days.
+            Public open houses across {formatTownList(TOWN_NAMES)} in the next 7
+            calendar days. Each home shows how many public showings we have on
+            file — past, and scheduled after today.
           </p>
 
           <OhFilterBar
@@ -304,6 +307,11 @@ export default function OpenHousesClient() {
             </div>
           ) : (
             <>
+              <p className="mb-4 font-mono text-[10px] text-slate/60 max-w-2xl">
+                Past / upcoming counts are public SmartMLS open houses stored in
+                our database. History starts when we began keeping these rows —
+                older showings the MLS no longer returns are not included.
+              </p>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3 min-h-8">
                   <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
@@ -433,6 +441,7 @@ function listingMeta(l: OpenHouseListing) {
   const priceValue = `${fmtMoney(l.price)}${isRental && l.price != null ? "/mo" : ""}`;
   const ohLabel = formatOpenHouseWhen(l.nextOpenHouse);
   const moreCount = l.openHouses.length > 1 ? l.openHouses.length - 1 : 0;
+  const historyLabel = formatOpenHouseHistory(l.pastCount ?? 0, l.upcomingCount ?? 0);
 
   return {
     isRental,
@@ -444,6 +453,7 @@ function listingMeta(l: OpenHouseListing) {
     priceValue,
     ohLabel,
     moreCount,
+    historyLabel,
   };
 }
 
@@ -660,6 +670,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
           )}
           <span className="font-mono text-[9px] text-slate/70">{meta.place}</span>
           <span className="font-mono text-[9px] text-gold-dark">{meta.ohLabel}</span>
+          <span className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</span>
           <span className="font-mono text-[10px] tabular-nums text-navy font-medium">
             {meta.priceValue}
           </span>
@@ -698,6 +709,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
             )}
             <p className="text-xs text-slate mt-0.5 truncate">{meta.place}</p>
             <p className="font-mono text-[10px] text-gold-dark mt-1">{meta.ohLabel}</p>
+            <p className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</p>
             {meta.moreCount > 0 ? (
               <p className="font-mono text-[9px] text-slate/55">
                 +{meta.moreCount} more showing{meta.moreCount === 1 ? "" : "s"}
@@ -753,6 +765,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
 
         <div className="mt-auto space-y-1.5 pt-3 border-t border-charcoal/[0.06]">
           <Row label="Next open" value={meta.ohLabel} accent compact />
+          <Row label="Showings" value={meta.historyLabel} compact />
           {meta.moreCount > 0 ? (
             <Row
               label="Also"

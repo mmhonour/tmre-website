@@ -543,7 +543,7 @@ export function describeStartupProcess(): {
         title: "Hourly OpenHouse window replace",
         timing: "10-min sweep → hourly (Configure)",
         detail:
-          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the old page queried RETS on every request and timed out. The pull replaces the rolling 7-day ET window wholesale so a cancelled open house disappears, and only writes when the RETS query succeeded, so a fault cannot empty the table. /open-houses is one SQL join against listings. Pause/Run/Reset on Admin → Syncs.",
+          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the page reads Neon only. Upcoming (today .. +90d ET) is replaced wholesale so a cancelled showing disappears; the prior year is upserted so history accumulates; a RETS fault cannot empty a window. /open-houses joins the next 7 days to listings and shows past / upcoming counts from the stored rows. Pause/Run/Reset on Admin → Syncs.",
         status: "scheduled",
         statusLabel: "Cron",
       },
