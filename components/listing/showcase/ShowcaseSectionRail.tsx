@@ -86,8 +86,11 @@ function MapGlyph() {
   );
 }
 
+/** Truer red than `--color-coral` (#C85A3A), which reads burnt orange. */
+const PULSE_RED = "#E02420";
+
 /**
- * Two heat-map teardrops on the 10 / 4 axis: coral (seller) and sage
+ * Two heat-map teardrops on the 10 / 4 axis: red (seller) and sage
  * (buyer), gold down each tail. Each eye is gold fading into the bulb
  * around it. Pencil-thin white rim; a gold hairline traces the S.
  */
@@ -96,13 +99,13 @@ function PulseGlyph() {
   const seller = `${uid}-seller`;
   const buyer = `${uid}-buyer`;
   const eyeSage = `${uid}-eye-sage`;
-  const eyeCoral = `${uid}-eye-coral`;
+  const eyeRed = `${uid}-eye-red`;
   return (
     <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden>
       <defs>
         <linearGradient id={seller} x1="0.5" y1="1" x2="0.5" y2="0">
-          <stop offset="0" stopColor="var(--color-coral)" />
-          <stop offset="0.52" stopColor="var(--color-coral)" />
+          <stop offset="0" stopColor={PULSE_RED} />
+          <stop offset="0.52" stopColor={PULSE_RED} />
           <stop offset="1" stopColor="var(--color-gold)" />
         </linearGradient>
         <linearGradient id={buyer} x1="0.5" y1="0" x2="0.5" y2="1">
@@ -115,10 +118,10 @@ function PulseGlyph() {
           <stop offset="0.34" stopColor="var(--color-gold)" />
           <stop offset="1" stopColor="var(--color-sage)" />
         </radialGradient>
-        <radialGradient id={eyeCoral}>
+        <radialGradient id={eyeRed}>
           <stop offset="0" stopColor="var(--color-gold)" />
           <stop offset="0.34" stopColor="var(--color-gold)" />
-          <stop offset="1" stopColor="var(--color-coral)" />
+          <stop offset="1" stopColor={PULSE_RED} />
         </radialGradient>
       </defs>
       <g transform="rotate(-60 12 12)">
@@ -135,7 +138,7 @@ function PulseGlyph() {
           strokeLinecap="round"
         />
         <circle cx="12" cy="7" r="2.6" fill={`url(#${eyeSage})`} />
-        <circle cx="12" cy="17" r="2.6" fill={`url(#${eyeCoral})`} />
+        <circle cx="12" cy="17" r="2.6" fill={`url(#${eyeRed})`} />
         <circle
           cx="12"
           cy="12"
@@ -237,18 +240,29 @@ export default function ShowcaseSectionRail({
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
-  /** Swaps the tile stack for one standalone card over the photo. */
-  const [solo, setSolo] = useState<"details" | "pulse" | null>(null);
-  const [mapOpen, setMapOpen] = useState(false);
+  /**
+   * Map, pulse and details share one overlay so their three icons stay a
+   * single exclusive toggle — opening one closes the others, and the icon
+   * row travels with whichever panel is up.
+   */
+  const [overlay, setOverlayState] = useState<"map" | "pulse" | "details" | null>(
+    null,
+  );
   const [mapExpanded, setMapExpanded] = useState(false);
 
-  const openMap = (open: boolean) => {
-    setMapOpen(open);
-    onMapStateChange?.({ open, expanded: open && mapExpanded });
+  const setOverlay = (next: "map" | "pulse" | "details" | null) => {
+    setOverlayState(next);
+    onMapStateChange?.({
+      open: next === "map",
+      expanded: next === "map" && mapExpanded,
+    });
+    onDetailsOnlyChange?.(next === "pulse" || next === "details");
   };
+  const toggleOverlay = (id: "map" | "pulse" | "details") =>
+    setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
-    onMapStateChange?.({ open: mapOpen, expanded });
+    onMapStateChange?.({ open: overlay === "map", expanded });
   };
   const [revealed, setRevealed] = useState<string | null>(null);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
@@ -295,13 +309,6 @@ export default function ShowcaseSectionRail({
   }, [amounts]);
 
   const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
-
-  const toggleSolo = (id: "details" | "pulse") =>
-    setSolo((cur) => {
-      const next = cur === id ? null : id;
-      onDetailsOnlyChange?.(next !== null);
-      return next;
-    });
 
   const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
     const open = openCard === id;
@@ -368,43 +375,43 @@ export default function ShowcaseSectionRail({
     );
   };
 
-  /* Switches what the rail is showing rather than summarising a section. */
+  /* The three overlays share this row so they stay a group. */
   const iconRow = (
     <div className="mt-1 flex items-center gap-1">
       <button
         type="button"
-        onClick={() => openMap(true)}
-        aria-expanded={false}
-        aria-label="Open map"
+        onClick={() => toggleOverlay("map")}
+        aria-pressed={overlay === "map"}
+        aria-label={overlay === "map" ? "Close map" : "Open map"}
         title="Map"
-        className={railIconClass(false)}
+        className={railIconClass(overlay === "map")}
       >
         <MapGlyph />
       </button>
       <button
         type="button"
-        onClick={() => toggleSolo("pulse")}
-        aria-pressed={solo === "pulse"}
-        aria-label={solo === "pulse" ? "Close town pulse" : "Show town pulse"}
+        onClick={() => toggleOverlay("pulse")}
+        aria-pressed={overlay === "pulse"}
+        aria-label={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
         title="Town pulse"
-        className="inline-flex h-11 w-11 items-center justify-center bg-transparent p-0 shadow-none"
+        className={`${railIconClass(overlay === "pulse")} p-0`}
       >
         <PulseGlyph />
       </button>
       <button
         type="button"
-        onClick={() => toggleSolo("details")}
-        aria-pressed={solo === "details"}
-        aria-label={solo === "details" ? "Close details" : "Show details"}
-        title={solo === "details" ? "Close details" : "Details"}
-        className={railIconClass(solo === "details")}
+        onClick={() => toggleOverlay("details")}
+        aria-pressed={overlay === "details"}
+        aria-label={overlay === "details" ? "Close details" : "Show details"}
+        title={overlay === "details" ? "Close details" : "Details"}
+        className={railIconClass(overlay === "details")}
       >
         <DetailsGlyph />
       </button>
     </div>
   );
 
-  const mapOverlay = mapOpen ? (
+  const mapOverlay = overlay === "map" ? (
     /*
      * Phone: true full screen, over the site header, like the Intelligence
      * map. The header bar below carries the only exit, so it has to stay
@@ -419,15 +426,7 @@ export default function ShowcaseSectionRail({
         mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => openMap(false)}
-        aria-expanded
-        className={`${pillClass(true, true)} shrink-0`}
-      >
-        <span className="flex-1">Map</span>
-        <Chevron open />
-      </button>
+      <div className="flex shrink-0 justify-end">{iconRow}</div>
       <div className="min-h-0 flex-1">
         <ShowcaseCompsMap
           mlsId={mlsId}
@@ -436,7 +435,7 @@ export default function ShowcaseSectionRail({
           postalCode={postalCode}
           expanded={mapExpanded}
           onToggleExpanded={() => setExpanded(!mapExpanded)}
-          onExit={() => openMap(false)}
+          onExit={() => setOverlay(null)}
         />
       </div>
     </div>
@@ -505,13 +504,13 @@ export default function ShowcaseSectionRail({
       <div
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
-        {solo ? (
+        {overlay === "pulse" || overlay === "details" ? (
           <>
             {/* Icons first in this mode: the card can run to 70vh, which would
                 push the only way out below the fold. */}
             {iconRow}
             <div className="mt-1 max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
-              {solo === "details" ? (
+              {overlay === "details" ? (
                 /* The dashboard's own Details card, not a second summary —
                    same component the deck below the photo renders. */
                 <ListingSidebar details={detailsPanelProps} />
@@ -522,7 +521,7 @@ export default function ShowcaseSectionRail({
               )}
             </div>
           </>
-        ) : (
+        ) : overlay === "map" ? null : (
           <>
         {cardPill(
           "pulse",
@@ -572,7 +571,7 @@ export default function ShowcaseSectionRail({
           </>
         )}
 
-        {solo ? null : iconRow}
+        {overlay ? null : iconRow}
       </div>
     </>
   );
