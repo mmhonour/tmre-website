@@ -13,6 +13,10 @@ import {
   listVisionPidsForTown,
   upsertVisionAddress,
 } from '@/lib/db/vision-addresses-repo'
+import {
+  ensureVisionStreetsTable,
+  replaceVisionStreetsForLetter,
+} from '@/lib/db/vision-streets-repo'
 import { isR2VisionStoreConfigured, putVisionFieldCardHtml } from '@/lib/r2-vision-store'
 import {
   fetchVisionFieldCardPdfJson,
@@ -185,6 +189,43 @@ async function fetchText(url: string): Promise<string> {
   return res.text()
 }
 
+/**
+ * Persist the VGSI letter-page street list. Additive to the parcel walk:
+ * the crawler already fetched this HTML to know which streets to visit;
+ * this writes those names to `vision_streets` so Admin `/streets` can
+ * list them without scraping GIS on page load. A failed letter fetch
+ * must not call this.
+ */
+export async function recordVisionStreetIndexForLetter(
+  town: string,
+  letter: string,
+  streetNames: readonly string[],
+  sourceUrl: string,
+): Promise<{ written: number; removed: number }> {
+  const result = await replaceVisionStreetsForLetter(
+    town,
+    letter,
+    streetNames,
+    sourceUrl,
+  )
+  console.info(
+    `[vision-gis-sync] street index ${town} ${letter}: ${result.written} name(s)` +
+      (result.removed > 0 ? ` · replaced ${result.removed}` : ''),
+  )
+  return result
+}
+
+async function loadStreetsForLetter(
+  cfg: VisionGisTownConfig,
+  letter: string,
+): Promise<string[]> {
+  const url = `${cfg.baseUrl}/Streets.aspx?Letter=${encodeURIComponent(letter)}`
+  const letterHtml = await fetchText(url)
+  const names = streetNamesFromLetterHtml(letterHtml)
+  await recordVisionStreetIndexForLetter(cfg.town, letter, names, url)
+  return names
+}
+
 async function ingestParcel(
   cfg: VisionGisTownConfig,
   visionPid: string,
@@ -334,10 +375,7 @@ async function sweepStreets(
     const letter = VISION_GIS_STREET_LETTERS[state.letterIndex]!
     if (!state.streetsForLetter) {
       console.info(`[vision-gis-sync] letter ${letter} · loading streets…`)
-      const letterHtml = await fetchText(
-        `${cfg.baseUrl}/Streets.aspx?Letter=${encodeURIComponent(letter)}`,
-      )
-      state.streetsForLetter = streetNamesFromLetterHtml(letterHtml)
+      state.streetsForLetter = await loadStreetsForLetter(cfg, letter)
       state.streetIndex = 0
       state.streetParcelOffset = 0
       console.info(
@@ -434,6 +472,7 @@ export async function syncVisionAddresses(
   const delayMs = Math.max(200, options.delayMs ?? DEFAULT_DELAY_MS)
 
   await ensureVisionAddressesTable()
+  await ensureVisionStreetsTable()
 
   const stateMap = readTownStateMap()
   let state = stateMap[cfg.town] ?? defaultTownState()

@@ -706,6 +706,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'sync_runs' },
   },
   {
+    id: 'vision-streets',
+    name: 'Vision street index',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'vision_streets',
+    keyPattern: 'table rows (town + street_name)',
+    owner: 'lib/db/vision-streets-repo.ts',
+    notes:
+      'Official VGSI Streets.aspx letter index, persisted when the Vision crawler loads a letter. Letter-scoped replace so a cancelled street disappears on the next successful fetch of that letter, and a fault cannot empty the town.',
+    live: { kind: 'postgres_table', table: 'vision_streets' },
+  },
+  {
     id: 'open-houses',
     name: 'Open house events',
     category: 'sync-control',

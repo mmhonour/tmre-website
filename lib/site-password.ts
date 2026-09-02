@@ -8,7 +8,7 @@ export const SITE_PASSWORD = (
 export const SITE_PASSWORD_COOKIE = 'tmre_site_pass'
 
 /** Paths that should require the site password (add more as needed). */
-export const SITE_PASSWORD_PROTECTED_PATHS = ['/admin', '/visitors'] as const
+export const SITE_PASSWORD_PROTECTED_PATHS = ['/admin', '/visitors', '/streets'] as const
 
 export function sitePasswordMatches(candidate: string | null | undefined): boolean {
   return Boolean(candidate) && candidate === SITE_PASSWORD
