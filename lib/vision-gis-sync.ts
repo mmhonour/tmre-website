@@ -192,8 +192,9 @@ async function fetchText(url: string): Promise<string> {
 /**
  * Persist the VGSI letter-page street list. Additive to the parcel walk:
  * the crawler already fetched this HTML to know which streets to visit;
- * this writes those names to `vision_streets` so a public list does not
- * have to scrape GIS on its own. A failed letter fetch must not call this.
+ * this writes those names to `vision_streets` so Admin `/streets` can
+ * list them without scraping GIS on page load. A failed letter fetch
+ * must not call this.
  */
 export async function recordVisionStreetIndexForLetter(
   town: string,

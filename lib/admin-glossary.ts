@@ -281,7 +281,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision_streets',
     category: 'sync-admin',
     definition:
-      'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Written by the Vision crawler when it fetches Streets.aspx?Letter=… — the same pages it already uses to walk parcels. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. This is the source of truth for a Westport street list; `vision_addresses.street_name` is only streets whose parcels have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
+      'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Written by the Vision crawler when it fetches Streets.aspx?Letter=… — the same pages it already uses to walk parcels. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. Admin-only page `/streets` (password gate, not in the public menu) reads this table. `vision_addresses.street_name` is only streets whose parcels have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
   },
   {
     term: 'Westport Vision GIS homepage',

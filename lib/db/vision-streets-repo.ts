@@ -109,6 +109,14 @@ export async function listVisionStreets(town: string): Promise<VisionStreet[]> {
   }))
 }
 
+export async function listVisionStreetTowns(): Promise<string[]> {
+  await ensureVisionStreetsTable()
+  const rows = await query<{ town: string }>(
+    `SELECT DISTINCT town FROM vision_streets ORDER BY town ASC`,
+  )
+  return rows.map((row) => row.town)
+}
+
 export async function countVisionStreets(town?: string): Promise<number> {
   await ensureVisionStreetsTable()
   const rows = town

@@ -82,6 +82,7 @@ export function labelForReturnPath(href: string): string {
   if (pathname === "/new-construction") return "New Construction";
   if (pathname === "/fixer-uppers") return "Fixer Uppers";
   if (pathname === "/find") return "Find";
+  if (pathname === "/streets" || pathname.startsWith("/streets/")) return "Streets";
   if (pathname === "/lookey") return "Lookey";
 
   const segments = pathname.split("/").filter(Boolean);

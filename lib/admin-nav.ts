@@ -806,6 +806,12 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
     description: "Westport Vision GIS address lookup and parcel page",
   },
   {
+    label: "Streets",
+    href: "/streets",
+    description:
+      "Admin-only A–Z assessor street names (vision_streets). Password gate; not in the public menu.",
+  },
+  {
     label: "Westport Vision GIS",
     href: WESTPORT_VISION_GIS_HOME,
     description:
