@@ -718,6 +718,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'vision_streets' },
   },
   {
+    id: 'vision-street-parcels',
+    name: 'Vision street addresses',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'vision_street_parcels',
+    keyPattern: 'table rows (town + street_name + vision_pid)',
+    owner: 'lib/db/vision-streets-repo.ts',
+    notes:
+      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills streets that have names but no houses yet. Street-scoped replace so a fault cannot empty another street. /streets reads this table; Field Cards stay in vision_addresses.',
+    live: { kind: 'postgres_table', table: 'vision_street_parcels' },
+  },
+  {
     id: 'open-houses',
     name: 'Open house events',
     category: 'sync-control',

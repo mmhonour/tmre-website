@@ -25,6 +25,21 @@ export async function ensureVisionStreetsTable(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_vision_streets_town_letter
          ON vision_streets (town, letter)`,
     )
+    await query(`
+      CREATE TABLE IF NOT EXISTS vision_street_parcels (
+        town          text        NOT NULL,
+        street_name   text        NOT NULL,
+        vision_pid    text        NOT NULL,
+        address_label text        NOT NULL,
+        source_url    text        NOT NULL,
+        synced_at     timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (town, street_name, vision_pid)
+      )
+    `)
+    await query(
+      `CREATE INDEX IF NOT EXISTS idx_vision_street_parcels_town_street
+         ON vision_street_parcels (town, street_name)`,
+    )
   })().catch((err) => {
     ensured = null
     throw err
@@ -134,5 +149,137 @@ export async function countVisionStreets(town?: string): Promise<number> {
         [town],
       )
     : await query<{ n: string }>(`SELECT count(*)::text AS n FROM vision_streets`)
+  return Number(rows[0]?.n ?? 0)
+}
+
+export type VisionStreetParcel = {
+  town: string
+  streetName: string
+  visionPid: string
+  addressLabel: string
+  sourceUrl: string
+  syncedAt: string
+}
+
+/**
+ * Replace one street’s house-number list with the Names page we just parsed.
+ * Street-scoped: a fault on Locust Ln cannot empty Main St.
+ */
+export async function replaceVisionStreetParcels(
+  town: string,
+  streetName: string,
+  parcels: readonly { visionPid: string; addressLabel: string }[],
+  sourceUrl: string,
+): Promise<{ written: number; removed: number }> {
+  await ensureVisionStreetsTable()
+  const seen = new Set<string>()
+  const rows: { visionPid: string; addressLabel: string }[] = []
+  for (const parcel of parcels) {
+    const visionPid = parcel.visionPid.trim()
+    const addressLabel = parcel.addressLabel.trim()
+    if (!visionPid || !addressLabel || seen.has(visionPid)) continue
+    seen.add(visionPid)
+    rows.push({ visionPid, addressLabel })
+  }
+
+  return withTransaction(async (client) => {
+    const deleted = await client.query(
+      `DELETE FROM vision_street_parcels WHERE town = $1 AND street_name = $2`,
+      [town, streetName],
+    )
+    let written = 0
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO vision_street_parcels
+           (town, street_name, vision_pid, address_label, source_url, synced_at)
+         VALUES ($1, $2, $3, $4, $5, now())
+         ON CONFLICT (town, street_name, vision_pid) DO UPDATE SET
+           address_label = EXCLUDED.address_label,
+           source_url    = EXCLUDED.source_url,
+           synced_at     = now()`,
+        [town, streetName, row.visionPid, row.addressLabel, sourceUrl],
+      )
+      written += 1
+    }
+    return { written, removed: deleted.rowCount ?? 0 }
+  })
+}
+
+export async function listVisionStreetParcels(
+  town: string,
+  streetName: string,
+): Promise<VisionStreetParcel[]> {
+  await ensureVisionStreetsTable()
+  const rows = await query<{
+    town: string
+    street_name: string
+    vision_pid: string
+    address_label: string
+    source_url: string
+    synced_at: Date | string
+  }>(
+    `SELECT town, street_name, vision_pid, address_label, source_url, synced_at
+       FROM vision_street_parcels
+      WHERE town = $1 AND street_name = $2`,
+    [town, streetName],
+  )
+  return rows.map((row) => ({
+    town: row.town,
+    streetName: row.street_name,
+    visionPid: row.vision_pid,
+    addressLabel: row.address_label,
+    sourceUrl: row.source_url,
+    syncedAt:
+      row.synced_at instanceof Date
+        ? row.synced_at.toISOString()
+        : String(row.synced_at),
+  }))
+}
+
+export async function countVisionStreetParcelsByStreet(
+  town: string,
+): Promise<Map<string, number>> {
+  await ensureVisionStreetsTable()
+  const rows = await query<{ street_name: string; n: string }>(
+    `SELECT street_name, count(*)::text AS n
+       FROM vision_street_parcels
+      WHERE town = $1
+      GROUP BY street_name`,
+    [town],
+  )
+  return new Map(rows.map((row) => [row.street_name, Number(row.n)]))
+}
+
+export async function listVisionStreetsMissingParcels(
+  town: string,
+  limit: number,
+): Promise<string[]> {
+  await ensureVisionStreetsTable()
+  const cap = Math.max(1, Math.min(Math.floor(limit), 1000))
+  const rows = await query<{ street_name: string }>(
+    `SELECT s.street_name
+       FROM vision_streets s
+       LEFT JOIN vision_street_parcels p
+         ON p.town = s.town AND p.street_name = s.street_name
+      WHERE s.town = $1
+      GROUP BY s.street_name
+     HAVING count(p.vision_pid) = 0
+      ORDER BY s.street_name ASC
+      LIMIT $2`,
+    [town, cap],
+  )
+  return rows.map((row) => row.street_name)
+}
+
+export async function countVisionStreetParcels(town?: string): Promise<number> {
+  await ensureVisionStreetsTable()
+  const rows = town
+    ? await query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM vision_street_parcels WHERE town = $1`,
+        [town],
+      )
+    : await query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM vision_street_parcels`,
+      )
   return Number(rows[0]?.n ?? 0)
 }
