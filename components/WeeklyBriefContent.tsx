@@ -451,9 +451,14 @@ function FavorSortToggle({
       : marketPulseFavorSortLabel("sellers");
   const next = buyers ? "Seller Friendly" : "Buyer Friendly";
   const [spinKey, setSpinKey] = useState(0);
+  const [spinDir, setSpinDir] = useState<"cw" | "ccw">("cw");
 
   const handleClick = () => {
-    if (mode === "yin-yang") setSpinKey((n) => n + 1);
+    if (mode === "yin-yang") {
+      // Next state: buyers spin clockwise, sellers counter-clockwise.
+      setSpinDir(favorSort === "buyers" ? "ccw" : "cw");
+      setSpinKey((n) => n + 1);
+    }
     onToggle();
   };
 
@@ -477,18 +482,19 @@ function FavorSortToggle({
     >
       {mode === "yin-yang" ? (
         <YinYangPulseGlyph
-          key={spinKey}
-          className={`h-14 w-14 ${spinKey > 0 ? "mp-favor-yin-spin" : ""}`}
+          key={`${spinKey}-${spinDir}`}
+          className={`h-7 w-7 ${
+            spinKey > 0
+              ? spinDir === "cw"
+                ? "mp-favor-yin-spin-cw"
+                : "mp-favor-yin-spin-ccw"
+              : ""
+          }`}
         />
       ) : (
-        <svg viewBox="-4 -3 50 42" className="h-16 w-16 overflow-visible" aria-hidden>
-          <path
-            d="M18 7v16"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-          <path d="M13 27h10l-5-5z" fill="currentColor" />
+        <svg viewBox="-4 -5 50 44" className="h-16 w-16 overflow-visible" aria-hidden>
+          {/* Fulcrum is a triangle, not a pole. */}
+          <path d="M18 8.4 L11.2 28.2 L24.8 28.2 Z" fill="currentColor" />
           <g
             transform={`rotate(${tiltDeg.toFixed(2)} 18 9)`}
             className="transition-transform duration-200"
@@ -499,14 +505,14 @@ function FavorSortToggle({
               strokeWidth="1.6"
               strokeLinecap="round"
             />
-            {/* Seller: a money bag, tied at the neck, with its dollar mark. */}
-            <g fill="var(--color-coral, #C85A3A)">
+            {/* Seller: money bag sits on the beam, neck up, dollar on the bag. */}
+            <g transform="translate(0 -10.2)" fill="var(--color-coral, #C85A3A)">
               <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
               <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
             </g>
             <text
               x="5"
-              y="17.4"
+              y="7.2"
               textAnchor="middle"
               fontSize="6"
               fontWeight="700"
