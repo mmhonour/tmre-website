@@ -185,7 +185,8 @@ export default function AdminCtCoveragePanel() {
           same TIGER ZCTA rings on top. County thumbnails are TIGER county
           outlines — same Census family, different layer. Click a town to zoom
           and paint ¼-mile coastal squares; click a painted square again to
-          erase it. The town-center disk overrides any square it covers.
+          erase it. Drag the town-center dot to relocate it, or drag the rim /
+          use + − to change its radius. That disk overrides any square it covers.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading

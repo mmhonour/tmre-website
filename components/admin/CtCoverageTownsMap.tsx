@@ -9,23 +9,32 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useLocationEstimateGridPaint } from "@/components/admin/use-location-estimate-grid-paint";
+import { useLocationEstimateTownCenters } from "@/components/intelligence/use-location-estimate-town-centers";
 import {
   loadZipBoundariesForZips,
   prefetchAllTownBoundaries,
   prefetchTownBoundaries,
 } from "@/components/ZipBoundaryPopover";
-import { TOWN_CENTERS, ZIP_CENTERS } from "@/lib/tmre-geo";
+import { ZIP_CENTERS } from "@/lib/tmre-geo";
 import {
-  TOWN_CENTER_RADIUS_MILES,
+  TOWN_CENTER_RADIUS_MAX_MILES,
+  TOWN_CENTER_RADIUS_MIN_MILES,
+  TOWN_CENTER_RADIUS_STEP_MILES,
+  clampTownCenterRadius,
+  resolveTownCenter,
+  townCenterOwningAt,
+  type TownCenterPlacement,
+} from "@/lib/location-estimate-town-centers-shared";
+import {
   cellCenter,
   cellKey,
   cellRing,
   cellsForZipRings,
   lonLatToCell,
+  milesBetween,
   parseCellKey,
   pointInRings,
   suggestCoastalStrips,
-  townCenterOwning,
   type CoastalStripIndex,
 } from "@/lib/location-estimate-zip-grid-shared";
 import {
@@ -97,6 +106,22 @@ export default function CtCoverageTownsMap({
   const [byZip, setByZip] = useState<Map<string, Ring[]> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const paint = useLocationEstimateGridPaint();
+  const townCenters = useLocationEstimateTownCenters();
+  const [draftCenter, setDraftCenter] = useState<TownCenterPlacement | null>(
+    null,
+  );
+  const draftRef = useRef<TownCenterPlacement | null>(null);
+  draftRef.current = draftCenter;
+  const [hoverDisk, setHoverDisk] = useState<"center" | "rim" | null>(null);
+
+  const livePlacements = useMemo(() => {
+    if (!focusTown || !draftCenter) return townCenters.placements;
+    return { ...townCenters.placements, [focusTown]: draftCenter };
+  }, [draftCenter, focusTown, townCenters.placements]);
+
+  useEffect(() => {
+    setDraftCenter(null);
+  }, [focusTown]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: MAP_H });
@@ -110,7 +135,7 @@ export default function CtCoverageTownsMap({
   sizeRef.current = size;
   const fitSigRef = useRef<string | null>(null);
   const dragRef = useRef<{
-    mode: "paint" | "pan";
+    mode: "paint" | "pan" | "center" | "rim";
     pointerId: number;
     startX: number;
     startY: number;
@@ -330,8 +355,61 @@ export default function CtCoverageTownsMap({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  const diskHitAt = (
+    clientX: number,
+    clientY: number,
+  ): "center" | "rim" | null => {
+    if (!focusTown || !viewport) return null;
+    const el = containerRef.current;
+    if (!el) return null;
+    const pt = resolveTownCenter(focusTown, livePlacements);
+    const cx = lonToWorldX(pt.lon, zoomRef.current) - viewport.left;
+    const cy = latToWorldY(pt.lat, zoomRef.current) - viewport.top;
+    const edgeY =
+      latToWorldY(
+        pt.lat + pt.radiusMiles / MILES_PER_DEG_LAT,
+        zoomRef.current,
+      ) - viewport.top;
+    const r = Math.abs(edgeY - cy);
+    const rect = el.getBoundingClientRect();
+    const dist = Math.hypot(
+      clientX - rect.left - cx,
+      clientY - rect.top - cy,
+    );
+    if (dist <= 14) return "center";
+    if (Math.abs(dist - r) <= 12) return "rim";
+    return null;
+  };
+
+  const lonLatAtClient = (clientX: number, clientY: number) => {
+    const el = containerRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return screenToLonLat(
+      clientX - rect.left,
+      clientY - rect.top,
+      centerRef.current,
+      zoomRef.current,
+      sizeRef.current,
+    );
+  };
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "touch") return;
+    const disk = diskHitAt(e.clientX, e.clientY);
+    if (focusTown && disk) {
+      dragRef.current = {
+        mode: disk,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startCenter: center,
+        moved: false,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setDraftCenter(resolveTownCenter(focusTown, livePlacements));
+      return;
+    }
     const key = cellAtClient(e.clientX, e.clientY);
     if (focusTown && key) {
       dragRef.current = {
@@ -358,10 +436,27 @@ export default function CtCoverageTownsMap({
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (!drag || drag.pointerId !== e.pointerId) {
+      setHoverDisk(diskHitAt(e.clientX, e.clientY));
+      return;
+    }
     if (drag.mode === "paint") {
       const key = cellAtClient(e.clientX, e.clientY);
       if (key) paint.continueStroke(key);
+      return;
+    }
+    if ((drag.mode === "center" || drag.mode === "rim") && focusTown) {
+      const geo = lonLatAtClient(e.clientX, e.clientY);
+      if (!geo) return;
+      const current = resolveTownCenter(focusTown, livePlacements);
+      if (drag.mode === "center") {
+        setDraftCenter({ ...current, lat: geo.lat, lon: geo.lon });
+      } else {
+        setDraftCenter({
+          ...current,
+          radiusMiles: clampTownCenterRadius(milesBetween(current, geo)),
+        });
+      }
       return;
     }
     const dx = e.clientX - drag.startX;
@@ -382,17 +477,13 @@ export default function CtCoverageTownsMap({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
     if (drag.mode === "paint") paint.endStroke();
-    else if (!drag.moved && !focusTown) {
-      const el = containerRef.current;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        const pt = screenToLonLat(
-          e.clientX - rect.left,
-          e.clientY - rect.top,
-          centerRef.current,
-          zoomRef.current,
-          sizeRef.current,
-        );
+    else if (drag.mode === "center" || drag.mode === "rim") {
+      const next = draftRef.current;
+      if (focusTown && next) townCenters.save(focusTown, next);
+      setDraftCenter(null);
+    } else if (!drag.moved && !focusTown) {
+      const pt = lonLatAtClient(e.clientX, e.clientY);
+      if (pt) {
         const hit = townAt(pt.lon, pt.lat);
         if (hit) onTownActivate(hit);
       }
@@ -408,7 +499,7 @@ export default function CtCoverageTownsMap({
     viewport && byZip
       ? labeledTowns
           .map((town) => {
-            const pt = TOWN_CENTERS[town];
+            const pt = resolveTownCenter(town, livePlacements);
             return {
               town,
               left: lonToWorldX(pt.lon, zoom) - viewport.left,
@@ -430,7 +521,7 @@ export default function CtCoverageTownsMap({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-charcoal/[0.08] px-3 py-2">
         <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/50">
           {focusTown
-            ? `${focusTown} · OSM tiles + TIGER ZCTA · click a square again to erase`
+            ? `${focusTown} · drag the blue dot to move · drag the rim to resize`
             : "TMRE towns · same street map as Intelligence / showcase · click a town to paint"}
         </p>
         <div className="flex flex-wrap items-center gap-1">
@@ -528,18 +619,84 @@ export default function CtCoverageTownsMap({
           >
             Paint south shore
           </button>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/45">
+              Town center
+            </span>
+            <button
+              type="button"
+              aria-label="Smaller town-center radius"
+              onClick={() => {
+                const current = resolveTownCenter(focusTown, livePlacements);
+                const next = {
+                  ...current,
+                  radiusMiles: clampTownCenterRadius(
+                    current.radiusMiles - TOWN_CENTER_RADIUS_STEP_MILES,
+                  ),
+                };
+                townCenters.save(focusTown, next);
+              }}
+              disabled={
+                resolveTownCenter(focusTown, livePlacements).radiusMiles <=
+                TOWN_CENTER_RADIUS_MIN_MILES
+              }
+              className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] text-navy hover:bg-navy/10 disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="min-w-[3.5rem] text-center font-mono text-[11px] text-navy">
+              {resolveTownCenter(focusTown, livePlacements).radiusMiles.toFixed(
+                2,
+              )}{" "}
+              mi
+            </span>
+            <button
+              type="button"
+              aria-label="Larger town-center radius"
+              onClick={() => {
+                const current = resolveTownCenter(focusTown, livePlacements);
+                const next = {
+                  ...current,
+                  radiusMiles: clampTownCenterRadius(
+                    current.radiusMiles + TOWN_CENTER_RADIUS_STEP_MILES,
+                  ),
+                };
+                townCenters.save(focusTown, next);
+              }}
+              disabled={
+                resolveTownCenter(focusTown, livePlacements).radiusMiles >=
+                TOWN_CENTER_RADIUS_MAX_MILES
+              }
+              className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] text-navy hover:bg-navy/10 disabled:opacity-40"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => townCenters.reset(focusTown)}
+              className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10"
+            >
+              Reset
+            </button>
+          </div>
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/40">
-            {paint.saving
+            {paint.saving || townCenters.saving
               ? "Saving…"
-              : "Drag squares to paint · drag the map to pan"}
+              : "Drag the disk or use + / −"}
           </span>
         </div>
       ) : null}
 
       <div
         ref={containerRef}
-        className={`relative w-full overflow-hidden bg-[#e8e6df] ${
-          focusTown ? "cursor-crosshair touch-none" : "cursor-grab touch-none"
+        className={`relative w-full overflow-hidden bg-[#e8e6df] touch-none ${
+          hoverDisk === "center"
+            ? "cursor-grab"
+            : hoverDisk === "rim"
+              ? "cursor-ew-resize"
+              : focusTown
+                ? "cursor-crosshair"
+                : "cursor-grab"
         }`}
         style={{ height: MAP_H }}
         onPointerDown={handlePointerDown}
@@ -615,7 +772,8 @@ export default function CtCoverageTownsMap({
               const key = cellKey(i, j);
               const strip = paint.cells[key];
               const c = cellCenter(i, j);
-              const overridden = townCenterOwning(c.lat, c.lon) != null;
+              const overridden =
+                townCenterOwningAt(c.lat, c.lon, livePlacements) != null;
               const d = ringToMapPath(cellRing(i, j), viewport, zoom);
               if (!d) return null;
               return (
@@ -649,7 +807,8 @@ export default function CtCoverageTownsMap({
                   const parsed = parseCellKey(key);
                   if (!parsed) return null;
                   const c = cellCenter(parsed.i, parsed.j);
-                  if (townCenterOwning(c.lat, c.lon)) return null;
+                  if (townCenterOwningAt(c.lat, c.lon, livePlacements))
+                    return null;
                   const d = ringToMapPath(
                     cellRing(parsed.i, parsed.j),
                     viewport,
@@ -695,12 +854,14 @@ export default function CtCoverageTownsMap({
               : null}
 
             {(focusTown ? [focusTown] : [...TMRE_TOWNS]).map((town) => {
-              const pt = TOWN_CENTERS[town];
+              const pt = resolveTownCenter(town, livePlacements);
               const cx = lonToWorldX(pt.lon, zoom) - viewport.left;
               const cy = latToWorldY(pt.lat, zoom) - viewport.top;
               const edgeY =
-                latToWorldY(pt.lat + TOWN_CENTER_RADIUS_MILES / MILES_PER_DEG_LAT, zoom) -
-                viewport.top;
+                latToWorldY(
+                  pt.lat + pt.radiusMiles / MILES_PER_DEG_LAT,
+                  zoom,
+                ) - viewport.top;
               const r = Math.abs(edgeY - cy);
               return (
                 <g key={`disk-${town}`}>
@@ -710,10 +871,25 @@ export default function CtCoverageTownsMap({
                     r={r}
                     fill="rgba(74, 141, 183, 0.16)"
                     stroke="rgba(74, 141, 183, 1)"
-                    strokeWidth={focusTown ? 1.8 : 1.2}
+                    strokeWidth={focusTown ? 2.2 : 1.2}
                     strokeDasharray="6 5"
                   />
-                  <circle cx={cx} cy={cy} r={focusTown ? 3 : 2} fill="rgba(74, 141, 183, 1)" />
+                  {focusTown ? (
+                    <circle
+                      cx={cx + r}
+                      cy={cy}
+                      r={5}
+                      fill="white"
+                      stroke="rgba(74, 141, 183, 1)"
+                      strokeWidth={1.6}
+                    />
+                  ) : null}
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={focusTown ? 5 : 2}
+                    fill="rgba(74, 141, 183, 1)"
+                  />
                 </g>
               );
             })}

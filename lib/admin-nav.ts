@@ -1130,6 +1130,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         href: "/api/admin/location-estimate-zip-grid",
       },
       {
+        label: "GET/PATCH /api/admin/location-estimate-town-centers",
+        detail: "Move or resize the one town-center disk per TMRE town",
+        href: "/api/admin/location-estimate-town-centers",
+      },
+      {
         label: "GET /api/admin/intelligence-descriptor-sizes",
         detail: "Intelligence filter descriptor mobile/desktop sizes",
         href: "/api/admin/intelligence-descriptor-sizes",

@@ -1,12 +1,15 @@
-import { TOWN_CENTERS } from '@/lib/tmre-geo'
 import type { TmreTown } from '@/lib/tmre-towns'
+import {
+  resolveAllTownCenters,
+  townCenterOwningAt,
+  type TownCenterPlacements,
+} from '@/lib/location-estimate-town-centers-shared'
 import {
   TOWN_CENTER_RADIUS_MILES,
   cellCenter,
   cellKey,
   cellRing,
   parseCellKey,
-  townCenterOwning,
   type ZipGridCells,
 } from '@/lib/location-estimate-zip-grid-shared'
 
@@ -64,18 +67,23 @@ function circleRing(
   return ring
 }
 
-/** One ¼-mile disk per TMRE town — not a disk per zip. */
-export function townCenterOverlayShapes(): {
+/** One disk per TMRE town — not a disk per zip. */
+export function townCenterOverlayShapes(
+  placements: TownCenterPlacements = {},
+): {
   rings: LocationEstimateOverlayRing[]
   dots: LocationEstimateOverlayDot[]
 } {
   const rings: LocationEstimateOverlayRing[] = []
   const dots: LocationEstimateOverlayDot[] = []
-  for (const [town, pt] of Object.entries(TOWN_CENTERS) as [TmreTown, { lat: number; lon: number }][]) {
+  for (const [town, pt] of Object.entries(resolveAllTownCenters(placements)) as [
+    TmreTown,
+    { lat: number; lon: number; radiusMiles: number },
+  ][]) {
     rings.push({
       id: `center-${town}`,
       kind: 'town_center',
-      ring: circleRing(pt.lat, pt.lon, TOWN_CENTER_RADIUS_MILES),
+      ring: circleRing(pt.lat, pt.lon, pt.radiusMiles),
       label: town,
     })
     dots.push({
@@ -94,13 +102,14 @@ export function townCenterOverlayShapes(): {
  */
 export function paintedGridOverlayRings(
   cells: ZipGridCells,
+  placements: TownCenterPlacements = {},
 ): LocationEstimateOverlayRing[] {
   const rings: LocationEstimateOverlayRing[] = []
   for (const [key, strip] of Object.entries(cells)) {
     const parsed = parseCellKey(key)
     if (!parsed) continue
     const center = cellCenter(parsed.i, parsed.j)
-    if (townCenterOwning(center.lat, center.lon)) continue
+    if (townCenterOwningAt(center.lat, center.lon, placements)) continue
     rings.push({
       id: `cell-${key}`,
       kind: 'coastal_strip',
@@ -112,13 +121,16 @@ export function paintedGridOverlayRings(
   return rings
 }
 
-export function locationEstimateOverlayShapes(cells: ZipGridCells = {}): {
+export function locationEstimateOverlayShapes(
+  cells: ZipGridCells = {},
+  placements: TownCenterPlacements = {},
+): {
   rings: LocationEstimateOverlayRing[]
   dots: LocationEstimateOverlayDot[]
 } {
-  const towns = townCenterOverlayShapes()
+  const towns = townCenterOverlayShapes(placements)
   return {
-    rings: [...towns.rings, ...paintedGridOverlayRings(cells)],
+    rings: [...towns.rings, ...paintedGridOverlayRings(cells, placements)],
     dots: towns.dots,
   }
 }

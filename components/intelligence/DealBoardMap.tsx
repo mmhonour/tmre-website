@@ -15,6 +15,7 @@ import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
+import { useLocationEstimateTownCenters } from "@/components/intelligence/use-location-estimate-town-centers";
 import { useLocationEstimateZipGrid } from "@/components/intelligence/use-location-estimate-zip-grid";
 import { locationEstimateOverlayShapes } from "@/lib/location-estimate-map-shapes";
 
@@ -448,6 +449,7 @@ export default function DealBoardMap({
 }) {
   const locationOverlay = useLocationEstimateOverlay();
   const locationGrid = useLocationEstimateZipGrid();
+  const locationCenters = useLocationEstimateTownCenters();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [center, setCenter] = useState<LonLat>(FALLBACK_CENTER);
@@ -1083,8 +1085,12 @@ export default function DealBoardMap({
   }, [rings, viewport, zoom]);
 
   const estimateOverlay = useMemo(
-    () => locationEstimateOverlayShapes(locationGrid.cells),
-    [locationGrid.cells],
+    () =>
+      locationEstimateOverlayShapes(
+        locationGrid.cells,
+        locationCenters.placements,
+      ),
+    [locationCenters.placements, locationGrid.cells],
   );
 
   const estimateOverlayPaths = useMemo(() => {

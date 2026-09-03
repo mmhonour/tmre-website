@@ -951,7 +951,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Location estimates',
     category: 'scoring',
     definition:
-      'Sold-derived PPSF for coastal areas and town centers. One ¼-mile town-center disk per town (not per zip). Coastal value is a ¼-mile zip grid painted on Admin → Data controls → CT coverage (same TIGER ZCTA rings as Intelligence / showcase); click a painted square again to erase it. The town-center disk overrides any square it covers. Distinct from What-if location-premium weights.',
+      'Sold-derived PPSF for coastal areas and town centers. One town-center disk per town (not per zip); Admin → Data controls → CT coverage can move that disk and change its radius. Coastal value is a ¼-mile zip grid painted on the same map. The town-center disk overrides any square it covers. Distinct from What-if location-premium weights.',
   },
   {
     term: 'Score breakdown',
@@ -1205,7 +1205,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'CT coverage',
     category: 'product',
     definition:
-      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save (flag only — not RETS/public yet). Each town also has a Playbook link. The large map is the same TIGER ZCTA rings as Intelligence / showcase; zoom a town to paint ¼-mile coastal squares. County thumbnails use TIGER county outlines (same Census family, different layer). Public pages still use hardcoded TMRE_TOWNS until wired.',
+      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save (flag only — not RETS/public yet). Each town also has a Playbook link. The large map is the same street tiles and TIGER ZCTA rings as Intelligence / showcase; zoom a town to paint ¼-mile coastal squares or drag the town-center disk to move/resize it. County thumbnails use TIGER county outlines (same Census family, different layer). Public pages still use hardcoded TMRE_TOWNS until wired.',
   },
   {
     term: 'Town activation playbook',

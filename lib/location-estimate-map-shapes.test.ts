@@ -15,9 +15,20 @@ import {
   suggestCoastalStrips,
   townCenterOwning,
 } from './location-estimate-zip-grid-shared'
+import { townCenterOwningAt } from './location-estimate-town-centers-shared'
 import { TOWN_CENTERS } from './tmre-geo'
 
 describe('town-center overlay', () => {
+  it('uses a relocated and enlarged disk when placements are saved', () => {
+    const moved = { lat: 41.12, lon: -73.28, radiusMiles: 0.75 }
+    const { dots, rings } = townCenterOverlayShapes({ Fairfield: moved })
+    const fairfield = dots.find((d) => d.label === 'Fairfield')
+    assert.equal(fairfield?.lat, moved.lat)
+    assert.equal(fairfield?.lon, moved.lon)
+    assert.equal(rings.length, 7)
+    assert.equal(townCenterOwningAt(41.12, -73.28, { Fairfield: moved }), 'Fairfield')
+  })
+
   it('draws one disk per TMRE town, not one per zip', () => {
     const { rings, dots } = townCenterOverlayShapes()
     assert.equal(rings.length, 7)
