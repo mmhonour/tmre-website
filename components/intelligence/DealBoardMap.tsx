@@ -1196,17 +1196,21 @@ export default function DealBoardMap({
               <path
                 key={layer.id}
                 d={layer.d}
-                fill="none"
+                fill={
+                  layer.kind === "town_center"
+                    ? "rgba(74, 141, 183, 0.16)"
+                    : "rgba(232, 93, 58, 0.08)"
+                }
                 stroke={
                   layer.kind === "town_center"
-                    ? "rgba(74, 141, 183, 0.95)"
-                    : "rgba(232, 93, 58, 0.88)"
+                    ? "rgba(74, 141, 183, 1)"
+                    : "rgba(232, 93, 58, 0.95)"
                 }
-                strokeWidth={layer.kind === "town_center" ? 1.8 : 1.35}
-                strokeDasharray={layer.kind === "town_center" ? "6 5" : "3.5 3"}
+                strokeWidth={layer.kind === "town_center" ? 2.4 : 2}
+                strokeDasharray={layer.kind === "town_center" ? "7 5" : "4 3.5"}
                 opacity={
                   layer.kind === "coastal_strip"
-                    ? Math.max(0.4, 1 - (layer.stripIndex ?? 0) * 0.16)
+                    ? Math.max(0.55, 1 - (layer.stripIndex ?? 0) * 0.12)
                     : 1
                 }
               />
@@ -1370,7 +1374,7 @@ export default function DealBoardMap({
             onPointerDown={(e) => {
               if (e.pointerType === "mouse") e.stopPropagation();
             }}
-            className={`absolute left-2 top-2 z-30 rounded-md border px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] shadow-lg backdrop-blur-sm transition-colors ${
+            className={`absolute left-12 top-2 z-30 rounded-md border px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] shadow-lg backdrop-blur-sm transition-colors ${
               locationOverlay.enabled
                 ? "border-sky/40 bg-navy/90 text-sky"
                 : "border-white/15 bg-navy/85 text-white/80 hover:text-gold"

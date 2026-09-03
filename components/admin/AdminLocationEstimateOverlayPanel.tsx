@@ -16,11 +16,11 @@ export default function AdminLocationEstimateOverlayPanel() {
           Location estimates · map outlines
         </p>
         <p className="mt-1 max-w-3xl text-sm text-charcoal/65">
-          When this is on, the showcase map and the Intelligence deal-board map
-          draw the estimator&apos;s geometry: town-center disks (¼-mile radius)
-          and coastal land strips (stacked ¼-mile bands along the shore, out to
-          about a mile). Only while the site is unlocked — visitors never see
-          it. Same control lives as a chip on those maps.
+          When this is on (the default while unlocked), the showcase map and
+          the Intelligence deal-board map draw the estimator&apos;s geometry:
+          town-center disks (¼-mile radius) and coastal land strips (stacked
+          ¼-mile bands along the shore, out to about a mile). Visitors never
+          see it. Same control is the Corridors chip on those maps.
         </p>
       </div>
       <div className="px-5 py-4 sm:px-6">

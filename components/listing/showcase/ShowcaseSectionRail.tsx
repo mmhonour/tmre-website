@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
@@ -106,19 +106,42 @@ function MapGlyph() {
 }
 
 /**
- * Sample from docs/jpg/yinyang_sample.jpg — the bitmap, not a redraw, so
- * it stays the same. The approved flat glyph is saved at
- * docs/jpg/pulse-glyph-current.svg.
+ * Same 20×20 slot as Map / Insight / Details so the button chrome matches.
+ * Gradients are unique per mount so two icon rows do not collide.
  */
 function PulseGlyph() {
+  const uid = useId().replace(/:/g, "");
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- local static asset, no sizing variants
-    <img
-      src="/showcase/yinyang-pulse.jpg"
-      alt=""
-      className="h-full w-full object-cover"
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
       aria-hidden
-    />
+    >
+      <defs>
+        <radialGradient id={`${uid}-yin`} cx="12" cy="7.8" r="8.4" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#4A7C6F" />
+          <stop offset="1" stopColor="#C8A951" />
+        </radialGradient>
+        <radialGradient id={`${uid}-eyeGreen`}>
+          <stop offset="0" stopColor="#FF2A22" />
+          <stop offset="1" stopColor="#4A7C6F" />
+        </radialGradient>
+        <radialGradient id={`${uid}-eyeRed`}>
+          <stop offset="0" stopColor="#C8A951" />
+          <stop offset="0.48" stopColor="#FF2A22" />
+          <stop offset="1" stopColor="#FF2A22" />
+        </radialGradient>
+      </defs>
+      <g transform="rotate(-60 12 12)">
+        <circle cx="12" cy="12" r="8.4" fill={`url(#${uid}-yin)`} />
+        <path
+          d="M12 3.6 A8.4 8.4 0 0 0 12 20.4 A4.2 4.2 0 0 0 12 12 A4.2 4.2 0 0 1 12 3.6 Z"
+          fill="#FF2A22"
+        />
+        <circle cx="12" cy="7.8" r="2.17" fill={`url(#${uid}-eyeGreen)`} />
+        <circle cx="12" cy="16.2" r="2.7" fill={`url(#${uid}-eyeRed)`} />
+      </g>
+    </svg>
   );
 }
 
@@ -381,7 +404,7 @@ export default function ShowcaseSectionRail({
         aria-pressed={overlay === "pulse"}
         aria-label={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
         title="Town pulse"
-        className={`${railIconClass(overlay === "pulse")} overflow-hidden p-0`}
+        className={railIconClass(overlay === "pulse")}
       >
         <PulseGlyph />
       </button>

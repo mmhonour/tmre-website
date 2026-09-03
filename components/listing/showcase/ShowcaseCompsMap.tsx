@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import DealBoardMap, {
   type DealBoardMapListing,
 } from "@/components/intelligence/DealBoardMap";
+import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 import type { ComparableListing } from "@/lib/listing-comparables-shared";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
@@ -85,6 +86,7 @@ export default function ShowcaseCompsMap({
   const [data, setData] = useState<ComparablesResponse | null>(null);
   const [pool, setPool] = useState<Pool>("active");
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const overlay = useLocationEstimateOverlay();
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +144,21 @@ export default function ShowcaseCompsMap({
           ))}
         </div>
         <div className="flex items-center gap-1">
+          {overlay.unlocked ? (
+            <button
+              type="button"
+              onClick={() => void overlay.setEnabled(!overlay.enabled)}
+              disabled={overlay.busy}
+              aria-pressed={overlay.enabled}
+              className={`px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
+                overlay.enabled
+                  ? "bg-sky/20 text-sky"
+                  : "text-white/50 hover:text-white"
+              }`}
+            >
+              Corridors
+            </button>
+          ) : null}
           {onExit ? (
             <button
               type="button"
