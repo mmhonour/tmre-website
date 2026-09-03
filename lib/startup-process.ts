@@ -381,7 +381,7 @@ export function describeStartupProcess(): {
           title: "Chunked crawl @ 1:30 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "syncVisionAddresses(): for every town in VISION_GIS_TOWNS, fillMissingVisionStreetIndex() then fillMissingVisionStreetParcels() (letter pages + house lists; does not move the Field Card cursor). Adding a town is enough — if any town is still missing letters or houses, the Railway 10-min sweep (and the thin cron) enqueue without waiting for the weekly slot or Admin Sync now. Then Streets→Parcel Field Card parse → Neon vision_addresses.field_card JSON + R2 HTML pointer for the current crawl town; full fill then fingerprint incremental; then backfillVisionListingLinks(). Pause still skips the job.",
+            "syncVisionAddresses(): for every town in VISION_GIS_TOWNS, fillMissingVisionStreetIndex() then fillMissingVisionStreetParcels() (letter pages + house lists; does not move the Field Card cursor). Adding a town is enough — if any town is still missing letters, houses, or street-address owners (vision_street_parcels PID with no vision_addresses.owner_name), the Railway 10-min sweep (and the thin cron) enqueue without waiting for the weekly slot or Admin Sync now (visionGisNeedsCatchUp). Then Field Cards for those missing-owner PIDs, then the letter/street parcel walk for the current crawl town → Neon vision_addresses.field_card JSON + owner_name + R2 HTML pointer; full fill then fingerprint incremental; then backfillVisionListingLinks(). Pause still skips the job.",
           status: visionAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: visionAddressSyncEnabled ? "Armed" : "Disabled",
         },

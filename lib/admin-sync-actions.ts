@@ -1232,8 +1232,8 @@ async function runAdminSyncActionImpl(
                 ? 'Vision addresses queued on the sync runner — End updates when the chunk finishes'
                 : 'Vision addresses queued (background worker) — End updates when the chunk finishes',
             detail: queued.base
-              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Street index fills missing letters, then the parcel walk continues.`
-              : 'Queued on background worker. Street index fills missing letters, then the parcel walk continues.',
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Street index fills missing letters, then missing-owner Field Cards, then the parcel walk continues.`
+              : 'Queued on background worker. Street index fills missing letters, then missing-owner Field Cards, then the parcel walk continues.',
           }
         }
         return {
