@@ -930,6 +930,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Price per square foot — a Goldilocks factor and a common listing metadata column.',
   },
   {
+    term: 'Location estimates',
+    category: 'scoring',
+    definition:
+      'Sold-derived PPSF for coastal areas and town centers. Admin → Data controls → Deal board can flip dotted corridor / town-center outlines on the showcase and Intelligence maps (unlocked only). Distinct from What-if location-premium weights.',
+  },
+  {
     term: 'Score breakdown',
     category: 'scoring',
     definition:

@@ -68,6 +68,25 @@ function CountChip({
   );
 }
 
+function InsightGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 18h6M10 21h4" />
+      <path d="M8 14.2C6.2 12.8 5 10.7 5 8.4A7 7 0 0 1 12 1.5 7 7 0 0 1 19 8.4c0 2.3-1.2 4.4-3 5.8" />
+      <path d="M9 14h6v2.2a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V14z" />
+    </svg>
+  );
+}
+
 function MapGlyph() {
   return (
     <svg
@@ -195,24 +214,28 @@ export default function ShowcaseSectionRail({
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
   /**
-   * Map, pulse and details share one overlay so their three icons stay a
+   * Insight, map, pulse and details share one overlay so their icons stay a
    * single exclusive toggle — opening one closes the others, and the icon
    * row travels with whichever panel is up.
    */
-  const [overlay, setOverlayState] = useState<"map" | "pulse" | "details" | null>(
-    null,
-  );
+  const [overlay, setOverlayState] = useState<
+    "insight" | "map" | "pulse" | "details" | null
+  >(null);
   const [mapExpanded, setMapExpanded] = useState(false);
 
-  const setOverlay = (next: "map" | "pulse" | "details" | null) => {
+  const setOverlay = (
+    next: "insight" | "map" | "pulse" | "details" | null,
+  ) => {
     setOverlayState(next);
     onMapStateChange?.({
       open: next === "map",
       expanded: next === "map" && mapExpanded,
     });
-    onDetailsOnlyChange?.(next === "pulse" || next === "details");
+    onDetailsOnlyChange?.(
+      next === "insight" || next === "pulse" || next === "details",
+    );
   };
-  const toggleOverlay = (id: "map" | "pulse" | "details") =>
+  const toggleOverlay = (id: "insight" | "map" | "pulse" | "details") =>
     setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
@@ -329,9 +352,19 @@ export default function ShowcaseSectionRail({
     );
   };
 
-  /* The three overlays share this row so they stay a group. */
+  /* The four overlays share this row so they stay a group. */
   const iconRow = (
     <div className="mt-1 flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => toggleOverlay("insight")}
+        aria-pressed={overlay === "insight"}
+        aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
+        title="Insight"
+        className={railIconClass(overlay === "insight")}
+      >
+        <InsightGlyph />
+      </button>
       <button
         type="button"
         onClick={() => toggleOverlay("map")}
@@ -458,42 +491,44 @@ export default function ShowcaseSectionRail({
       <div
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
-        {overlay === "pulse" || overlay === "details" ? (
+        {overlay === "insight" || overlay === "pulse" || overlay === "details" ? (
           <>
             {/* Icons first in this mode: the card can run to 70vh, which would
                 push the only way out below the fold. */}
             {iconRow}
-            {overlay === "pulse" ? (
-              <button
-                type="button"
-                onClick={() => toggleOverlay("pulse")}
-                aria-expanded
-                className={`${pillClass(true, true)} mt-1`}
-              >
-                <span className="flex-1">Town pulse</span>
-                <Chevron open />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => toggleOverlay(overlay)}
+              aria-expanded
+              className={`${pillClass(true, true)} mt-1`}
+            >
+              <span className="flex-1">
+                {overlay === "insight"
+                  ? "Insight"
+                  : overlay === "pulse"
+                    ? "Town pulse"
+                    : "Details"}
+              </span>
+              <Chevron open />
+            </button>
             <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
               {overlay === "details" ? (
                 /* The dashboard's own Details card, not a second summary —
                    same component the deck below the photo renders. */
                 <ListingSidebar details={detailsPanelProps} />
-              ) : (
+              ) : overlay === "pulse" ? (
                 <div className="p-4">
                   <ShowcaseTownPulse city={townHint ?? ""} expanded />
+                </div>
+              ) : (
+                <div className="p-4">
+                  <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
                 </div>
               )}
             </div>
           </>
         ) : overlay === "map" ? null : (
           <>
-        {cardPill(
-          "insight",
-          "Insight",
-          <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />,
-        )}
-
         {cardPill(
           "details",
           "Details",

@@ -177,7 +177,7 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     id: "intel-deal-board",
     label: "Deal board",
     subtitle:
-      "Read-only middle-tier rules when Intelligence is sorted by score",
+      "Location-estimate map outlines plus read-only middle-tier rules",
   },
   {
     id: "ct-coverage",
@@ -1114,6 +1114,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         href: "/api/admin/stack-costs",
       },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
+      {
+        label: "GET/PATCH /api/admin/location-estimate-map-overlay",
+        detail: "Show coastal-strip + town-center outlines on showcase and Intelligence maps",
+        href: "/api/admin/location-estimate-map-overlay",
+      },
       {
         label: "GET /api/admin/intelligence-descriptor-sizes",
         detail: "Intelligence filter descriptor mobile/desktop sizes",
