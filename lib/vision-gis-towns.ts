@@ -13,6 +13,7 @@ export type VisionGisTownConfig = {
   fieldCardPdfBase: string
 }
 
+/** Add a town here. The runner catch-up fills letter + house lists; no Sync now. */
 export const VISION_GIS_TOWNS: VisionGisTownConfig[] = [
   {
     town: 'Westport',

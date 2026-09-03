@@ -1,6 +1,10 @@
 import 'server-only'
 
 import { query, withTransaction } from '@/lib/db/postgres'
+import {
+  VISION_GIS_TOWNS,
+  missingVisionStreetLetters,
+} from '@/lib/vision-gis-towns'
 
 /**
  * Same DDL as db/migrations/0024_vision_streets.sql. Netlify does not run
@@ -282,6 +286,18 @@ export async function listVisionStreetsMissingParcels(
     [town, cap],
   )
   return rows.map((row) => row.street_name)
+}
+
+/** True when any configured VGSI town still lacks letters or house lists. */
+export async function visionStreetIndexNeedsCatchUp(): Promise<boolean> {
+  await ensureVisionStreetsTable()
+  for (const { town } of VISION_GIS_TOWNS) {
+    const letters = await listVisionStreetLetters(town)
+    if (missingVisionStreetLetters(letters).length > 0) return true
+    const missingParcels = await listVisionStreetsMissingParcels(town, 1)
+    if (missingParcels.length > 0) return true
+  }
+  return false
 }
 
 export async function countVisionStreetParcels(town?: string): Promise<number> {

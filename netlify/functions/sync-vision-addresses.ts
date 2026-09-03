@@ -30,7 +30,12 @@ export default async function handler() {
       )
     }
     if (shouldSkipScheduledJobNotDue('vision-addresses')) {
-      return thinCronSkipped('not due yet — Configure frequency / start time')
+      const { visionStreetIndexNeedsCatchUp } = await import(
+        '../../lib/db/vision-streets-repo'
+      )
+      if (!(await visionStreetIndexNeedsCatchUp())) {
+        return thinCronSkipped('not due yet — Configure frequency / start time')
+      }
     }
     {
       const handedOff = await thinCronHandOffToQueue('vision-addresses')
