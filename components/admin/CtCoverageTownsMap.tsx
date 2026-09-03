@@ -34,6 +34,7 @@ import {
   milesBetween,
   parseCellKey,
   pointInRings,
+  coastalStripMark,
   suggestCoastalStrips,
   type CoastalStripIndex,
 } from "@/lib/location-estimate-zip-grid-shared";
@@ -78,6 +79,43 @@ const STRIP_FILL: Record<CoastalStripIndex, string> = {
   2: "rgba(232, 93, 58, 0.16)",
   3: "rgba(232, 93, 58, 0.10)",
 };
+
+function StripMark({
+  lon,
+  lat,
+  strip,
+  viewport,
+  zoom,
+}: {
+  lon: number;
+  lat: number;
+  strip: CoastalStripIndex;
+  viewport: { left: number; top: number };
+  zoom: number;
+}) {
+  const x = lonToWorldX(lon, zoom) - viewport.left;
+  const y = latToWorldY(lat, zoom) - viewport.top;
+  const fontSize = zoom >= 14 ? 12 : zoom >= 12 ? 10 : 8;
+  return (
+    <text
+      x={x}
+      y={y}
+      dy="0.35em"
+      textAnchor="middle"
+      fill="#1a2744"
+      stroke="rgba(255,255,255,0.92)"
+      strokeWidth={2.4}
+      paintOrder="stroke"
+      style={{
+        fontSize,
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontWeight: 700,
+      }}
+    >
+      {coastalStripMark(strip)}
+    </text>
+  );
+}
 
 function zipLabel(code: string): string {
   const nick = ZIP_AREA_NICKNAMES[code];
@@ -587,10 +625,10 @@ export default function CtCoverageTownsMap({
           <div className="flex flex-wrap gap-1">
             {(
               [
-                [0, "Coast"],
-                [1, "2nd strip"],
-                [2, "3rd"],
-                [3, "4th"],
+                [0, "1 Coast"],
+                [1, "2 2nd"],
+                [2, "3 3rd"],
+                [3, "4 4th"],
                 ["erase", "Erase"],
               ] as const
             ).map(([value, label]) => (
@@ -777,28 +815,38 @@ export default function CtCoverageTownsMap({
               const d = ringToMapPath(cellRing(i, j), viewport, zoom);
               if (!d) return null;
               return (
-                <path
-                  key={key}
-                  d={d}
-                  fill={
-                    overridden
-                      ? "rgba(74, 141, 183, 0.14)"
-                      : strip != null
-                        ? STRIP_FILL[strip]
-                        : "rgba(26, 39, 68, 0.04)"
-                  }
-                  stroke={
-                    overridden
-                      ? "rgba(74, 141, 183, 0.45)"
-                      : strip != null
-                        ? "rgba(232, 93, 58, 0.9)"
-                        : "rgba(26, 39, 68, 0.22)"
-                  }
-                  strokeWidth={0.9}
-                  strokeDasharray={
-                    strip != null && !overridden ? "4 3" : undefined
-                  }
-                />
+                <g key={key}>
+                  <path
+                    d={d}
+                    fill={
+                      overridden
+                        ? "rgba(74, 141, 183, 0.14)"
+                        : strip != null
+                          ? STRIP_FILL[strip]
+                          : "rgba(26, 39, 68, 0.04)"
+                    }
+                    stroke={
+                      overridden
+                        ? "rgba(74, 141, 183, 0.45)"
+                        : strip != null
+                          ? "rgba(232, 93, 58, 0.9)"
+                          : "rgba(26, 39, 68, 0.22)"
+                    }
+                    strokeWidth={0.9}
+                    strokeDasharray={
+                      strip != null && !overridden ? "4 3" : undefined
+                    }
+                  />
+                  {strip != null && !overridden ? (
+                    <StripMark
+                      lon={c.lon}
+                      lat={c.lat}
+                      strip={strip}
+                      viewport={viewport}
+                      zoom={zoom}
+                    />
+                  ) : null}
+                </g>
               );
             })}
 
@@ -816,13 +864,21 @@ export default function CtCoverageTownsMap({
                   );
                   if (!d) return null;
                   return (
-                    <path
-                      key={`overview-${key}`}
-                      d={d}
-                      fill={STRIP_FILL[strip]}
-                      stroke="rgba(232, 93, 58, 0.8)"
-                      strokeWidth={0.7}
-                    />
+                    <g key={`overview-${key}`}>
+                      <path
+                        d={d}
+                        fill={STRIP_FILL[strip]}
+                        stroke="rgba(232, 93, 58, 0.8)"
+                        strokeWidth={0.7}
+                      />
+                      <StripMark
+                        lon={c.lon}
+                        lat={c.lat}
+                        strip={strip}
+                        viewport={viewport}
+                        zoom={zoom}
+                      />
+                    </g>
                   );
                 })
               : null}

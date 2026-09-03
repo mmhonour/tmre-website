@@ -12,6 +12,7 @@ import {
   lonLatToCell,
   milesBetween,
   nextCellAction,
+  coastalStripMark,
   suggestCoastalStrips,
   townCenterOwning,
 } from './location-estimate-zip-grid-shared'
@@ -67,6 +68,13 @@ describe('zip grid', () => {
     const rings = paintedGridOverlayRings({ [cellKey(i, j)]: 1 })
     assert.equal(rings.length, 1)
     assert.equal(rings[0]?.stripIndex, 1)
+  })
+
+  it('numbers Coast through 4th as 1–4', () => {
+    assert.equal(coastalStripMark(0), 1)
+    assert.equal(coastalStripMark(1), 2)
+    assert.equal(coastalStripMark(2), 3)
+    assert.equal(coastalStripMark(3), 4)
   })
 
   it('paints four strips north from the south-facing town edge', () => {

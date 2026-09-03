@@ -28,6 +28,11 @@ export function isCoastalStripIndex(value: unknown): value is CoastalStripIndex 
   return value === 0 || value === 1 || value === 2 || value === 3
 }
 
+/** Coast = 1, 2nd strip = 2, 3rd = 3, 4th = 4. */
+export function coastalStripMark(strip: CoastalStripIndex): 1 | 2 | 3 | 4 {
+  return (strip + 1) as 1 | 2 | 3 | 4
+}
+
 export function parseZipGridPayload(raw: string | null | undefined): ZipGridPayload {
   if (!raw) return emptyZipGrid()
   try {
