@@ -933,7 +933,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Location estimates',
     category: 'scoring',
     definition:
-      'Sold-derived PPSF for coastal areas and town centers. Admin → Data controls → Deal board can flip dotted corridor / town-center outlines on the showcase and Intelligence maps (unlocked only). Distinct from What-if location-premium weights.',
+      'Sold-derived PPSF for coastal areas and town centers. One ¼-mile town-center disk per town (not per zip). Coastal value is a ¼-mile zip grid painted in Admin → Data controls → Deal board; the town-center disk overrides any square it covers. Distinct from What-if location-premium weights.',
   },
   {
     term: 'Score breakdown',

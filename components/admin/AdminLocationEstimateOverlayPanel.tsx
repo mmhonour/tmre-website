@@ -1,10 +1,11 @@
 "use client";
 
+import AdminLocationEstimateGridMap from "@/components/admin/AdminLocationEstimateGridMap";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 
 /**
- * Admin flip for dotted coastal-strip + town-center outlines on the
- * showcase and Intelligence maps.
+ * Admin flip + zip-grid painter for coastal strips and the single
+ * town-center radius.
  */
 export default function AdminLocationEstimateOverlayPanel() {
   const { enabled, setEnabled, busy } = useLocationEstimateOverlay();
@@ -16,14 +17,13 @@ export default function AdminLocationEstimateOverlayPanel() {
           Location estimates · map outlines
         </p>
         <p className="mt-1 max-w-3xl text-sm text-charcoal/65">
-          When this is on (the default while unlocked), the showcase map and
-          the Intelligence deal-board map draw the estimator&apos;s geometry:
-          town-center disks (¼-mile radius) and coastal land strips (stacked
-          ¼-mile bands along the shore, out to about a mile). Visitors never
-          see it. Same control is the Corridors chip on those maps.
+          One ¼-mile disk per town (Fairfield, not every zip). Coastal value is
+          a ¼-mile grid you paint on the zip below — drag to mark the
+          waterfront strip and the bands behind it. The town-center disk
+          overrides any square it covers. Visitors never see the outlines.
         </p>
       </div>
-      <div className="px-5 py-4 sm:px-6">
+      <div className="space-y-5 px-5 py-4 sm:px-6">
         <label className="inline-flex cursor-pointer items-center gap-3">
           <input
             type="checkbox"
@@ -43,6 +43,7 @@ export default function AdminLocationEstimateOverlayPanel() {
             {enabled ? "on" : "off"}
           </span>
         </label>
+        <AdminLocationEstimateGridMap />
       </div>
     </div>
   );

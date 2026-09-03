@@ -15,9 +15,8 @@ import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
+import { useLocationEstimateZipGrid } from "@/components/intelligence/use-location-estimate-zip-grid";
 import { locationEstimateOverlayShapes } from "@/lib/location-estimate-map-shapes";
-
-const LOCATION_OVERLAY_SHAPES = locationEstimateOverlayShapes();
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -448,6 +447,7 @@ export default function DealBoardMap({
   subjectKey?: string | null;
 }) {
   const locationOverlay = useLocationEstimateOverlay();
+  const locationGrid = useLocationEstimateZipGrid();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [center, setCenter] = useState<LonLat>(FALLBACK_CENTER);
@@ -1082,24 +1082,29 @@ export default function DealBoardMap({
       .filter(Boolean);
   }, [rings, viewport, zoom]);
 
+  const estimateOverlay = useMemo(
+    () => locationEstimateOverlayShapes(locationGrid.cells),
+    [locationGrid.cells],
+  );
+
   const estimateOverlayPaths = useMemo(() => {
     if (!locationOverlay.enabled || !viewport) return [];
-    return LOCATION_OVERLAY_SHAPES.rings
+    return estimateOverlay.rings
       .map((layer) => ({
         ...layer,
         d: ringToPath(layer.ring, viewport, zoom),
       }))
       .filter((layer) => layer.d);
-  }, [locationOverlay.enabled, viewport, zoom]);
+  }, [estimateOverlay.rings, locationOverlay.enabled, viewport, zoom]);
 
   const estimateOverlayDots = useMemo(() => {
     if (!locationOverlay.enabled || !viewport) return [];
-    return LOCATION_OVERLAY_SHAPES.dots.map((dot) => ({
+    return estimateOverlay.dots.map((dot) => ({
       ...dot,
       left: lonToWorldX(dot.lon, zoom) - viewport.left,
       top: latToWorldY(dot.lat, zoom) - viewport.top,
     }));
-  }, [locationOverlay.enabled, viewport, zoom]);
+  }, [estimateOverlay.dots, locationOverlay.enabled, viewport, zoom]);
 
   return (
     <div className={`relative ${className}`}>
@@ -1221,10 +1226,14 @@ export default function DealBoardMap({
         {estimateOverlayDots.map((dot) => (
           <span
             key={dot.id}
-            className="pointer-events-none absolute z-[7] h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky shadow-[0_0_0_1px_rgba(255,255,255,0.75)]"
+            className="pointer-events-none absolute z-[7] flex -translate-x-1/2 -translate-y-full flex-col items-center"
             style={{ left: dot.left, top: dot.top }}
-            title={dot.label}
-          />
+          >
+            <span className="mb-0.5 whitespace-nowrap rounded-sm bg-navy/80 px-1 py-px font-mono text-[8px] uppercase tracking-[0.12em] text-white">
+              {dot.label}
+            </span>
+            <span className="h-1.5 w-1.5 rounded-full bg-sky shadow-[0_0_0_1px_rgba(255,255,255,0.75)]" />
+          </span>
         ))}
 
         {pins.map((pin) => {

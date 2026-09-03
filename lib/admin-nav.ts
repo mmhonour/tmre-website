@@ -1120,6 +1120,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         href: "/api/admin/location-estimate-map-overlay",
       },
       {
+        label: "GET/PATCH /api/admin/location-estimate-zip-grid",
+        detail: "Painted ¼-mile coastal-value cells (town-center radius overrides)",
+        href: "/api/admin/location-estimate-zip-grid",
+      },
+      {
         label: "GET /api/admin/intelligence-descriptor-sizes",
         detail: "Intelligence filter descriptor mobile/desktop sizes",
         href: "/api/admin/intelligence-descriptor-sizes",
