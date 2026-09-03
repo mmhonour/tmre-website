@@ -17,6 +17,9 @@ export const LISTING_SECTION_IDS: Record<ListingScrollSectionTab, string> = {
   uag: "listing-sec-uag",
 };
 
+/** Wrapper around `?panel=production` Overview, below the showcase photo. */
+export const LISTING_PRODUCTION_PANEL_ID = "listing-production-panel";
+
 /** For-sale on-market panel anchor inside the Sold comps section. */
 export const LISTING_SALE_ON_MARKET_PANEL_ID = "comparables-on-market-sale";
 
