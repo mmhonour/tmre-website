@@ -185,6 +185,34 @@ export function cellsForZipRings(
   return out
 }
 
+/**
+ * Mark ¼-mile cells stepping north from the town's south-facing edge.
+ * A shore cell is occupied and its due-south neighbor is not — that is
+ * water or out of this town, not the next zip inland. `paintWithin`
+ * limits which cells are written (the zip on screen); occupancy still
+ * uses the whole town so the 06825 / 06824 border is not treated as coast.
+ */
+export function suggestCoastalStrips(
+  townOccupied: readonly { i: number; j: number }[],
+  paintWithin: readonly { i: number; j: number }[] = townOccupied,
+): ZipGridCells {
+  const occupied = new Set(townOccupied.map((c) => cellKey(c.i, c.j)))
+  const within = new Set(paintWithin.map((c) => cellKey(c.i, c.j)))
+  const cells: ZipGridCells = {}
+  for (const { i, j } of paintWithin) {
+    if (occupied.has(cellKey(i, j - 1))) continue
+    for (let n = 0; n <= COASTAL_STRIP_MAX_INDEX; n++) {
+      const key = cellKey(i, j + n)
+      if (!within.has(key) || !occupied.has(key)) break
+      const existing = cells[key]
+      if (existing == null || n < existing) {
+        cells[key] = n as CoastalStripIndex
+      }
+    }
+  }
+  return cells
+}
+
 export function mergeZipGridPatch(
   current: ZipGridCells,
   patch: ZipGridCells,

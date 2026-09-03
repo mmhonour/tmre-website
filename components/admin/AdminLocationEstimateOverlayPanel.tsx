@@ -18,9 +18,10 @@ export default function AdminLocationEstimateOverlayPanel() {
         </p>
         <p className="mt-1 max-w-3xl text-sm text-charcoal/65">
           One ¼-mile disk per town (Fairfield, not every zip). Coastal value is
-          a ¼-mile grid you paint on the zip below — drag to mark the
-          waterfront strip and the bands behind it. The town-center disk
-          overrides any square it covers. Visitors never see the outlines.
+          a ¼-mile grid on the town/zip map below — start from All zips or pick
+          06890 · Southport, drag to paint, or use Paint south shore and then
+          edit. The town-center disk overrides any square it covers. Visitors
+          never see the outlines.
         </p>
       </div>
       <div className="space-y-5 px-5 py-4 sm:px-6">

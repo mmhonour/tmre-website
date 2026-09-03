@@ -11,6 +11,7 @@ import {
   cellKey,
   lonLatToCell,
   milesBetween,
+  suggestCoastalStrips,
   townCenterOwning,
 } from './location-estimate-zip-grid-shared'
 import { TOWN_CENTERS } from './tmre-geo'
@@ -54,6 +55,32 @@ describe('zip grid', () => {
     const rings = paintedGridOverlayRings({ [cellKey(i, j)]: 1 })
     assert.equal(rings.length, 1)
     assert.equal(rings[0]?.stripIndex, 1)
+  })
+
+  it('paints four strips north from the south-facing town edge', () => {
+    const occupied = [
+      { i: 10, j: 20 },
+      { i: 10, j: 21 },
+      { i: 10, j: 22 },
+      { i: 10, j: 23 },
+      { i: 10, j: 24 },
+    ]
+    const suggested = suggestCoastalStrips(occupied)
+    assert.equal(suggested['10,20'], 0)
+    assert.equal(suggested['10,21'], 1)
+    assert.equal(suggested['10,22'], 2)
+    assert.equal(suggested['10,23'], 3)
+    assert.equal(suggested['10,24'], undefined)
+  })
+
+  it('does not treat an inland zip border as shore when the town set includes the south neighbor', () => {
+    const town = [
+      { i: 3, j: 8 },
+      { i: 3, j: 9 },
+    ]
+    const inlandOnly = [{ i: 3, j: 9 }]
+    const suggested = suggestCoastalStrips(town, inlandOnly)
+    assert.deepEqual(suggested, {})
   })
 
   it('combines one town disk set with painted cells', () => {

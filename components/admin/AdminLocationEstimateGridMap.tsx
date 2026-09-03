@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
-import { TOWN_CENTERS } from "@/lib/tmre-geo";
+import { TOWN_CENTERS, ZIP_CENTERS } from "@/lib/tmre-geo";
 import {
   LOCATION_ESTIMATE_GRID_CHANGED_EVENT,
   TOWN_CENTER_RADIUS_MILES,
@@ -11,6 +11,7 @@ import {
   cellRing,
   cellsForZipRings,
   lonLatToCell,
+  suggestCoastalStrips,
   townCenterOwning,
   type CoastalStripIndex,
   type ZipGridCells,
@@ -18,6 +19,7 @@ import {
 import {
   TMRE_TOWNS,
   ZIP_AREA_NICKNAMES,
+  boundaryZipsForTown,
   type TmreTown,
   townForZip,
   zipsForTown,
@@ -26,6 +28,7 @@ import {
 type Ring = [number, number][];
 type Brush = CoastalStripIndex | "erase";
 
+const ALL_ZIPS = "";
 const VIEW_W = 720;
 const VIEW_H = 520;
 const PAD = 16;
@@ -80,14 +83,21 @@ function projectRings(rings: Ring[]) {
   return { box, scale, toXy, fromXy, pathFor };
 }
 
+function zipLabel(code: string): string {
+  const nick = ZIP_AREA_NICKNAMES[code];
+  return nick ? `${code} · ${nick}` : code;
+}
+
 /**
- * Paint ¼-mile cells on a zip. Town-center radius is drawn on top and
- * overrides those squares on the listing / Intelligence maps.
+ * Paint ¼-mile cells on a zip or the whole town. Town-center radius is
+ * drawn on top and overrides those squares on the listing maps.
  */
 export default function AdminLocationEstimateGridMap() {
   const [town, setTown] = useState<TmreTown>("Fairfield");
-  const [zip, setZip] = useState("06824");
-  const [rings, setRings] = useState<Ring[]>([]);
+  const [zip, setZip] = useState(ALL_ZIPS);
+  const [zipRingsByCode, setZipRingsByCode] = useState<Map<string, Ring[]>>(
+    () => new Map(),
+  );
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [cells, setCells] = useState<ZipGridCells>({});
   const [brush, setBrush] = useState<Brush>(0);
@@ -101,7 +111,7 @@ export default function AdminLocationEstimateGridMap() {
 
   useEffect(() => {
     const zips = zipsForTown(town);
-    if (!zips.includes(zip)) setZip(zips[0] ?? "");
+    if (zip && !zips.includes(zip)) setZip(ALL_ZIPS);
   }, [town, zip]);
 
   useEffect(() => {
@@ -118,15 +128,14 @@ export default function AdminLocationEstimateGridMap() {
   }, []);
 
   useEffect(() => {
-    if (!zip) return;
     let cancelled = false;
     setStatus("loading");
-    void loadZipBoundariesForZips([zip])
+    void loadZipBoundariesForZips(boundaryZipsForTown(town))
       .then((map) => {
         if (cancelled) return;
-        const next = map.get(zip) ?? [];
-        setRings(next);
-        setStatus(next.length ? "ready" : "error");
+        setZipRingsByCode(map);
+        const hasAny = [...map.values()].some((rings) => rings.length > 0);
+        setStatus(hasAny ? "ready" : "error");
       })
       .catch(() => {
         if (!cancelled) setStatus("error");
@@ -134,7 +143,7 @@ export default function AdminLocationEstimateGridMap() {
     return () => {
       cancelled = true;
     };
-  }, [zip]);
+  }, [town]);
 
   const flush = useCallback(() => {
     const { patch, erase } = pendingRef.current;
@@ -175,10 +184,37 @@ export default function AdminLocationEstimateGridMap() {
     [brush, flush],
   );
 
-  useEffect(() => () => {
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-  }, []);
+  const applyPatch = useCallback(
+    (patch: ZipGridCells) => {
+      if (Object.keys(patch).length === 0) return;
+      setCells((cur) => ({ ...cur, ...patch }));
+      pendingRef.current.patch = { ...pendingRef.current.patch, ...patch };
+      pendingRef.current.erase = pendingRef.current.erase.filter((k) => !(k in patch));
+      flush();
+    },
+    [flush],
+  );
 
+  useEffect(
+    () => () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    },
+    [],
+  );
+
+  const viewZips = useMemo(
+    () => (zip ? [zip] : [...boundaryZipsForTown(town)]),
+    [town, zip],
+  );
+  const rings = useMemo(
+    () => viewZips.flatMap((code) => zipRingsByCode.get(code) ?? []),
+    [viewZips, zipRingsByCode],
+  );
+  const townRings = useMemo(
+    () =>
+      boundaryZipsForTown(town).flatMap((code) => zipRingsByCode.get(code) ?? []),
+    [town, zipRingsByCode],
+  );
   const projection = useMemo(
     () => (rings.length ? projectRings(rings) : null),
     [rings],
@@ -187,7 +223,10 @@ export default function AdminLocationEstimateGridMap() {
     () => (rings.length ? cellsForZipRings(rings) : []),
     [rings],
   );
-  const center = TOWN_CENTERS[town];
+  const townCells = useMemo(
+    () => (townRings.length ? cellsForZipRings(townRings) : []),
+    [townRings],
+  );
 
   const paintAt = (clientX: number, clientY: number, svg: SVGSVGElement) => {
     if (!projection) return;
@@ -201,6 +240,10 @@ export default function AdminLocationEstimateGridMap() {
     queuePaint(key);
   };
 
+  const viewLabel = zip
+    ? `${town} ${zipLabel(zip)}`
+    : `${town} · all zips`;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
@@ -211,8 +254,8 @@ export default function AdminLocationEstimateGridMap() {
           <select
             value={town}
             onChange={(e) => {
-              const next = e.target.value as TmreTown;
-              setTown(next);
+              setTown(e.target.value as TmreTown);
+              setZip(ALL_ZIPS);
             }}
             className="border border-charcoal/15 bg-white px-2 py-1.5 font-mono text-sm text-navy"
           >
@@ -232,10 +275,11 @@ export default function AdminLocationEstimateGridMap() {
             onChange={(e) => setZip(e.target.value)}
             className="border border-charcoal/15 bg-white px-2 py-1.5 font-mono text-sm text-navy"
           >
+            <option value={ALL_ZIPS}>All zips in {town}</option>
             {zipsForTown(town).map((z) => (
               <option key={z} value={z}>
-                {z}
-                {ZIP_AREA_NICKNAMES[z] ? ` · ${ZIP_AREA_NICKNAMES[z]}` : ""}
+                {zipLabel(z)}
+                {boundaryZipsForTown(town).includes(z) ? "" : " · no map"}
               </option>
             ))}
           </select>
@@ -265,6 +309,14 @@ export default function AdminLocationEstimateGridMap() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => applyPatch(suggestCoastalStrips(townCells, zipCells))}
+          disabled={status !== "ready" || zipCells.length === 0}
+          className="border border-charcoal/15 bg-white px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10 disabled:opacity-40"
+        >
+          Paint south shore
+        </button>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/40">
           {saving ? "Saving…" : "Drag to paint · autosave"}
         </span>
@@ -274,8 +326,17 @@ export default function AdminLocationEstimateGridMap() {
         Each square is ¼ mile. Paint the coastal strips that follow the shore —
         the 2nd strip is ~25% less than the waterfront, and so on. The{" "}
         <span className="font-medium text-navy">{town}</span> town-center disk
-        overrides any square it covers.
-        {townForZip(zip) ? ` Viewing ${town} ${zip}.` : ""}
+        overrides any square it covers. Viewing {viewLabel}.
+        {town === "Fairfield" ? (
+          <>
+            {" "}
+            772 Rowland is in 06890 · Southport — keep All zips or switch to
+            that zip to mark the shore that covers the subject.
+          </>
+        ) : null}
+        {zip && townForZip(zip) && !boundaryZipsForTown(town).includes(zip) ? (
+          <> This zip is PO-box only and has no Census outline.</>
+        ) : null}
       </p>
 
       <div className="overflow-hidden rounded-xl border border-charcoal/[0.08] bg-[#e8e6df]">
@@ -342,8 +403,27 @@ export default function AdminLocationEstimateGridMap() {
                         : "rgba(26, 39, 68, 0.18)"
                   }
                   strokeWidth={0.8}
-                  strokeDasharray={strip != null && !overridden ? "3 2.5" : undefined}
+                  strokeDasharray={
+                    strip != null && !overridden ? "3 2.5" : undefined
+                  }
                 />
+              );
+            })}
+            {viewZips.map((code) => {
+              const pt = ZIP_CENTERS[code];
+              if (!pt) return null;
+              const { x, y } = projection.toXy(pt.lon, pt.lat);
+              return (
+                <text
+                  key={`zip-label-${code}`}
+                  x={x}
+                  y={y}
+                  textAnchor="middle"
+                  className="fill-navy/70"
+                  style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}
+                >
+                  {zipLabel(code)}
+                </text>
               );
             })}
             <TownCenterSvg town={town} toXy={projection.toXy} />
