@@ -250,6 +250,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'property-addresses': 'addresses',
   'vision-addresses': 'vision',
   'zip-boundaries': 'zip-maps',
+  'open-houses': 'open-houses',
   'fomc-sync': 'fomc',
   'cpi-sync': 'cpi',
   'market-digest': 'digest',
@@ -1191,6 +1192,60 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'vision-addresses': {
+      // Letter-index fill + 40 Field Cards is too long for the Admin POST
+      // (those 504s). Same handoff as the Monday cron: background worker.
+      if (shouldQueueOnServerless(options)) {
+        const { queueNetlifyVisionAddressSync } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'vision-addresses',
+          () => queueNetlifyVisionAddressSync(),
+          { startedAt },
+        )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/vision' : 'Failed/vision',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              via === 'sync-queue'
+                ? 'Vision addresses queued on the sync runner — End updates when the chunk finishes'
+                : 'Vision addresses queued (background worker) — End updates when the chunk finishes',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Street index fills missing letters, then the parcel walk continues.`
+              : 'Queued on background worker. Street index fills missing letters, then the parcel walk continues.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          message: 'Vision addresses queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
       const { syncVisionAddresses } = await import('@/lib/vision-gis-sync')
       // Admin / Netlify default chunk 40 (safe). Override with VISION_SYNC_MAX_PARCELS.
       const maxRaw = Number(process.env.VISION_SYNC_MAX_PARCELS ?? '')
@@ -1206,6 +1261,51 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.parcelsFetched,
         message: `${result.town}: ${result.totalRows.toLocaleString()} vision rows (${result.phase})`,
         detail: result.detail,
+      }
+    }
+    case 'open-houses': {
+      if (shouldQueueOnServerless(options)) {
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'open-houses',
+          // No Netlify worker for this job — it only ever ran inline, which is
+          // what made the page time out. The queue is the only handoff.
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so open houses cannot be refreshed right now.',
+          }),
+        )
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? `Open houses queued (${via}) — End updates when the pull finishes`
+            : `Open houses queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { syncOpenHouses } = await import('@/lib/open-houses-sync')
+      const result = await syncOpenHouses()
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.eventsFetched,
+        message: result.ok
+          ? `${result.written} upcoming · ${result.historyWritten} past for ${result.window.start} → ${result.window.end}`
+          : `Open house sync failed: ${result.error ?? 'unknown'}`,
+        detail: result.ok
+          ? `Replaced upcoming ${result.window.start}–${result.window.end} (${result.removed} removed, ${result.written} written) · upserted ${result.historyWritten} lookback${
+              result.pruned > 0 ? ` · pruned ${result.pruned} older than lookback` : ''
+            }`
+          : result.error,
       }
     }
     case 'zip-boundaries': {

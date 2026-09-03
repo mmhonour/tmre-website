@@ -1,8 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
+import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
@@ -266,6 +274,19 @@ function cityKey(city: string): string {
   return city.trim().toLowerCase();
 }
 
+function heatForCity(
+  heatByCity: Map<string, number>,
+  city: string,
+): number | null {
+  const direct = heatByCity.get(city);
+  if (direct != null) return direct;
+  const key = cityKey(city);
+  for (const [name, heat] of heatByCity) {
+    if (cityKey(name) === key) return heat;
+  }
+  return null;
+}
+
 function isAllTownsCity(city: string): boolean {
   const t = cityKey(city);
   return t === "all" || t === "all towns";
@@ -403,19 +424,25 @@ function TownName({
 }
 
 /**
- * Which side the town order favours, as a balance rather than a sentence.
+ * All Towns: the Town-pulse yin-yang (sage → yellow tail, red yang,
+ * yellow eye with a red collar). A click spins it once and flips
+ * Seller Friendly ↔ Buyer Friendly.
  *
- * The beam tips toward the side the list is ordered for, and the pans say who
- * those sides are: a money bag for the seller, a house and key for the buyer.
- * Words live in the title and the accessible name, since the state is a
- * picture of itself.
+ * Over a town it becomes the scale, and the beam follows that town's heat:
+ * seller (0) tips the money bag down on the left, buyer (1) tips the house
+ * and key down on the right.
  */
 function FavorSortToggle({
   favorSort,
   onToggle,
+  mode,
+  townHeat,
 }: {
   favorSort: FavorSort;
   onToggle: () => void;
+  mode: "yin-yang" | "scale";
+  /** Seller (0) ↔ buyer (1). Used only while `mode` is `scale`. */
+  townHeat?: number | null;
 }) {
   const buyers = favorSort === "buyers";
   const current =
@@ -423,69 +450,100 @@ function FavorSortToggle({
       ? marketPulseFavorSortLabel(favorSort)
       : marketPulseFavorSortLabel("sellers");
   const next = buyers ? "Seller Friendly" : "Buyer Friendly";
+  const [spinKey, setSpinKey] = useState(0);
+  const [spinDir, setSpinDir] = useState<"cw" | "ccw">("cw");
+
+  const handleClick = () => {
+    if (mode === "yin-yang") {
+      // Next state: buyers spin clockwise, sellers counter-clockwise.
+      setSpinDir(favorSort === "buyers" ? "ccw" : "cw");
+      setSpinKey((n) => n + 1);
+    }
+    onToggle();
+  };
+
+  const heat =
+    townHeat != null && Number.isFinite(townHeat)
+      ? Math.min(1, Math.max(0, townHeat))
+      : 0.5;
+  const tiltDeg = (heat - 0.5) * 56;
+
   return (
     <button
       type="button"
-      onClick={onToggle}
-      title={`${current} — switch to ${next}`}
+      onClick={handleClick}
+      title={
+        mode === "scale"
+          ? `${current} — this town leans ${heat < 0.5 ? "seller" : heat > 0.5 ? "buyer" : "balanced"}. Switch to ${next}`
+          : `${current} — switch to ${next}`
+      }
       aria-label={`Towns ordered ${current}. Switch to ${next}.`}
-      className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      className="inline-flex h-16 w-16 shrink-0 items-center justify-center overflow-visible rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
-      <svg viewBox="-4 -3 50 42" className="h-16 w-16" aria-hidden>
-        <path
-          d="M18 7v16"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
+      {mode === "yin-yang" ? (
+        <YinYangPulseGlyph
+          key={`${spinKey}-${spinDir}`}
+          className={`h-7 w-7 ${
+            spinKey > 0
+              ? spinDir === "cw"
+                ? "mp-favor-yin-spin-cw"
+                : "mp-favor-yin-spin-ccw"
+              : ""
+          }`}
         />
-        <path d="M13 27h10l-5-5z" fill="currentColor" />
-        <g
-          transform={buyers ? "rotate(8 18 9)" : "rotate(-8 18 9)"}
-          className="transition-transform duration-200"
-        >
-          <path
-            d="M2 9h38"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-          {/* Seller: a money bag, tied at the neck, with its dollar mark. */}
-          <g fill="var(--color-coral, #C85A3A)">
-            <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
-            <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
-          </g>
-          <text
-            x="5"
-            y="17.4"
-            textAnchor="middle"
-            fontSize="6"
-            fontWeight="700"
-            fill="#fff"
+      ) : (
+        <svg viewBox="-8 -16 58 48" className="h-16 w-16 overflow-visible" aria-hidden>
+          {/* Same width as before, shorter so the beam has room to tip. */}
+          <path d="M18 8.4 L11.2 20.2 L24.8 20.2 Z" fill="currentColor" />
+          <g
+            transform={`rotate(${tiltDeg.toFixed(2)} 18 9)`}
+            className="transition-transform duration-200"
           >
-            $
-          </text>
-          {/*
-           * Buyer: the house stands on the beam and the key hangs beneath it,
-           * so the key has the whole pan to run along rather than sharing it
-           * end to end with the house.
-           */}
-          <g>
             <path
-              d="M33 1.6l4.2 4.1h-1.45v2.9h-5.5v-2.9h-1.45z"
-              fill="var(--color-sage, #4A7C6F)"
+              d="M2 9h38"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
             />
-            <g fill="#000">
-              <rect x="24" y="11.6" width="14" height="0.95" rx="0.3" />
-              <rect x="24.2" y="12.5" width="0.6" height="1.9" rx="0.15" />
-              <rect x="25.2" y="12.5" width="0.45" height="1.1" rx="0.15" />
-              <rect x="26" y="12.5" width="0.7" height="1.6" rx="0.15" />
-              <rect x="27.1" y="12.5" width="0.4" height="0.9" rx="0.15" />
-              <rect x="27.9" y="12.5" width="0.55" height="1.75" rx="0.15" />
-              <circle cx="39.8" cy="12.05" r="1.9" />
+            {/* Seller: larger bag, still sitting on the beam. */}
+            <g transform="translate(5 9) scale(1.55) translate(-5 -9)">
+              <g transform="translate(0 -10.2)" fill="var(--color-coral, #C85A3A)">
+                <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
+                <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
+              </g>
+              <text
+                x="5"
+                y="7.2"
+                textAnchor="middle"
+                fontSize="6"
+                fontWeight="700"
+                fill="#fff"
+              >
+                $
+              </text>
+            </g>
+            {/*
+             * Buyer: larger house on the beam; the key still hangs beneath
+             * so it keeps the whole pan rather than sharing it with the house.
+             */}
+            <g transform="translate(33 9) scale(1.55) translate(-33 -9)">
+              <path
+                d="M33 1.6l4.2 4.1h-1.45v2.9h-5.5v-2.9h-1.45z"
+                fill="var(--color-sage, #4A7C6F)"
+              />
+              <g fill="#000">
+                <rect x="24" y="11.6" width="14" height="0.95" rx="0.3" />
+                <rect x="24.2" y="12.5" width="0.6" height="1.9" rx="0.15" />
+                <rect x="25.2" y="12.5" width="0.45" height="1.1" rx="0.15" />
+                <rect x="26" y="12.5" width="0.7" height="1.6" rx="0.15" />
+                <rect x="27.1" y="12.5" width="0.4" height="0.9" rx="0.15" />
+                <rect x="27.9" y="12.5" width="0.55" height="1.75" rx="0.15" />
+                <circle cx="39.8" cy="12.05" r="1.9" />
+              </g>
             </g>
           </g>
-        </g>
-      </svg>
+        </svg>
+      )}
     </button>
   );
 }
@@ -1305,7 +1363,9 @@ export default function WeeklyBriefContent({
   const [townsExpanded, setTownsExpanded] = useState(false);
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
   const [kpisPinned, setKpisPinned] = useState(false);
+  const [chromeHeightPx, setChromeHeightPx] = useState(0);
   const [navOffsetPx, setNavOffsetPx] = useState(96);
   const [compareCity, setCompareCity] = useState<string | null>(null);
 
@@ -1482,6 +1542,19 @@ export default function WeeklyBriefContent({
     };
   }, [townsExpanded, chartLayout, lookbackId]);
 
+  useLayoutEffect(() => {
+    const el = chromeRef.current;
+    if (!el || kpisPinned) return;
+    const measure = () => {
+      setChromeHeightPx(el.getBoundingClientRect().height);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [kpisPinned, categoryFilter, chartLayout]);
+
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
 
   const townMetricsControls = (
@@ -1530,7 +1603,34 @@ export default function WeeklyBriefContent({
       ? cityLabel({ city: compareCity })
       : null;
 
+  const comparingTownHeat =
+    compareRow && comparingTown
+      ? heatForCity(unstackedScale.heatByCity, compareRow.city)
+      : null;
+
   const kpiTownLabel = comparingTown ?? "All Towns";
+
+  const chromeToolbar = (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      {categoryFilter}
+      <div className="flex items-center gap-2">
+        <FavorSortToggle
+          favorSort={favorSort}
+          mode={comparingTown ? "scale" : "yin-yang"}
+          townHeat={comparingTownHeat}
+          onToggle={() => {
+            // Reordering a list of one says nothing, so asking for an order
+            // is also asking to see the towns it applies to.
+            setTownsExpanded(true);
+            setFavorSort((current) =>
+              current === "buyers" ? "sellers" : "buyers",
+            );
+          }}
+        />
+        {townMetricsControls}
+      </div>
+    </div>
+  );
 
   const kpiStrip = (
     <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -1589,47 +1689,40 @@ export default function WeeklyBriefContent({
         </p>
       </header>
 
-      {kpisPinned ? (
-        <div
-          ref={pinnedKpiBarRef}
-          className="fixed inset-x-0 z-40 border-b border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
-          style={{ top: navOffsetPx }}
-          data-mp-kpi-pinned
-        >
-          <div className="mx-auto max-w-2xl px-3 py-2 sm:px-8">
-            {comparingTown ? (
-              <p className="mb-1.5 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
-                vs All towns
-              </p>
-            ) : null}
-            {kpiStrip}
-          </div>
-        </div>
-      ) : null}
-
       <div className="rounded-b-2xl border border-t-0 border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-card-bg)] px-3 py-6 sm:px-8 sm:py-7 space-y-4 shadow-sm shadow-black/5">
-        <div
-          ref={kpiSentinelRef}
-          className={kpisPinned ? "invisible" : undefined}
-        >
-          {kpiStrip}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          {categoryFilter}
-          <div className="flex items-center gap-2">
-          <FavorSortToggle
-            favorSort={favorSort}
-            onToggle={() => {
-              // Reordering a list of one says nothing, so asking for an order
-              // is also asking to see the towns it applies to.
-              setTownsExpanded(true);
-              setFavorSort((current) =>
-                current === "buyers" ? "sellers" : "buyers",
-              );
+        <div>
+          <div ref={kpiSentinelRef} className="h-0" />
+          {kpisPinned ? (
+            <div style={{ height: chromeHeightPx }} aria-hidden />
+          ) : null}
+          <div
+            ref={(el) => {
+              chromeRef.current = el;
+              pinnedKpiBarRef.current = el;
             }}
-          />
-          {townMetricsControls}
+            className={
+              kpisPinned
+                ? "fixed inset-x-0 z-40 border-b border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)]/95 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.28)] backdrop-blur-md"
+                : undefined
+            }
+            style={kpisPinned ? { top: navOffsetPx } : undefined}
+            data-mp-kpi-pinned={kpisPinned ? true : undefined}
+          >
+            <div
+              className={
+                kpisPinned
+                  ? "mx-auto max-w-2xl space-y-3 px-3 py-2 sm:px-8"
+                  : "space-y-4"
+              }
+            >
+              {kpisPinned && comparingTown ? (
+                <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
+                  vs All towns
+                </p>
+              ) : null}
+              {kpiStrip}
+              {chromeToolbar}
+            </div>
           </div>
         </div>
 

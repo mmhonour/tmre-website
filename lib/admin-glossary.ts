@@ -278,6 +278,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and mirrored onto every `listings.vision_pid` at that address when the Vision listing-match stack finds exactly one Vision PID (re-lists included; 2+ PIDs stay unmatched). See Vision listing match.',
   },
   {
+    term: 'vision_streets',
+    category: 'sync-admin',
+    definition:
+      'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Each Vision chunk starts by fetching any missing Streets.aspx?Letter= pages into this table (fillMissingVisionStreetIndex) — that does not move the parcel crawl cursor. Entering a letter during the parcel walk also replaces that letter. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. Admin-only page `/streets` (password gate, not in the public menu) reads this table. House numbers live in `vision_street_parcels`. `vision_addresses.street_name` is only streets whose Field Cards have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
+  },
+  {
+    term: 'vision_street_parcels',
+    category: 'sync-admin',
+    definition:
+      'Neon table of house numbers per official street (db/migrations/0025_vision_street_parcels.sql). Source is Streets.aspx?Name=… — the same page the crawler already fetches to walk parcels (5 Locust Ln, 6 Locust Ln, vision_pid). Street-scoped replace after a successful parse; a fault cannot empty another street. Each Vision chunk runs fillMissingVisionStreetParcels until every official name has a house list (or a fetch fault); `vision_streets.parcels_synced_at` marks the Name= fetch so an empty street cannot loop. Admin `/streets/{town}/{street}` lists them; Westport rows link to `/find/westport/{pid}`. Not a substitute for `vision_addresses` Field Cards.',
+  },
+  {
     term: 'Westport Vision GIS homepage',
     category: 'sync-admin',
     definition:
@@ -293,7 +305,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision-addresses (sync)',
     category: 'sync-admin',
     definition:
-      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. Each chunk first fills missing `vision_streets` letters and `vision_street_parcels` house lists for every town in `VISION_GIS_TOWNS` (add a town there — no Sync now). If that index is incomplete, the Railway sweep enqueues off the weekly slot (`visionStreetIndexNeedsCatchUp`). Then it walks Field Cards for the current crawl town. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk; letter-index only is `npm run sync:vision-streets`. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Sync now and the thin cron enqueue on `sync_queue`; the Railway runner claims and forks (Netlify `sync-vision-addresses-worker` only if the row is stranded). That hop is what returned HTTP 429 when Admin tried to queue the worker directly. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
   },
   {
     term: 'Brokerage name',
@@ -434,6 +446,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'Admin Syncs → Configure: Frequency picklist + Start time (ET) + per-job Budget (minutes) persist in sync_meta (sync_schedule_config). Netlify wakes every 30m; handlers check due, then enqueue onto sync_queue instead of picking a host. The per-job Scheduler radio is gone — the Railway runner claims whatever is queued, and Netlify only executes a row itself when the runner heartbeat proves it is gone. Next start is read-only (computed). Order ▲/▼ sets Sync all priority — Incremental is included. Dashboard shows a Queue column (running with budget left, queued with position + Cancel, or the last outcome); Next ▲/▼ still writes one-time sync_next_override_<job> (clears after a successful run).',
+  },
+  {
+    term: 'open_houses',
+    category: 'sync-admin',
+    definition:
+      'Neon table of public SmartMLS OpenHouse events (db/migrations/0023_open_houses.sql). /open-houses reads this table only — no RETS on the page. The hourly queue job replaces today through +90 days (so a cancelled showing disappears) and upserts the prior year (so MLS dropping an old row cannot erase a past count). Rows older than the lookback horizon are pruned. The page still lists homes with a showing in the next 7 days, and each card shows past / upcoming counts from everything stored. MLS times stay text, not timestamps, so 11am stays 11am in Connecticut.',
   },
   {
     term: 'sync_queue',

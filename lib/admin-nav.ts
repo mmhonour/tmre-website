@@ -805,6 +805,12 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
     description: "Westport Vision GIS address lookup and parcel page",
   },
   {
+    label: "Streets",
+    href: "/streets",
+    description:
+      "Admin-only A–Z assessor streets plus house numbers (vision_streets / vision_street_parcels). Password gate; not in the public menu.",
+  },
+  {
     label: "Westport Vision GIS",
     href: WESTPORT_VISION_GIS_HOME,
     description:
@@ -918,7 +924,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-vision-addresses",
     detail:
-      "Thin Vision GIS trigger — queues sync-vision-addresses-worker (cadastral crawl)",
+      "Thin Vision GIS trigger — enqueues sync_queue for the Railway runner; worker only if stranded",
     schedule: "Weekly Mon ~1:30am ET",
   },
   {

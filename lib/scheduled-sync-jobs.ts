@@ -18,6 +18,7 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'property-addresses': 'property-addresses',
   'vision-addresses': 'vision-addresses',
   'zip-boundaries': 'zip-boundaries',
+  'open-houses': 'open-houses',
   'fomc-sync': 'fomc-sync',
   'cpi-sync': 'cpi-sync',
   'market-digest': 'market-digest',

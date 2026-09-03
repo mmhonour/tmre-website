@@ -38,11 +38,16 @@ export const ADMIN_SYNC_ACTIONS = {
   'vision-addresses': {
     label: 'Vision addresses (GIS)',
     description:
-      'VGSI cadastral crawl → vision_addresses.field_card JSON + Field Card HTML pointer in R2; then the Vision listing-match stack (exact / name words / trailing type / MBLU) stamps listings.vision_pid when exactly one PID matches',
+      'VGSI cadastral crawl → vision_streets letter index (missing letters first) + vision_addresses Field Cards; then Vision listing-match stamps listings.vision_pid. Admin Sync now enqueues the Railway runner.',
   },
   'zip-boundaries': {
     label: 'Zip boundary maps',
     description: 'Census TIGERweb ZCTA rings → Postgres for Intelligence / Latest maps',
+  },
+  'open-houses': {
+    label: 'Open houses',
+    description:
+      'SmartMLS OpenHouse → open_houses (90-day upcoming replace + 1-year lookback) for /open-houses counts',
   },
   'fomc-sync': {
     label: 'FOMC statement sync',
@@ -81,6 +86,7 @@ export const ADMIN_SYNC_ALL_SEQUENCE = [
   'property-addresses',
   'vision-addresses',
   'zip-boundaries',
+  'open-houses',
   // fomc-sync / cpi-sync / market-digest omitted — event/email jobs
   // full-resync omitted — retired (bucket replace deletes older MLS rows)
 ] as const satisfies readonly AdminSyncActionId[]
@@ -105,9 +111,10 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'property-addresses': 6,
   'vision-addresses': 7,
   'zip-boundaries': 8,
-  'fomc-sync': 9,
-  'cpi-sync': 10,
-  'market-digest': 11,
+  'open-houses': 9,
+  'fomc-sync': 10,
+  'cpi-sync': 11,
+  'market-digest': 12,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

@@ -50,6 +50,7 @@ type HeatmapStatus = {
   visionAddressesSyncedAt?: string | null;
   zipBoundariesSyncedAt?: string | null;
   zipBoundariesSyncStartedAt?: string | null;
+  openHousesSyncedAt?: string | null;
   fomcLastSyncedAt?: string | null;
   cpiLastSyncedAt?: string | null;
   marketDigestLastSentAt?: string | null;
@@ -151,6 +152,8 @@ function liveFinishedForRow(
       return status.visionAddressesSyncedAt ?? null;
     case "zip-boundaries":
       return status.zipBoundariesSyncedAt ?? null;
+    case "open-houses":
+      return status.openHousesSyncedAt ?? null;
     case "fomc-sync":
       return status.fomcLastSyncedAt ?? null;
     case "cpi-sync":

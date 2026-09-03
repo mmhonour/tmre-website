@@ -203,10 +203,21 @@ export async function dispatchEventBridgeScheduledJob(
       queue = await queueNetlifyPropertyAddressSync()
       break
     case 'vision-addresses':
+      // Queue-runner job — should have returned above. Worker is rescue-only.
       queue = await queueNetlifyVisionAddressSync()
       break
     case 'zip-boundaries':
       queue = await queueNetlifyZipBoundariesSync()
+      break
+    case 'open-houses':
+      // Queue-runner job — should have returned above. No Netlify worker exists.
+      queue = {
+        ok: false,
+        status: null,
+        base: 'sync_queue',
+        error:
+          'open-houses has no Netlify worker — the Railway runner owns this job',
+      }
       break
     case 'market-digest':
       queue = await queueNetlifyMarketDigest({

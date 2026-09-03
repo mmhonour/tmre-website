@@ -187,6 +187,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'property-addresses',
       'vision-addresses',
       'zip-boundaries',
+      'open-houses',
       'fomc-sync',
       'cpi-sync',
       'market-digest',
@@ -233,6 +234,13 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'zip-boundaries': {
         frequency: 'monthly',
         startTimeEt: '06:00',
+      },
+      // Open houses are announced and cancelled through the week. The page
+      // lists the next 7 days; the job also stores 90 days ahead and a year
+      // of history for the past / upcoming counts.
+      'open-houses': {
+        frequency: '60m',
+        startTimeEt: '00:00',
       },
       'fomc-sync': {
         frequency: 'event',
@@ -307,7 +315,8 @@ function isSyncAllActionableJob(
     jobId === 'deal-of-the-day' ||
     jobId === 'property-addresses' ||
     jobId === 'vision-addresses' ||
-    jobId === 'zip-boundaries'
+    jobId === 'zip-boundaries' ||
+    jobId === 'open-houses'
     // fomc-sync / cpi-sync / market-digest — not part of Sync all
   )
 }

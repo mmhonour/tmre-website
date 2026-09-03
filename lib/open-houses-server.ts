@@ -43,16 +43,22 @@ function isPublicOpenHouseType(v: string): boolean {
   return !s || s === 'public' || s === 'o'
 }
 
-function mapOpenHouse(r: RawOpenHouse): OpenHouseEvent | null {
+function mapOpenHouse(
+  r: RawOpenHouse,
+  options: { activeOnly: boolean },
+): OpenHouseEvent | null {
   const date = str(r.OHDate)
   if (!date) return null
   if (str(r.IsDeleted) === '1') return null
 
-  const activeYn = str(r.OHActiveYN)
-  if (activeYn && !isTruthyYn(activeYn)) return null
-  if (!isActiveOpenHouseStatus(str(r.OpenHouseStatus))) return null
   const type = str(r.OHType)
   if (!isPublicOpenHouseType(type)) return null
+
+  if (options.activeOnly) {
+    const activeYn = str(r.OHActiveYN)
+    if (activeYn && !isTruthyYn(activeYn)) return null
+    if (!isActiveOpenHouseStatus(str(r.OpenHouseStatus))) return null
+  }
 
   const listingKey = str(r.OHListingKey)
   const listingId = str(r.OHListingId)
@@ -83,11 +89,12 @@ function sortOpenHouseEvents(events: OpenHouseEvent[]): OpenHouseEvent[] {
  * Bare words / wrong codes → NO_RECORDS_FOUND. Fall back to date+ActiveYN and
  * filter Public/Active in {@link mapOpenHouse}.
  */
-function openHouseDmqlCandidates(window: {
-  start: string
-  end: string
-}): string[] {
+function openHouseDmqlCandidates(
+  window: { start: string; end: string },
+  activeOnly: boolean,
+): string[] {
   const date = `(OHDate=${window.start}-${window.end})`
+  if (!activeOnly) return [date]
   return [
     `${date},(OHActiveYN=1),(OpenHouseStatus=|A),(OHType=|O)`,
     `${date},(OHActiveYN=1)`,
@@ -120,7 +127,40 @@ async function searchOpenHouse(
   }
 }
 
-/** Public active open houses with OHDate in the inclusive ET calendar window. */
+/**
+ * Public active open houses with OHDate in the inclusive ET calendar window,
+ * straight from RETS.
+ *
+ * Throws on a RETS fault rather than returning an empty list. The sync needs
+ * that distinction: "the MLS has no open houses this week" and "the query
+ * failed" are the same empty array, and only one of them may be allowed to
+ * clear the table.
+ */
+export async function fetchUpcomingOpenHousesStrict(
+  window = openHouseDateWindow(),
+  options: { activeOnly?: boolean } = {},
+): Promise<OpenHouseEvent[]> {
+  const activeOnly = options.activeOnly !== false
+  const records = await withRetsClient(async (client) => {
+    for (const dmql of openHouseDmqlCandidates(window, activeOnly)) {
+      const rows = await searchOpenHouse(client, dmql)
+      if (rows.length > 0) return rows
+    }
+    return []
+  })
+
+  return sortOpenHouseEvents(
+    records
+      .map((row) => mapOpenHouse(row, { activeOnly }))
+      .filter((e): e is OpenHouseEvent => e != null)
+      .filter((e) => isDateInOpenHouseWindow(e.date, window)),
+  )
+}
+
+/**
+ * Forgiving variant kept for callers that would rather show nothing than fail.
+ * Page requests no longer use this — they read Neon.
+ */
 export async function fetchUpcomingOpenHouses(
   window = openHouseDateWindow(),
 ): Promise<OpenHouseEvent[]> {
@@ -132,7 +172,7 @@ export async function fetchUpcomingOpenHouses(
   let usedDmql: string | null = null
   try {
     records = await withRetsClient(async (client) => {
-      for (const dmql of openHouseDmqlCandidates(window)) {
+      for (const dmql of openHouseDmqlCandidates(window, true)) {
         const rows = await searchOpenHouse(client, dmql)
         if (rows.length > 0) {
           usedDmql = dmql
@@ -158,7 +198,7 @@ export async function fetchUpcomingOpenHouses(
 
   const events = sortOpenHouseEvents(
     records
-      .map(mapOpenHouse)
+      .map((row) => mapOpenHouse(row, { activeOnly: true }))
       .filter((e): e is OpenHouseEvent => e != null)
       .filter((e) => isDateInOpenHouseWindow(e.date, window)),
   )

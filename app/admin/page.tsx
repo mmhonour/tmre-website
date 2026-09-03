@@ -376,6 +376,7 @@ export default async function AdminPage() {
     formatVisionAddressesLiveProgress(visionAddressesLive);
   const zipBoundariesSyncedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_KEY);
   const zipBoundariesSyncStartedAt = getSyncMeta(ZIP_BOUNDARIES_LAST_SYNC_STARTED_KEY);
+  const openHousesSyncedAt = getSyncMeta("open_houses_synced_at");
   const fomcLastSyncedAt = getSyncMeta("fomc_last_synced_at");
   const cpiLastSyncedAt = getSyncMeta("cpi_last_synced_at");
   const marketDigestLastSentAt = getSyncMeta("market_digest_last_sent_at");
@@ -565,6 +566,17 @@ export default async function AdminPage() {
       nextRunAt: nextRuns["zip-boundaries"],
     },
     {
+      id: "open-houses",
+      label: "Open houses",
+      value: formatTimestamp(openHousesSyncedAt),
+      finishedAt: openHousesSyncedAt,
+      sortMs: timestampSortMs(openHousesSyncedAt),
+      detail:
+        "SmartMLS OpenHouse → open_houses (90-day upcoming + 1-year lookback) for /open-houses counts (hourly)",
+      actionId: "open-houses",
+      nextRunAt: nextRuns["open-houses"],
+    },
+    {
       id: "fomc-sync",
       label: "FOMC statement sync",
       value: formatTimestamp(fomcLastSyncedAt),
@@ -618,6 +630,7 @@ export default async function AdminPage() {
     visionAddressesLiveStatus,
     zipBoundariesSyncedAt,
     zipBoundariesSyncStartedAt,
+    openHousesSyncedAt,
     fomcLastSyncedAt,
     cpiLastSyncedAt,
     marketDigestLastSentAt,

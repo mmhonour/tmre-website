@@ -706,6 +706,42 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'sync_runs' },
   },
   {
+    id: 'vision-streets',
+    name: 'Vision street index',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'vision_streets',
+    keyPattern: 'table rows (town + street_name)',
+    owner: 'lib/db/vision-streets-repo.ts',
+    notes:
+      'Official VGSI Streets.aspx letter index, persisted when the Vision crawler loads a letter. Letter-scoped replace so a cancelled street disappears on the next successful fetch of that letter, and a fault cannot empty the town.',
+    live: { kind: 'postgres_table', table: 'vision_streets' },
+  },
+  {
+    id: 'vision-street-parcels',
+    name: 'Vision street addresses',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'vision_street_parcels',
+    keyPattern: 'table rows (town + street_name + vision_pid)',
+    owner: 'lib/db/vision-streets-repo.ts',
+    notes:
+      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills every official name that still has no houses (one Railway chunk). Street-scoped replace so a fault cannot empty another street. /streets reads this table; Field Cards stay in vision_addresses.',
+    live: { kind: 'postgres_table', table: 'vision_street_parcels' },
+  },
+  {
+    id: 'open-houses',
+    name: 'Open house events',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'open_houses',
+    keyPattern: 'table rows (90-day upcoming + 1-year lookback)',
+    owner: 'lib/open-houses-sync.ts',
+    notes:
+      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today .. +90d) is replaced so cancellations disappear; the prior year is upserted so past counts survive. /open-houses joins the next 7 days to listings and reads past / upcoming counts from this table. A failed RETS pull must not empty a window.',
+    live: { kind: 'postgres_table', table: 'open_houses' },
+  },
+  {
     id: 'sync-queue',
     name: 'Sync job queue',
     category: 'sync-control',
@@ -787,12 +823,14 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
   },
   {
     id: 'open-houses-memory',
-    name: 'Open houses window cache',
+    name: 'Open houses RETS helper cache',
     category: 'ephemeral',
     medium: 'memory',
     location: 'Process Map',
     keyPattern: 'oh:{start}:{end}',
     owner: 'lib/open-houses-server.ts',
+    notes:
+      'Only the leftover forgiving RETS helper caches here. The /open-houses page reads Neon.',
     live: { kind: 'none' },
   },
   {

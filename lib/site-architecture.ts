@@ -90,7 +90,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
   {
     id: "neon",
     label: "Neon Postgres",
-    role: "Listings, sync_meta, sync_queue, stats_cache, visitors, alerts",
+    role: "Listings, open_houses, sync_meta, sync_queue, stats_cache, visitors, alerts",
     kind: "core",
     note:
       "Lane 2 handoff — inventory truth for Netlify + local. Shared when DATABASE_URL points here. Website never needs Railway up to know what’s listed.",
@@ -98,7 +98,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
   {
     id: "rets",
     label: "SmartMLS RETS",
-    role: "MLS listings, photos metadata, history",
+    role: "MLS listings, OpenHouse events, photos metadata, history",
     kind: "core",
     note: "Pulled by the forked child the Railway mls-sync runner starts. Netlify worker RETS is the stranded-row rescue path only.",
   },

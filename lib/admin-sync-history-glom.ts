@@ -33,6 +33,7 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   addresses: 'Addresses',
   vision: 'Vision addresses',
   'zip-maps': 'Zip boundaries',
+  'open-houses': 'Open houses',
   snapshot: 'Refresh finished',
   fomc: 'FOMC',
   cpi: 'CPI',

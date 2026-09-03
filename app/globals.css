@@ -49,6 +49,24 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes mp-favor-yin-spin-cw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes mp-favor-yin-spin-ccw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+.mp-favor-yin-spin-cw {
+  animation: mp-favor-yin-spin-cw 0.65s ease-in-out;
+}
+
+.mp-favor-yin-spin-ccw {
+  animation: mp-favor-yin-spin-ccw 0.65s ease-in-out;
+}
+
 /* Latest continuous ticker — seamless upward scroll (duplicated list). */
 .latest-smooth-scroll {
   height: calc(var(--latest-row-height, 48px) * var(--latest-visible-rows, 7));

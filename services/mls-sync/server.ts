@@ -101,6 +101,18 @@ const SWEEPS: {
     bootDelayMs: 6 * 60_000,
     label: 'market digest',
   },
+  {
+    jobId: 'open-houses',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 7 * 60_000,
+    label: 'open houses',
+  },
+  {
+    jobId: 'vision-addresses',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 8 * 60_000,
+    label: 'vision addresses',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {
@@ -177,6 +189,13 @@ async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
 
   if (await isScheduledSyncJobPausedFresh(jobId)) return false
   if (shouldDeferScheduledJob(jobId)) return false
+
+  if (jobId === 'vision-addresses') {
+    const { visionStreetIndexNeedsCatchUp } = await import(
+      '../../lib/db/vision-streets-repo'
+    )
+    if (await visionStreetIndexNeedsCatchUp()) return true
+  }
 
   const config = await readSyncScheduleConfigFresh()
   const lastFinishedAt = await getSyncMeta(lastFinishedMetaKey(jobId))
@@ -334,6 +353,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/scores': 'listing-scores',
   '/deal-of-the-day': 'deal-of-the-day',
   '/property-addresses': 'property-addresses',
+  '/vision-addresses': 'vision-addresses',
   '/market-digest': 'market-digest',
 }
 

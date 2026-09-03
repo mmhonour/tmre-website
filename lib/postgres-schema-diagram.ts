@@ -51,8 +51,33 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     source: 'documented',
   },
   {
+    from: { table: 'vision_addresses', column: 'town' },
+    to: { table: 'vision_streets', column: 'town' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'vision_street_parcels', column: 'street_name' },
+    to: { table: 'vision_streets', column: 'street_name' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'vision_street_parcels', column: 'vision_pid' },
+    to: { table: 'vision_addresses', column: 'vision_pid' },
+    source: 'documented',
+  },
+  {
     from: { table: 'listings', column: 'id' },
     to: { table: 'listing_price_history', column: 'listing_id' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'listings', column: 'mls_id' },
+    to: { table: 'open_houses', column: 'listing_id' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'listings', column: 'listing_key' },
+    to: { table: 'open_houses', column: 'listing_key' },
     source: 'documented',
   },
 ]
@@ -88,6 +113,33 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'mls_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'source', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'verified_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  open_houses: [
+    { name: 'id', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'listing_key', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'listing_id', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'oh_date', type: 'date', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'start_datetime', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'end_datetime', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'oh_type', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'comment', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  vision_streets: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'street_name', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'letter', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'source_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'parcels_synced_at', type: 'timestamp with time zone', notNull: false, primaryKey: false, defaultValue: null },
+  ],
+  vision_street_parcels: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'street_name', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'vision_pid', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'address_label', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'source_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
   ],
 }
