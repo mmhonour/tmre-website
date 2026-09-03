@@ -203,6 +203,7 @@ export async function dispatchEventBridgeScheduledJob(
       queue = await queueNetlifyPropertyAddressSync()
       break
     case 'vision-addresses':
+      // Queue-runner job — should have returned above. Worker is rescue-only.
       queue = await queueNetlifyVisionAddressSync()
       break
     case 'zip-boundaries':
