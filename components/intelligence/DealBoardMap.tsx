@@ -14,6 +14,10 @@ import { HouseIcon } from "@/components/icons";
 import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
+import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
+import { locationEstimateOverlayShapes } from "@/lib/location-estimate-map-shapes";
+
+const LOCATION_OVERLAY_SHAPES = locationEstimateOverlayShapes();
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -443,6 +447,7 @@ export default function DealBoardMap({
    */
   subjectKey?: string | null;
 }) {
+  const locationOverlay = useLocationEstimateOverlay();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [center, setCenter] = useState<LonLat>(FALLBACK_CENTER);
@@ -1077,6 +1082,25 @@ export default function DealBoardMap({
       .filter(Boolean);
   }, [rings, viewport, zoom]);
 
+  const estimateOverlayPaths = useMemo(() => {
+    if (!locationOverlay.enabled || !viewport) return [];
+    return LOCATION_OVERLAY_SHAPES.rings
+      .map((layer) => ({
+        ...layer,
+        d: ringToPath(layer.ring, viewport, zoom),
+      }))
+      .filter((layer) => layer.d);
+  }, [locationOverlay.enabled, viewport, zoom]);
+
+  const estimateOverlayDots = useMemo(() => {
+    if (!locationOverlay.enabled || !viewport) return [];
+    return LOCATION_OVERLAY_SHAPES.dots.map((dot) => ({
+      ...dot,
+      left: lonToWorldX(dot.lon, zoom) - viewport.left,
+      top: latToWorldY(dot.lat, zoom) - viewport.top,
+    }));
+  }, [locationOverlay.enabled, viewport, zoom]);
+
   return (
     <div className={`relative ${className}`}>
       <div
@@ -1161,6 +1185,43 @@ export default function DealBoardMap({
             })}
           </svg>
         ) : null}
+
+        {estimateOverlayPaths.length > 0 && size.width > 0 ? (
+          <svg
+            className="pointer-events-none absolute inset-0 z-[6] h-full w-full"
+            viewBox={`0 0 ${size.width} ${size.height}`}
+            aria-hidden
+          >
+            {estimateOverlayPaths.map((layer) => (
+              <path
+                key={layer.id}
+                d={layer.d}
+                fill="none"
+                stroke={
+                  layer.kind === "town_center"
+                    ? "rgba(74, 141, 183, 0.95)"
+                    : "rgba(232, 93, 58, 0.88)"
+                }
+                strokeWidth={layer.kind === "town_center" ? 1.8 : 1.35}
+                strokeDasharray={layer.kind === "town_center" ? "6 5" : "3.5 3"}
+                opacity={
+                  layer.kind === "coastal_strip"
+                    ? Math.max(0.4, 1 - (layer.stripIndex ?? 0) * 0.16)
+                    : 1
+                }
+              />
+            ))}
+          </svg>
+        ) : null}
+
+        {estimateOverlayDots.map((dot) => (
+          <span
+            key={dot.id}
+            className="pointer-events-none absolute z-[7] h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky shadow-[0_0_0_1px_rgba(255,255,255,0.75)]"
+            style={{ left: dot.left, top: dot.top }}
+            title={dot.label}
+          />
+        ))}
 
         {pins.map((pin) => {
           const isActive =
@@ -1298,6 +1359,25 @@ export default function DealBoardMap({
               ) : null}
             </div>
           </PreviewCard>
+        ) : null}
+
+        {locationOverlay.unlocked ? (
+          <button
+            type="button"
+            onClick={() => void locationOverlay.setEnabled(!locationOverlay.enabled)}
+            disabled={locationOverlay.busy}
+            aria-pressed={locationOverlay.enabled}
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse") e.stopPropagation();
+            }}
+            className={`absolute left-2 top-2 z-30 rounded-md border px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] shadow-lg backdrop-blur-sm transition-colors ${
+              locationOverlay.enabled
+                ? "border-sky/40 bg-navy/90 text-sky"
+                : "border-white/15 bg-navy/85 text-white/80 hover:text-gold"
+            }`}
+          >
+            {locationOverlay.enabled ? "Hide corridors" : "Show corridors"}
+          </button>
         ) : null}
 
         <MapControls

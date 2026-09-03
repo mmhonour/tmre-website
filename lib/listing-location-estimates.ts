@@ -167,6 +167,20 @@ export function localEastNorth(
   }
 }
 
+/** Inverse of `localEastNorth` — place a point by east/north miles. */
+export function offsetLatLon(
+  originLat: number,
+  originLon: number,
+  eastMiles: number,
+  northMiles: number,
+): { lat: number; lon: number } {
+  const latRad = (originLat * Math.PI) / 180
+  return {
+    lat: originLat + northMiles / MILES_PER_DEG_LAT,
+    lon: originLon + eastMiles / (MILES_PER_DEG_LAT * Math.cos(latRad)),
+  }
+}
+
 export type AxisUnit = { east: number; north: number }
 
 export function unitOffset(east: number, north: number): AxisUnit | null {

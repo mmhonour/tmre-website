@@ -21,7 +21,8 @@ import {
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
-type CardId = "pulse" | "insight" | "details";
+type CardId = "details";
+type OverlayId = "insight" | "map" | "pulse" | "details";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
@@ -68,6 +69,25 @@ function CountChip({
   );
 }
 
+function InsightGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 18h6M10 21h4" />
+      <path d="M8 14.2C6.2 12.8 5 10.7 5 8.4A7 7 0 0 1 12 1.5 7 7 0 0 1 19 8.4c0 2.3-1.2 4.4-3 5.8" />
+      <path d="M9 14h6v2.2a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V14z" />
+    </svg>
+  );
+}
+
 function MapGlyph() {
   return (
     <svg
@@ -82,6 +102,24 @@ function MapGlyph() {
     >
       <path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z" />
       <path d="M9 4v13M15 6.5v13" />
+    </svg>
+  );
+}
+
+function PulseGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="5.6" />
+      <circle cx="12" cy="12" r="9" className="opacity-45" />
     </svg>
   );
 }
@@ -141,9 +179,9 @@ type CompsCounts = { active: number; sold: number; soldMonths: number };
 type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
- * Rail of flush rectangular tiles over the right of the photo. Insight and
- * Details expand in flow; Comps and What if carry their own figures and jump to
- * the matching section; Map takes over the right column.
+ * Rail of flush rectangular tiles over the right of the photo. Insight, map,
+ * pulse and details share one exclusive icon row; Comps and What if carry
+ * their own figures and jump to the matching section.
  *
  * Below `lg` the figures are hidden behind a pulsing chevron — first tap
  * reveals them, second tap navigates — so the rail stays narrow on a phone.
@@ -174,18 +212,29 @@ export default function ShowcaseSectionRail({
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
-  /** Swaps the tile stack for a standalone Details summary over the photo. */
-  const [detailsOnly, setDetailsOnly] = useState(false);
-  const [mapOpen, setMapOpen] = useState(false);
+  /**
+   * Insight, map, pulse and details share one overlay so their icons stay a
+   * single exclusive toggle — opening one closes the others, and the icon
+   * row travels with whichever panel is up.
+   */
+  const [overlay, setOverlayState] = useState<OverlayId | null>(null);
   const [mapExpanded, setMapExpanded] = useState(false);
 
-  const openMap = (open: boolean) => {
-    setMapOpen(open);
-    onMapStateChange?.({ open, expanded: open && mapExpanded });
+  const setOverlay = (next: OverlayId | null) => {
+    setOverlayState(next);
+    onMapStateChange?.({
+      open: next === "map",
+      expanded: next === "map" && mapExpanded,
+    });
+    onDetailsOnlyChange?.(
+      next === "insight" || next === "pulse" || next === "details",
+    );
   };
+  const toggleOverlay = (id: OverlayId) =>
+    setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
-    onMapStateChange?.({ open: mapOpen, expanded });
+    onMapStateChange?.({ open: overlay === "map", expanded });
   };
   const [revealed, setRevealed] = useState<string | null>(null);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
@@ -298,38 +347,53 @@ export default function ShowcaseSectionRail({
     );
   };
 
-  /* Switches what the rail is showing rather than summarising a section. */
+  /* The four overlays share this row so they stay a group. */
   const iconRow = (
     <div className="mt-1 flex items-center gap-1">
       <button
         type="button"
-        onClick={() => openMap(true)}
-        aria-expanded={false}
-        aria-label="Open map"
+        onClick={() => toggleOverlay("insight")}
+        aria-pressed={overlay === "insight"}
+        aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
+        title="Insight"
+        className={railIconClass(overlay === "insight")}
+      >
+        <InsightGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => toggleOverlay("map")}
+        aria-pressed={overlay === "map"}
+        aria-label={overlay === "map" ? "Close map" : "Open map"}
         title="Map"
-        className={railIconClass(false)}
+        className={railIconClass(overlay === "map")}
       >
         <MapGlyph />
       </button>
       <button
         type="button"
-        onClick={() =>
-          setDetailsOnly((on) => {
-            onDetailsOnlyChange?.(!on);
-            return !on;
-          })
-        }
-        aria-pressed={detailsOnly}
-        aria-label={detailsOnly ? "Close details" : "Show details"}
-        title={detailsOnly ? "Close details" : "Details"}
-        className={railIconClass(detailsOnly)}
+        onClick={() => toggleOverlay("pulse")}
+        aria-pressed={overlay === "pulse"}
+        aria-label={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
+        title="Town pulse"
+        className={railIconClass(overlay === "pulse")}
+      >
+        <PulseGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => toggleOverlay("details")}
+        aria-pressed={overlay === "details"}
+        aria-label={overlay === "details" ? "Close details" : "Show details"}
+        title={overlay === "details" ? "Close details" : "Details"}
+        className={railIconClass(overlay === "details")}
       >
         <DetailsGlyph />
       </button>
     </div>
   );
 
-  const mapOverlay = mapOpen ? (
+  const mapOverlay = overlay === "map" ? (
     /*
      * Phone: true full screen, over the site header, like the Intelligence
      * map. The header bar below carries the only exit, so it has to stay
@@ -344,15 +408,7 @@ export default function ShowcaseSectionRail({
         mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => openMap(false)}
-        aria-expanded
-        className={`${pillClass(true, true)} shrink-0`}
-      >
-        <span className="flex-1">Map</span>
-        <Chevron open />
-      </button>
+      <div className="flex shrink-0 justify-end">{iconRow}</div>
       <div className="min-h-0 flex-1">
         <ShowcaseCompsMap
           mlsId={mlsId}
@@ -361,7 +417,7 @@ export default function ShowcaseSectionRail({
           postalCode={postalCode}
           expanded={mapExpanded}
           onToggleExpanded={() => setExpanded(!mapExpanded)}
-          onExit={() => openMap(false)}
+          onExit={() => setOverlay(null)}
         />
       </div>
     </div>
@@ -430,38 +486,47 @@ export default function ShowcaseSectionRail({
       <div
         className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
-        {detailsOnly ? (
+        {overlay === "insight" || overlay === "pulse" || overlay === "details" ? (
           <>
             {/* Icons first in this mode: the card can run to 70vh, which would
                 push the only way out below the fold. */}
             {iconRow}
-            {/* The dashboard's own Details card, not a second summary — same
-                component the deck below the photo renders. */}
-            <div className="mt-1 max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
-              <ListingSidebar details={detailsPanelProps} />
+            <button
+              type="button"
+              onClick={() => toggleOverlay(overlay)}
+              aria-expanded
+              className={`${pillClass(true, true)} mt-1`}
+            >
+              <span className="flex-1">
+                {overlay === "insight"
+                  ? "Insight"
+                  : overlay === "pulse"
+                    ? "Town pulse"
+                    : "Details"}
+              </span>
+              <Chevron open />
+            </button>
+            <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
+              {overlay === "details" ? (
+                <ListingSidebar details={detailsPanelProps} />
+              ) : overlay === "pulse" ? (
+                <div className="p-4">
+                  <ShowcaseTownPulse city={townHint ?? ""} expanded />
+                </div>
+              ) : insight ? (
+                <div className="p-4">
+                  <ListingInsightCopy
+                    text={insight}
+                    className="text-sm leading-relaxed text-white/80"
+                  />
+                </div>
+              ) : (
+                <p className="p-4 text-sm text-white/50">No insight for this listing.</p>
+              )}
             </div>
           </>
-        ) : (
+        ) : overlay === "map" ? null : (
           <>
-        {cardPill(
-          "pulse",
-          "Town pulse",
-          <ShowcaseTownPulse city={townHint ?? ""} expanded={openCard === "pulse"} />,
-        )}
-
-        {cardPill(
-          "insight",
-          "Insight",
-          insight ? (
-            <ListingInsightCopy
-              text={insight}
-              className="text-sm leading-relaxed text-white/80"
-            />
-          ) : (
-            <p className="text-sm text-white/50">No insight for this listing.</p>
-          ),
-        )}
-
         {cardPill(
           "details",
           "Details",
@@ -491,7 +556,12 @@ export default function ShowcaseSectionRail({
           </>
         )}
 
-        {detailsOnly ? null : iconRow}
+        {overlay === "insight" ||
+        overlay === "pulse" ||
+        overlay === "details" ||
+        overlay === "map"
+          ? null
+          : iconRow}
       </div>
     </>
   );
