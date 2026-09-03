@@ -381,7 +381,7 @@ export function describeStartupProcess(): {
           title: "Chunked crawl @ 1:30 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "syncVisionAddresses(): first fillMissingVisionStreetIndex() (Streets.aspx?Letter= A–Y except X/Z into vision_streets) then fillMissingVisionStreetParcels() (Streets.aspx?Name= house lists into vision_street_parcels; neither moves the parcel cursor); then Streets→Parcel Field Card parse → Neon vision_addresses.field_card JSON + R2 HTML pointer; full fill then fingerprint incremental; then backfillVisionListingLinks() (lib/vision-listing-match.ts: zip strip, street type/compass, name words, exact key, trailing street type, unique MBLU; 1 PID stamps every listing at that key). Same join: npm run match:vision-listings. Admin Sync now and the thin cron enqueue on sync_queue; the Railway runner claims and forks (Netlify worker only if the row is stranded). Skips when Pause is checked on Vision addresses (GIS).",
+            "syncVisionAddresses(): for every town in VISION_GIS_TOWNS, fillMissingVisionStreetIndex() then fillMissingVisionStreetParcels() (letter pages + house lists; does not move the Field Card cursor). Adding a town is enough — if any town is still missing letters or houses, the Railway 10-min sweep (and the thin cron) enqueue without waiting for the weekly slot or Admin Sync now. Then Streets→Parcel Field Card parse → Neon vision_addresses.field_card JSON + R2 HTML pointer for the current crawl town; full fill then fingerprint incremental; then backfillVisionListingLinks(). Pause still skips the job.",
           status: visionAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: visionAddressSyncEnabled ? "Armed" : "Disabled",
         },

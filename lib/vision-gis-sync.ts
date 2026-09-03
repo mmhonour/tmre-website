@@ -43,8 +43,7 @@ const DEFAULT_DELAY_MS = 500
 /** Safe Netlify / Admin chunk. CLI can raise via VISION_SYNC_MAX_PARCELS (cap 1000). */
 const DEFAULT_MAX_PARCELS = 40
 const ABSOLUTE_MAX_PARCELS = 1000
-/** Streets.aspx?Name= pages to persist per chunk when the index has no houses yet. */
-/** One Railway chunk should finish the remaining Name= pages (A–F already landed). */
+/** One Railway chunk should finish remaining Name= pages for every configured town. */
 const DEFAULT_STREET_PARCEL_FILL_MAX = 2000
 const ABSOLUTE_STREET_PARCEL_FILL_MAX = 2000
 const STREET_PARCEL_FILL_BATCH = 100
@@ -687,15 +686,36 @@ export async function syncVisionAddresses(
     addresses: 0,
     failed: 0,
   }
-  try {
-    streetIndexFill = await fillMissingVisionStreetIndex(cfg, delayMs)
-  } catch (err) {
-    console.warn('[vision-gis-sync] street index fill failed', err)
-  }
-  try {
-    streetParcelFill = await fillMissingVisionStreetParcels(cfg, delayMs)
-  } catch (err) {
-    console.warn('[vision-gis-sync] street parcel fill failed', err)
+  const indexTowns = options.town?.trim()
+    ? [cfg]
+    : VISION_GIS_TOWNS
+  for (const townCfg of indexTowns) {
+    try {
+      const letters = await fillMissingVisionStreetIndex(townCfg, delayMs)
+      streetIndexFill = {
+        filled: [...streetIndexFill.filled, ...letters.filled],
+        skipped: [...streetIndexFill.skipped, ...letters.skipped],
+        failed: [...streetIndexFill.failed, ...letters.failed],
+      }
+    } catch (err) {
+      console.warn(
+        `[vision-gis-sync] street index fill failed (${townCfg.town})`,
+        err,
+      )
+    }
+    try {
+      const parcels = await fillMissingVisionStreetParcels(townCfg, delayMs)
+      streetParcelFill = {
+        filled: streetParcelFill.filled + parcels.filled,
+        addresses: streetParcelFill.addresses + parcels.addresses,
+        failed: streetParcelFill.failed + parcels.failed,
+      }
+    } catch (err) {
+      console.warn(
+        `[vision-gis-sync] street parcel fill failed (${townCfg.town})`,
+        err,
+      )
+    }
   }
 
   try {
