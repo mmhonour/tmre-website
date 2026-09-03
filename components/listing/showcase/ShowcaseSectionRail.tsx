@@ -12,7 +12,10 @@ import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
-import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
+import {
+  jumpToListingSection,
+  scrollToShowcaseSection,
+} from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseDetailRow } from "@/components/listing/showcase/showcase-types";
 import {
   fmtIfRentMoney,
@@ -190,11 +193,6 @@ function useIsDesktop(): boolean {
   }, []);
   return desktop;
 }
-
-function scrollToId(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 
 type CompsCounts = { active: number; sold: number; soldMonths: number };
 type IfAmounts = { sale: number | null; rent: number | null };
@@ -490,12 +488,16 @@ export default function ShowcaseSectionRail({
             <CountChip
               label="On market"
               count={counts.active}
-              onClick={() => scrollToId(LISTING_SALE_ON_MARKET_PANEL_ID)}
+              onClick={() =>
+                jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
+              }
             />
             <CountChip
               label={`Sold ${counts.soldMonths} in mos`}
               count={counts.sold}
-              onClick={() => scrollToId(LISTING_RECENTLY_SOLD_PANEL_ID)}
+              onClick={() =>
+                jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
+              }
             />
           </span>
         </div>

@@ -7,6 +7,7 @@ import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsP
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
+import { LISTING_PRODUCTION_PANEL_ID } from "@/components/listing/listing-section-ids";
 import { showcaseListingFactsProse } from "@/components/listing/showcase/showcase-insight-prose";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
@@ -92,7 +93,7 @@ function ControlButton({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white/85 backdrop-blur-sm transition-colors hover:border-gold/60 hover:bg-black/45 hover:text-gold"
+      className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white/85 backdrop-blur-sm transition-colors hover:border-gold/60 hover:bg-black/45 hover:text-gold"
     >
       {children}
     </button>
@@ -288,8 +289,8 @@ export default function ListingShowcaseClient({
         />
 
         {/* Scrims keep the overlaid type legible over any photo. */}
-        <div className="listing-showcase-scrim-bottom absolute inset-0" aria-hidden />
-        <div className="listing-showcase-scrim-top absolute inset-0" aria-hidden />
+        <div className="listing-showcase-scrim-bottom pointer-events-none absolute inset-0" aria-hidden />
+        <div className="listing-showcase-scrim-top pointer-events-none absolute inset-0" aria-hidden />
 
         {/*
          * Both arrows stay pinned to opposite edges. With the Details card
@@ -345,7 +346,7 @@ export default function ListingShowcaseClient({
           onDetailsOnlyChange={setRailDetailsOnly}
         />
 
-        <div className="listing-showcase-type relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
+        <div className="listing-showcase-type pointer-events-none relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
           <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-6">
             <div className="max-w-xl">
               <span className="inline-flex bg-[#0d1424]/85 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
@@ -396,7 +397,7 @@ export default function ListingShowcaseClient({
             <button
               type="button"
               onClick={() => scrollToShowcaseSection("overview")}
-              className="group max-w-md text-left font-mono text-[10px] uppercase tracking-[0.25em] text-white/70 transition-colors hover:text-gold"
+              className="pointer-events-auto group max-w-md text-left font-mono text-[10px] uppercase tracking-[0.25em] text-white/70 transition-colors hover:text-gold"
             >
               Scroll for details
               <span
@@ -426,7 +427,7 @@ export default function ListingShowcaseClient({
                 <button
                   type="button"
                   onClick={() => scrollToShowcaseSection("photos")}
-                  className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+                  className="pointer-events-auto font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
                 >
                   See all photos
                 </button>
@@ -442,7 +443,7 @@ export default function ListingShowcaseClient({
                           "panel=production",
                         )
                   }
-                  className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
+                  className="pointer-events-auto font-mono text-[10px] uppercase tracking-[0.25em] text-white/75 underline decoration-white/30 underline-offset-[6px] transition-colors hover:text-gold hover:decoration-gold/60"
                 >
                   {productionPanel ? "Showcase view" : "Classic view"}
                 </Link>
@@ -467,7 +468,7 @@ export default function ListingShowcaseClient({
          * component tree `/listings/[mlsId]` renders, so Insight, Rented, Under
          * Agreement and the deck all behave exactly as they do in production.
          */
-        <div className="border-t border-white/10">
+        <div id={LISTING_PRODUCTION_PANEL_ID} className="border-t border-white/10">
           <ListingDetailClient
             mlsId={mlsId}
             addressHint={street || addressHint}
