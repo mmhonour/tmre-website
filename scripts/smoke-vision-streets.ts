@@ -122,6 +122,17 @@ async function main() {
   const missingHouses = await listVisionStreetsMissingParcels(TOWN, 10)
   assert(missingHouses.includes('Adams Lane'), 'Adams Lane should still need houses')
   assert(!missingHouses.includes('Locust Ln'), 'Locust Ln should not be missing houses')
+  await replaceVisionStreetParcels(
+    TOWN,
+    'Adams Lane',
+    [{ visionPid: '3', addressLabel: '1 Adams Lane' }],
+    'https://gis.vgsi.com/westportct/Streets.aspx?Name=Adams+Lane',
+  )
+  const missingAfterStamp = await listVisionStreetsMissingParcels(TOWN, 10)
+  assert(
+    !missingAfterStamp.includes('Adams Lane'),
+    'stamped street should leave the missing list',
+  )
   assert(compareAddressLabels('5 Locust Ln', '12 Locust Ln') < 0, '5 should sort before 12')
   console.log('PASS  street parcel replace is street-scoped')
 

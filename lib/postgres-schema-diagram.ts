@@ -132,6 +132,7 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'letter', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'source_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'parcels_synced_at', type: 'timestamp with time zone', notNull: false, primaryKey: false, defaultValue: null },
   ],
   vision_street_parcels: [
     { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },

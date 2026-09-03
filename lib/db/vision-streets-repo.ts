@@ -40,6 +40,10 @@ export async function ensureVisionStreetsTable(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_vision_street_parcels_town_street
          ON vision_street_parcels (town, street_name)`,
     )
+    await query(
+      `ALTER TABLE vision_streets
+         ADD COLUMN IF NOT EXISTS parcels_synced_at timestamptz`,
+    )
   })().catch((err) => {
     ensured = null
     throw err
@@ -201,6 +205,12 @@ export async function replaceVisionStreetParcels(
       )
       written += 1
     }
+    await client.query(
+      `UPDATE vision_streets
+          SET parcels_synced_at = now()
+        WHERE town = $1 AND street_name = $2`,
+      [town, streetName],
+    )
     return { written, removed: deleted.rowCount ?? 0 }
   })
 }
@@ -255,15 +265,18 @@ export async function listVisionStreetsMissingParcels(
   limit: number,
 ): Promise<string[]> {
   await ensureVisionStreetsTable()
-  const cap = Math.max(1, Math.min(Math.floor(limit), 1000))
+  const cap = Math.max(1, Math.min(Math.floor(limit), 2000))
   const rows = await query<{ street_name: string }>(
     `SELECT s.street_name
        FROM vision_streets s
-       LEFT JOIN vision_street_parcels p
-         ON p.town = s.town AND p.street_name = s.street_name
       WHERE s.town = $1
-      GROUP BY s.street_name
-     HAVING count(p.vision_pid) = 0
+        AND s.parcels_synced_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+            FROM vision_street_parcels p
+           WHERE p.town = s.town
+             AND p.street_name = s.street_name
+        )
       ORDER BY s.street_name ASC
       LIMIT $2`,
     [town, cap],
