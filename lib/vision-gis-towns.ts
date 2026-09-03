@@ -48,3 +48,13 @@ export function visionGisFieldCardPdfUrl(
 
 export const VISION_GIS_STREET_LETTERS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').filter((c) => c !== 'X' && c !== 'Z')
+
+/** Letters the street index should have, minus those already stored. */
+export function missingVisionStreetLetters(
+  have: readonly string[],
+): string[] {
+  const seen = new Set(
+    have.map((letter) => letter.trim().toUpperCase()).filter(Boolean),
+  )
+  return VISION_GIS_STREET_LETTERS.filter((letter) => !seen.has(letter))
+}

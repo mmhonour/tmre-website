@@ -10,9 +10,11 @@ import { streetNamesFromLetterHtml } from '../lib/vision-gis-parse'
 import {
   countVisionStreets,
   ensureVisionStreetsTable,
+  listVisionStreetLetters,
   listVisionStreets,
   replaceVisionStreetsForLetter,
 } from '../lib/db/vision-streets-repo'
+import { missingVisionStreetLetters } from '../lib/vision-gis-towns'
 import { execute } from '../lib/db/postgres'
 
 const TOWN = '__smoke'
@@ -50,6 +52,17 @@ async function main() {
   const all = await listVisionStreets(TOWN)
   assert(all.length === 3, `expected 3 streets, got ${all.length}`)
   console.log('PASS  two letters sit side by side')
+
+  const letters = await listVisionStreetLetters(TOWN)
+  assert(letters.join('') === 'AC', `letters expected AC, got ${letters.join('')}`)
+  const missing = missingVisionStreetLetters(letters)
+  assert(!missing.includes('A') && !missing.includes('C'), 'A and C should not be missing')
+  assert(missing[0] === 'B', `first missing should be B, got ${missing[0]}`)
+  assert(
+    missingVisionStreetLetters(['B']).includes('A'),
+    'mid-crawl B-only must still list A as missing',
+  )
+  console.log('PASS  missing letters ignore already-stored buckets')
 
   const second = await replaceVisionStreetsForLetter(
     TOWN,

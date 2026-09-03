@@ -15,6 +15,7 @@ import {
 } from '@/lib/db/vision-addresses-repo'
 import {
   ensureVisionStreetsTable,
+  listVisionStreetLetters,
   replaceVisionStreetsForLetter,
 } from '@/lib/db/vision-streets-repo'
 import { isR2VisionStoreConfigured, putVisionFieldCardHtml } from '@/lib/r2-vision-store'
@@ -30,6 +31,7 @@ import {
 import {
   VISION_GIS_STREET_LETTERS,
   VISION_GIS_TOWNS,
+  missingVisionStreetLetters,
   visionGisTownConfig,
   type VisionGisTownConfig,
 } from '@/lib/vision-gis-towns'
@@ -224,6 +226,64 @@ async function loadStreetsForLetter(
   const names = streetNamesFromLetterHtml(letterHtml)
   await recordVisionStreetIndexForLetter(cfg.town, letter, names, url)
   return names
+}
+
+export type VisionStreetIndexFillResult = {
+  filled: string[]
+  skipped: string[]
+  failed: string[]
+}
+
+/**
+ * Fetch Streets.aspx?Letter= pages the parcel cursor has not visited yet.
+ * Does not move letterIndex / streetsForLetter — the cadastral walk stays put.
+ * A failed letter is skipped so one VGSI fault cannot block the rest.
+ */
+export async function fillMissingVisionStreetIndex(
+  cfg: VisionGisTownConfig,
+  delayMs: number,
+): Promise<VisionStreetIndexFillResult> {
+  const have = await listVisionStreetLetters(cfg.town)
+  const missing = missingVisionStreetLetters(have)
+  const skipped = VISION_GIS_STREET_LETTERS.filter(
+    (letter) => !missing.includes(letter),
+  )
+  const filled: string[] = []
+  const failed: string[] = []
+  if (missing.length === 0) {
+    return { filled, skipped, failed }
+  }
+  console.info(
+    `[vision-gis-sync] street index ${cfg.town}: filling ${missing.join(',')}` +
+      (skipped.length > 0 ? ` · already ${skipped.join(',')}` : ''),
+  )
+  for (const letter of missing) {
+    try {
+      await loadStreetsForLetter(cfg, letter)
+      filled.push(letter)
+      await sleep(delayMs)
+    } catch (err) {
+      failed.push(letter)
+      console.warn(
+        `[vision-gis-sync] street index ${cfg.town} ${letter} failed`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
+  return { filled, skipped, failed }
+}
+
+function formatStreetIndexFill(fill: VisionStreetIndexFillResult): string | null {
+  if (fill.filled.length === 0 && fill.failed.length === 0) return null
+  const parts = [
+    fill.filled.length > 0
+      ? `street index +${fill.filled.join('')}`
+      : null,
+    fill.failed.length > 0
+      ? `street index fail ${fill.failed.join('')}`
+      : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
 }
 
 async function ingestParcel(
@@ -505,6 +565,17 @@ export async function syncVisionAddresses(
     status: 'running',
   })
 
+  let streetIndexFill: VisionStreetIndexFillResult = {
+    filled: [],
+    skipped: [],
+    failed: [],
+  }
+  try {
+    streetIndexFill = await fillMissingVisionStreetIndex(cfg, delayMs)
+  } catch (err) {
+    console.warn('[vision-gis-sync] street index fill failed', err)
+  }
+
   try {
     if (state.phase === 'full') {
       await sweepStreets(
@@ -578,7 +649,12 @@ export async function syncVisionAddresses(
     stateMap[cfg.town] = state
     writeTownStateMap(stateMap)
     const totalRows = await countVisionAddresses(cfg.town)
-    const detail = err instanceof Error ? err.message : String(err)
+    const detail = [
+      err instanceof Error ? err.message : String(err),
+      formatStreetIndexFill(streetIndexFill),
+    ]
+      .filter(Boolean)
+      .join(' · ')
     stampLiveProgress({
       town: cfg.town,
       phase: state.phase,
@@ -635,6 +711,7 @@ export async function syncVisionAddresses(
     `changed ${counts.changed}`,
     `new ${counts.neu}`,
     `r2 ${counts.r2}`,
+    formatStreetIndexFill(streetIndexFill),
     townComplete ? 'full fill complete → incremental' : null,
     `linked vision=${visionLinked} listings=${listingsLinked}`,
   ]

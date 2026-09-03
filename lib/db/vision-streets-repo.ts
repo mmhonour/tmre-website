@@ -117,6 +117,15 @@ export async function listVisionStreetTowns(): Promise<string[]> {
   return rows.map((row) => row.town)
 }
 
+export async function listVisionStreetLetters(town: string): Promise<string[]> {
+  await ensureVisionStreetsTable()
+  const rows = await query<{ letter: string }>(
+    `SELECT DISTINCT letter FROM vision_streets WHERE town = $1 ORDER BY letter ASC`,
+    [town],
+  )
+  return rows.map((row) => row.letter.trim().toUpperCase()).filter(Boolean)
+}
+
 export async function countVisionStreets(town?: string): Promise<number> {
   await ensureVisionStreetsTable()
   const rows = town
