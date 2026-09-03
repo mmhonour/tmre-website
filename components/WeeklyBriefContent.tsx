@@ -466,7 +466,7 @@ function FavorSortToggle({
     townHeat != null && Number.isFinite(townHeat)
       ? Math.min(1, Math.max(0, townHeat))
       : 0.5;
-  const tiltDeg = (heat - 0.5) * 28;
+  const tiltDeg = (heat - 0.5) * 56;
 
   return (
     <button
@@ -478,7 +478,7 @@ function FavorSortToggle({
           : `${current} — switch to ${next}`
       }
       aria-label={`Towns ordered ${current}. Switch to ${next}.`}
-      className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      className="inline-flex h-16 w-16 shrink-0 items-center justify-center overflow-visible rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
       {mode === "yin-yang" ? (
         <YinYangPulseGlyph
@@ -492,9 +492,9 @@ function FavorSortToggle({
           }`}
         />
       ) : (
-        <svg viewBox="-4 -5 50 44" className="h-16 w-16 overflow-visible" aria-hidden>
-          {/* Fulcrum is a triangle, not a pole. */}
-          <path d="M18 8.4 L11.2 28.2 L24.8 28.2 Z" fill="currentColor" />
+        <svg viewBox="-8 -16 58 48" className="h-16 w-16 overflow-visible" aria-hidden>
+          {/* Same width as before, shorter so the beam has room to tip. */}
+          <path d="M18 8.4 L11.2 20.2 L24.8 20.2 Z" fill="currentColor" />
           <g
             transform={`rotate(${tiltDeg.toFixed(2)} 18 9)`}
             className="transition-transform duration-200"
@@ -505,27 +505,28 @@ function FavorSortToggle({
               strokeWidth="1.6"
               strokeLinecap="round"
             />
-            {/* Seller: money bag sits on the beam, neck up, dollar on the bag. */}
-            <g transform="translate(0 -10.2)" fill="var(--color-coral, #C85A3A)">
-              <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
-              <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
+            {/* Seller: larger bag, still sitting on the beam. */}
+            <g transform="translate(5 9) scale(1.55) translate(-5 -9)">
+              <g transform="translate(0 -10.2)" fill="var(--color-coral, #C85A3A)">
+                <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
+                <path d="M5 11.2c3 0 5 2 5 4.2S8 19 5 19 0 17.6 0 15.4s2-4.2 5-4.2z" />
+              </g>
+              <text
+                x="5"
+                y="7.2"
+                textAnchor="middle"
+                fontSize="6"
+                fontWeight="700"
+                fill="#fff"
+              >
+                $
+              </text>
             </g>
-            <text
-              x="5"
-              y="7.2"
-              textAnchor="middle"
-              fontSize="6"
-              fontWeight="700"
-              fill="#fff"
-            >
-              $
-            </text>
             {/*
-             * Buyer: the house stands on the beam and the key hangs beneath it,
-             * so the key has the whole pan to run along rather than sharing it
-             * end to end with the house.
+             * Buyer: larger house on the beam; the key still hangs beneath
+             * so it keeps the whole pan rather than sharing it with the house.
              */}
-            <g>
+            <g transform="translate(33 9) scale(1.55) translate(-33 -9)">
               <path
                 d="M33 1.6l4.2 4.1h-1.45v2.9h-5.5v-2.9h-1.45z"
                 fill="var(--color-sage, #4A7C6F)"
