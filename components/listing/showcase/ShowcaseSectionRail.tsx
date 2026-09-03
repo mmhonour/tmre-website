@@ -63,7 +63,8 @@ function CountChip({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1.5 bg-white/[0.08] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/65 transition-colors hover:bg-white/20 hover:text-white"
+      aria-label={`${label} comparables`}
+      className="pointer-events-auto relative z-10 inline-flex shrink-0 items-center gap-1.5 bg-white/[0.08] px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-white/65 transition-colors hover:bg-white/20 hover:text-white"
     >
       {label}
       <span className="tabular-nums text-white">{count}</span>
@@ -476,11 +477,13 @@ export default function ShowcaseSectionRail({
     }
     return (
       <div className="flex w-full flex-col items-end lg:items-stretch">
-        <div className={`${railRowClass({ interactive: false })} gap-2`}>
+        <div
+          className={`${railRowClass({ interactive: false })} pointer-events-auto relative z-10 gap-2`}
+        >
           <button
             type="button"
             onClick={() => scrollToShowcaseSection("comps")}
-            className="shrink-0 transition-colors hover:text-gold"
+            className="pointer-events-auto shrink-0 transition-colors hover:text-gold"
           >
             Comps
           </button>
@@ -514,7 +517,7 @@ export default function ShowcaseSectionRail({
        * nothing is open.
        */}
       <div
-        className={`absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
+        className={`pointer-events-auto absolute right-0 top-[calc(50%-9.5rem)] z-20 flex max-h-[calc(100dvh-9rem)] flex-col items-end overflow-y-auto ${RAIL_WIDTH}`}
       >
         {overlay === "insight" || overlay === "pulse" || overlay === "details" ? (
           <>

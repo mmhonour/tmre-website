@@ -56,12 +56,6 @@ function scrollElementIntoView(el: HTMLElement): void {
 export function jumpToListingSection(targetId: string): void {
   if (typeof window === "undefined") return;
 
-  const existing = document.getElementById(targetId);
-  if (existing) {
-    scrollElementIntoView(existing);
-    return;
-  }
-
   const hash = `#${targetId}`;
   if (window.location.hash !== hash) {
     window.location.hash = hash;
@@ -69,17 +63,17 @@ export function jumpToListingSection(targetId: string): void {
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   }
 
-  const fallback =
-    document.getElementById(LISTING_PRODUCTION_PANEL_ID) ??
-    document.getElementById(SHOWCASE_SECTION_IDS.comps);
-  if (fallback) scrollElementIntoView(fallback);
-
-  const retry = () => {
-    const el = document.getElementById(targetId);
+  const scrollNow = () => {
+    const el =
+      document.getElementById(targetId) ??
+      document.getElementById(LISTING_PRODUCTION_PANEL_ID) ??
+      document.getElementById(SHOWCASE_SECTION_IDS.comps);
     if (el) scrollElementIntoView(el);
   };
-  window.setTimeout(retry, 80);
-  window.setTimeout(retry, 280);
+
+  scrollNow();
+  window.setTimeout(scrollNow, 80);
+  window.setTimeout(scrollNow, 280);
 }
 
 export function scrollToShowcaseSection(section: ShowcaseSection): void {
