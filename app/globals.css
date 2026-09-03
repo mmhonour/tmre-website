@@ -49,6 +49,15 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes mp-favor-yin-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.mp-favor-yin-spin {
+  animation: mp-favor-yin-spin 0.65s ease-in-out;
+}
+
 /* Latest continuous ticker — seamless upward scroll (duplicated list). */
 .latest-smooth-scroll {
   height: calc(var(--latest-row-height, 48px) * var(--latest-visible-rows, 7));
