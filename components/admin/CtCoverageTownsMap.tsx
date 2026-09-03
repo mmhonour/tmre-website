@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useLocationEstimateGridPaint } from "@/components/admin/use-location-estimate-grid-paint";
 import {
   loadZipBoundariesForZips,
@@ -15,6 +22,8 @@ import {
   cellRing,
   cellsForZipRings,
   lonLatToCell,
+  parseCellKey,
+  pointInRings,
   suggestCoastalStrips,
   townCenterOwning,
   type CoastalStripIndex,
@@ -30,20 +39,34 @@ import {
   zipsForNeighborTowns,
   zipsForTown,
 } from "@/lib/tmre-towns";
+import {
+  MAP_FALLBACK_CENTER,
+  MAP_FALLBACK_ZOOM,
+  MAP_MAX_ZOOM,
+  MAP_MIN_ZOOM,
+  boundsFromRings,
+  clampMapZoom,
+  fitMapBounds,
+  latToWorldY,
+  lonToWorldX,
+  ringToMapPath,
+  screenToLonLat,
+  tilesInViewport,
+  worldToLonLat,
+  type MapLonLat,
+  type MapRing,
+} from "@/lib/web-mercator-map";
 
-type Coord = [number, number];
-type Ring = Coord[];
+type Ring = MapRing;
 
 const ALL_ZIPS = "";
-const VIEW_W = 720;
-const VIEW_H = 480;
-const PAD = 18;
+const MAP_H = 520;
 const MILES_PER_DEG_LAT = 69.172;
 
 const STRIP_FILL: Record<CoastalStripIndex, string> = {
-  0: "rgba(232, 93, 58, 0.42)",
-  1: "rgba(232, 93, 58, 0.28)",
-  2: "rgba(232, 93, 58, 0.18)",
+  0: "rgba(232, 93, 58, 0.38)",
+  1: "rgba(232, 93, 58, 0.26)",
+  2: "rgba(232, 93, 58, 0.16)",
   3: "rgba(232, 93, 58, 0.10)",
 };
 
@@ -52,134 +75,13 @@ function zipLabel(code: string): string {
   return nick ? `${code} · ${nick}` : code;
 }
 
-function ringBBoxCenter(rings: Ring[]): Coord | null {
-  if (rings.length === 0) return null;
-  let minLon = Infinity;
-  let minLat = Infinity;
-  let maxLon = -Infinity;
-  let maxLat = -Infinity;
-  for (const ring of rings) {
-    for (const [lon, lat] of ring) {
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    }
-  }
-  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
-}
-
-function projectLayers(
-  zipBoundaries: { zip: string; rings: Ring[] }[],
-  highlightZips: Set<string>,
-) {
-  const allRings = zipBoundaries.flatMap((z) => z.rings);
-  if (allRings.length === 0) {
-    return {
-      layers: [] as { zip: string; paths: string[]; highlight: boolean }[],
-      projection: null as null,
-    };
-  }
-
-  let minLon = Infinity;
-  let minLat = Infinity;
-  let maxLon = -Infinity;
-  let maxLat = -Infinity;
-  for (const ring of allRings) {
-    for (const [lon, lat] of ring) {
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    }
-  }
-
-  const scaleX = (VIEW_W - PAD * 2) / (maxLon - minLon || 1);
-  const scaleY = (VIEW_H - PAD * 2) / (maxLat - minLat || 1);
-  const scale = Math.min(scaleX, scaleY);
-  const offsetX = PAD + (VIEW_W - PAD * 2 - (maxLon - minLon) * scale) / 2;
-  const offsetY = PAD + (VIEW_H - PAD * 2 - (maxLat - minLat) * scale) / 2;
-
-  const toXy = (lon: number, lat: number) => ({
-    x: offsetX + (lon - minLon) * scale,
-    y: offsetY + (maxLat - lat) * scale,
-  });
-  const fromXy = (x: number, y: number) => ({
-    lon: minLon + (x - offsetX) / scale,
-    lat: maxLat - (y - offsetY) / scale,
-  });
-  const pathFor = (ring: Ring) =>
-    `M ${ring.map(([lon, lat]) => {
-      const { x, y } = toXy(lon, lat);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(" L ")} Z`;
-
-  const toSvg = ([lon, lat]: Coord) => {
-    const { x, y } = toXy(lon, lat);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  };
-
-  const layers = zipBoundaries.map(({ zip, rings }) => ({
-    zip,
-    highlight: highlightZips.has(zip),
-    paths: rings.map((ring) => `M ${ring.map(toSvg).join(" L ")} Z`),
-  }));
-
-  return {
-    layers,
-    projection: { minLon, maxLon, minLat, maxLat, scale, offsetX, offsetY, toXy, fromXy, pathFor },
-  };
-}
-
-function TownCenterDisk({
-  town,
-  toXy,
-  labeled,
-}: {
-  town: TmreTown;
-  toXy: (lon: number, lat: number) => { x: number; y: number };
-  labeled: boolean;
-}) {
-  const pt = TOWN_CENTERS[town];
-  const c = toXy(pt.lon, pt.lat);
-  const edge = toXy(pt.lon, pt.lat + TOWN_CENTER_RADIUS_MILES / MILES_PER_DEG_LAT);
-  const r = Math.abs(edge.y - c.y);
-  return (
-    <g className="pointer-events-none">
-      <circle
-        cx={c.x}
-        cy={c.y}
-        r={r}
-        fill="rgba(74, 141, 183, 0.18)"
-        stroke="rgba(74, 141, 183, 1)"
-        strokeWidth={labeled ? 1.8 : 1.2}
-        strokeDasharray="6 5"
-      />
-      <circle cx={c.x} cy={c.y} r={labeled ? 3 : 2} fill="rgba(74, 141, 183, 1)" />
-      {labeled ? (
-        <text
-          x={c.x}
-          y={c.y - r - 6}
-          textAnchor="middle"
-          className="fill-navy"
-          style={{ fontSize: 11, fontFamily: "ui-monospace, monospace" }}
-        >
-          {town}
-        </text>
-      ) : null}
-    </g>
-  );
-}
-
 /**
- * Same TIGER ZCTA rings as Intelligence / showcase, plus the ¼-mile
- * coastal grid. Zoom a town to paint; a second click on a painted
- * square erases it. Town-center disks override those squares.
+ * Intelligence / showcase street tiles (OSM via /api/map/tile) with TIGER
+ * ZCTA outlines on top. Zoom a town to paint; a second click erases.
  */
 export default function CtCoverageTownsMap({
   activeTownNames,
 }: {
-  /** CT coverage active town display names (matched to TMRE_TOWNS). */
   activeTownNames: readonly string[];
 }) {
   const activeTmre = useMemo(() => {
@@ -195,6 +97,26 @@ export default function CtCoverageTownsMap({
   const [byZip, setByZip] = useState<Map<string, Ring[]> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const paint = useLocationEstimateGridPaint();
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: MAP_H });
+  const [center, setCenter] = useState<MapLonLat>(MAP_FALLBACK_CENTER);
+  const [zoom, setZoom] = useState(MAP_FALLBACK_ZOOM);
+  const centerRef = useRef(center);
+  const zoomRef = useRef(zoom);
+  const sizeRef = useRef(size);
+  centerRef.current = center;
+  zoomRef.current = zoom;
+  sizeRef.current = size;
+  const fitSigRef = useRef<string | null>(null);
+  const dragRef = useRef<{
+    mode: "paint" | "pan";
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startCenter: MapLonLat;
+    moved: boolean;
+  } | null>(null);
 
   useEffect(() => {
     prefetchAllTownBoundaries();
@@ -214,9 +136,7 @@ export default function CtCoverageTownsMap({
     const zips = focusTown
       ? [...zipsForTown(focusTown), ...zipsForNeighborTowns(focusTown)]
       : [...zipsForAllTowns()];
-
     setStatus((prev) => (byZip ? prev : "loading"));
-
     void loadZipBoundariesForZips(zips)
       .then((map) => {
         if (cancelled) return;
@@ -234,13 +154,24 @@ export default function CtCoverageTownsMap({
       .catch(() => {
         if (!cancelled) setStatus("error");
       });
-
     return () => {
       cancelled = true;
     };
-    // byZip intentionally omitted — we merge into it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusTown]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const apply = () => {
+      const rect = el.getBoundingClientRect();
+      setSize({ width: rect.width, height: rect.height });
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const highlightZips = useMemo(() => {
     if (focusTown && zip) return new Set<string>([zip]);
@@ -261,11 +192,6 @@ export default function CtCoverageTownsMap({
       .filter((z): z is { zip: string; rings: Ring[] } => z != null);
   }, [byZip, focusTown]);
 
-  const { layers, projection } = useMemo(
-    () => projectLayers(zipBoundaries, highlightZips),
-    [zipBoundaries, highlightZips],
-  );
-
   const focusRings = useMemo(() => {
     if (!focusTown || !byZip) return [];
     const codes = zip ? [zip] : [...boundaryZipsForTown(focusTown)];
@@ -277,6 +203,13 @@ export default function CtCoverageTownsMap({
     return boundaryZipsForTown(focusTown).flatMap((code) => byZip.get(code) ?? []);
   }, [byZip, focusTown]);
 
+  const fitRings = useMemo(() => {
+    if (focusRings.length) return focusRings;
+    return zipBoundaries.flatMap((z) =>
+      highlightZips.has(z.zip) ? z.rings : [],
+    );
+  }, [focusRings, highlightZips, zipBoundaries]);
+
   const zipCells = useMemo(
     () => (focusRings.length ? cellsForZipRings(focusRings) : []),
     [focusRings],
@@ -286,57 +219,219 @@ export default function CtCoverageTownsMap({
     [townRings],
   );
 
-  const paintedKeys = useMemo(() => Object.keys(paint.cells), [paint.cells]);
+  const fitArea = `${focusTown ?? "all"}:${zip || "all"}:${fitRings.length}`;
 
-  const labeledTowns: TmreTown[] = focusTown
-    ? [focusTown, ...neighborTownsFor(focusTown)]
-    : [...TMRE_TOWNS];
+  useEffect(() => {
+    if (size.width <= 0 || fitRings.length === 0) return;
+    const sig = `${fitArea}:${Math.round(size.width)}x${Math.round(size.height)}`;
+    if (fitSigRef.current === sig) return;
+    fitSigRef.current = sig;
+    const next = fitMapBounds(boundsFromRings(fitRings), size.width, size.height);
+    setCenter(next.center);
+    setZoom(next.zoom);
+  }, [fitArea, fitRings, size.height, size.width]);
 
-  const townLabels =
-    status === "ready" && projection && byZip
-      ? labeledTowns
-          .map((town) => {
-            const rings = zipsForTown(town).flatMap(
-              (code) => byZip.get(code) ?? [],
-            );
-            const center = ringBBoxCenter(rings);
-            if (!center) return null;
-            const [lon, lat] = center;
-            const { x: cx, y: cy } = projection.toXy(lon, lat);
-            return { town, cx, cy, active: activeTmre.has(town) };
-          })
-          .filter(
-            (e): e is { town: TmreTown; cx: number; cy: number; active: boolean } =>
-              e != null,
-          )
-      : [];
+  const viewport = useMemo(() => {
+    if (size.width <= 0 || size.height <= 0) return null;
+    return {
+      left: lonToWorldX(center.lon, zoom) - size.width / 2,
+      top: latToWorldY(center.lat, zoom) - size.height / 2,
+    };
+  }, [center.lat, center.lon, size.height, size.width, zoom]);
 
-  const contextLayers = layers.filter((l) => !l.highlight);
-  const highlightLayers = layers.filter((l) => l.highlight);
+  const tileZoom = clampMapZoom(Math.round(zoom));
+  const tiles = useMemo(() => {
+    if (!viewport || size.width <= 0) return [];
+    return tilesInViewport({
+      viewport,
+      zoom,
+      level: tileZoom,
+      width: size.width,
+      height: size.height,
+    });
+  }, [size.height, size.width, tileZoom, viewport, zoom]);
 
   const onTownActivate = (town: TmreTown) => {
     setFocusTown((prev) => (prev === town ? null : town));
     setZip(ALL_ZIPS);
   };
 
-  const cellAt = (clientX: number, clientY: number, svg: SVGSVGElement) => {
-    if (!projection || !focusTown) return null;
-    const rect = svg.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * VIEW_W;
-    const y = ((clientY - rect.top) / rect.height) * VIEW_H;
-    const { lon, lat } = projection.fromXy(x, y);
+  const townAt = useCallback(
+    (lon: number, lat: number): TmreTown | null => {
+      if (!byZip) return null;
+      for (const town of TMRE_TOWNS) {
+        const rings = zipsForTown(town).flatMap((code) => byZip.get(code) ?? []);
+        if (pointInRings(lon, lat, rings)) return town;
+      }
+      return null;
+    },
+    [byZip],
+  );
+
+  const cellAtClient = (clientX: number, clientY: number) => {
+    const el = containerRef.current;
+    if (!el || !focusTown || size.width <= 0) return null;
+    const rect = el.getBoundingClientRect();
+    const { lon, lat } = screenToLonLat(
+      clientX - rect.left,
+      clientY - rect.top,
+      centerRef.current,
+      zoomRef.current,
+      sizeRef.current,
+    );
     const { i, j } = lonLatToCell(lat, lon);
     if (!zipCells.some((c) => c.i === i && c.j === j)) return null;
     return cellKey(i, j);
   };
 
+  const panBy = (dx: number, dy: number, from: MapLonLat) => {
+    const level = zoomRef.current;
+    const cx = lonToWorldX(from.lon, level) - dx;
+    const cy = latToWorldY(from.lat, level) - dy;
+    setCenter(worldToLonLat(cx, cy, level));
+  };
+
+  const zoomAround = (nextZoom: number, screenX?: number, screenY?: number) => {
+    const panel = sizeRef.current;
+    const clamped = clampMapZoom(nextZoom);
+    if (Math.abs(clamped - zoomRef.current) < 0.001) return;
+    if (screenX == null || screenY == null || panel.width <= 0) {
+      setZoom(clamped);
+      return;
+    }
+    const anchor = screenToLonLat(
+      screenX,
+      screenY,
+      centerRef.current,
+      zoomRef.current,
+      panel,
+    );
+    const cx = lonToWorldX(anchor.lon, clamped) - (screenX - panel.width / 2);
+    const cy = latToWorldY(anchor.lat, clamped) - (screenY - panel.height / 2);
+    setCenter(worldToLonLat(cx, cy, clamped));
+    setZoom(clamped);
+  };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) < 1) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const step = e.ctrlKey
+        ? Math.max(-1.5, Math.min(1.5, -e.deltaY * 0.01))
+        : e.deltaY < 0
+          ? 0.5
+          : -0.5;
+      zoomAround(zoomRef.current + step, e.clientX - rect.left, e.clientY - rect.top);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "touch") return;
+    const key = cellAtClient(e.clientX, e.clientY);
+    if (focusTown && key) {
+      dragRef.current = {
+        mode: "paint",
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startCenter: center,
+        moved: false,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      paint.beginStroke(key);
+      return;
+    }
+    dragRef.current = {
+      mode: "pan",
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startCenter: center,
+      moved: false,
+    };
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (drag.mode === "paint") {
+      const key = cellAtClient(e.clientX, e.clientY);
+      if (key) paint.continueStroke(key);
+      return;
+    }
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    panBy(dx, dy, drag.startCenter);
+  };
+
+  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (drag.mode === "paint") paint.endStroke();
+    else if (!drag.moved && !focusTown) {
+      const el = containerRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const pt = screenToLonLat(
+          e.clientX - rect.left,
+          e.clientY - rect.top,
+          centerRef.current,
+          zoomRef.current,
+          sizeRef.current,
+        );
+        const hit = townAt(pt.lon, pt.lat);
+        if (hit) onTownActivate(hit);
+      }
+    }
+    dragRef.current = null;
+  };
+
+  const labeledTowns: TmreTown[] = focusTown
+    ? [focusTown, ...neighborTownsFor(focusTown)]
+    : [...TMRE_TOWNS];
+
+  const townLabels =
+    viewport && byZip
+      ? labeledTowns
+          .map((town) => {
+            const pt = TOWN_CENTERS[town];
+            return {
+              town,
+              left: lonToWorldX(pt.lon, zoom) - viewport.left,
+              top: latToWorldY(pt.lat, zoom) - viewport.top,
+              active: activeTmre.has(town),
+            };
+          })
+          .filter(
+            (e) =>
+              e.left > -40 &&
+              e.left < size.width + 40 &&
+              e.top > -20 &&
+              e.top < size.height + 20,
+          )
+      : [];
+
   return (
-    <div className="overflow-hidden rounded-xl border border-charcoal/15 bg-slate-50">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-charcoal/[0.08] bg-white px-3 py-2">
+    <div className="overflow-hidden rounded-xl border border-charcoal/15 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-charcoal/[0.08] px-3 py-2">
         <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/50">
           {focusTown
-            ? `${focusTown} · same TIGER ZCTA as Intelligence · click a square again to erase`
-            : "TMRE towns · TIGER ZCTA (same rings as showcase / Intelligence) · click a town to paint"}
+            ? `${focusTown} · OSM tiles + TIGER ZCTA · click a square again to erase`
+            : "TMRE towns · same street map as Intelligence / showcase · click a town to paint"}
         </p>
         <div className="flex flex-wrap items-center gap-1">
           <button
@@ -379,7 +474,7 @@ export default function CtCoverageTownsMap({
       </div>
 
       {focusTown ? (
-        <div className="flex flex-wrap items-end gap-2 border-b border-charcoal/[0.08] bg-white px-3 py-2">
+        <div className="flex flex-wrap items-end gap-2 border-b border-charcoal/[0.08] px-3 py-2">
           <label className="space-y-0.5">
             <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/45">
               Zip
@@ -436,250 +531,241 @@ export default function CtCoverageTownsMap({
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/40">
             {paint.saving
               ? "Saving…"
-              : "Drag to paint · click again to erase"}
+              : "Drag squares to paint · drag the map to pan"}
           </span>
         </div>
       ) : null}
 
-      <div className="relative w-full" style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}>
+      <div
+        ref={containerRef}
+        className={`relative w-full overflow-hidden bg-[#e8e6df] ${
+          focusTown ? "cursor-crosshair touch-none" : "cursor-grab touch-none"
+        }`}
+        style={{ height: MAP_H }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        role="application"
+        aria-label={
+          focusTown
+            ? `${focusTown} street map and coastal grid`
+            : "All TMRE towns street map"
+        }
+      >
         {status === "loading" && !byZip ? (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 z-20 flex items-center justify-center">
             <span className="h-2 w-2 animate-pulse rounded-full bg-gold" />
           </div>
         ) : null}
         {status === "error" && !byZip ? (
-          <div className="absolute inset-0 flex items-center justify-center px-4">
-            <span className="font-mono text-[11px] text-slate text-center">
+          <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
+            <span className="text-center font-mono text-[11px] text-slate">
               Town boundaries unavailable — check zip-boundaries sync.
             </span>
           </div>
         ) : null}
-        {layers.length > 0 && projection ? (
+
+        {tiles.map((tile) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={tile.key}
+            src={tile.src}
+            alt=""
+            width={256}
+            height={256}
+            draggable={false}
+            className="pointer-events-none absolute"
+            style={{
+              left: tile.left,
+              top: tile.top,
+              width: tile.size,
+              height: tile.size,
+            }}
+          />
+        ))}
+
+        {viewport && size.width > 0 ? (
           <svg
-            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            className={`absolute inset-0 h-full w-full ${
-              focusTown ? "cursor-crosshair touch-none" : ""
-            }`}
-            role="img"
-            aria-label={
-              focusTown
-                ? `${focusTown} town boundary and coastal grid`
-                : "All TMRE towns boundary map"
-            }
-            onPointerDown={(e) => {
-              if (!focusTown) return;
-              const key = cellAt(e.clientX, e.clientY, e.currentTarget);
-              if (!key) return;
-              e.currentTarget.setPointerCapture(e.pointerId);
-              e.stopPropagation();
-              paint.beginStroke(key);
-            }}
-            onPointerMove={(e) => {
-              if (!focusTown) return;
-              const key = cellAt(e.clientX, e.clientY, e.currentTarget);
-              if (!key) return;
-              paint.continueStroke(key);
-            }}
-            onPointerUp={() => paint.endStroke()}
-            onPointerCancel={() => paint.endStroke()}
+            className="pointer-events-none absolute inset-0 z-[6] h-full w-full"
+            viewBox={`0 0 ${size.width} ${size.height}`}
+            aria-hidden
           >
-            <pattern
-              id="ct-coverage-dot"
-              width="14"
-              height="14"
-              patternUnits="userSpaceOnUse"
-            >
-              <circle cx="1" cy="1" r="0.6" fill="rgba(15,23,42,0.08)" />
-            </pattern>
-            <rect width={VIEW_W} height={VIEW_H} fill="url(#ct-coverage-dot)" />
-
-            {contextLayers.flatMap((layer) =>
-              layer.paths.map((d, i) => (
-                <path
-                  key={`ctx-fill-${layer.zip}-${i}`}
-                  d={d}
-                  fill="rgba(148,163,184,0.16)"
-                />
-              )),
-            )}
-            {contextLayers.flatMap((layer) =>
-              layer.paths.map((d, i) => (
-                <path
-                  key={`ctx-stroke-${layer.zip}-${i}`}
-                  d={d}
-                  fill="none"
-                  stroke="rgba(100,116,139,0.5)"
-                  strokeWidth={1.1}
-                  strokeLinejoin="round"
-                />
-              )),
-            )}
-
-            {highlightLayers.flatMap((layer) => {
-              const townForThisZip = TMRE_TOWNS.find((t) =>
-                zipsForTown(t).includes(layer.zip),
-              );
-              return layer.paths.map((d, i) => (
-                <path
-                  key={`hi-fill-${layer.zip}-${i}`}
-                  d={d}
-                  fill="rgba(212,175,55,0.22)"
-                  className={focusTown ? undefined : "cursor-pointer"}
-                  onClick={() => {
-                    if (focusTown || !townForThisZip) return;
-                    onTownActivate(townForThisZip);
-                  }}
-                />
-              ));
+            {zipBoundaries.flatMap(({ zip: code, rings }) => {
+              const highlight = highlightZips.has(code);
+              return rings.map((ring, i) => {
+                const d = ringToMapPath(ring, viewport, zoom);
+                if (!d) return null;
+                return (
+                  <path
+                    key={`${code}-${i}`}
+                    d={d}
+                    fill={
+                      highlight ? "rgba(212,175,55,0.10)" : "rgba(15,23,42,0.04)"
+                    }
+                    stroke={highlight ? "#B8941F" : "rgba(100,116,139,0.55)"}
+                    strokeWidth={highlight ? 2 : 1.1}
+                    strokeLinejoin="round"
+                  />
+                );
+              });
             })}
-            {highlightLayers.flatMap((layer) =>
-              layer.paths.map((d, i) => (
-                <path
-                  key={`hi-stroke-${layer.zip}-${i}`}
-                  d={d}
-                  fill="none"
-                  stroke="#B8941F"
-                  strokeWidth={2.25}
-                  strokeLinejoin="round"
-                  className="pointer-events-none"
-                />
-              )),
-            )}
 
             {zipCells.map(({ i, j }) => {
               const key = cellKey(i, j);
               const strip = paint.cells[key];
               const c = cellCenter(i, j);
               const overridden = townCenterOwning(c.lat, c.lon) != null;
+              const d = ringToMapPath(cellRing(i, j), viewport, zoom);
+              if (!d) return null;
               return (
                 <path
                   key={key}
-                  d={projection.pathFor(cellRing(i, j))}
-                  className="pointer-events-none"
+                  d={d}
                   fill={
                     overridden
-                      ? "rgba(74, 141, 183, 0.12)"
+                      ? "rgba(74, 141, 183, 0.14)"
                       : strip != null
                         ? STRIP_FILL[strip]
-                        : "rgba(26, 39, 68, 0.03)"
+                        : "rgba(26, 39, 68, 0.04)"
                   }
                   stroke={
                     overridden
-                      ? "rgba(74, 141, 183, 0.35)"
+                      ? "rgba(74, 141, 183, 0.45)"
                       : strip != null
-                        ? "rgba(232, 93, 58, 0.85)"
-                        : "rgba(26, 39, 68, 0.16)"
+                        ? "rgba(232, 93, 58, 0.9)"
+                        : "rgba(26, 39, 68, 0.22)"
                   }
-                  strokeWidth={0.8}
+                  strokeWidth={0.9}
                   strokeDasharray={
-                    strip != null && !overridden ? "3 2.5" : undefined
+                    strip != null && !overridden ? "4 3" : undefined
                   }
                 />
               );
             })}
 
             {!focusTown
-              ? paintedKeys.map((key) => {
-                  const [iRaw, jRaw] = key.split(",");
-                  const i = Number(iRaw);
-                  const j = Number(jRaw);
-                  if (!Number.isInteger(i) || !Number.isInteger(j)) return null;
-                  const strip = paint.cells[key];
-                  if (strip == null) return null;
-                  const c = cellCenter(i, j);
+              ? Object.entries(paint.cells).map(([key, strip]) => {
+                  const parsed = parseCellKey(key);
+                  if (!parsed) return null;
+                  const c = cellCenter(parsed.i, parsed.j);
                   if (townCenterOwning(c.lat, c.lon)) return null;
+                  const d = ringToMapPath(
+                    cellRing(parsed.i, parsed.j),
+                    viewport,
+                    zoom,
+                  );
+                  if (!d) return null;
                   return (
                     <path
                       key={`overview-${key}`}
-                      d={projection.pathFor(cellRing(i, j))}
-                      className="pointer-events-none"
+                      d={d}
                       fill={STRIP_FILL[strip]}
-                      stroke="rgba(232, 93, 58, 0.75)"
-                      strokeWidth={0.6}
+                      stroke="rgba(232, 93, 58, 0.8)"
+                      strokeWidth={0.7}
                     />
                   );
                 })
               : null}
 
             {focusTown
-              ? (zip ? [zip] : [...boundaryZipsForTown(focusTown)]).map((code) => {
-                  const pt = ZIP_CENTERS[code];
-                  if (!pt) return null;
-                  const { x, y } = projection.toXy(pt.lon, pt.lat);
-                  return (
-                    <text
-                      key={`zip-label-${code}`}
-                      x={x}
-                      y={y}
-                      textAnchor="middle"
-                      className="pointer-events-none fill-navy/70"
-                      style={{
-                        fontSize: 10,
-                        fontFamily: "ui-monospace, monospace",
-                      }}
-                    >
-                      {zipLabel(code)}
-                    </text>
-                  );
-                })
+              ? (zip ? [zip] : [...boundaryZipsForTown(focusTown)]).map(
+                  (code) => {
+                    const pt = ZIP_CENTERS[code];
+                    if (!pt) return null;
+                    const x = lonToWorldX(pt.lon, zoom) - viewport.left;
+                    const y = latToWorldY(pt.lat, zoom) - viewport.top;
+                    return (
+                      <text
+                        key={`zip-label-${code}`}
+                        x={x}
+                        y={y}
+                        textAnchor="middle"
+                        className="fill-navy/80"
+                        style={{
+                          fontSize: 11,
+                          fontFamily: "ui-monospace, monospace",
+                        }}
+                      >
+                        {zipLabel(code)}
+                      </text>
+                    );
+                  },
+                )
               : null}
 
-            {(focusTown ? [focusTown] : [...TMRE_TOWNS]).map((town) => (
-              <TownCenterDisk
-                key={`disk-${town}`}
-                town={town}
-                toXy={projection.toXy}
-                labeled={focusTown === town}
-              />
-            ))}
-
-            {townLabels.map(({ town, cx, cy, active }) => (
-              <g
-                key={town}
-                className="cursor-pointer"
-                onClick={() => onTownActivate(town)}
-              >
-                <rect
-                  x={cx - town.length * 2.6 - 4}
-                  y={cy - 8}
-                  width={town.length * 5.2 + 8}
-                  height={16}
-                  rx={3}
-                  fill={
-                    focusTown === town
-                      ? "rgba(255,255,255,0.95)"
-                      : "rgba(255,255,255,0.82)"
-                  }
-                  stroke={
-                    focusTown === town
-                      ? "#B8941F"
-                      : active
-                        ? "rgba(184,148,31,0.45)"
-                        : "rgba(100,116,139,0.35)"
-                  }
-                  strokeWidth={1}
-                />
-                <text
-                  x={cx}
-                  y={cy + 0.5}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize={focusTown ? 11 : 9}
-                  fontWeight={600}
-                  fill={
-                    active || focusTown === town
-                      ? "#1B2A4A"
-                      : "rgba(71,85,105,0.85)"
-                  }
-                  letterSpacing="0.4"
-                >
-                  {town}
-                </text>
-              </g>
-            ))}
+            {(focusTown ? [focusTown] : [...TMRE_TOWNS]).map((town) => {
+              const pt = TOWN_CENTERS[town];
+              const cx = lonToWorldX(pt.lon, zoom) - viewport.left;
+              const cy = latToWorldY(pt.lat, zoom) - viewport.top;
+              const edgeY =
+                latToWorldY(pt.lat + TOWN_CENTER_RADIUS_MILES / MILES_PER_DEG_LAT, zoom) -
+                viewport.top;
+              const r = Math.abs(edgeY - cy);
+              return (
+                <g key={`disk-${town}`}>
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={r}
+                    fill="rgba(74, 141, 183, 0.16)"
+                    stroke="rgba(74, 141, 183, 1)"
+                    strokeWidth={focusTown ? 1.8 : 1.2}
+                    strokeDasharray="6 5"
+                  />
+                  <circle cx={cx} cy={cy} r={focusTown ? 3 : 2} fill="rgba(74, 141, 183, 1)" />
+                </g>
+              );
+            })}
           </svg>
         ) : null}
+
+        {townLabels.map(({ town, left, top, active }) => (
+          <button
+            key={`label-${town}`}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTownActivate(town);
+            }}
+            className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-white/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em]"
+            style={{
+              left,
+              top: focusTown === town ? top - 18 : top,
+              borderColor:
+                focusTown === town
+                  ? "#B8941F"
+                  : active
+                    ? "rgba(184,148,31,0.45)"
+                    : "rgba(100,116,139,0.35)",
+              color: active || focusTown === town ? "#1B2A4A" : "rgba(71,85,105,0.85)",
+            }}
+          >
+            {town}
+          </button>
+        ))}
+
+        <div className="absolute left-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => zoomAround(zoom + 1)}
+            disabled={zoom >= MAP_MAX_ZOOM - 0.001}
+            aria-label="Zoom in"
+            className="flex h-7 w-7 items-center justify-center font-mono text-sm text-white/80 hover:bg-white/10 hover:text-gold disabled:opacity-30"
+          >
+            +
+          </button>
+          <div className="h-px bg-white/10" aria-hidden />
+          <button
+            type="button"
+            onClick={() => zoomAround(zoom - 1)}
+            disabled={zoom <= MAP_MIN_ZOOM + 0.001}
+            aria-label="Zoom out"
+            className="flex h-7 w-7 items-center justify-center font-mono text-sm text-white/80 hover:bg-white/10 hover:text-gold disabled:opacity-30"
+          >
+            −
+          </button>
+        </div>
       </div>
     </div>
   );

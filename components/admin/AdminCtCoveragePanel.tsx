@@ -179,13 +179,13 @@ export default function AdminCtCoveragePanel() {
           the{" "}
           <span className="text-navy/80">canonical town-activation playbook</span>{" "}
           first — Phase 0 only flips the Postgres flag today (not wired into
-          public pages or RETS yet). The large map is the same Census TIGERweb
-          ZCTA rings as Intelligence and the showcase map (cached{" "}
-          <span className="font-mono text-[11px]">zip_boundaries</span>). County
-          thumbnails are TIGER county outlines — same Census family, different
-          layer. Click a town to zoom and paint ¼-mile coastal squares; click a
-          painted square again to erase it. The town-center disk overrides any
-          square it covers.
+          public pages or RETS yet). The large map is the same street tiles as
+          Intelligence and showcase (OSM via{" "}
+          <span className="font-mono text-[11px]">/api/map/tile</span>) with the
+          same TIGER ZCTA rings on top. County thumbnails are TIGER county
+          outlines — same Census family, different layer. Click a town to zoom
+          and paint ¼-mile coastal squares; click a painted square again to
+          erase it. The town-center disk overrides any square it covers.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading
