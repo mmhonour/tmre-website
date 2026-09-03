@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
+import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
@@ -423,7 +424,8 @@ function TownName({
 }
 
 /**
- * All Towns: coral/sage yin-yang. A click spins it once and flips
+ * All Towns: the Town-pulse yin-yang (sage → yellow tail, red yang,
+ * yellow eye with a red collar). A click spins it once and flips
  * Seller Friendly ↔ Buyer Friendly.
  *
  * Over a town it becomes the scale, and the beam follows that town's heat:
@@ -474,23 +476,10 @@ function FavorSortToggle({
       className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
       {mode === "yin-yang" ? (
-        <svg
+        <YinYangPulseGlyph
           key={spinKey}
-          viewBox="0 0 64 64"
           className={`h-14 w-14 ${spinKey > 0 ? "mp-favor-yin-spin" : ""}`}
-          aria-hidden
-        >
-          {/* Sage field (buyer); coral fish (seller) is the S-curve on the left. */}
-          <circle cx="32" cy="32" r="30" fill="var(--color-sage, #4A7C6F)" />
-          <path
-            d="M32 2 A30 30 0 0 0 32 62 Z"
-            fill="var(--color-coral, #C85A3A)"
-          />
-          <circle cx="32" cy="17" r="15" fill="var(--color-coral, #C85A3A)" />
-          <circle cx="32" cy="47" r="15" fill="var(--color-sage, #4A7C6F)" />
-          <circle cx="32" cy="17" r="5.2" fill="var(--color-sage, #4A7C6F)" />
-          <circle cx="32" cy="47" r="5.2" fill="var(--color-coral, #C85A3A)" />
-        </svg>
+        />
       ) : (
         <svg viewBox="-4 -3 50 42" className="h-16 w-16 overflow-visible" aria-hidden>
           <path
