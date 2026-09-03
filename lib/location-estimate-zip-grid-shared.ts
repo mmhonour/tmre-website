@@ -213,6 +213,16 @@ export function suggestCoastalStrips(
   return cells
 }
 
+/** Second click on a square that already has this brush erases it. */
+export function nextCellAction(
+  current: CoastalStripIndex | undefined,
+  brush: CoastalStripIndex | 'erase',
+): CoastalStripIndex | 'erase' {
+  if (brush === 'erase') return 'erase'
+  if (current === brush) return 'erase'
+  return brush
+}
+
 export function mergeZipGridPatch(
   current: ZipGridCells,
   patch: ZipGridCells,

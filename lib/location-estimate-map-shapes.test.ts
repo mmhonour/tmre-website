@@ -11,6 +11,7 @@ import {
   cellKey,
   lonLatToCell,
   milesBetween,
+  nextCellAction,
   suggestCoastalStrips,
   townCenterOwning,
 } from './location-estimate-zip-grid-shared'
@@ -81,6 +82,13 @@ describe('zip grid', () => {
     const inlandOnly = [{ i: 3, j: 9 }]
     const suggested = suggestCoastalStrips(town, inlandOnly)
     assert.deepEqual(suggested, {})
+  })
+
+  it('toggles a painted square off when clicked with the same brush', () => {
+    assert.equal(nextCellAction(0, 0), 'erase')
+    assert.equal(nextCellAction(undefined, 0), 0)
+    assert.equal(nextCellAction(1, 0), 0)
+    assert.equal(nextCellAction(2, 'erase'), 'erase')
   })
 
   it('combines one town disk set with painted cells', () => {

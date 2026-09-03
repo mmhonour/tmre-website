@@ -176,14 +176,13 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "intel-deal-board",
     label: "Deal board",
-    subtitle:
-      "Location-estimate map outlines plus read-only middle-tier rules",
+    subtitle: "Read-only middle-tier rules for the Intelligence deal board",
   },
   {
     id: "ct-coverage",
     label: "CT coverage",
     subtitle:
-      "Activate CT counties / towns for future site-wide coverage (not wired to pages yet)",
+      "Activate CT towns, plus the TIGER ZCTA map you paint for coastal corridors",
   },
   {
     id: "town-budget",

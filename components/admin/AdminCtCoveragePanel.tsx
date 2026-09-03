@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminLocationEstimateOverlayPanel from "@/components/admin/AdminLocationEstimateOverlayPanel";
 import CtCountyMiniMap from "@/components/admin/CtCountyMiniMap";
 import CtCoverageTownsMap from "@/components/admin/CtCoverageTownsMap";
 import AdminTownActivationPlaybookPanel, {
@@ -178,9 +179,13 @@ export default function AdminCtCoveragePanel() {
           the{" "}
           <span className="text-navy/80">canonical town-activation playbook</span>{" "}
           first — Phase 0 only flips the Postgres flag today (not wired into
-          public pages or RETS yet). The large map matches Intelligence
-          &ldquo;All towns&rdquo; (ZCTA outlines): click a town to zoom in, All
-          towns or the same town again to zoom out.
+          public pages or RETS yet). The large map is the same Census TIGERweb
+          ZCTA rings as Intelligence and the showcase map (cached{" "}
+          <span className="font-mono text-[11px]">zip_boundaries</span>). County
+          thumbnails are TIGER county outlines — same Census family, different
+          layer. Click a town to zoom and paint ¼-mile coastal squares; click a
+          painted square again to erase it. The town-center disk overrides any
+          square it covers.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading
@@ -198,7 +203,8 @@ export default function AdminCtCoveragePanel() {
       </div>
 
       {!loading && counties.length > 0 ? (
-        <div className="border-b border-charcoal/[0.08] px-5 py-4 sm:px-6">
+        <div className="space-y-3 border-b border-charcoal/[0.08] px-5 py-4 sm:px-6">
+          <AdminLocationEstimateOverlayPanel />
           <CtCoverageTownsMap activeTownNames={activeTownNames} />
         </div>
       ) : null}

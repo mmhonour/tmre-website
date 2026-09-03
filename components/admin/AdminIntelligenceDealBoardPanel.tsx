@@ -1,4 +1,3 @@
-import AdminLocationEstimateOverlayPanel from "@/components/admin/AdminLocationEstimateOverlayPanel";
 import {
   BOARD_LISTING_LIMIT,
   BOARD_MIN_VISIBLE,
@@ -15,7 +14,6 @@ const MIDDLE_PCT = 100 - TIER_PCT * 2;
 export default function AdminIntelligenceDealBoardPanel() {
   return (
     <div id="admin-intel-deal-board" className="scroll-mt-24 space-y-6">
-      <AdminLocationEstimateOverlayPanel />
       <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
         <div className="border-b border-charcoal/[0.08] bg-cream/40 px-5 py-4 sm:px-6">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
