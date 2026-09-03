@@ -1192,6 +1192,60 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'vision-addresses': {
+      // Letter-index fill + 40 Field Cards is too long for the Admin POST
+      // (those 504s). Same handoff as the Monday cron: background worker.
+      if (shouldQueueOnServerless(options)) {
+        const { queueNetlifyVisionAddressSync } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'vision-addresses',
+          () => queueNetlifyVisionAddressSync(),
+          { startedAt },
+        )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: queued.ok ? 'Queued/vision' : 'Failed/vision',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
+              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: startedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              via === 'sync-queue'
+                ? 'Vision addresses queued on the sync runner — End updates when the chunk finishes'
+                : 'Vision addresses queued (background worker) — End updates when the chunk finishes',
+            detail: queued.base
+              ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}). Street index fills missing letters, then the parcel walk continues.`
+              : 'Queued on background worker. Street index fills missing letters, then the parcel walk continues.',
+          }
+        }
+        return {
+          ok: false,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          message: 'Vision addresses queue failed',
+          detail: queued.error ?? 'Could not reach background worker',
+        }
+      }
       const { syncVisionAddresses } = await import('@/lib/vision-gis-sync')
       // Admin / Netlify default chunk 40 (safe). Override with VISION_SYNC_MAX_PARCELS.
       const maxRaw = Number(process.env.VISION_SYNC_MAX_PARCELS ?? '')
