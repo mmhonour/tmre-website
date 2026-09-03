@@ -44,8 +44,10 @@ const DEFAULT_DELAY_MS = 500
 const DEFAULT_MAX_PARCELS = 40
 const ABSOLUTE_MAX_PARCELS = 1000
 /** Streets.aspx?Name= pages to persist per chunk when the index has no houses yet. */
-const DEFAULT_STREET_PARCEL_FILL_MAX = 250
-const ABSOLUTE_STREET_PARCEL_FILL_MAX = 500
+/** One Railway chunk should finish the remaining Name= pages (A–F already landed). */
+const DEFAULT_STREET_PARCEL_FILL_MAX = 2000
+const ABSOLUTE_STREET_PARCEL_FILL_MAX = 2000
+const STREET_PARCEL_FILL_BATCH = 100
 const TOWN_STATE_META_KEY = 'vision_addresses_town_state'
 const SYNCED_AT_META_KEY = 'vision_addresses_synced_at'
 const LAST_STATS_META_KEY = 'vision_addresses_last_stats'
@@ -316,36 +318,48 @@ export async function fillMissingVisionStreetParcels(
     1,
     Math.min(maxStreets, ABSOLUTE_STREET_PARCEL_FILL_MAX),
   )
-  const missing = await listVisionStreetsMissingParcels(cfg.town, cap)
   const result: VisionStreetParcelFillResult = {
     filled: 0,
     addresses: 0,
     failed: 0,
   }
-  if (missing.length === 0) return result
-  console.info(
-    `[vision-gis-sync] street parcels ${cfg.town}: filling ${missing.length} street page(s)`,
-  )
-  for (const street of missing) {
-    const url = `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`
-    try {
-      const html = await fetchText(url)
-      const links = parcelLinksFromStreetHtml(html)
-      const written = await recordVisionStreetParcels(
+  const skip = new Set<string>()
+  while (result.filled + result.failed < cap) {
+    const remaining = cap - result.filled - result.failed
+    const missing = (
+      await listVisionStreetsMissingParcels(
         cfg.town,
-        street,
-        links,
-        url,
+        Math.min(STREET_PARCEL_FILL_BATCH, remaining),
       )
-      result.filled += 1
-      result.addresses += written.written
-      await sleep(delayMs)
-    } catch (err) {
-      result.failed += 1
-      console.warn(
-        `[vision-gis-sync] street parcels ${cfg.town} ${street} failed`,
-        err instanceof Error ? err.message : err,
-      )
+    ).filter((street) => !skip.has(street))
+    if (missing.length === 0) break
+    console.info(
+      `[vision-gis-sync] street parcels ${cfg.town}: filling ${missing.length} street page(s)` +
+        ` · done ${result.filled}`,
+    )
+    for (const street of missing) {
+      if (result.filled + result.failed >= cap) break
+      const url = `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`
+      try {
+        const html = await fetchText(url)
+        const links = parcelLinksFromStreetHtml(html)
+        const written = await recordVisionStreetParcels(
+          cfg.town,
+          street,
+          links,
+          url,
+        )
+        result.filled += 1
+        result.addresses += written.written
+        await sleep(delayMs)
+      } catch (err) {
+        skip.add(street)
+        result.failed += 1
+        console.warn(
+          `[vision-gis-sync] street parcels ${cfg.town} ${street} failed`,
+          err instanceof Error ? err.message : err,
+        )
+      }
     }
   }
   return result

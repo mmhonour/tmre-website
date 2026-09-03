@@ -726,7 +726,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows (town + street_name + vision_pid)',
     owner: 'lib/db/vision-streets-repo.ts',
     notes:
-      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills streets that have names but no houses yet. Street-scoped replace so a fault cannot empty another street. /streets reads this table; Field Cards stay in vision_addresses.',
+      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills every official name that still has no houses (one Railway chunk). Street-scoped replace so a fault cannot empty another street. /streets reads this table; Field Cards stay in vision_addresses.',
     live: { kind: 'postgres_table', table: 'vision_street_parcels' },
   },
   {

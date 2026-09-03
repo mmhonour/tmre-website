@@ -287,7 +287,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision_street_parcels',
     category: 'sync-admin',
     definition:
-      'Neon table of house numbers per official street (db/migrations/0025_vision_street_parcels.sql). Source is Streets.aspx?Name=… — the same page the crawler already fetches to walk parcels (5 Locust Ln, 6 Locust Ln, vision_pid). Street-scoped replace after a successful parse; a fault cannot empty another street. Each Vision chunk also fillMissingVisionStreetParcels for names that have no houses yet (cap 250/chunk, no Field Card ingest). Admin `/streets/{town}/{street}` lists them; Westport rows link to `/find/westport/{pid}`. Not a substitute for `vision_addresses` Field Cards.',
+      'Neon table of house numbers per official street (db/migrations/0025_vision_street_parcels.sql). Source is Streets.aspx?Name=… — the same page the crawler already fetches to walk parcels (5 Locust Ln, 6 Locust Ln, vision_pid). Street-scoped replace after a successful parse; a fault cannot empty another street. Each Vision chunk runs fillMissingVisionStreetParcels until every official name has a house list (or a fetch fault); `vision_streets.parcels_synced_at` marks the Name= fetch so an empty street cannot loop. Admin `/streets/{town}/{street}` lists them; Westport rows link to `/find/westport/{pid}`. Not a substitute for `vision_addresses` Field Cards.',
   },
   {
     term: 'Westport Vision GIS homepage',
