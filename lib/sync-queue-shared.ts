@@ -23,6 +23,7 @@ export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'stats-cache',
   'deal-of-the-day',
   'property-addresses',
+  'vision-addresses',
   'market-digest',
   'open-houses',
 ]

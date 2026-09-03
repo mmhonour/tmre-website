@@ -107,6 +107,12 @@ const SWEEPS: {
     bootDelayMs: 7 * 60_000,
     label: 'open houses',
   },
+  {
+    jobId: 'vision-addresses',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 8 * 60_000,
+    label: 'vision addresses',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {
@@ -340,6 +346,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/scores': 'listing-scores',
   '/deal-of-the-day': 'deal-of-the-day',
   '/property-addresses': 'property-addresses',
+  '/vision-addresses': 'vision-addresses',
   '/market-digest': 'market-digest',
 }
 

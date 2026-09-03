@@ -925,7 +925,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-vision-addresses",
     detail:
-      "Thin Vision GIS trigger — queues sync-vision-addresses-worker (cadastral crawl)",
+      "Thin Vision GIS trigger — enqueues sync_queue for the Railway runner; worker only if stranded",
     schedule: "Weekly Mon ~1:30am ET",
   },
   {

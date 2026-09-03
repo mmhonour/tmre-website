@@ -38,7 +38,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'vision-addresses': {
     label: 'Vision addresses (GIS)',
     description:
-      'VGSI cadastral crawl → vision_streets letter index (missing letters first) + vision_addresses Field Cards; then Vision listing-match stamps listings.vision_pid. Admin Sync now queues the background worker.',
+      'VGSI cadastral crawl → vision_streets letter index (missing letters first) + vision_addresses Field Cards; then Vision listing-match stamps listings.vision_pid. Admin Sync now enqueues the Railway runner.',
   },
   'zip-boundaries': {
     label: 'Zip boundary maps',

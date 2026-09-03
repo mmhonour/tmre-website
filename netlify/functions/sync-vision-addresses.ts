@@ -7,13 +7,16 @@ import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronResponse,
+  thinCronHandOffToQueue,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
  * Thin vision-addresses trigger (NO background).
  * Dense every-30m cron; Configure Frequency/Start time gate the work.
- * Queues sync-vision-addresses-worker.
+ *
+ * A due run goes on the sync queue for the always-on runner; this function only
+ * queues sync-vision-addresses-worker when that row is stranded.
  */
 export default async function handler() {
   try {
@@ -28,6 +31,10 @@ export default async function handler() {
     }
     if (shouldSkipScheduledJobNotDue('vision-addresses')) {
       return thinCronSkipped('not due yet — Configure frequency / start time')
+    }
+    {
+      const handedOff = await thinCronHandOffToQueue('vision-addresses')
+      if (handedOff) return handedOff
     }
     const queued = await queueNetlifyVisionAddressSync()
     if (!queued.ok) {
