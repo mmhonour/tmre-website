@@ -95,7 +95,9 @@ function StripMark({
 }) {
   const x = lonToWorldX(lon, zoom) - viewport.left;
   const y = latToWorldY(lat, zoom) - viewport.top;
-  const fontSize = zoom >= 14 ? 12 : zoom >= 12 ? 10 : 8;
+  // Close-up only: at town-or-wider zoom the fill is the cue.
+  if (zoom < 13) return null;
+  const fontSize = zoom >= 15 ? 6 : 5;
   return (
     <text
       x={x}
@@ -103,8 +105,8 @@ function StripMark({
       dy="0.35em"
       textAnchor="middle"
       fill="#1a2744"
-      stroke="rgba(255,255,255,0.92)"
-      strokeWidth={2.4}
+      stroke="rgba(255,255,255,0.85)"
+      strokeWidth={1.1}
       paintOrder="stroke"
       style={{
         fontSize,
