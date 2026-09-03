@@ -11,9 +11,13 @@ import {
   countVisionStreets,
   ensureVisionStreetsTable,
   listVisionStreetLetters,
+  listVisionStreetParcels,
   listVisionStreets,
+  listVisionStreetsMissingParcels,
+  replaceVisionStreetParcels,
   replaceVisionStreetsForLetter,
 } from '../lib/db/vision-streets-repo'
+import { compareAddressLabels } from '../lib/vision-streets-page'
 import { missingVisionStreetLetters } from '../lib/vision-gis-towns'
 import { execute } from '../lib/db/postgres'
 
@@ -81,6 +85,47 @@ async function main() {
 
   const n = await countVisionStreets(TOWN)
   assert(n === 2, `count expected 2, got ${n}`)
+
+  const locustUrl = 'https://gis.vgsi.com/westportct/Streets.aspx?Name=Locust+Ln'
+  const firstParcels = await replaceVisionStreetParcels(
+    TOWN,
+    'Locust Ln',
+    [
+      { visionPid: '2', addressLabel: '6 Locust Ln' },
+      { visionPid: '1', addressLabel: '5 Locust Ln' },
+      { visionPid: '1', addressLabel: '5 Locust Ln' },
+    ],
+    locustUrl,
+  )
+  assert(firstParcels.written === 2, `expected 2 parcels, got ${firstParcels.written}`)
+  await replaceVisionStreetParcels(
+    TOWN,
+    'Main St',
+    [{ visionPid: '9', addressLabel: '1 Main St' }],
+    'https://gis.vgsi.com/westportct/Streets.aspx?Name=Main+St',
+  )
+  const locust = (await listVisionStreetParcels(TOWN, 'Locust Ln')).sort((a, b) =>
+    compareAddressLabels(a.addressLabel, b.addressLabel),
+  )
+  assert(locust.map((p) => p.addressLabel).join('|') === '5 Locust Ln|6 Locust Ln', 'sort/list failed')
+  const stillMain = await listVisionStreetParcels(TOWN, 'Main St')
+  assert(stillMain.length === 1, 'street replace spilled onto Main St')
+  await replaceVisionStreetParcels(
+    TOWN,
+    'Locust Ln',
+    [{ visionPid: '1', addressLabel: '5 Locust Ln' }],
+    locustUrl,
+  )
+  const afterLocust = await listVisionStreetParcels(TOWN, 'Locust Ln')
+  assert(afterLocust.length === 1, `expected Locust cut to 1, got ${afterLocust.length}`)
+  assert((await listVisionStreetParcels(TOWN, 'Main St')).length === 1, 'Main St wiped')
+  const missingHouses = await listVisionStreetsMissingParcels(TOWN, 10)
+  assert(missingHouses.includes('Adams Lane'), 'Adams Lane should still need houses')
+  assert(!missingHouses.includes('Locust Ln'), 'Locust Ln should not be missing houses')
+  assert(compareAddressLabels('5 Locust Ln', '12 Locust Ln') < 0, '5 should sort before 12')
+  console.log('PASS  street parcel replace is street-scoped')
+
+  await execute(`DELETE FROM vision_street_parcels WHERE town = $1`, [TOWN])
   await execute(`DELETE FROM vision_streets WHERE town = $1`, [TOWN])
   console.log('PASS  cleanup')
   console.log('PASSED')

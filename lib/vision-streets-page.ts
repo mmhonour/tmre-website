@@ -16,3 +16,29 @@ export function resolveStreetTown(
   if (!needle) return null
   return knownTowns.find((town) => townToStreetSlug(town) === needle) ?? null
 }
+
+export function streetNameToSlug(streetName: string): string {
+  return townToStreetSlug(streetName)
+}
+
+export function resolveStreetName(
+  slug: string,
+  knownStreets: readonly string[],
+): string | null {
+  const needle = streetNameToSlug(slug)
+  if (!needle) return null
+  return (
+    knownStreets.find((name) => streetNameToSlug(name) === needle) ?? null
+  )
+}
+
+/** Sort 5 Locust Ln before 12 Locust Ln before a label with no number. */
+export function compareAddressLabels(a: string, b: string): number {
+  const num = (label: string): number => {
+    const m = label.trim().match(/^(\d+)/)
+    return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER
+  }
+  const d = num(a) - num(b)
+  if (d !== 0) return d
+  return a.localeCompare(b, undefined, { sensitivity: 'base' })
+}

@@ -3,12 +3,14 @@ import { notFound } from 'next/navigation'
 import { isAdminAuthorizedFromCookies } from '@/lib/admin-auth'
 import SitePasswordGate from '@/components/SitePasswordGate'
 import {
+  countVisionStreetParcelsByStreet,
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
   resolveStreetTown,
+  streetNameToSlug,
   townToStreetSlug,
 } from '@/lib/vision-streets-page'
 
@@ -54,6 +56,8 @@ export default async function StreetsTownPage({
   if (!town) notFound()
 
   const streets = await listVisionStreets(town)
+  const parcelCounts = await countVisionStreetParcelsByStreet(town)
+  const addressTotal = [...parcelCounts.values()].reduce((n, c) => n + c, 0)
   const byLetter = new Map<string, string[]>()
   for (const row of streets) {
     const letter = (row.letter || row.streetName.slice(0, 1) || '?').toUpperCase()
@@ -75,9 +79,14 @@ export default async function StreetsTownPage({
             Streets
           </h1>
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
-            Official assessor street names from Vision GIS. Not on the public
-            menu. {streets.length.toLocaleString()}{' '}
-            {streets.length === 1 ? 'street' : 'streets'} in {town}.
+            Official assessor streets from Vision GIS, with house numbers from
+            each street page. Not on the public menu.{' '}
+            {streets.length.toLocaleString()}{' '}
+            {streets.length === 1 ? 'street' : 'streets'}
+            {addressTotal > 0
+              ? ` · ${addressTotal.toLocaleString()} addresses`
+              : ''}{' '}
+            in {town}.
           </p>
           {towns.length > 1 ? (
             <div className="mt-6 flex flex-wrap gap-2">
@@ -138,16 +147,24 @@ export default async function StreetsTownPage({
                       {letter}
                     </h2>
                     <ul className="columns-1 sm:columns-2 lg:columns-3 gap-x-10">
-                      {(byLetter.get(letter) ?? []).map((name) => (
-                        <li key={name} className="break-inside-avoid py-0.5">
-                          <Link
-                            href={`/find?q=${encodeURIComponent(name)}`}
-                            className="text-sm text-charcoal/85 hover:text-navy"
-                          >
-                            {name}
-                          </Link>
-                        </li>
-                      ))}
+                      {(byLetter.get(letter) ?? []).map((name) => {
+                        const n = parcelCounts.get(name) ?? 0
+                        return (
+                          <li key={name} className="break-inside-avoid py-0.5">
+                            <Link
+                              href={`/streets/${townToStreetSlug(town)}/${streetNameToSlug(name)}`}
+                              className="text-sm text-charcoal/85 hover:text-navy"
+                            >
+                              {name}
+                              {n > 0 ? (
+                                <span className="ml-1 font-mono text-[11px] text-charcoal/45">
+                                  {n}
+                                </span>
+                              ) : null}
+                            </Link>
+                          </li>
+                        )
+                      })}
                     </ul>
                   </div>
                 ))}

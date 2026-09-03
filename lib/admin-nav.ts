@@ -809,7 +809,7 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
     label: "Streets",
     href: "/streets",
     description:
-      "Admin-only A–Z assessor street names (vision_streets). Password gate; not in the public menu.",
+      "Admin-only A–Z assessor streets plus house numbers (vision_streets / vision_street_parcels). Password gate; not in the public menu.",
   },
   {
     label: "Westport Vision GIS",

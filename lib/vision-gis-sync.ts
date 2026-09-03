@@ -16,6 +16,8 @@ import {
 import {
   ensureVisionStreetsTable,
   listVisionStreetLetters,
+  listVisionStreetsMissingParcels,
+  replaceVisionStreetParcels,
   replaceVisionStreetsForLetter,
 } from '@/lib/db/vision-streets-repo'
 import { isR2VisionStoreConfigured, putVisionFieldCardHtml } from '@/lib/r2-vision-store'
@@ -41,6 +43,9 @@ const DEFAULT_DELAY_MS = 500
 /** Safe Netlify / Admin chunk. CLI can raise via VISION_SYNC_MAX_PARCELS (cap 1000). */
 const DEFAULT_MAX_PARCELS = 40
 const ABSOLUTE_MAX_PARCELS = 1000
+/** Streets.aspx?Name= pages to persist per chunk when the index has no houses yet. */
+const DEFAULT_STREET_PARCEL_FILL_MAX = 250
+const ABSOLUTE_STREET_PARCEL_FILL_MAX = 500
 const TOWN_STATE_META_KEY = 'vision_addresses_town_state'
 const SYNCED_AT_META_KEY = 'vision_addresses_synced_at'
 const LAST_STATS_META_KEY = 'vision_addresses_last_stats'
@@ -273,6 +278,92 @@ export async function fillMissingVisionStreetIndex(
   return { filled, skipped, failed }
 }
 
+export async function recordVisionStreetParcels(
+  town: string,
+  streetName: string,
+  parcels: readonly { visionPid: string; addressLabel: string }[],
+  sourceUrl: string,
+): Promise<{ written: number; removed: number }> {
+  const result = await replaceVisionStreetParcels(
+    town,
+    streetName,
+    parcels,
+    sourceUrl,
+  )
+  console.info(
+    `[vision-gis-sync] street parcels ${town} ${streetName}: ${result.written} address(es)` +
+      (result.removed > 0 ? ` · replaced ${result.removed}` : ''),
+  )
+  return result
+}
+
+export type VisionStreetParcelFillResult = {
+  filled: number
+  addresses: number
+  failed: number
+}
+
+/**
+ * Fetch Streets.aspx?Name= for official streets that have no house list yet.
+ * Does not ingest Field Cards and does not move the parcel cursor.
+ */
+export async function fillMissingVisionStreetParcels(
+  cfg: VisionGisTownConfig,
+  delayMs: number,
+  maxStreets = DEFAULT_STREET_PARCEL_FILL_MAX,
+): Promise<VisionStreetParcelFillResult> {
+  const cap = Math.max(
+    1,
+    Math.min(maxStreets, ABSOLUTE_STREET_PARCEL_FILL_MAX),
+  )
+  const missing = await listVisionStreetsMissingParcels(cfg.town, cap)
+  const result: VisionStreetParcelFillResult = {
+    filled: 0,
+    addresses: 0,
+    failed: 0,
+  }
+  if (missing.length === 0) return result
+  console.info(
+    `[vision-gis-sync] street parcels ${cfg.town}: filling ${missing.length} street page(s)`,
+  )
+  for (const street of missing) {
+    const url = `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`
+    try {
+      const html = await fetchText(url)
+      const links = parcelLinksFromStreetHtml(html)
+      const written = await recordVisionStreetParcels(
+        cfg.town,
+        street,
+        links,
+        url,
+      )
+      result.filled += 1
+      result.addresses += written.written
+      await sleep(delayMs)
+    } catch (err) {
+      result.failed += 1
+      console.warn(
+        `[vision-gis-sync] street parcels ${cfg.town} ${street} failed`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
+  return result
+}
+
+function formatStreetParcelFill(
+  fill: VisionStreetParcelFillResult,
+): string | null {
+  if (fill.filled === 0 && fill.failed === 0) return null
+  const parts = [
+    fill.filled > 0
+      ? `street parcels +${fill.filled} (${fill.addresses} addr)`
+      : null,
+    fill.failed > 0 ? `street parcels fail ${fill.failed}` : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 function formatStreetIndexFill(fill: VisionStreetIndexFillResult): string | null {
   if (fill.filled.length === 0 && fill.failed.length === 0) return null
   const parts = [
@@ -460,10 +551,17 @@ async function sweepStreets(
         (offset > 0 ? ` · resume @${offset}` : '') +
         ` · fetching parcels…`,
     )
-    const streetHtml = await fetchText(
-      `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`,
-    )
+    const streetUrl = `${cfg.baseUrl}/Streets.aspx?Name=${encodeURIComponent(street)}`
+    const streetHtml = await fetchText(streetUrl)
     const links = parcelLinksFromStreetHtml(streetHtml)
+    try {
+      await recordVisionStreetParcels(cfg.town, street, links, streetUrl)
+    } catch (err) {
+      console.warn(
+        `[vision-gis-sync] street parcels ${cfg.town} ${street} write failed`,
+        err instanceof Error ? err.message : err,
+      )
+    }
     await sleep(delayMs)
 
     let i = offset
@@ -570,10 +668,20 @@ export async function syncVisionAddresses(
     skipped: [],
     failed: [],
   }
+  let streetParcelFill: VisionStreetParcelFillResult = {
+    filled: 0,
+    addresses: 0,
+    failed: 0,
+  }
   try {
     streetIndexFill = await fillMissingVisionStreetIndex(cfg, delayMs)
   } catch (err) {
     console.warn('[vision-gis-sync] street index fill failed', err)
+  }
+  try {
+    streetParcelFill = await fillMissingVisionStreetParcels(cfg, delayMs)
+  } catch (err) {
+    console.warn('[vision-gis-sync] street parcel fill failed', err)
   }
 
   try {
@@ -652,6 +760,7 @@ export async function syncVisionAddresses(
     const detail = [
       err instanceof Error ? err.message : String(err),
       formatStreetIndexFill(streetIndexFill),
+      formatStreetParcelFill(streetParcelFill),
     ]
       .filter(Boolean)
       .join(' · ')
@@ -712,6 +821,7 @@ export async function syncVisionAddresses(
     `new ${counts.neu}`,
     `r2 ${counts.r2}`,
     formatStreetIndexFill(streetIndexFill),
+    formatStreetParcelFill(streetParcelFill),
     townComplete ? 'full fill complete → incremental' : null,
     `linked vision=${visionLinked} listings=${listingsLinked}`,
   ]

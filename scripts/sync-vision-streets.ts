@@ -9,6 +9,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import {
   fillMissingVisionStreetIndex,
+  fillMissingVisionStreetParcels,
 } from '../lib/vision-gis-sync'
 import {
   VISION_GIS_TOWNS,
@@ -105,11 +106,15 @@ async function main() {
   console.info(
     `[sync-vision-streets] town=${cfg.town} host=${parsed.host} db=${parsed.db} source=${source}`,
   )
-  const result = await fillMissingVisionStreetIndex(cfg, 400)
+  const letters = await fillMissingVisionStreetIndex(cfg, 400)
   console.info(
-    `[sync-vision-streets] filled ${result.filled.join(',') || '—'} · already ${result.skipped.join(',') || '—'} · failed ${result.failed.join(',') || '—'}`,
+    `[sync-vision-streets] letters filled ${letters.filled.join(',') || '—'} · already ${letters.skipped.join(',') || '—'} · failed ${letters.failed.join(',') || '—'}`,
   )
-  if (result.failed.length > 0) process.exit(1)
+  const parcels = await fillMissingVisionStreetParcels(cfg, 400)
+  console.info(
+    `[sync-vision-streets] street pages ${parcels.filled} · addresses ${parcels.addresses} · failed ${parcels.failed}`,
+  )
+  if (letters.failed.length > 0 || parcels.failed > 0) process.exit(1)
 }
 
 main().catch((err) => {
