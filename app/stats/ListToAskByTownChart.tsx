@@ -58,7 +58,8 @@ export default function ListToAskByTownChart({
 
   const loading = loaded?.kind !== kind;
   const rows = loading ? [] : (loaded?.rows ?? []);
-  const chartReady = !loading && rows.length > 0;
+  /** Frame chrome (title + Show town data) once the fetch settles, even if empty. */
+  const chartReady = !loading;
   useStatsChartReady(chartReady);
 
   const noun = kind === "rental" ? "leases" : "sales";
