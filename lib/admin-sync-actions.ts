@@ -254,6 +254,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'fomc-sync': 'fomc',
   'cpi-sync': 'cpi',
   'market-digest': 'digest',
+  'cama-tax': 'cama-tax',
 }
 
 /** Finalize-step → Sync History type (weekly full resync chain). */
@@ -1326,6 +1327,61 @@ async function runAdminSyncActionImpl(
           // PO-box zips have no ZCTA. Reported, not counted as failures.
           result.skipped.length > 0
             ? `no ZCTA (expected): ${result.skipped.join(', ')}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      }
+    }
+    case 'cama-tax': {
+      // Two dozen data.ct.gov requests and a listings read per town — well past
+      // an Admin POST budget, so serverless hands it to the runner rather than
+      // trying and timing out.
+      if (shouldQueueOnServerless(options)) {
+        const { enqueueSyncJob } = await import('@/lib/sync-queue')
+        const queued = await enqueueSyncJob({
+          jobId: 'cama-tax',
+          trigger: 'admin',
+          ignoreCooldown: true,
+        })
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? queued.enqueued
+              ? 'CAMA tax history queued on the sync runner — End updates when it finishes'
+              : `CAMA tax history ${queued.reason ?? 'already queued'}`
+            : `CAMA tax history queue failed: ${queued.reason ?? 'unknown'}`,
+        }
+      }
+      const { syncCtCamaTaxHistory } = await import('@/lib/ct-cama-tax-sync')
+      const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
+      const result = await syncCtCamaTaxHistory()
+      const finishedAt = result.finishedAt
+      await setSyncMetaDurable('cama_tax_history_synced_at', finishedAt)
+      const skippedTowns = result.towns.filter((t) => t.skippedReason)
+      const filled = result.towns
+        .filter((t) => !t.skippedReason)
+        .map((t) => `${t.town} ${t.rowsWritten.toLocaleString()}`)
+        .join(' · ')
+      return {
+        ok: true,
+        action,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - t0,
+        recordsFetched: result.rowsWritten,
+        message: `${result.rowsWritten.toLocaleString()} tax-history rows written across ${
+          result.towns.length - skippedTowns.length
+        } towns`,
+        detail: [
+          filled || 'no rows written',
+          skippedTowns.length > 0
+            ? `skipped: ${skippedTowns.map((t) => t.town).join(', ')}`
             : null,
         ]
           .filter(Boolean)

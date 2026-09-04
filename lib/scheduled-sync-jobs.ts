@@ -22,4 +22,5 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'fomc-sync': 'fomc-sync',
   'cpi-sync': 'cpi-sync',
   'market-digest': 'market-digest',
+  'cama-tax': 'cama-tax',
 }

@@ -1363,6 +1363,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
   "market-digest": "market-digest",
+  "cama-tax": "cama-tax",
 };
 
 function pauseJobForSyncAllAction(

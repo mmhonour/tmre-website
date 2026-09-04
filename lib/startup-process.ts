@@ -482,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA) and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -527,6 +527,24 @@ export function describeStartupProcess(): {
         timing: "1st of month ~10:00 UTC",
         detail:
           "syncAllTmreZipBoundaries() / Netlify sync-zip-boundaries. Skips when Pause is checked on Zip boundary maps (Database tab). Maps read GET /api/zip-boundaries.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
+
+  lanes.push({
+    id: "cama-tax",
+    title: "Property tax history (CT CAMA)",
+    subtitle:
+      "data.ct.gov assessments × OPM mill rates → historical listing_tax_history years",
+    steps: [
+      {
+        id: "cama-tax-monthly",
+        title: "Monthly CAMA → listing_tax_history",
+        timing: "30-min sweep → monthly ~03:30 ET (Configure)",
+        detail:
+          "syncCtCamaTaxHistory(). The Railway 30-min sweep enqueues on sync_queue at the configured monthly slot; the runner claims it into a forked child under Configure → Property tax history → Budget. There is no Netlify worker. Per town: one request per CAMA vintage (2025/2024/2023/2022) plus the OPM mill rate table, matched to listings by vision_pid where Vision runs and by normalised street address elsewhere, then assessment ÷ 1000 × mill rate per fiscal year. Only years before the current fiscal year are written — the MLS feed owns the current year and incremental sync rewrites it every half hour, so computed rows never contest it. Norwalk is skipped: it bills through six numbered taxing districts and the published town-proper rate is not applicable per parcel. Stamps cama_tax_history_synced_at.",
         status: "scheduled",
         statusLabel: "Cron",
       },

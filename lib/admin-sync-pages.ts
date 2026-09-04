@@ -64,6 +64,8 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
   "fomc-sync": [{ label: "Fed Analysis", href: "/fed-analysis" }],
   "cpi-sync": [{ label: "Fed Analysis", href: "/fed-analysis" }],
   "market-digest": [{ label: "Market Pulse", href: "/market-pulse" }],
+  // Tax history renders in the listing detail panel, not on a page of its own.
+  "cama-tax": [{ label: "Properties", href: "/properties" }],
 };
 
 export function adminSyncImpactedPages(rowId: string): AdminSyncImpactedPage[] {
