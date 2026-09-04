@@ -14,6 +14,12 @@ export const DEFAULT_MARKET_PULSE_CHART_LAYOUT: MarketPulseChartLayout =
 /** Default town sort — Seller Friendly (matches email). */
 export const DEFAULT_MARKET_PULSE_FAVOR_SORT: MarketPulseFavorSort = 'sellers'
 
+/** Footer form on /market-pulse — web jump + Monday email use this same hash. */
+export const MARKET_PULSE_JOIN_BRIEF_ID = 'join-the-brief'
+
+/** Visitor-facing name for close ÷ original ask (stacked, unstacked, Stats). */
+export const LIST_TO_TRANSACT_LABEL = 'List to TRAN$ACT'
+
 /**
  * Page-load defaults. Monday email (HTML + plaintext) must use this same
  * combination — never a visitor’s in-session Filters (unstacked, Buyer, etc.).

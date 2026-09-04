@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  MARKET_PULSE_JOIN_BRIEF_ID,
   summarizeMarketPulseFilters,
 } from '@/lib/market-pulse-defaults'
 import {
@@ -567,6 +568,9 @@ export function formatMarketDigestHtml(
           </tr>
           <tr>
             <td style="padding:20px 22px 8px 22px;">
+              <p style="margin:0 0 12px 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;">
+                <a href="${escapeHtml(`${SITE_URL}/market-pulse#${MARKET_PULSE_JOIN_BRIEF_ID}`)}" style="color:${GOLD};text-decoration:underline;">Join the brief</a>
+              </p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:8px 0;">
                 <tr>
                   ${kpiCell('Market active', marketActive)}

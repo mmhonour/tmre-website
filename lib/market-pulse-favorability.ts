@@ -14,6 +14,8 @@
  *   Closings in trailing 24 months ÷ housing unit count (higher → buyer)
  */
 
+import { LIST_TO_TRANSACT_LABEL } from '@/lib/market-pulse-defaults'
+
 /**
  * How the composite is explained to a reader, in one place because the page and
  * the Monday email both say it. Kept beside the factors above so adding one to
@@ -21,10 +23,10 @@
  * how list-to-ask came to be scored without ever being mentioned.
  */
 export const MARKET_PULSE_BUYER_SCORE_COPY =
-  'Buyer Friendly ranks a town higher when months supply is larger, avg days on market is larger, and closed, median, delta, average and list to ask are all smaller.'
+  `Buyer Friendly ranks a town higher when months supply is larger, avg days on market is larger, and closed, median, delta, average and ${LIST_TO_TRANSACT_LABEL} are all smaller.`
 
 export const MARKET_PULSE_SELLER_SCORE_COPY =
-  'Seller Friendly is the opposite of each of those — smaller months supply and avg days on market, larger closed, median, delta, average and list to ask.'
+  `Seller Friendly is the opposite of each of those — smaller months supply and avg days on market, larger closed, median, delta, average and ${LIST_TO_TRANSACT_LABEL}.`
 
 export type MarketPulseFavorSort = 'default' | 'sellers' | 'buyers'
 
@@ -141,7 +143,7 @@ export const MARKET_PULSE_FAVOR_FACTORS: {
   },
   {
     id: 'saleToAskPct',
-    label: 'List to ask',
+    label: LIST_TO_TRANSACT_LABEL,
     status: 'live',
     buyerDirection: 'higher',
     notes:

@@ -1,5 +1,6 @@
 import type { ListingKind } from '@/lib/listing-kind'
 import type { MarketPulseCombinedTownRow } from '@/lib/market-pulse-combined-rows'
+import { LIST_TO_TRANSACT_LABEL } from '@/lib/market-pulse-defaults'
 import { formatClosedCountWithLookback } from '@/lib/market-pulse-lookback'
 import {
   formatMarketPulseMoney,
@@ -24,6 +25,8 @@ export const MARKET_PULSE_STACKED_METRIC_IDS = [
 
 export type MarketPulseStackedMetricId =
   (typeof MARKET_PULSE_STACKED_METRIC_IDS)[number]
+
+export { LIST_TO_TRANSACT_LABEL }
 
 export type MarketPulseStackedMetricDef = {
   id: MarketPulseStackedMetricId
@@ -120,8 +123,9 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'saleToAsk',
-      label: 'List to ask',
-      labelOf: (r) => `List to ask ${formatSaleToAskPct(r.saleToAskPct)}`,
+      label: LIST_TO_TRANSACT_LABEL,
+      labelOf: (r) =>
+        `${LIST_TO_TRANSACT_LABEL} ${formatSaleToAskPct(r.saleToAskPct)}`,
       // Percentages cluster in the high 90s, so the bar tracks the dollar gap
       // (which separates towns) and the label carries the ratio.
       barValueOf: (r) => absOrNull(r.saleToAskDollars),

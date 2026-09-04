@@ -36,6 +36,7 @@ import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  MARKET_PULSE_JOIN_BRIEF_ID,
   summarizeMarketPulseFilters,
 } from '@/lib/market-pulse-defaults'
 import {
@@ -884,6 +885,7 @@ export function formatMarketDigestEmail(
     'TMRE Market Pulse',
     etDate,
     `Web: ${SITE_URL}/market-pulse`,
+    `Join the brief: ${SITE_URL}/market-pulse#${MARKET_PULSE_JOIN_BRIEF_ID}`,
     `Stats: ${SITE_URL}/stats`,
     '',
     ...kpiLines,
