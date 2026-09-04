@@ -112,7 +112,7 @@ export default function MarketPulseTownPanel({
   townLabel: string;
   /** Town name element. Falls back to plain text when omitted. */
   heading?: ReactNode;
-  /** Makes the List to ask row label a link to its Stats chart. */
+  /** Makes the TRAN$ACT to LIST row label a link to its Stats chart. */
   saleToAskHref?: string;
   /** Stats chart behind each bar, by metric id. Null where none exists. */
   metricHref?: (metricId: string) => string | null;

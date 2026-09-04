@@ -18,7 +18,7 @@ export const DEFAULT_MARKET_PULSE_FAVOR_SORT: MarketPulseFavorSort = 'sellers'
 export const MARKET_PULSE_JOIN_BRIEF_ID = 'join-the-brief'
 
 /** Visitor-facing name for close ÷ original ask (stacked, unstacked, Stats). */
-export const LIST_TO_TRANSACT_LABEL = 'List to TRAN$ACT'
+export const TRANSACT_TO_LIST_LABEL = 'TRAN$ACT to LIST'
 
 /**
  * Page-load defaults. Monday email (HTML + plaintext) must use this same
