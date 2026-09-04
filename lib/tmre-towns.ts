@@ -110,6 +110,24 @@ export function boundaryZipsForAllTowns(): readonly string[] {
   return [...ALL_TMRE_ZIPS].filter(hasZctaBoundary)
 }
 
+/**
+ * ZCTAs that frame the Intelligence deal-board map.
+ * All Towns always uses the full TMRE overview — a leftover zip must not
+ * collapse that to a single ring. A zip only frames the map when it belongs
+ * to the selected town.
+ */
+export function mapBoundZipsForScope(
+  town: TmreTown | 'All',
+  zip?: string | null,
+): readonly string[] {
+  if (town === 'All') return boundaryZipsForAllTowns()
+  const zipNorm = normalizeZip(zip)
+  if (zipNorm && hasZctaBoundary(zipNorm) && TOWN_ZIPS[town].includes(zipNorm)) {
+    return [zipNorm]
+  }
+  return boundaryZipsForTown(town)
+}
+
 export function normalizeZip(postal: string | null | undefined): string | null {
   const zip = postal?.trim().slice(0, 5)
   return zip && /^\d{5}$/.test(zip) ? zip : null
