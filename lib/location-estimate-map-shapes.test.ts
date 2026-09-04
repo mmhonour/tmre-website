@@ -12,7 +12,10 @@ import {
   lonLatToCell,
   milesBetween,
   nextCellAction,
+  coastalStripLabel,
   coastalStripMark,
+  countSuggestedOverwrite,
+  hasSouthWaterShore,
   suggestCoastalStrips,
   townCenterOwning,
 } from './location-estimate-zip-grid-shared'
@@ -68,6 +71,7 @@ describe('zip grid', () => {
     const rings = paintedGridOverlayRings({ [cellKey(i, j)]: 1 })
     assert.equal(rings.length, 1)
     assert.equal(rings[0]?.stripIndex, 1)
+    assert.equal(rings[0]?.label, '2 2nd strip')
   })
 
   it('numbers Coast through 4th as 1–4', () => {
@@ -75,6 +79,11 @@ describe('zip grid', () => {
     assert.equal(coastalStripMark(1), 2)
     assert.equal(coastalStripMark(2), 3)
     assert.equal(coastalStripMark(3), 4)
+  })
+
+  it('labels each strip with its mark and name', () => {
+    assert.equal(coastalStripLabel(0), '1 Coast')
+    assert.equal(coastalStripLabel(3), '4 4th strip')
   })
 
   it('paints four strips north from the south-facing town edge', () => {
@@ -101,6 +110,28 @@ describe('zip grid', () => {
     const inlandOnly = [{ i: 3, j: 9 }]
     const suggested = suggestCoastalStrips(town, inlandOnly)
     assert.deepEqual(suggested, {})
+  })
+
+  it('treats an open south edge as water and a landlocked block as not', () => {
+    const shore = [
+      { i: 4, j: 10 },
+      { i: 4, j: 11 },
+    ]
+    const inland = [
+      { i: 4, j: 20 },
+      { i: 4, j: 21 },
+      { i: 4, j: 22 },
+    ]
+    const neighborSouth = [{ i: 4, j: 19 }, ...inland]
+    assert.equal(hasSouthWaterShore(shore, shore), true)
+    assert.equal(hasSouthWaterShore(neighborSouth, inland), false)
+  })
+
+  it('counts painted cells the south-shore seed would overwrite', () => {
+    const suggested = { '1,1': 0 as const, '1,2': 1 as const }
+    assert.equal(countSuggestedOverwrite({}, suggested), 0)
+    assert.equal(countSuggestedOverwrite({ '1,1': 0 }, suggested), 0)
+    assert.equal(countSuggestedOverwrite({ '1,1': 2, '1,2': 1 }, suggested), 1)
   })
 
   it('toggles a painted square off when clicked with the same brush', () => {

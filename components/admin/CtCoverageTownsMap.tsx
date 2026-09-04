@@ -34,12 +34,16 @@ import {
   milesBetween,
   parseCellKey,
   pointInRings,
+  coastalStripLabel,
   coastalStripMark,
+  countSuggestedOverwrite,
+  hasSouthWaterShore,
   suggestCoastalStrips,
   type CoastalStripIndex,
 } from "@/lib/location-estimate-zip-grid-shared";
 import {
   ZIP_AREA_NICKNAMES,
+  boundaryZipsForNeighborTowns,
   boundaryZipsForTown,
   isTmreTown,
   neighborTownsFor,
@@ -80,22 +84,46 @@ const STRIP_FILL: Record<CoastalStripIndex, string> = {
   3: "rgba(232, 93, 58, 0.10)",
 };
 
+const STRIP_MARK_MIN_PX = 6;
+const STRIP_MARK_MAX_PX = 22;
+const STRIP_MARK_DEFAULT_PX = 7;
+const STRIP_MARK_PX_STORAGE_KEY = "tmre-ct-coverage-strip-mark-px";
+
+function clampStripMarkPx(value: number): number {
+  if (!Number.isFinite(value)) return STRIP_MARK_DEFAULT_PX;
+  return Math.min(
+    STRIP_MARK_MAX_PX,
+    Math.max(STRIP_MARK_MIN_PX, Math.round(value)),
+  );
+}
+
+function readStoredStripMarkPx(): number {
+  try {
+    const raw = window.localStorage.getItem(STRIP_MARK_PX_STORAGE_KEY);
+    if (raw == null) return STRIP_MARK_DEFAULT_PX;
+    return clampStripMarkPx(Number(raw));
+  } catch {
+    return STRIP_MARK_DEFAULT_PX;
+  }
+}
+
 function StripMark({
   lon,
   lat,
   strip,
   viewport,
   zoom,
+  fontSize,
 }: {
   lon: number;
   lat: number;
   strip: CoastalStripIndex;
   viewport: { left: number; top: number };
   zoom: number;
+  fontSize: number;
 }) {
   const x = lonToWorldX(lon, zoom) - viewport.left;
   const y = latToWorldY(lat, zoom) - viewport.top;
-  const fontSize = zoom >= 14 ? 12 : zoom >= 12 ? 10 : 8;
   return (
     <text
       x={x}
@@ -103,8 +131,8 @@ function StripMark({
       dy="0.35em"
       textAnchor="middle"
       fill="#1a2744"
-      stroke="rgba(255,255,255,0.92)"
-      strokeWidth={2.4}
+      stroke="rgba(255,255,255,0.88)"
+      strokeWidth={Math.max(1, fontSize * 0.18)}
       paintOrder="stroke"
       style={{
         fontSize,
@@ -151,6 +179,22 @@ export default function CtCoverageTownsMap({
   const draftRef = useRef<TownCenterPlacement | null>(null);
   draftRef.current = draftCenter;
   const [hoverDisk, setHoverDisk] = useState<"center" | "rim" | null>(null);
+  const [townCenterMode, setTownCenterMode] = useState(false);
+  const [stripMarkPx, setStripMarkPx] = useState(STRIP_MARK_DEFAULT_PX);
+
+  useEffect(() => {
+    setStripMarkPx(readStoredStripMarkPx());
+  }, []);
+
+  const onStripMarkPx = (value: number) => {
+    const next = clampStripMarkPx(value);
+    setStripMarkPx(next);
+    try {
+      window.localStorage.setItem(STRIP_MARK_PX_STORAGE_KEY, String(next));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  };
 
   const livePlacements = useMemo(() => {
     if (!focusTown || !draftCenter) return townCenters.placements;
@@ -159,6 +203,7 @@ export default function CtCoverageTownsMap({
 
   useEffect(() => {
     setDraftCenter(null);
+    setTownCenterMode(false);
   }, [focusTown]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -280,6 +325,26 @@ export default function CtCoverageTownsMap({
   const townCells = useMemo(
     () => (townRings.length ? cellsForZipRings(townRings) : []),
     [townRings],
+  );
+  const landCells = useMemo(() => {
+    if (!byZip || !focusTown) return townCells;
+    const rings = [
+      ...boundaryZipsForTown(focusTown),
+      ...boundaryZipsForNeighborTowns(focusTown),
+    ].flatMap((code) => byZip.get(code) ?? []);
+    return rings.length ? cellsForZipRings(rings) : townCells;
+  }, [byZip, focusTown, townCells]);
+  const southShoreSuggestion = useMemo(
+    () => suggestCoastalStrips(landCells, zipCells),
+    [landCells, zipCells],
+  );
+  const hasShore = useMemo(
+    () => hasSouthWaterShore(landCells, zipCells),
+    [landCells, zipCells],
+  );
+  const shoreOverwriteCount = useMemo(
+    () => countSuggestedOverwrite(paint.cells, southShoreSuggestion),
+    [paint.cells, southShoreSuggestion],
   );
 
   const fitArea = `${focusTown ?? "all"}:${zip || "all"}:${fitRings.length}`;
@@ -446,6 +511,7 @@ export default function CtCoverageTownsMap({
       };
       e.currentTarget.setPointerCapture(e.pointerId);
       setDraftCenter(resolveTownCenter(focusTown, livePlacements));
+      setTownCenterMode(true);
       return;
     }
     const key = cellAtClient(e.clientX, e.clientY);
@@ -538,10 +604,19 @@ export default function CtCoverageTownsMap({
       ? labeledTowns
           .map((town) => {
             const pt = resolveTownCenter(town, livePlacements);
+            const left = lonToWorldX(pt.lon, zoom) - viewport.left;
+            const cy = latToWorldY(pt.lat, zoom) - viewport.top;
+            const edgeY =
+              latToWorldY(
+                pt.lat + pt.radiusMiles / MILES_PER_DEG_LAT,
+                zoom,
+              ) - viewport.top;
+            const radiusPx = Math.abs(edgeY - cy);
             return {
               town,
-              left: lonToWorldX(pt.lon, zoom) - viewport.left,
-              top: latToWorldY(pt.lat, zoom) - viewport.top,
+              left,
+              top: cy,
+              radiusPx,
               active: activeTmre.has(town),
             };
           })
@@ -625,10 +700,10 @@ export default function CtCoverageTownsMap({
           <div className="flex flex-wrap gap-1">
             {(
               [
-                [0, "1 Coast"],
-                [1, "2 2nd"],
-                [2, "3 3rd"],
-                [3, "4 4th"],
+                [0, coastalStripLabel(0)],
+                [1, coastalStripLabel(1)],
+                [2, coastalStripLabel(2)],
+                [3, coastalStripLabel(3)],
                 ["erase", "Erase"],
               ] as const
             ).map(([value, label]) => (
@@ -636,7 +711,10 @@ export default function CtCoverageTownsMap({
                 key={String(value)}
                 type="button"
                 aria-pressed={paint.brush === value}
-                onClick={() => paint.setBrush(value)}
+                onClick={() => {
+                  setTownCenterMode(false);
+                  paint.setBrush(value);
+                }}
                 className={`px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
                   paint.brush === value
                     ? "bg-navy text-white"
@@ -649,18 +727,50 @@ export default function CtCoverageTownsMap({
           </div>
           <button
             type="button"
-            onClick={() =>
-              paint.applyPatch(suggestCoastalStrips(townCells, zipCells))
+            title={
+              !hasShore
+                ? "Landlocked — no Sound, gulf, or bay on the south edge"
+                : shoreOverwriteCount > 0
+                  ? `Will overwrite ${shoreOverwriteCount} painted square${
+                      shoreOverwriteCount === 1 ? "" : "s"
+                    }`
+                  : "Seed Coast–4th from the south water edge"
             }
-            disabled={status !== "ready" || zipCells.length === 0}
+            onClick={() => {
+              if (!hasShore) return;
+              if (shoreOverwriteCount > 0) {
+                const ok = window.confirm(
+                  `Paint south shore will overwrite ${shoreOverwriteCount} already-painted square${
+                    shoreOverwriteCount === 1 ? "" : "s"
+                  } on this ${zip ? "zip" : "town"}. Continue?`,
+                );
+                if (!ok) return;
+              }
+              paint.applyPatch(southShoreSuggestion);
+            }}
+            disabled={
+              status !== "ready" ||
+              zipCells.length === 0 ||
+              !hasShore ||
+              Object.keys(southShoreSuggestion).length === 0
+            }
             className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10 disabled:opacity-40"
           >
             Paint south shore
           </button>
           <div className="flex flex-wrap items-center gap-1">
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/45">
+            <button
+              type="button"
+              aria-pressed={townCenterMode}
+              onClick={() => setTownCenterMode((on) => !on)}
+              className={`px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] ${
+                townCenterMode
+                  ? "bg-navy text-white"
+                  : "text-charcoal/45 hover:bg-navy/10 hover:text-navy"
+              }`}
+            >
               Town center
-            </span>
+            </button>
             <button
               type="button"
               aria-label="Smaller town-center radius"
@@ -672,6 +782,7 @@ export default function CtCoverageTownsMap({
                     current.radiusMiles - TOWN_CENTER_RADIUS_STEP_MILES,
                   ),
                 };
+                setTownCenterMode(true);
                 townCenters.save(focusTown, next);
               }}
               disabled={
@@ -699,6 +810,7 @@ export default function CtCoverageTownsMap({
                     current.radiusMiles + TOWN_CENTER_RADIUS_STEP_MILES,
                   ),
                 };
+                setTownCenterMode(true);
                 townCenters.save(focusTown, next);
               }}
               disabled={
@@ -709,18 +821,38 @@ export default function CtCoverageTownsMap({
             >
               +
             </button>
-            <button
-              type="button"
-              onClick={() => townCenters.reset(focusTown)}
-              className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10"
-            >
-              Reset
-            </button>
+          <button
+            type="button"
+            onClick={() => townCenters.reset(focusTown)}
+            className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10"
+          >
+            Reset
+          </button>
           </div>
+          <label className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/45">
+              # size
+            </span>
+            <input
+              type="range"
+              min={STRIP_MARK_MIN_PX}
+              max={STRIP_MARK_MAX_PX}
+              step={1}
+              value={stripMarkPx}
+              onChange={(e) => onStripMarkPx(Number(e.target.value))}
+              className="h-1.5 w-24 accent-navy"
+              aria-label="Coastal strip number size"
+            />
+            <span className="min-w-[2.25rem] font-mono text-[11px] text-navy">
+              {stripMarkPx}px
+            </span>
+          </label>
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/40">
             {paint.saving || townCenters.saving
               ? "Saving…"
-              : "Drag the disk or use + / −"}
+              : townCenterMode
+                ? "Grid hidden — click Town center to show it"
+                : "Drag the disk or use + / −"}
           </span>
         </div>
       ) : null}
@@ -806,7 +938,8 @@ export default function CtCoverageTownsMap({
               });
             })}
 
-            {zipCells.map(({ i, j }) => {
+            {!townCenterMode
+              ? zipCells.map(({ i, j }) => {
               const key = cellKey(i, j);
               const strip = paint.cells[key];
               const c = cellCenter(i, j);
@@ -844,11 +977,13 @@ export default function CtCoverageTownsMap({
                       strip={strip}
                       viewport={viewport}
                       zoom={zoom}
+                      fontSize={stripMarkPx}
                     />
                   ) : null}
                 </g>
               );
-            })}
+            })
+              : null}
 
             {!focusTown
               ? Object.entries(paint.cells).map(([key, strip]) => {
@@ -877,6 +1012,7 @@ export default function CtCoverageTownsMap({
                         strip={strip}
                         viewport={viewport}
                         zoom={zoom}
+                        fontSize={stripMarkPx}
                       />
                     </g>
                   );
@@ -952,7 +1088,11 @@ export default function CtCoverageTownsMap({
           </svg>
         ) : null}
 
-        {townLabels.map(({ town, left, top, active }) => (
+        {townLabels.map(({ town, left, top, radiusPx, active }) => {
+          const labelHalf = 9;
+          const gap = 6;
+          const sitsOnDisk = radiusPx > labelHalf;
+          return (
           <button
             key={`label-${town}`}
             type="button"
@@ -963,7 +1103,7 @@ export default function CtCoverageTownsMap({
             className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-white/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em]"
             style={{
               left,
-              top: focusTown === town ? top - 18 : top,
+              top: sitsOnDisk ? top - radiusPx - labelHalf - gap : top - 14,
               borderColor:
                 focusTown === town
                   ? "#B8941F"
@@ -975,7 +1115,8 @@ export default function CtCoverageTownsMap({
           >
             {town}
           </button>
-        ))}
+          );
+        })}
 
         <div className="absolute left-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
           <button

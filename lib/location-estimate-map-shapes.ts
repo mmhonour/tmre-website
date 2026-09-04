@@ -9,6 +9,7 @@ import {
   cellCenter,
   cellKey,
   cellRing,
+  coastalStripLabel,
   parseCellKey,
   type ZipGridCells,
 } from '@/lib/location-estimate-zip-grid-shared'
@@ -115,7 +116,7 @@ export function paintedGridOverlayRings(
       kind: 'coastal_strip',
       ring: cellRing(parsed.i, parsed.j),
       stripIndex: strip,
-      label: `Coastal strip ${strip}`,
+      label: coastalStripLabel(strip),
     })
   }
   return rings
