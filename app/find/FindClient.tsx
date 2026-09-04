@@ -11,6 +11,7 @@ type LookupHit = {
   street: string;
   mblu: string | null;
   ownerName: string | null;
+  ownerMailingAddress: string | null;
   listingId: string | null;
   mlsId: string | null;
   status: string | null;
@@ -41,9 +42,13 @@ function hitHref(hit: LookupHit): string {
   return "/find";
 }
 
-export default function FindClient() {
+export default function FindClient({
+  initialQuery = "",
+}: {
+  initialQuery?: string;
+}) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState<LookupHit[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("idle");
@@ -56,6 +61,12 @@ export default function FindClient() {
 
   useEffect(() => {
     const q = query.trim();
+    const nextUrl = q.length >= 2 ? `/find?q=${encodeURIComponent(q)}` : "/find";
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== nextUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+
     if (q.length < 2) {
       setSuggestions([]);
       setSuggestOpen(false);
@@ -108,7 +119,7 @@ export default function FindClient() {
       } finally {
         if (!ac.signal.aborted) setSuggestLoading(false);
       }
-    }, 280);
+    }, 150);
 
     return () => {
       clearTimeout(timer);
@@ -169,8 +180,8 @@ export default function FindClient() {
             <span className="italic gold-shimmer">Lookup.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Type a street address. Westport parcels from the town map, plus
-            MLS addresses that GIS has not ingested yet.
+            Search the town parcel map the way an assessor office does — owner
+            of record, street address, mailing address, MBLU, or Vision PID.
           </p>
 
           <div className="relative z-30 mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2">
@@ -196,15 +207,16 @@ export default function FindClient() {
                     ? `find-suggestion-${highlightIndex}`
                     : undefined
                 }
-                placeholder="Westport street address…"
+                placeholder="Address, owner, mailing, MBLU, or PID…"
                 autoComplete="off"
+                autoFocus={initialQuery.length === 0}
                 className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-3 font-mono text-sm text-white placeholder-white/35 focus:border-gold/50 focus:outline-none transition-colors"
               />
               {(suggestOpen || suggestLoading) && query.trim().length >= 2 && (
                 <ul
                   id="find-suggestions"
                   role="listbox"
-                  className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-72 overflow-y-auto rounded-2xl border border-white/10 bg-navy/95 backdrop-blur-md shadow-2xl shadow-navy/40 py-1"
+                  className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-80 overflow-y-auto rounded-2xl border border-white/10 bg-navy/95 backdrop-blur-md shadow-2xl shadow-navy/40 py-1"
                 >
                   {suggestLoading && suggestions.length === 0 && (
                     <li className="px-4 py-3 font-mono text-[11px] text-white/50">
@@ -213,11 +225,9 @@ export default function FindClient() {
                   )}
                   {suggestions.map((hit, i) => {
                     const meta = [
-                      hit.status ?? "Off market",
                       hit.mblu ? `MBLU ${hit.mblu}` : null,
-                      hit.siblingCount > 1
-                        ? `${hit.siblingCount} parcels`
-                        : null,
+                      hit.visionPid ? `PID ${hit.visionPid}` : null,
+                      hit.status ?? (hit.mlsId ? "Listed" : null),
                     ]
                       .filter(Boolean)
                       .join(" · ");
@@ -242,6 +252,9 @@ export default function FindClient() {
                         >
                           <span className="block text-sm font-medium text-white">
                             {hit.street}
+                          </span>
+                          <span className="mt-0.5 block font-mono text-[12px] text-white/75">
+                            {hit.ownerName ?? "Owner pending Field Card"}
                           </span>
                           <span className="mt-0.5 flex items-center justify-between gap-3 font-mono text-[10px] text-white/45">
                             <span>{meta}</span>
@@ -273,8 +286,8 @@ export default function FindClient() {
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           {loadState === "idle" && (
             <p className="text-charcoal/60 font-mono text-sm">
-              Start typing a Westport address — parcels and MLS listings
-              appear as you type.
+              Type an owner name or street — address + owner pairs appear as
+              you type. Same keys as Streets.
             </p>
           )}
 
@@ -311,13 +324,12 @@ export default function FindClient() {
 
 function FindCard({ hit }: { hit: LookupHit }) {
   const status = hit.status ?? "Off market";
-  const meta = [
-    status,
-    hit.mblu ? `MBLU ${hit.mblu}` : null,
-    hit.ownerName,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const mailing =
+    hit.ownerMailingAddress &&
+    hit.ownerMailingAddress.trim().toLowerCase() !==
+      hit.addressFull.trim().toLowerCase()
+      ? hit.ownerMailingAddress
+      : null;
 
   return (
     <article className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5">
@@ -327,9 +339,18 @@ function FindCard({ hit }: { hit: LookupHit }) {
       >
         {hit.street}
       </Link>
-      <p className="text-sm text-slate mt-1">Westport, CT</p>
+      <p className="mt-1 font-mono text-[13px] text-navy/80">
+        {hit.ownerName ?? "Owner pending Field Card"}
+      </p>
+      {mailing ? (
+        <p className="mt-0.5 font-mono text-[11px] text-slate/70 leading-relaxed">
+          {mailing}
+        </p>
+      ) : null}
       <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-slate/60 mt-2">
-        {meta}
+        {[status, hit.mblu ? `MBLU ${hit.mblu}` : null, hit.visionPid ? `PID ${hit.visionPid}` : null]
+          .filter(Boolean)
+          .join(" · ")}
       </p>
       <div className="flex items-baseline justify-between gap-3 mt-4 pt-4 border-t border-charcoal/[0.06]">
         <span className="font-mono text-lg text-gold tabular-nums">

@@ -138,6 +138,36 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             ON vision_addresses
             USING gin (to_tsvector('simple', coalesce(field_card->>'searchText', '')))
         `)
+        try {
+          await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+          await query(`
+            ALTER TABLE vision_addresses
+              ADD COLUMN IF NOT EXISTS lookup_text text
+              GENERATED ALWAYS AS (
+                lower(
+                  trim(
+                    both FROM
+                      coalesce(vision_pid, '') || ' ' ||
+                      coalesce(account_number, '') || ' ' ||
+                      coalesce(mblu, '') || ' ' ||
+                      replace(replace(coalesce(mblu, ''), '/', ''), ' ', '') || ' ' ||
+                      coalesce(address_full, '') || ' ' ||
+                      coalesce(address_norm, '') || ' ' ||
+                      coalesce(street_no, '') || ' ' ||
+                      coalesce(street_name, '') || ' ' ||
+                      coalesce(owner_name, '') || ' ' ||
+                      coalesce(owner_mailing_address, '')
+                  )
+                )
+              ) STORED
+          `)
+          await query(`
+            CREATE INDEX IF NOT EXISTS idx_vision_addr_lookup_trgm
+              ON vision_addresses USING gin (lookup_text gin_trgm_ops)
+          `)
+        } catch (err) {
+          console.warn('[vision-addresses-repo] lookup_text trigram index skipped', err)
+        }
         visionAddressesReady = true
       } catch (err) {
         visionAddressesReady = false
@@ -891,6 +921,18 @@ const VISION_SELECT = `
   field_card, field_card_r2_key
 `
 
+/** Typeahead — skip field_card jsonb. */
+const VISION_LOOKUP_SELECT = `
+  town, vision_pid, account_number, mblu, use_code, use_code_description,
+  address_full, address_norm, street_no, street_name, city, state, zip,
+  owner_name, owner_mailing_address, assessed_value, appraisal_value, year_built, living_area_sqft,
+  beds, full_baths, half_baths, style, acres, zoning,
+  last_sale_price, last_sale_date, last_sale_book_page,
+  building_count, total_rooms, model,
+  photo_url, parcel_url, listing_id, mls_id,
+  NULL::jsonb AS field_card, field_card_r2_key
+`
+
 export async function getVisionAddress(
   town: string,
   visionPid: string,
@@ -918,7 +960,11 @@ export async function listVisionAddressesByNorm(
   return rows.map(mapVisionAddressRow)
 }
 
-/** Prefix on address_norm; street-name / address_full contains as fallback. No RETS. */
+/** Prefix / token haystack search. No Field Card JSON, no RETS. */
+function likeSafe(raw: string): string {
+  return raw.toLowerCase().replace(/[%_]/g, '')
+}
+
 export async function searchVisionAddresses(opts: {
   town: string
   q: string
@@ -929,39 +975,66 @@ export async function searchVisionAddresses(opts: {
   if (q.length < 2) return []
   const limit = Math.min(Math.max(opts.limit ?? 12, 1), 24)
   const street = normalizeStreetLine(q)
-  const prefix = `${street}%`
-  const containsPatterns = [
+  const escaped = likeSafe(q)
+  const tokens = escaped.split(/\s+/).filter((t) => t.length >= 2)
+  if (tokens.length === 0) return []
+  const tokenPatterns = tokens.map((t) => `%${t}%`)
+  const phrases = [
     ...new Set(
-      [q, street, ...streetSearchVariants(q)].map(
-        (v) => `%${v.toLowerCase().replace(/[%_]/g, '')}%`,
-      ),
+      [escaped, street, ...streetSearchVariants(q)]
+        .map((v) => likeSafe(v))
+        .filter((v) => v.length >= 2)
+        .map((v) => `%${v}%`),
     ),
   ]
-  const streetLine = `${q.replace(/[%_]/g, '')}%`
+  const prefix = `${street}%`
+  const ownerPrefix = `${escaped}%`
+  const pidExact = /^\d{2,}$/.test(q) ? q : null
 
-  const extraContains = containsPatterns
-    .map((_, i) => {
-      const p = `$${i + 5}`
-      return `(lower(coalesce(address_full, '')) LIKE ${p}
-        OR lower(coalesce(street_name, '')) LIKE ${p}
-        OR lower(coalesce(field_card->>'searchText', '')) LIKE ${p})`
-    })
-    .join(' OR ')
+  const args = [
+    opts.town,
+    pidExact,
+    tokenPatterns,
+    phrases,
+    prefix,
+    ownerPrefix,
+    limit,
+  ]
 
-  const rows = await query<VisionAddressSqlRow>(
-    `SELECT ${VISION_SELECT} FROM vision_addresses
+  const sql = (from: string) =>
+    `SELECT ${VISION_LOOKUP_SELECT} FROM vision_addresses
       WHERE town = $1
         AND (
-          address_norm LIKE $2
-          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $3
-          OR ${extraContains}
+          ($2::text IS NOT NULL AND vision_pid = $2)
+          OR ${from} LIKE ALL($3::text[])
+          OR ${from} LIKE ANY($4::text[])
         )
       ORDER BY
-        CASE WHEN address_norm LIKE $2 THEN 0 ELSE 1 END,
+        CASE
+          WHEN $2::text IS NOT NULL AND vision_pid = $2 THEN 0
+          WHEN address_norm LIKE $5 THEN 1
+          WHEN lower(coalesce(owner_name, '')) LIKE $6 THEN 2
+          ELSE 3
+        END,
         address_full NULLS LAST,
         vision_pid
-      LIMIT $4`,
-    [opts.town, prefix, streetLine.toLowerCase(), limit, ...containsPatterns],
-  )
-  return rows.map(mapVisionAddressRow)
+      LIMIT $7`
+
+  try {
+    const rows = await query<VisionAddressSqlRow>(sql('lookup_text'), args)
+    return rows.map(mapVisionAddressRow)
+  } catch (err) {
+    console.warn('[vision-addresses-repo] lookup_text search failed; using columns', err)
+    const fallbackHaystack = `lower(
+      coalesce(vision_pid, '') || ' ' ||
+      coalesce(account_number, '') || ' ' ||
+      coalesce(mblu, '') || ' ' ||
+      coalesce(address_full, '') || ' ' ||
+      coalesce(street_name, '') || ' ' ||
+      coalesce(owner_name, '') || ' ' ||
+      coalesce(owner_mailing_address, '')
+    )`
+    const rows = await query<VisionAddressSqlRow>(sql(fallbackHaystack), args)
+    return rows.map(mapVisionAddressRow)
+  }
 }
