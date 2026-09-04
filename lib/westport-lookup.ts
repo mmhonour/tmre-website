@@ -32,9 +32,11 @@ import {
   ownershipFromFieldCardFields,
   parseVisionFieldCardJson,
   countVisionQuitclaims,
+  visionDeedDisplayRows,
   visionLastPaidSale,
   visionPurchaseDate,
   visionPurchaseYear,
+  type VisionDeedDisplayRow,
   type VisionFieldCardField,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
@@ -109,6 +111,7 @@ export type WestportMergedProperty = {
   /** Year from {@link purchaseDate}. */
   purchaseYear: number | null
   quitclaimCount: number
+  deedHistory: VisionDeedDisplayRow[]
   assessedValue: MergedField<number>
   appraisalValue: MergedField<number>
   lastSalePrice: MergedField<number>
@@ -631,6 +634,7 @@ export async function mergeWestportProperty(
       ownership: fieldCard.ownership,
     }),
     quitclaimCount: countVisionQuitclaims(fieldCard.ownership),
+    deedHistory: visionDeedDisplayRows(fieldCard.ownership),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
     appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),

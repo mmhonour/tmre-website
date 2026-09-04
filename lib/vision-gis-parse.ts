@@ -301,6 +301,38 @@ export function countVisionQuitclaims(
   return (ownership ?? []).filter((row) => isVisionQuitclaim(row)).length
 }
 
+export function sortVisionOwnershipDesc(
+  rows: readonly VisionOwnershipRow[],
+): VisionOwnershipRow[] {
+  return [...rows].sort(
+    (a, b) => (yearFromVisionDate(b.date) ?? 0) - (yearFromVisionDate(a.date) ?? 0),
+  )
+}
+
+export type VisionDeedDisplayRow = {
+  date: string
+  owner: string
+  priceLabel: string
+  bookPage: string
+  deedLabel: string
+}
+
+export function visionDeedDisplayRows(
+  rows: readonly VisionOwnershipRow[],
+): VisionDeedDisplayRow[] {
+  return sortVisionOwnershipDesc(rows).map((row) => ({
+    date: row.date?.trim() || '—',
+    owner: row.owner?.trim() || '—',
+    priceLabel: isVisionQuitclaim(row)
+      ? '—'
+      : formatVisionMoney(row.price) ?? row.price ?? '—',
+    bookPage: row.bookPage?.trim() || '—',
+    deedLabel:
+      visionInstrumentLabel(row.instrument) ??
+      (isVisionQuitclaim(row) ? 'Quitclaim' : '—'),
+  }))
+}
+
 export function visionInstrumentLabel(
   instrument: string | null | undefined,
 ): string | null {

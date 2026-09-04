@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
 import {
@@ -235,29 +236,25 @@ export default async function WestportParcelPage({
                   Last sold
                 </dt>
                 <dd className="mt-0.5 font-mono text-sm text-white/85 tabular-nums">
-                  {property.purchaseDate
-                    ? [
-                        property.purchaseDate,
+                  {property.purchaseDate ? (
+                    <VisionDeedHistoryPopout
+                      label={[
+                        `Bought ${property.purchaseDate}`,
                         property.lastSoldPrice != null
                           ? formatVisionMoney(property.lastSoldPrice)
                           : null,
                       ]
                         .filter(Boolean)
-                        .join(" · ")
-                    : "—"}
+                        .join(" · ")}
+                      addressLabel={property.street}
+                      ownerName={property.ownerDisplayName}
+                      rows={property.deedHistory}
+                      tone="dark"
+                    />
+                  ) : (
+                    "—"
+                  )}
                 </dd>
-                {property.quitclaimCount > 0 ? (
-                  <p className="mt-2">
-                    <a
-                      href={`#${VISION_SALES_HISTORY_ID}`}
-                      className="font-mono text-[11px] tracking-[0.08em] uppercase text-gold underline underline-offset-2 hover:text-white"
-                    >
-                      {property.quitclaimCount === 1
-                        ? "1 quitclaim"
-                        : `${property.quitclaimCount} quitclaims`}
-                    </a>
-                  </p>
-                ) : null}
               </div>
             </dl>
           </div>
