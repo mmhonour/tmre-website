@@ -802,7 +802,7 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
   {
     label: "Find",
     href: "/find",
-    description: "Westport Vision GIS address lookup and parcel page",
+    description: "Westport assessor lookup — owner, address, mailing, MBLU, PID",
   },
   {
     label: "Streets",
@@ -1052,7 +1052,7 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       },
       {
         label: "GET /api/addresses/lookup",
-        detail: "Westport Vision GIS typeahead (Find)",
+        detail: "Westport assessor typeahead — address, owner, MBLU, PID (Find)",
         href: "/api/addresses/lookup?town=Westport&q=main",
       },
       { label: "GET /api/addresses/search", detail: "Property directory autocomplete", href: "/api/addresses/search?q=kings" },

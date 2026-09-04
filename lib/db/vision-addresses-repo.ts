@@ -138,6 +138,26 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             ON vision_addresses
             USING gin (to_tsvector('simple', coalesce(field_card->>'searchText', '')))
         `)
+        try {
+          await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+          await query(`
+            CREATE INDEX IF NOT EXISTS idx_vision_addr_owner_trgm
+              ON vision_addresses USING gin (lower(owner_name) gin_trgm_ops)
+              WHERE owner_name IS NOT NULL
+          `)
+          await query(`
+            CREATE INDEX IF NOT EXISTS idx_vision_addr_mailing_trgm
+              ON vision_addresses USING gin (lower(owner_mailing_address) gin_trgm_ops)
+              WHERE owner_mailing_address IS NOT NULL
+          `)
+          await query(`
+            CREATE INDEX IF NOT EXISTS idx_vision_addr_address_full_trgm
+              ON vision_addresses USING gin (lower(address_full) gin_trgm_ops)
+              WHERE address_full IS NOT NULL
+          `)
+        } catch (err) {
+          console.warn('[vision-addresses-repo] owner/address trigram indexes skipped', err)
+        }
         visionAddressesReady = true
       } catch (err) {
         visionAddressesReady = false
@@ -919,6 +939,15 @@ export async function listVisionAddressesByNorm(
 }
 
 /** Prefix on address_norm; street-name / address_full contains as fallback. No RETS. */
+function likeSafe(raw: string): string {
+  return raw.toLowerCase().replace(/[%_]/g, '')
+}
+
+function compactAssessorId(raw: string): string | null {
+  const compact = likeSafe(raw).replace(/[^a-z0-9]/g, '')
+  return compact.length >= 2 ? compact : null
+}
+
 export async function searchVisionAddresses(opts: {
   town: string
   q: string
@@ -930,38 +959,76 @@ export async function searchVisionAddresses(opts: {
   const limit = Math.min(Math.max(opts.limit ?? 12, 1), 24)
   const street = normalizeStreetLine(q)
   const prefix = `${street}%`
+  const escaped = likeSafe(q)
   const containsPatterns = [
     ...new Set(
-      [q, street, ...streetSearchVariants(q)].map(
-        (v) => `%${v.toLowerCase().replace(/[%_]/g, '')}%`,
-      ),
+      [q, street, ...streetSearchVariants(q)].map((v) => `%${likeSafe(v)}%`),
     ),
   ]
-  const streetLine = `${q.replace(/[%_]/g, '')}%`
+  const streetLine = `${likeSafe(q)}%`
+  const nameTokens = escaped.split(/\s+/).filter((t) => t.length >= 2)
+  const pidExact = /^\d{2,}$/.test(q) ? q : null
+  const assessorId = compactAssessorId(q)
 
-  const extraContains = containsPatterns
-    .map((_, i) => {
-      const p = `$${i + 5}`
-      return `(lower(coalesce(address_full, '')) LIKE ${p}
-        OR lower(coalesce(street_name, '')) LIKE ${p}
-        OR lower(coalesce(field_card->>'searchText', '')) LIKE ${p})`
-    })
-    .join(' OR ')
+  const params: unknown[] = []
+  const add = (value: unknown) => {
+    params.push(value)
+    return `$${params.length}`
+  }
+
+  const townP = add(opts.town)
+  const prefixP = add(prefix)
+  const streetLineP = add(streetLine)
+  const ownerPrefixP = add(`${escaped}%`)
+  const pidP = add(pidExact)
+  const assessorIdP = add(assessorId ? `%${assessorId}%` : null)
+  const limitP = add(limit)
+
+  const containClauses = containsPatterns.map((pat) => {
+    const pp = add(pat)
+    return `(lower(coalesce(address_full, '')) LIKE ${pp}
+        OR lower(coalesce(street_name, '')) LIKE ${pp}
+        OR lower(coalesce(owner_name, '')) LIKE ${pp}
+        OR lower(coalesce(owner_mailing_address, '')) LIKE ${pp}
+        OR lower(coalesce(mblu, '')) LIKE ${pp}
+        OR lower(coalesce(account_number, '')) LIKE ${pp}
+        OR lower(vision_pid) LIKE ${pp}
+        OR lower(coalesce(field_card->>'searchText', '')) LIKE ${pp})`
+  })
+
+  const ownerTokenSql =
+    nameTokens.length >= 2
+      ? nameTokens
+          .map((t) => `lower(coalesce(owner_name, '')) LIKE ${add(`%${t}%`)}`)
+          .join(' AND ')
+      : null
 
   const rows = await query<VisionAddressSqlRow>(
     `SELECT ${VISION_SELECT} FROM vision_addresses
-      WHERE town = $1
+      WHERE town = ${townP}
         AND (
-          address_norm LIKE $2
-          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $3
-          OR ${extraContains}
+          (${pidP}::text IS NOT NULL AND vision_pid = ${pidP})
+          OR address_norm LIKE ${prefixP}
+          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE ${streetLineP}
+          OR lower(coalesce(owner_name, '')) LIKE ${ownerPrefixP}
+          OR (
+            ${assessorIdP}::text IS NOT NULL
+            AND regexp_replace(lower(coalesce(mblu, '')), '[^a-z0-9]', '', 'g') LIKE ${assessorIdP}
+          )
+          OR ${containClauses.join(' OR ')}
+          ${ownerTokenSql ? `OR (${ownerTokenSql})` : ''}
         )
       ORDER BY
-        CASE WHEN address_norm LIKE $2 THEN 0 ELSE 1 END,
+        CASE
+          WHEN ${pidP}::text IS NOT NULL AND vision_pid = ${pidP} THEN 0
+          WHEN address_norm LIKE ${prefixP} THEN 1
+          WHEN lower(coalesce(owner_name, '')) LIKE ${ownerPrefixP} THEN 2
+          ELSE 3
+        END,
         address_full NULLS LAST,
         vision_pid
-      LIMIT $4`,
-    [opts.town, prefix, streetLine.toLowerCase(), limit, ...containsPatterns],
+      LIMIT ${limitP}`,
+    params,
   )
   return rows.map(mapVisionAddressRow)
 }

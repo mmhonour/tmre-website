@@ -49,6 +49,7 @@ export type WestportLookupHit = {
   street: string
   mblu: string | null
   ownerName: string | null
+  ownerMailingAddress: string | null
   listingId: string | null
   mlsId: string | null
   status: string | null
@@ -233,6 +234,7 @@ function hitFromVision(
     street: streetLine(v),
     mblu: v.mblu,
     ownerName: v.ownerName,
+    ownerMailingAddress: v.ownerMailingAddress,
     listingId: v.listingId,
     mlsId: v.mlsId,
     status: listing?.status ?? (v.listingId || v.mlsId ? 'Listed' : null),
@@ -442,6 +444,7 @@ export async function searchWestportLookup(
       street: preferred.address_street || preferred.address_full || 'Westport listing',
       mblu: null,
       ownerName: null,
+      ownerMailingAddress: null,
       listingId: preferred.id,
       mlsId: preferred.mls_id,
       status: preferred.status_bucket,
@@ -483,6 +486,7 @@ export async function searchWestportLookup(
           street,
           mblu: visionHit?.mblu ?? null,
           ownerName: listing.ownerName ?? visionHit?.ownerName ?? null,
+          ownerMailingAddress: visionHit?.ownerMailingAddress ?? null,
           listingId: listing.listingKey,
           mlsId: listing.mlsId,
           status: listing.status,
@@ -519,6 +523,7 @@ export async function searchWestportLookup(
           street: listing.address.street || listing.address.full,
           mblu: null,
           ownerName: listing.ownerName,
+          ownerMailingAddress: null,
           listingId: listing.listingKey,
           mlsId: listing.mlsId,
           status: listing.status,

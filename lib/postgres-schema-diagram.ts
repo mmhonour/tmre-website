@@ -96,6 +96,7 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'parcel_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'field_card_r2_key', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'field_card', type: 'jsonb', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'owner_name', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'owner_mailing_address', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'content_fingerprint', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'scraped_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
