@@ -208,6 +208,15 @@ async function main() {
   } else {
     reportText(result)
   }
+
+  // Admin reads this stamp for the job's End clock and the scheduler compares it
+  // against the monthly slot. Without it a CLI backfill leaves Admin claiming
+  // the job has never run, and the next sweep repeats work already done.
+  if (!args.dryRun && !args.sample) {
+    const { setSyncMetaDurable } = await import('../lib/db/sync-meta-store')
+    await setSyncMetaDurable('cama_tax_history_synced_at', result.finishedAt)
+    console.info(`${LOG} stamped cama_tax_history_synced_at=${result.finishedAt}`)
+  }
 }
 
 main().catch((err) => {
