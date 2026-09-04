@@ -27,8 +27,12 @@ import type { Listing } from '@/lib/rets'
 import {
   fieldCardFromTypedVision,
   lastSaleAsOwnership,
+  ownerDisplayNameFromFields,
+  ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
   parseVisionFieldCardJson,
+  visionPurchaseDate,
+  visionPurchaseYear,
   type VisionFieldCardField,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
@@ -93,6 +97,14 @@ export type WestportMergedProperty = {
   acres: MergedField<number>
   zoning: MergedField<string>
   ownerName: MergedField<string>
+  /** Current owner (+ co-owner when the Field Card lists one). */
+  ownerDisplayName: string | null
+  /** VGSI mailing address (often the same as the parcel, sometimes a PO box / out of town). */
+  ownerMailingAddress: string | null
+  /** Date of the last paid purchase (not a $0 last-transfer). */
+  purchaseDate: string | null
+  /** Year from {@link purchaseDate}. */
+  purchaseYear: number | null
   assessedValue: MergedField<number>
   appraisalValue: MergedField<number>
   lastSalePrice: MergedField<number>
@@ -147,7 +159,14 @@ async function resolveWestportFieldCard(
   vision: VisionAddressRecord,
 ): Promise<WestportFieldCard> {
   let json = vision.fieldCard
-  if (!json || json.fields.length === 0 || fieldCardNeedsRefresh(json)) {
+  const storedMailing =
+    ownerMailingAddressFromFields(json?.fields ?? []) ?? vision.ownerMailingAddress
+  if (
+    !json ||
+    json.fields.length === 0 ||
+    fieldCardNeedsRefresh(json) ||
+    !storedMailing
+  ) {
     try {
       const typed = fieldCardFromTypedVision(vision)
       let htmlCard: ReturnType<typeof parseVisionFieldCardJson> | null = null
@@ -584,6 +603,23 @@ export async function mergeWestportProperty(
     acres: visionFill(listing?.lotAcres, vision.acres),
     zoning: visionFill(null, vision.zoning),
     ownerName: visionFill(listing?.ownerName, vision.ownerName),
+    ownerDisplayName: ownerDisplayNameFromFields(
+      fieldCard.fields,
+      vision.ownerName ?? listing?.ownerName,
+    ),
+    ownerMailingAddress:
+      ownerMailingAddressFromFields(fieldCard.fields) ??
+      vision.ownerMailingAddress,
+    purchaseDate: visionPurchaseDate({
+      lastSaleDate: vision.lastSaleDate,
+      lastSalePrice: vision.lastSalePrice,
+      ownership: fieldCard.ownership,
+    }),
+    purchaseYear: visionPurchaseYear({
+      lastSaleDate: vision.lastSaleDate,
+      lastSalePrice: vision.lastSalePrice,
+      ownership: fieldCard.ownership,
+    }),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
     appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),

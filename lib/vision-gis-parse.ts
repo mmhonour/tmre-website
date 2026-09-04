@@ -16,6 +16,7 @@ export type VisionParcelParse = {
   state: string
   zip: string | null
   ownerName: string | null
+  ownerMailingAddress: string | null
   assessedValue: number | null
   appraisalValue: number | null
   buildingCount: number | null
@@ -157,6 +158,131 @@ export function ownershipFromFieldCardFields(
   return rows
 }
 
+function isOwnerMailingLabel(label: string, section: string): boolean {
+  const l = label.trim().toLowerCase()
+  if (/^owner address/.test(l) || /mailing/.test(l)) return true
+  const sec = section.trim().toLowerCase()
+  return l === 'address' && /parcel|owner/.test(sec)
+}
+
+/** VGSI mailing lines (`MainContent_lblAddr1` / `lblAddr2`, or Parcel “Address”). */
+export function ownerMailingAddressFromFields(
+  fields: readonly VisionFieldCardField[],
+): string | null {
+  const lines = fields
+    .filter((f) => isOwnerMailingLabel(f.label, f.section))
+    .map((f) => f.value.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  const unique = [...new Set(lines)]
+  return unique.length > 0 ? unique.join(', ') : null
+}
+
+export function ownerDisplayNameFromFields(
+  fields: readonly VisionFieldCardField[],
+  ownerName?: string | null,
+): string | null {
+  const owner =
+    ownerName?.trim() ||
+    fields.find((f) => /^owner$/i.test(f.label))?.value?.trim() ||
+    null
+  const coOwner = fields.find((f) => /^co-owner$/i.test(f.label))?.value?.trim()
+  if (owner && coOwner && !owner.toLowerCase().includes(coOwner.toLowerCase())) {
+    return `${owner} & ${coOwner}`
+  }
+  return owner || coOwner || null
+}
+
+/** Calendar year from VGSI dates (`03/21/2025`, `3-21-25`, `2025`). */
+export function yearFromVisionDate(
+  date: string | null | undefined,
+): number | null {
+  if (!date) return null
+  const full = date.match(/(18|19|20)\d{2}/)
+  if (full) {
+    const y = Number(full[0])
+    return y >= 1800 && y <= 2100 ? y : null
+  }
+  const short = date.match(/\d{1,2}[/-]\d{1,2}[/-](\d{2})\b/)
+  if (!short?.[1]) return null
+  const yy = Number(short[1])
+  const y = yy >= 70 ? 1900 + yy : 2000 + yy
+  return y >= 1800 && y <= 2100 ? y : null
+}
+
+/**
+ * Date of the last paid purchase (price > 0). A $0 / instrument 29 quitclaim
+ * is not a purchase — it puts name(s) on record without warranty.
+ */
+export function visionPurchaseDate(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[]
+}): string | null {
+  const paid = (opts.ownership ?? [])
+    .map((row) => ({
+      date: row.date?.trim() || null,
+      year: yearFromVisionDate(row.date),
+      price: parseVisionMoney(row.price),
+    }))
+    .filter(
+      (row): row is { date: string; year: number; price: number } =>
+        Boolean(row.date) &&
+        row.year != null &&
+        row.price != null &&
+        row.price > 0,
+    )
+    .sort((a, b) => b.year - a.year)
+  if (paid[0]) return paid[0].date
+  if ((opts.lastSalePrice ?? 0) > 0) {
+    return opts.lastSaleDate?.trim() || null
+  }
+  return null
+}
+
+/** Year from {@link visionPurchaseDate}, when a paid purchase exists. */
+export function visionPurchaseYear(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[]
+}): number | null {
+  return yearFromVisionDate(visionPurchaseDate(opts))
+}
+
+function visionInstrumentCode(instrument: string | null | undefined): string | null {
+  const raw = instrument?.trim()
+  if (!raw) return null
+  if (!/^\d+$/.test(raw)) return raw
+  return String(Number(raw)).padStart(2, '0')
+}
+
+/**
+ * Westport VGSI: 29 + $0 is a quitclaim (record title, no warranty).
+ * 00 with consideration is the warranty / purchase deed.
+ */
+export function isVisionQuitclaim(opts: {
+  price?: string | number | null
+  instrument?: string | null
+}): boolean {
+  const code = visionInstrumentCode(opts.instrument)
+  if (code === '29') return true
+  const price = parseVisionMoney(opts.price)
+  return price === 0
+}
+
+export function visionInstrumentLabel(
+  instrument: string | null | undefined,
+): string | null {
+  const raw = instrument?.trim()
+  if (!raw) return null
+  const code = visionInstrumentCode(raw)
+  const names: Record<string, string> = {
+    '00': 'Warranty',
+    '29': 'Quitclaim',
+  }
+  const name = code ? names[code] : null
+  return name ? `${name} (${raw})` : raw
+}
+
 export function lastSaleAsOwnership(row: {
   ownerName?: string | null
   lastSalePrice?: number | null
@@ -234,6 +360,11 @@ function decodeHtml(s: string): string {
     .trim()
 }
 
+/** VGSI puts street + city in one span separated by `<br>`. */
+function htmlInnerText(raw: string): string {
+  return decodeHtml(raw.replace(/<br\s*\/?>/gi, ', ').replace(/<[^>]+>/g, ' '))
+}
+
 function spanById(html: string, id: string): string | null {
   const re = new RegExp(
     `id=["']${id}["'][^>]*>([\\s\\S]*?)</(?:span|a|div|td)>`,
@@ -241,7 +372,7 @@ function spanById(html: string, id: string): string | null {
   )
   const m = html.match(re)
   if (!m) return null
-  return decodeHtml(m[1].replace(/<[^>]+>/g, ' '))
+  return htmlInnerText(m[1])
 }
 
 function tableCellAfterLabel(html: string, label: string): string | null {
@@ -379,7 +510,7 @@ export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
     if (SKIP_CONTROL_RE.test(id)) continue
     const meta = CONTROL_ID_META[id]
     if (!meta) continue
-    const raw = decodeHtml((m[2] ?? '').replace(/<[^>]+>/g, ' '))
+    const raw = htmlInnerText(m[2] ?? '')
     pushField(fields, seen, meta.section, meta.label, raw)
   }
 
@@ -408,6 +539,7 @@ export function fieldCardFromTypedVision(row: {
   useCode?: string | null
   useCodeDescription?: string | null
   ownerName?: string | null
+  ownerMailingAddress?: string | null
   assessedValue?: number | null
   appraisalValue?: number | null
   yearBuilt?: number | null
@@ -429,6 +561,7 @@ export function fieldCardFromTypedVision(row: {
   const pairs: [string, string, string | number | null | undefined][] = [
     ['Parcel', 'Location', row.addressFull],
     ['Parcel', 'Owner', row.ownerName],
+    ['Parcel', 'Owner address', row.ownerMailingAddress],
     ['Parcel', 'MBLU', row.mblu],
     ['Parcel', 'Account', row.accountNumber],
     ['Parcel', 'PID', row.visionPid],
@@ -483,6 +616,16 @@ export function parseVisionParcelHtml(
   const mblu = spanById(html, 'MainContent_lblMblu')
   const acct = spanById(html, 'MainContent_lblAcctNum')
   const owner = spanById(html, 'MainContent_lblGenOwner')
+  const ownerAddr1 = spanById(html, 'MainContent_lblAddr1')
+  const ownerAddr2 = spanById(html, 'MainContent_lblAddr2')
+  const ownerMailingAddress = ownerMailingAddressFromFields([
+    ...(ownerAddr1
+      ? [{ section: 'Parcel', label: 'Owner address', value: ownerAddr1 }]
+      : []),
+    ...(ownerAddr2
+      ? [{ section: 'Parcel', label: 'Owner address 2', value: ownerAddr2 }]
+      : []),
+  ])
   const assessed = moneyToNumber(spanById(html, 'MainContent_lblGenAssessment'))
   const appraisal = moneyToNumber(spanById(html, 'MainContent_lblGenAppraisal'))
   const zone = spanById(html, 'MainContent_lblZone')
@@ -532,6 +675,7 @@ export function parseVisionParcelHtml(
     mblu,
     useCode,
     ownerName: owner,
+    ownerMailingAddress,
     assessedValue: assessed,
     appraisalValue: appraisal,
     yearBuilt,
@@ -562,6 +706,7 @@ export function parseVisionParcelHtml(
     state: 'CT',
     zip: null,
     ownerName: owner,
+    ownerMailingAddress,
     assessedValue: assessed,
     appraisalValue: appraisal,
     buildingCount,

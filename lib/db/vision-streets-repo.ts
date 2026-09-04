@@ -1,6 +1,15 @@
 import 'server-only'
 
 import { query, withTransaction } from '@/lib/db/postgres'
+import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
+import {
+  isVisionQuitclaim,
+  ownerMailingAddressFromFields,
+  ownershipFromFieldCardFields,
+  visionPurchaseDate,
+  type VisionFieldCardField,
+  type VisionOwnershipRow,
+} from '@/lib/vision-gis-parse'
 import {
   VISION_GIS_TOWNS,
   missingVisionStreetLetters,
@@ -167,6 +176,21 @@ export type VisionStreetParcel = {
   addressLabel: string
   sourceUrl: string
   syncedAt: string
+  ownerName: string | null
+  ownerMailingAddress: string | null
+  /** VGSI most recent deed date (often a quitclaim, not a purchase). */
+  lastSaleDate: string | null
+  /** Last paid purchase date when Field Card / last sale price shows consideration. */
+  purchaseDate: string | null
+  /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
+  lastDeedIsQuitclaim: boolean
+}
+
+export type VisionStreetPidMissingOwner = {
+  town: string
+  streetName: string
+  visionPid: string
+  addressLabel: string
 }
 
 /**
@@ -224,6 +248,7 @@ export async function listVisionStreetParcels(
   streetName: string,
 ): Promise<VisionStreetParcel[]> {
   await ensureVisionStreetsTable()
+  await ensureVisionAddressesTable()
   const rows = await query<{
     town: string
     street_name: string
@@ -231,22 +256,115 @@ export async function listVisionStreetParcels(
     address_label: string
     source_url: string
     synced_at: Date | string
+    owner_name: string | null
+    owner_mailing_address: string | null
+    last_sale_date: string | null
+    last_sale_price: number | string | null
+    field_card: unknown
   }>(
-    `SELECT town, street_name, vision_pid, address_label, source_url, synced_at
-       FROM vision_street_parcels
-      WHERE town = $1 AND street_name = $2`,
+    `SELECT p.town, p.street_name, p.vision_pid, p.address_label, p.source_url,
+            p.synced_at, v.owner_name, v.owner_mailing_address, v.last_sale_date,
+            v.last_sale_price, v.field_card
+       FROM vision_street_parcels p
+       LEFT JOIN vision_addresses v
+         ON v.town = p.town AND v.vision_pid = p.vision_pid
+      WHERE p.town = $1 AND p.street_name = $2`,
     [town, streetName],
+  )
+  return rows.map((row) => {
+    const card =
+      row.field_card && typeof row.field_card === 'object'
+        ? (row.field_card as {
+            fields?: { section?: string; label: string; value: string }[]
+            ownership?: VisionOwnershipRow[]
+          })
+        : null
+    const fields: VisionFieldCardField[] = (card?.fields ?? []).map((f) => ({
+      section: f.section ?? 'Parcel',
+      label: f.label,
+      value: f.value,
+    }))
+    const fromCard = ownerMailingAddressFromFields(fields)
+    const ownership =
+      card?.ownership && card.ownership.length > 0
+        ? card.ownership
+        : ownershipFromFieldCardFields(fields)
+    const lastSalePrice =
+      row.last_sale_price == null || row.last_sale_price === ''
+        ? null
+        : Number(row.last_sale_price)
+    return {
+      town: row.town,
+      streetName: row.street_name,
+      visionPid: row.vision_pid,
+      addressLabel: row.address_label,
+      sourceUrl: row.source_url,
+      syncedAt:
+        row.synced_at instanceof Date
+          ? row.synced_at.toISOString()
+          : String(row.synced_at),
+      ownerName: row.owner_name?.trim() || null,
+      ownerMailingAddress:
+        row.owner_mailing_address?.trim() || fromCard,
+      lastSaleDate: row.last_sale_date?.trim() || null,
+      purchaseDate: visionPurchaseDate({
+        lastSaleDate: row.last_sale_date,
+        lastSalePrice: Number.isFinite(lastSalePrice) ? lastSalePrice : null,
+        ownership,
+      }),
+      lastDeedIsQuitclaim: isVisionQuitclaim({
+        price: Number.isFinite(lastSalePrice) ? lastSalePrice : ownership[0]?.price,
+        instrument: ownership[0]?.instrument,
+      }),
+    }
+  })
+}
+
+/**
+ * Street-house PIDs missing owner_name, or missing mailing when the stored
+ * Field Card also has no Owner address. Field Card ingest writes both.
+ */
+export async function listVisionStreetPidsMissingOwner(
+  town: string,
+  limit: number,
+): Promise<VisionStreetPidMissingOwner[]> {
+  await ensureVisionStreetsTable()
+  await ensureVisionAddressesTable()
+  const cap = Math.max(1, Math.min(Math.floor(limit), 1000))
+  const rows = await query<{
+    town: string
+    street_name: string
+    vision_pid: string
+    address_label: string
+  }>(
+    `SELECT p.town, p.street_name, p.vision_pid, p.address_label
+       FROM vision_street_parcels p
+       LEFT JOIN vision_addresses v
+         ON v.town = p.town AND v.vision_pid = p.vision_pid
+      WHERE p.town = $1
+        AND (
+          v.vision_pid IS NULL
+          OR v.owner_name IS NULL
+          OR btrim(v.owner_name) = ''
+          OR (
+            (v.owner_mailing_address IS NULL OR btrim(v.owner_mailing_address) = '')
+            AND NOT EXISTS (
+              SELECT 1
+                FROM jsonb_array_elements(coalesce(v.field_card->'fields', '[]'::jsonb)) f
+               WHERE f->>'label' ~* '^owner address'
+                 AND btrim(coalesce(f->>'value', '')) <> ''
+            )
+          )
+        )
+      ORDER BY p.street_name ASC, p.address_label ASC
+      LIMIT $2`,
+    [town, cap],
   )
   return rows.map((row) => ({
     town: row.town,
     streetName: row.street_name,
     visionPid: row.vision_pid,
     addressLabel: row.address_label,
-    sourceUrl: row.source_url,
-    syncedAt:
-      row.synced_at instanceof Date
-        ? row.synced_at.toISOString()
-        : String(row.synced_at),
   }))
 }
 
@@ -298,6 +416,25 @@ export async function visionStreetIndexNeedsCatchUp(): Promise<boolean> {
     if (missingParcels.length > 0) return true
   }
   return false
+}
+
+/** True when a street-house PID still has no owner_name on vision_addresses. */
+export async function visionStreetOwnersNeedCatchUp(): Promise<boolean> {
+  await ensureVisionStreetsTable()
+  for (const { town } of VISION_GIS_TOWNS) {
+    const missing = await listVisionStreetPidsMissingOwner(town, 1)
+    if (missing.length > 0) return true
+  }
+  return false
+}
+
+/**
+ * Railway / thin-cron catch-up: letters, houses, or street-address owners.
+ * Field Cards are not weekly-only once house lists exist.
+ */
+export async function visionGisNeedsCatchUp(): Promise<boolean> {
+  if (await visionStreetIndexNeedsCatchUp()) return true
+  return visionStreetOwnersNeedCatchUp()
 }
 
 export async function countVisionStreetParcels(town?: string): Promise<number> {
