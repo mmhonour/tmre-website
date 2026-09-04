@@ -396,11 +396,14 @@ export default function ShowcaseDetailsPanel({
   const deckCard = (
     child: React.ReactNode,
     cardId: ListingDesktopDeckCardId,
+    fill = false,
   ) => (
     // `w-full` matters: without it the Details card sizes to its own content
     // and ends up a different width from Remarks and History.
     <div
-      className={`relative w-full min-w-0 shrink-0 transition-[box-shadow] duration-300 ${
+      className={`relative w-full min-w-0 transition-[box-shadow] duration-300 ${
+        fill ? "flex min-h-0 flex-1 flex-col" : "shrink-0"
+      } ${
         activeDeckCard === cardId
           ? "z-30 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.65)]"
           : "z-10"
@@ -722,7 +725,7 @@ export default function ShowcaseDetailsPanel({
             >
               {/* Capped to the space under the pinned chrome so a tall expanded
               card scrolls on the wheel instead of running off-screen. */}
-          <div className="showcase-hide-scrollbar sticky flex max-h-[calc(100dvh-var(--showcase-sticky-offset,12rem)-1.5rem)] flex-col gap-4 overflow-y-auto overscroll-contain lg:top-[var(--showcase-sticky-offset,12rem)]">
+          <div className="showcase-hide-scrollbar sticky flex h-[calc(100dvh-var(--showcase-sticky-offset,12rem)-1.5rem)] flex-col gap-4 overflow-y-auto overscroll-contain lg:top-[var(--showcase-sticky-offset,12rem)]">
                 {/* Anchors the column width above the deck, as on production. */}
                 {host.interest ? (
                   <ListingInterestButton
@@ -731,7 +734,7 @@ export default function ShowcaseDetailsPanel({
                     city={host.interest.city}
                   />
                 ) : null}
-                <div className="flex min-w-0 flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
                       remarks={remarks || null}
@@ -758,12 +761,13 @@ export default function ShowcaseDetailsPanel({
                       "history",
                     )}
                   </div>
-                  <div className="-mt-2">
+                  <div className="-mt-2 flex min-h-0 flex-1 flex-col">
                     {deckCard(
                       <ListingMapSidePanel frameClass={listingPanelCompactClass}>
-                        {listingMap("h-[16rem] w-full")}
+                        {listingMap("h-full min-h-0 w-full")}
                       </ListingMapSidePanel>,
                       "map",
+                      true,
                     )}
                   </div>
                   {siteUnlocked ? (

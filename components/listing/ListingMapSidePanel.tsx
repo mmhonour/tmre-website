@@ -2,11 +2,11 @@
 
 import type { ReactNode } from "react";
 import ListingDeckCardHeader from "@/components/listing/ListingDeckCardHeader";
-import { useListingDesktopDeck } from "@/components/listing/ListingDesktopDeckContext";
 
 /**
- * Desktop right-column Map card in the Remarks / Details / History / Map deck —
- * header always peeks under History; body only when this card is selected.
+ * Desktop right-column Map card. Always paints the leftover height under
+ * Remarks / Details / History so the map fills the rest of the viewport
+ * rather than a fixed 16rem box.
  */
 export default function ListingMapSidePanel({
   frameClass,
@@ -15,19 +15,14 @@ export default function ListingMapSidePanel({
   frameClass: string;
   children: ReactNode;
 }) {
-  const deck = useListingDesktopDeck();
-  const expanded = deck ? deck.isExpanded("map") : true;
-
   return (
-    <div className={`${frameClass} flex flex-col`}>
+    <div className={`${frameClass} flex h-full min-h-0 flex-col`}>
       <ListingDeckCardHeader cardId="map" title="Map" />
       <div
         id="listing-deck-body-map"
-        className="overflow-hidden transition-[max-height] duration-300 ease-out"
-        style={{ maxHeight: expanded ? 2400 : 0 }}
-        aria-hidden={!expanded}
+        className="mt-2 flex min-h-0 flex-1 flex-col"
       >
-        <div className={expanded ? "mt-2" : "invisible h-0"}>{children}</div>
+        <div className="h-full min-h-[12rem] flex-1">{children}</div>
       </div>
     </div>
   );
