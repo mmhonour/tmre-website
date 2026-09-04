@@ -5,9 +5,12 @@ import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import {
+  LISTING_RECENTLY_RENTED_PANEL_ID,
   LISTING_RECENTLY_SOLD_PANEL_ID,
+  LISTING_RENTAL_ON_MARKET_PANEL_ID,
   LISTING_SALE_ON_MARKET_PANEL_ID,
 } from "@/components/listing/listing-section-ids";
+import { listingComparablesApiUrl } from "@/lib/listing-comparables-map";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
@@ -220,6 +223,8 @@ export default function ShowcaseSectionRail({
   onMapStateChange,
   onDetailsOnlyChange,
   compsFetchUrl,
+  rentalCompsFetchUrl,
+  isRental = false,
   map,
 }: {
   mlsId: string;
@@ -237,6 +242,8 @@ export default function ShowcaseSectionRail({
   /** Lets the hero shift its price clear of the map column. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
   compsFetchUrl?: string | null;
+  rentalCompsFetchUrl?: string | null;
+  isRental?: boolean;
   /** Spotlight privacy: town-outline map instead of comps + pin. */
   map?: ShowcaseMapPresentation | null;
 }) {
@@ -283,8 +290,9 @@ export default function ShowcaseSectionRail({
       soldWithinLookbackCount?: number;
       soldLookbackMonths?: number;
     }>(
-      compsFetchUrl ??
-        `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
+      isRental
+        ? (rentalCompsFetchUrl ?? listingComparablesApiUrl(mlsId, "rental"))
+        : (compsFetchUrl ?? listingComparablesApiUrl(mlsId, "sale")),
     ).then((d) => {
       if (cancelled || !d) return;
       setCounts({
@@ -303,7 +311,7 @@ export default function ShowcaseSectionRail({
     return () => {
       cancelled = true;
     };
-  }, [mlsId, compsFetchUrl]);
+  }, [mlsId, compsFetchUrl, rentalCompsFetchUrl, isRental]);
 
   const ifLabel = useMemo(() => {
     if (!amounts) return null;
@@ -465,9 +473,12 @@ export default function ShowcaseSectionRail({
             townHint={townHint}
             postalCode={postalCode}
             expanded={mapExpanded}
+            roomy={!isDesktop}
+            isRental={isRental}
             onToggleExpanded={() => setExpanded(!mapExpanded)}
             onExit={() => setOverlay(null)}
             fetchUrl={compsFetchUrl}
+            rentalFetchUrl={rentalCompsFetchUrl}
             hideSubject={map?.hidePin ?? false}
           />
         )}
@@ -515,14 +526,26 @@ export default function ShowcaseSectionRail({
               label="On market"
               count={counts.active}
               onClick={() =>
-                jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
+                jumpToListingSection(
+                  isRental
+                    ? LISTING_RENTAL_ON_MARKET_PANEL_ID
+                    : LISTING_SALE_ON_MARKET_PANEL_ID,
+                )
               }
             />
             <CountChip
-              label={`Sold ${counts.soldMonths} in mos`}
+              label={
+                isRental
+                  ? `Rented ${counts.soldMonths} in mos`
+                  : `Sold ${counts.soldMonths} in mos`
+              }
               count={counts.sold}
               onClick={() =>
-                jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
+                jumpToListingSection(
+                  isRental
+                    ? LISTING_RECENTLY_RENTED_PANEL_ID
+                    : LISTING_RECENTLY_SOLD_PANEL_ID,
+                )
               }
             />
           </span>
