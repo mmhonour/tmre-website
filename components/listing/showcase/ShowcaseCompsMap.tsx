@@ -73,6 +73,9 @@ export default function ShowcaseCompsMap({
   expanded = false,
   onToggleExpanded,
   onExit,
+  fetchUrl,
+  hrefFor: hrefForOverride,
+  hideSubject = false,
 }: {
   mlsId: string;
   subject: DealBoardMapListing | null;
@@ -82,6 +85,11 @@ export default function ShowcaseCompsMap({
   expanded?: boolean;
   onToggleExpanded?: () => void;
   onExit?: () => void;
+  /** Spotlight uses `/api/spotlight/comparables`; listing uses the default. */
+  fetchUrl?: string | null;
+  hrefFor?: (listing: DealBoardMapListing) => string;
+  /** Privacy: omit the subject pin so the property is not triangulated. */
+  hideSubject?: boolean;
 }) {
   const [data, setData] = useState<ComparablesResponse | null>(null);
   const [pool, setPool] = useState<Pool>("active");
@@ -91,7 +99,7 @@ export default function ShowcaseCompsMap({
   useEffect(() => {
     let cancelled = false;
     void loadTabJson<ComparablesResponse>(
-      `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
+      fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
     )
       .then((d) => {
         if (!cancelled) setData(d ?? {});
@@ -102,15 +110,16 @@ export default function ShowcaseCompsMap({
     return () => {
       cancelled = true;
     };
-  }, [mlsId]);
+  }, [mlsId, fetchUrl]);
 
   const listings = useMemo(() => {
     const comps = (pool === "sold" ? data?.sold : data?.active) ?? [];
     const pins = comps
       .map((c) => toPin(c, pool))
       .filter((p): p is DealBoardMapListing => p !== null);
-    return subject ? [subject, ...pins] : pins;
-  }, [data, pool, subject]);
+    const pinSubject = hideSubject ? null : subject;
+    return pinSubject ? [pinSubject, ...pins] : pins;
+  }, [data, pool, subject, hideSubject]);
 
   const counts = {
     active: data?.active?.length ?? 0,
@@ -179,12 +188,15 @@ export default function ShowcaseCompsMap({
             draws it navy and also frames the initial viewport on the town. */}
         <DealBoardMap
           listings={listings}
-          subjectKey={subject?.key ?? null}
+          subjectKey={hideSubject ? null : subject?.key ?? null}
           boundZips={zips}
           highlightZip={zips[0] ?? null}
           activeKey={activeKey}
           onSelect={setActiveKey}
-          hrefFor={(l) => listingDetailHref(l.key, l.address, l.city ?? townHint)}
+          hrefFor={
+            hrefForOverride ??
+            ((l) => listingDetailHref(l.key, l.address, l.city ?? townHint))
+          }
           className="h-full"
           heightClass="h-full"
         />

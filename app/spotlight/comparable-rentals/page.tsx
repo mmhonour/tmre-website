@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightComparablesClient from "../comparables/SpotlightComparablesClient";
+import SpotlightShowcaseClient from "../SpotlightShowcaseClient";
 
 export const metadata = {
   title: "Spotlight Comparable Rentals — TMRE",
@@ -10,7 +10,7 @@ export const metadata = {
 export default function SpotlightComparableRentalsPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightComparablesClient comparablesKind="rental" />
+      <SpotlightShowcaseClient initialTab="comparable-rentals" />
     </Suspense>
   );
 }
