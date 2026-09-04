@@ -1006,22 +1006,38 @@ html.listing-split-test body {
 
 .spotlight-premiere-beam {
   position: absolute;
-  bottom: -18%;
-  width: min(72vw, 46rem);
-  height: 165%;
+  bottom: -6%;
+  width: min(70vw, 44rem);
+  height: 155%;
   transform-origin: 50% 100%;
+  /* Wide cone: point at the bottom, fan to the top. Soft edges via mask,
+     not clip-path + blur (that combo collapsed the beam to nothing). */
   background: linear-gradient(
-    to top,
-    rgba(255, 228, 160, 0.04) 0%,
-    rgba(255, 232, 170, 0.42) 10%,
-    rgba(255, 240, 200, 0.2) 42%,
-    rgba(255, 248, 230, 0.07) 74%,
-    rgba(255, 255, 255, 0) 100%
+    90deg,
+    rgba(255, 220, 140, 0) 0%,
+    rgba(255, 226, 150, 0.18) 28%,
+    rgba(255, 236, 180, 0.55) 50%,
+    rgba(255, 226, 150, 0.18) 72%,
+    rgba(255, 220, 140, 0) 100%
   );
-  clip-path: polygon(49.2% 100%, 50.8% 100%, 86% 0%, 14% 0%);
-  filter: blur(14px);
-  mix-blend-mode: screen;
-  opacity: 0.85;
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0.95) 12%,
+    rgba(0, 0, 0, 0.7) 55%,
+    rgba(0, 0, 0, 0.2) 82%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0.95) 12%,
+    rgba(0, 0, 0, 0.7) 55%,
+    rgba(0, 0, 0, 0.2) 82%,
+    transparent 100%
+  );
+  clip-path: polygon(38% 100%, 62% 100%, 100% 0%, 0% 0%);
+  opacity: 0.95;
   will-change: transform;
 }
 
@@ -1029,14 +1045,28 @@ html.listing-split-test body {
   position: absolute;
   inset: 0;
   background: linear-gradient(
-    to top,
-    rgba(255, 236, 180, 0.08) 0%,
-    rgba(255, 244, 210, 0.55) 12%,
-    rgba(255, 250, 230, 0.16) 48%,
-    rgba(255, 255, 255, 0) 78%
+    90deg,
+    rgba(255, 236, 180, 0) 0%,
+    rgba(255, 244, 210, 0.35) 38%,
+    rgba(255, 252, 230, 0.85) 50%,
+    rgba(255, 244, 210, 0.35) 62%,
+    rgba(255, 236, 180, 0) 100%
   );
-  clip-path: polygon(49.6% 100%, 50.4% 100%, 64% 0%, 36% 0%);
-  filter: blur(6px);
+  clip-path: polygon(46% 100%, 54% 100%, 78% 0%, 22% 0%);
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.35) 0%,
+    black 14%,
+    rgba(0, 0, 0, 0.55) 60%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.35) 0%,
+    black 14%,
+    rgba(0, 0, 0, 0.55) 60%,
+    transparent 100%
+  );
 }
 
 .spotlight-premiere-beam--a {
