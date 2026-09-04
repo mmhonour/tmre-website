@@ -210,8 +210,8 @@ export function yearFromVisionDate(
 }
 
 /**
- * Date of the last paid purchase (price > 0). A $0 trust/quitclaim is not
- * a purchase — that is VGSI “last sale” / last transfer.
+ * Date of the last paid purchase (price > 0). A $0 / instrument 29 quitclaim
+ * is not a purchase — it puts name(s) on record without warranty.
  */
 export function visionPurchaseDate(opts: {
   lastSaleDate?: string | null
@@ -246,6 +246,41 @@ export function visionPurchaseYear(opts: {
   ownership?: readonly VisionOwnershipRow[]
 }): number | null {
   return yearFromVisionDate(visionPurchaseDate(opts))
+}
+
+function visionInstrumentCode(instrument: string | null | undefined): string | null {
+  const raw = instrument?.trim()
+  if (!raw) return null
+  if (!/^\d+$/.test(raw)) return raw
+  return String(Number(raw)).padStart(2, '0')
+}
+
+/**
+ * Westport VGSI: 29 + $0 is a quitclaim (record title, no warranty).
+ * 00 with consideration is the warranty / purchase deed.
+ */
+export function isVisionQuitclaim(opts: {
+  price?: string | number | null
+  instrument?: string | null
+}): boolean {
+  const code = visionInstrumentCode(opts.instrument)
+  if (code === '29') return true
+  const price = parseVisionMoney(opts.price)
+  return price === 0
+}
+
+export function visionInstrumentLabel(
+  instrument: string | null | undefined,
+): string | null {
+  const raw = instrument?.trim()
+  if (!raw) return null
+  const code = visionInstrumentCode(raw)
+  const names: Record<string, string> = {
+    '00': 'Warranty',
+    '29': 'Quitclaim',
+  }
+  const name = code ? names[code] : null
+  return name ? `${name} (${raw})` : raw
 }
 
 export function lastSaleAsOwnership(row: {

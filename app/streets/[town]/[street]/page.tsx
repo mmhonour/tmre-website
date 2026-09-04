@@ -101,9 +101,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner, mailing address, and purchase date (last paid
-            sale — not a $0 last transfer) come from the Field Card once
-            Vision sync ingests that PID — click through for the full card.
+            street page. Owner, mailing address, and purchase date (last deed
+            with consideration) come from the Field Card. A $0 / instrument 29
+            row is a quitclaim, not a purchase.
           </p>
         </div>
       </section>
@@ -122,12 +122,14 @@ export default async function StreetsStreetPage({
                 const owner = row.ownerName
                 const mailing = row.ownerMailingAddress
                 const bought = row.purchaseDate
-                const lastTransfer = row.lastSaleDate
+                const lastDeed = row.lastSaleDate
                 const dateLine = bought
                   ? `Bought ${bought}`
-                  : lastTransfer
-                    ? `Last transfer ${lastTransfer}`
-                    : null
+                  : lastDeed && row.lastDeedIsQuitclaim
+                    ? `Quitclaim ${lastDeed}`
+                    : lastDeed
+                      ? `Last deed ${lastDeed}`
+                      : null
                 return (
                   <li
                     key={`${row.visionPid}-${row.addressLabel}`}

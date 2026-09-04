@@ -3,6 +3,7 @@ import 'server-only'
 import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
 import {
+  isVisionQuitclaim,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
   visionPurchaseDate,
@@ -177,10 +178,12 @@ export type VisionStreetParcel = {
   syncedAt: string
   ownerName: string | null
   ownerMailingAddress: string | null
-  /** VGSI last sale / last transfer date (may be a $0 trust move). */
+  /** VGSI most recent deed date (often a quitclaim, not a purchase). */
   lastSaleDate: string | null
-  /** Last paid purchase date when Field Card / last sale price shows a real sale. */
+  /** Last paid purchase date when Field Card / last sale price shows consideration. */
   purchaseDate: string | null
+  /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
+  lastDeedIsQuitclaim: boolean
 }
 
 export type VisionStreetPidMissingOwner = {
@@ -308,6 +311,10 @@ export async function listVisionStreetParcels(
         lastSaleDate: row.last_sale_date,
         lastSalePrice: Number.isFinite(lastSalePrice) ? lastSalePrice : null,
         ownership,
+      }),
+      lastDeedIsQuitclaim: isVisionQuitclaim({
+        price: Number.isFinite(lastSalePrice) ? lastSalePrice : ownership[0]?.price,
+        instrument: ownership[0]?.instrument,
       }),
     }
   })
