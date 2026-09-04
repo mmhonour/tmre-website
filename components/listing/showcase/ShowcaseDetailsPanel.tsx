@@ -195,6 +195,8 @@ export default function ShowcaseDetailsPanel({
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const [activeDeckCard, setActiveDeckCard] =
     useState<ListingDesktopDeckCardId | null>("remarks");
+  /** Deck card that was open before Map — restored when the page-width map is shown. */
+  const priorDeckCardRef = useRef<ListingDesktopDeckCardId | null>("remarks");
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -265,6 +267,28 @@ export default function ShowcaseDetailsPanel({
         }
       : null;
 
+  const rememberDeckBeforeMap = (
+    cur: ListingDesktopDeckCardId | null,
+  ): ListingDesktopDeckCardId | null => {
+    if (cur && cur !== "map") priorDeckCardRef.current = cur;
+    return cur;
+  };
+
+  const restoreDeckAfterMap = () => {
+    setActiveDeckCard((cur) => {
+      rememberDeckBeforeMap(cur);
+      if (cur !== "map") return cur;
+      return priorDeckCardRef.current;
+    });
+  };
+
+  /** Map tab / Map section: full-width panel map, then put the deck back. */
+  const goToPageMap = () => {
+    setActiveTab("map");
+    restoreDeckAfterMap();
+    scrollToShowcaseSection("map");
+  };
+
   /**
    * Without this the subnav drops into hash-jump mode and every content tab
    * resolves to the Overview route plus an anchor, bouncing the visitor off
@@ -283,8 +307,7 @@ export default function ShowcaseDetailsPanel({
       setShowOverviewSection(tab === "overview");
       if (tab === "overview") setActiveDeckCard("details");
       if (tab === "map") {
-        setActiveTab("map");
-        setActiveDeckCard((cur) => (cur === "map" ? null : "map"));
+        goToPageMap();
         return;
       }
       if (tab === "history") {
@@ -324,8 +347,25 @@ export default function ShowcaseDetailsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const listingMap = (
-    <div className="h-[20rem] w-full sm:h-[22rem]">
+  // Full-width Map at the bottom of the panel is the destination. Once it is
+  // on screen, put the dashboard back to the card that was open before Map.
+  useEffect(() => {
+    if (!isDesktop) return;
+    const el = document.getElementById(SHOWCASE_SECTION_IDS.map);
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        restoreDeckAfterMap();
+      },
+      { threshold: 0.3 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isDesktop]);
+
+  const listingMap = (heightClass: string) => (
+    <div className={heightClass}>
       {host.map.hidePin ? (
         <ListingLocationMap
           latitude={host.map.latitude}
@@ -373,7 +413,12 @@ export default function ShowcaseDetailsPanel({
   return (
     <ListingDesktopDeckProvider
       activeCard={activeDeckCard}
-      onActiveCardChange={setActiveDeckCard}
+      onActiveCardChange={(id) => {
+        setActiveDeckCard((cur) => {
+          if (id === "map") rememberDeckBeforeMap(cur);
+          return id;
+        });
+      }}
     >
       <section className="showcase-details navy-gradient relative border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16">
         <div className="absolute inset-0 hero-grid opacity-20" aria-hidden />
@@ -473,15 +518,8 @@ export default function ShowcaseDetailsPanel({
                 embedded
                 compact
                 onTabSelect={handleTabSelect}
-                mapVisible={isDesktop && activeDeckCard === "map"}
-                onMapToggle={
-                  isDesktop
-                    ? () =>
-                        setActiveDeckCard((cur) =>
-                          cur === "map" ? null : "map",
-                        )
-                    : () => scrollToShowcaseSection("map")
-                }
+                mapVisible={activeTab === "map"}
+                onMapToggle={goToPageMap}
                 showAdminTab={siteUnlocked}
               adminVisible={activeDeckCard === "admin"}
               onAdminToggle={
@@ -653,15 +691,11 @@ export default function ShowcaseDetailsPanel({
                 </Section>
               </div>
 
-              <div className="lg:hidden">
-                <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
-                  {/* `variant="hero"` fills its parent, so the height has to come
-                  from here or the map collapses to nothing. */}
-                  {/* Same deal-board engine as Intelligence: real pan / wheel zoom
-                  and a pin per comparable, with the subject alongside them. */}
-                  {listingMap}
-                </Section>
-              </div>
+              <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
+                {/* Full-width of the main panel, same slot it used to occupy
+                under What if. The right-hand deck Map card is a peek only. */}
+                {listingMap("h-[20rem] w-full sm:h-[26rem]")}
+              </Section>
 
               {/*
                 Public listing-agent attribution, served as a PNG so it reads
@@ -727,7 +761,7 @@ export default function ShowcaseDetailsPanel({
                   <div className="-mt-2">
                     {deckCard(
                       <ListingMapSidePanel frameClass={listingPanelCompactClass}>
-                        {listingMap}
+                        {listingMap("h-[16rem] w-full")}
                       </ListingMapSidePanel>,
                       "map",
                     )}
