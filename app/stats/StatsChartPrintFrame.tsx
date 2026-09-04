@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { StatsChartFrameProvider } from "./stats-chart-frame-context";
 import { printStatsChart, type StatsPrintMode } from "./stats-print";
 import { STATS_SCROLL_MT } from "./stats-scroll";
@@ -116,10 +116,6 @@ export default function StatsChartPrintFrame({
   const dataOpen = onDataOpenChange ? (dataOpenProp ?? false) : uncontrolledDataOpen;
   const setDataOpen = onDataOpenChange ?? setUncontrolledDataOpen;
   const [chartReady, setChartReady] = useState(false);
-
-  useEffect(() => {
-    setChartReady(false);
-  }, [children]);
 
   return (
     <div
