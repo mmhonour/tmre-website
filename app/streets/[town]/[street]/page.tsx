@@ -101,8 +101,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner and sale date come from the Field Card once
-            Vision sync ingests that PID — click through for the full card.
+            street page. Owner, mailing address, and purchase date (last deed
+            with consideration) come from the Field Card. A $0 / instrument 29
+            row is a quitclaim, not a purchase.
           </p>
         </div>
       </section>
@@ -119,7 +120,16 @@ export default async function StreetsStreetPage({
             <ul className="divide-y divide-charcoal/10 max-w-3xl">
               {parcels.map((row) => {
                 const owner = row.ownerName
-                const sale = row.lastSaleDate
+                const mailing = row.ownerMailingAddress
+                const bought = row.purchaseDate
+                const lastDeed = row.lastSaleDate
+                const dateLine = bought
+                  ? `Bought ${bought}`
+                  : lastDeed && row.lastDeedIsQuitclaim
+                    ? `Quitclaim ${lastDeed}`
+                    : lastDeed
+                      ? `Last deed ${lastDeed}`
+                      : null
                 return (
                   <li
                     key={`${row.visionPid}-${row.addressLabel}`}
@@ -132,12 +142,14 @@ export default async function StreetsStreetPage({
                       {row.addressLabel}
                     </Link>
                     <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
-                      {owner
-                        ? sale
-                          ? `${owner} · ${sale}`
-                          : owner
-                        : 'Owner pending Field Card ingest'}
+                      {owner ?? 'Owner pending Field Card ingest'}
+                      {owner && dateLine ? ` · ${dateLine}` : ''}
                     </p>
+                    {mailing ? (
+                      <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
+                        {mailing}
+                      </p>
+                    ) : null}
                   </li>
                 )
               })}

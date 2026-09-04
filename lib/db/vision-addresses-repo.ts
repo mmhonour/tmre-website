@@ -106,6 +106,30 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             ADD COLUMN IF NOT EXISTS owner_mailing_address text
         `)
         await query(`
+          UPDATE vision_addresses v
+             SET owner_mailing_address = sub.mailing
+            FROM (
+              SELECT v2.town, v2.vision_pid,
+                     NULLIF(
+                       btrim(string_agg(btrim(f->>'value'), ', ' ORDER BY f->>'label')),
+                       ''
+                     ) AS mailing
+                FROM vision_addresses v2
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  coalesce(v2.field_card->'fields', '[]'::jsonb)
+                ) f
+               WHERE (v2.owner_mailing_address IS NULL
+                      OR btrim(v2.owner_mailing_address) = '')
+                 AND f->>'label' ~* '^owner address'
+                 AND btrim(coalesce(f->>'value', '')) <> ''
+               GROUP BY v2.town, v2.vision_pid
+            ) sub
+           WHERE v.town = sub.town
+             AND v.vision_pid = sub.vision_pid
+             AND (v.owner_mailing_address IS NULL
+                  OR btrim(v.owner_mailing_address) = '')
+        `)
+        await query(`
           CREATE INDEX IF NOT EXISTS idx_vision_addr_field_card_gin
             ON vision_addresses USING gin (field_card)
         `)
