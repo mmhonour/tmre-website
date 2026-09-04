@@ -7,6 +7,8 @@ import { STATS_SCROLL_MT } from "./stats-scroll";
 
 type StatsChartPrintFrameProps = {
   chartId: string;
+  /** Older `#stats-chart-{id}` hashes that should still land on this frame. */
+  aliasChartIds?: readonly string[];
   title?: string;
   children: ReactNode;
   dataPanel?: ReactNode;
@@ -95,6 +97,7 @@ function StatsPrintControls({
 
 export default function StatsChartPrintFrame({
   chartId,
+  aliasChartIds,
   title,
   children,
   dataPanel,
@@ -115,6 +118,9 @@ export default function StatsChartPrintFrame({
       data-stats-chart-ready={chartReady ? "true" : "false"}
       data-stats-data-open={dataPanel && dataOpen ? "true" : undefined}
     >
+      {aliasChartIds?.map((alias) => (
+        <span key={alias} id={`stats-chart-${alias}`} hidden />
+      ))}
       {chartReady && title ? (
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-2 stats-print-screen-only">
           {title}

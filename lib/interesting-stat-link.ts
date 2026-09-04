@@ -23,6 +23,12 @@ export type InterestingStatKind =
   | 'sales-mom'
   | 'inventory-mom'
 
+/** Canonical Stats chart slug for close ÷ original ask (TRAN$ACT to LIST). */
+export const TRANSACT_TO_LIST_CHART_ID = 'transact-to-list'
+
+/** Older `?chart=` / `#stats-chart-` values that still resolve to this chart. */
+export const TRANSACT_TO_LIST_CHART_ALIASES = ['list-to-ask'] as const
+
 /** Matches `StatsChartPrintFrame` `chartId` / `#stats-chart-{id}`. */
 export type InterestingStatChartId =
   | 'sales-trend'
@@ -33,7 +39,7 @@ export type InterestingStatChartId =
   | 'median-by-town'
   | 'avg-dom'
   | 'town-comparison'
-  | 'list-to-ask'
+  | typeof TRANSACT_TO_LIST_CHART_ID
   | 'price-spread'
 
 const CHART_BY_KIND: Record<InterestingStatKind, InterestingStatChartId> = {
@@ -66,7 +72,7 @@ export const INTERESTING_STAT_CHART_IDS: readonly InterestingStatChartId[] = [
   'median-by-town',
   'avg-dom',
   'town-comparison',
-  'list-to-ask',
+  TRANSACT_TO_LIST_CHART_ID,
   'price-spread',
 ]
 
@@ -80,9 +86,15 @@ export function parseInterestingStatChartId(
   value: string | null | undefined,
 ): InterestingStatChartId | null {
   if (!value) return null
-  return INTERESTING_STAT_CHART_IDS.includes(value as InterestingStatChartId)
-    ? (value as InterestingStatChartId)
-    : null
+  if (INTERESTING_STAT_CHART_IDS.includes(value as InterestingStatChartId)) {
+    return value as InterestingStatChartId
+  }
+  if (
+    (TRANSACT_TO_LIST_CHART_ALIASES as readonly string[]).includes(value)
+  ) {
+    return TRANSACT_TO_LIST_CHART_ID
+  }
+  return null
 }
 
 /**
