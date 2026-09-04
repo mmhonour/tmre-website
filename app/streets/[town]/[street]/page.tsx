@@ -8,6 +8,7 @@ import {
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
 import { westportParcelHref } from '@/lib/listing-url'
+import { VISION_SALES_HISTORY_ID } from '@/lib/vision-gis-parse'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
   compareAddressLabels,
@@ -101,9 +102,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner, mailing address, and purchase date (last deed
-            with consideration) come from the Field Card. A $0 / instrument 29
-            row is a quitclaim, not a purchase.
+            street page. Owner, mailing address, and last sold (paid deed)
+            come from the Field Card. Quitclaims are on the parcel page sales
+            history — they do not replace Last sold.
           </p>
         </div>
       </section>
@@ -121,15 +122,8 @@ export default async function StreetsStreetPage({
               {parcels.map((row) => {
                 const owner = row.ownerName
                 const mailing = row.ownerMailingAddress
-                const bought = row.purchaseDate
-                const lastDeed = row.lastSaleDate
-                const dateLine = bought
-                  ? `Bought ${bought}`
-                  : lastDeed && row.lastDeedIsQuitclaim
-                    ? `Quitclaim ${lastDeed}`
-                    : lastDeed
-                      ? `Last deed ${lastDeed}`
-                      : null
+                const sold = row.purchaseDate
+                const historyHref = `${parcelHref(town, row.visionPid, row.addressLabel)}#${VISION_SALES_HISTORY_ID}`
                 return (
                   <li
                     key={`${row.visionPid}-${row.addressLabel}`}
@@ -143,11 +137,23 @@ export default async function StreetsStreetPage({
                     </Link>
                     <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
                       {owner ?? 'Owner pending Field Card ingest'}
-                      {owner && dateLine ? ` · ${dateLine}` : ''}
+                      {owner && sold ? ` · Last sold ${sold}` : ''}
                     </p>
                     {mailing ? (
                       <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
                         {mailing}
+                      </p>
+                    ) : null}
+                    {row.quitclaimCount > 0 ? (
+                      <p className="mt-0.5">
+                        <Link
+                          href={historyHref}
+                          className="font-mono text-[11px] tracking-[0.08em] uppercase text-navy/55 hover:text-navy underline underline-offset-2"
+                        >
+                          {row.quitclaimCount === 1
+                            ? '1 quitclaim'
+                            : `${row.quitclaimCount} quitclaims`}
+                        </Link>
                       </p>
                     ) : null}
                   </li>
