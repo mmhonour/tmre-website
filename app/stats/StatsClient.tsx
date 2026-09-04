@@ -8,6 +8,8 @@ import { fetchActiveMedianListings } from "@/lib/active-median-listings";
 import {
   interestingStatChartElementId,
   parseInterestingStatChartId,
+  TRANSACT_TO_LIST_CHART_ALIASES,
+  TRANSACT_TO_LIST_CHART_ID,
 } from "@/lib/interesting-stat-link";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { TOWN_LIST, STATS_CITIES, STATS_KINDS, type StatsCity, type StatsKind, type Town } from "./stats-towns";
@@ -262,6 +264,15 @@ export default function StatsClient() {
     }
     deepLinkApplied.current = true;
   }, [urlCity, urlView, urlPool, urlKind, setSelectedCity, setStatsKind]);
+
+  // Canonicalize retired chart slugs in the address bar (`list-to-ask` → `transact-to-list`).
+  useEffect(() => {
+    const raw = searchParams.get("chart");
+    if (!raw || !urlChart || raw === urlChart) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("chart", urlChart);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [searchParams, urlChart]);
 
   // Homepage interesting-stat deep link: scroll to the target chart once ready.
   useEffect(() => {
@@ -603,7 +614,7 @@ export default function StatsClient() {
             : statsByPriceTitle(statsKind),
       },
       { id: "stats-chart-price-spread", label: statsPriceSpreadTitle(statsKind) },
-      { id: "stats-chart-list-to-ask", label: statsListToAskTitle(statsKind) },
+      { id: `stats-chart-${TRANSACT_TO_LIST_CHART_ID}`, label: statsListToAskTitle(statsKind) },
     );
     if (selectedCity === "All") {
       items.push(
@@ -1150,19 +1161,20 @@ export default function StatsClient() {
                 </StatsChartPrintFrame>
               </StatsChartLazyMount>
 
-              <StatsChartLazyMount eager={urlChart === "list-to-ask"}>
+              <StatsChartLazyMount eager={urlChart === TRANSACT_TO_LIST_CHART_ID}>
                 <StatsChartPrintFrame
-                  chartId="list-to-ask"
+                  chartId={TRANSACT_TO_LIST_CHART_ID}
+                  aliasChartIds={[...TRANSACT_TO_LIST_CHART_ALIASES]}
                   title={statsListToAskTitle(statsKind)}
                   dataPanel={
                     <ListToAskByTownDataTable
-                      key={`list-to-ask-data-${statsKind}${chartVersionSuffix}`}
+                      key={`${TRANSACT_TO_LIST_CHART_ID}-data-${statsKind}${chartVersionSuffix}`}
                       kind={statsKind}
                     />
                   }
                 >
                   <ListToAskByTownChart
-                    key={`list-to-ask-${statsKind}${chartVersionSuffix}`}
+                    key={`${TRANSACT_TO_LIST_CHART_ID}-${statsKind}${chartVersionSuffix}`}
                     kind={statsKind}
                     selectedCity={selectedCity}
                   />

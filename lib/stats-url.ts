@@ -1,3 +1,5 @@
+import { TRANSACT_TO_LIST_CHART_ID } from "@/lib/interesting-stat-link";
+
 export function statsMedianListingsHref(options: {
   city: string;
   kind?: "sale" | "rental";
@@ -88,7 +90,7 @@ export function statsMedianByTownHref(options: {
   return `/stats?${params.toString()}`;
 }
 
-/** Deep link to Stats → list-to-ask chart for a town (or All). */
+/** Deep link to Stats → TRAN$ACT to LIST chart for a town (or All). */
 export function statsListToAskHref(options: {
   city: string;
   kind?: "sale" | "rental";
@@ -96,7 +98,7 @@ export function statsListToAskHref(options: {
   const params = new URLSearchParams({
     city: options.city,
     kind: options.kind ?? "sale",
-    chart: "list-to-ask",
+    chart: TRANSACT_TO_LIST_CHART_ID,
   });
   return `/stats?${params.toString()}`;
 }

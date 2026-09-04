@@ -1331,7 +1331,7 @@ export default function WeeklyBriefContent({
   closedSalesTownHref?: (cityLabel: string) => string;
   /** Avg DOM town labels → Stats avg-dom chart. */
   avgDomTownHref?: (cityLabel: string) => string;
-  /** TRAN$ACT to LIST → Stats list-to-ask chart (its own graph and data table). */
+  /** TRAN$ACT to LIST → Stats transact-to-list chart (its own graph and data table). */
   saleToAskTownHref?: (cityLabel: string) => string;
   /** Stats chart behind each bar, by metric and town. */
   metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
