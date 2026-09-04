@@ -119,7 +119,7 @@ export default function FindClient({
       } finally {
         if (!ac.signal.aborted) setSuggestLoading(false);
       }
-    }, 280);
+    }, 150);
 
     return () => {
       clearTimeout(timer);

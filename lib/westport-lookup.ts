@@ -243,6 +243,44 @@ function hitFromVision(
   }
 }
 
+async function listingSnippetsForVisionHits(
+  hits: VisionAddressRecord[],
+): Promise<Map<string, { status: string | null; price: number | null }>> {
+  const out = new Map<string, { status: string | null; price: number | null }>()
+  const pids = [...new Set(hits.map((h) => h.visionPid).filter(Boolean))]
+  if (pids.length === 0) return out
+  const rows = await query<{
+    vision_pid: string
+    status_bucket: string | null
+    price: number | string | null
+  }>(
+    `SELECT DISTINCT ON (vision_pid)
+        vision_pid, status_bucket, price
+       FROM listings
+      WHERE lower(town) = lower($1)
+        AND vision_pid = ANY($2::text[])
+      ORDER BY
+        vision_pid,
+        CASE status_bucket
+          WHEN 'Active' THEN 0
+          WHEN 'Closed' THEN 1
+          WHEN 'Expired' THEN 2
+          ELSE 3
+        END,
+        modification_timestamp DESC NULLS LAST`,
+    [WESTPORT_LOOKUP_TOWN, pids],
+  )
+  for (const row of rows) {
+    const priceNum =
+      row.price == null || row.price === '' ? null : Number(row.price)
+    out.set(row.vision_pid, {
+      status: row.status_bucket,
+      price: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+    })
+  }
+  return out
+}
+
 async function listingForVision(
   v: VisionAddressRecord,
 ): Promise<Listing | null> {
@@ -359,17 +397,14 @@ export async function searchWestportLookup(
     siblingCounts.set(key, (siblingCounts.get(key) ?? 0) + 1)
   }
 
-  const listings = await Promise.all(visionHits.map((v) => listingForVision(v)))
+  const listingSnippets = await listingSnippetsForVisionHits(visionHits)
   const out: WestportLookupHit[] = []
-  visionHits.forEach((v, i) => {
-    const listing = listings[i]
+  visionHits.forEach((v) => {
     const key = v.addressNorm || v.visionPid
     out.push(
       hitFromVision(
         v,
-        listing
-          ? { status: listing.status, price: listing.price }
-          : null,
+        listingSnippets.get(v.visionPid) ?? null,
         siblingCounts.get(key) ?? 1,
       ),
     )
@@ -387,7 +422,8 @@ export async function searchWestportLookup(
     seenNorms.add(keys.loose)
   }
 
-  const listingRows = await searchWestportListingRows(q, limit)
+  const listingRows =
+    out.length > 0 ? [] : await searchWestportListingRows(q, limit)
   const groups = new Map<string, WestportListingSearchRow[]>()
   for (const row of listingRows) {
     const street = row.address_street || row.address_full || ''
@@ -414,17 +450,17 @@ export async function searchWestportLookup(
     if (preferred.vision_pid) {
       const vision = await getVisionAddress(WESTPORT_LOOKUP_TOWN, preferred.vision_pid)
       if (vision) {
-        const listing = await listingForVision(vision)
+        const priceNum =
+          preferred.price == null || preferred.price === ''
+            ? null
+            : Number(preferred.price)
         out.push(
           hitFromVision(
             vision,
-            listing
-              ? { status: listing.status, price: listing.price }
-              : {
-                  status: preferred.status_bucket,
-                  price:
-                    preferred.price == null ? null : Number(preferred.price),
-                },
+            {
+              status: preferred.status_bucket,
+              price: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+            },
             group.length,
           ),
         )
@@ -454,52 +490,6 @@ export async function searchWestportLookup(
     if (preferred.mls_id) seenMls.add(preferred.mls_id)
     seenMls.add(preferred.id)
     seenNorms.add(key)
-  }
-
-  const hasListingHit = out.some((h) => Boolean(h.mlsId || h.listingId))
-  if (
-    !hasListingHit &&
-    looksLikeStreetQuery(q) &&
-    out.length < limit
-  ) {
-    const { ingestFindListingByStreetQuery, stampVisionListingLink } =
-      await import('@/lib/find-listing-ingest')
-    const listing = await ingestFindListingByStreetQuery(q)
-    const town = listing?.address.city?.trim().toLowerCase()
-    if (listing && town === 'westport') {
-      const street = listing.address.street || listing.address.full || q
-      const visionHit = out.find((h) => h.visionPid)
-      if (visionHit?.visionPid) {
-        const vision = await getVisionAddress(
-          WESTPORT_LOOKUP_TOWN,
-          visionHit.visionPid,
-        )
-        if (vision) await stampVisionListingLink(vision, listing)
-      }
-      const already = out.some(
-        (h) => h.mlsId === listing.mlsId || h.listingId === listing.listingKey,
-      )
-      if (!already) {
-        out.unshift({
-          visionPid: visionHit?.visionPid ?? '',
-          addressFull: listing.address.full || `${street}, Westport`,
-          street,
-          mblu: visionHit?.mblu ?? null,
-          ownerName: listing.ownerName ?? visionHit?.ownerName ?? null,
-          ownerMailingAddress: visionHit?.ownerMailingAddress ?? null,
-          listingId: listing.listingKey,
-          mlsId: listing.mlsId,
-          status: listing.status,
-          price: listing.price,
-          siblingCount: 1,
-        })
-      } else if (visionHit && !visionHit.mlsId) {
-        visionHit.listingId = listing.listingKey
-        visionHit.mlsId = listing.mlsId
-        visionHit.status = listing.status
-        visionHit.price = listing.price
-      }
-    }
   }
 
   const looksLikeMls = /^[A-Za-z0-9-]{5,}$/.test(q.trim()) && !/\s/.test(q.trim())
