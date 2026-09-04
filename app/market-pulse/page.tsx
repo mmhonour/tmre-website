@@ -15,6 +15,7 @@ import {
   marketPulseThemeCssVars,
 } from "@/lib/page-theme-config";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { MARKET_PULSE_JOIN_BRIEF_ID } from "@/lib/market-pulse-defaults";
 
 export const dynamic = "force-dynamic";
 /** Commercial tab hits Neon for Active + recent Closed; keep under Netlify's SSR budget. */
@@ -67,7 +68,10 @@ export default async function MarketPulsePage() {
           </div>
         </section>
 
-        <section className="relative py-14 lg:py-20 overflow-hidden navy-gradient">
+        <section
+          id={MARKET_PULSE_JOIN_BRIEF_ID}
+          className="relative scroll-mt-24 py-14 lg:py-20 overflow-hidden navy-gradient"
+        >
           <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
           <div className="relative mx-auto max-w-3xl px-6 lg:px-10 text-center">
             <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-4">

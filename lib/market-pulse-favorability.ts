@@ -6,13 +6,15 @@
  * Live factors today (buyer-friendly direction):
  *   Months supply larger, avg DOM larger, closed smaller,
  *   median smaller, delta smaller, average smaller,
- *   list-to-ask smaller.
+ *   TRAN$ACT to LIST (close ÷ original ask) smaller.
  * Seller Friendly is the reverse of each.
  *
  * Planned (catalogue on Town stats / most current year we have):
  *   Active inventory ÷ housing unit count (higher → buyer)
  *   Closings in trailing 24 months ÷ housing unit count (higher → buyer)
  */
+
+import { TRANSACT_TO_LIST_LABEL } from '@/lib/market-pulse-defaults'
 
 /**
  * How the composite is explained to a reader, in one place because the page and
@@ -21,10 +23,10 @@
  * how list-to-ask came to be scored without ever being mentioned.
  */
 export const MARKET_PULSE_BUYER_SCORE_COPY =
-  'Buyer Friendly ranks a town higher when months supply is larger, avg days on market is larger, and closed, median, delta, average and list to ask are all smaller.'
+  `Buyer Friendly ranks a town higher when months supply is larger, avg days on market is larger, and closed, median, delta, average and ${TRANSACT_TO_LIST_LABEL} are all smaller.`
 
 export const MARKET_PULSE_SELLER_SCORE_COPY =
-  'Seller Friendly is the opposite of each of those — smaller months supply and avg days on market, larger closed, median, delta, average and list to ask.'
+  `Seller Friendly is the opposite of each of those — smaller months supply and avg days on market, larger closed, median, delta, average and ${TRANSACT_TO_LIST_LABEL}.`
 
 export type MarketPulseFavorSort = 'default' | 'sellers' | 'buyers'
 
@@ -141,7 +143,7 @@ export const MARKET_PULSE_FAVOR_FACTORS: {
   },
   {
     id: 'saleToAskPct',
-    label: 'List to ask',
+    label: TRANSACT_TO_LIST_LABEL,
     status: 'live',
     buyerDirection: 'higher',
     notes:

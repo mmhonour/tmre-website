@@ -15,6 +15,7 @@ import {
   formatVsAsk,
   type ListToAskRow,
 } from "./list-to-ask-data";
+import { TRANSACT_TO_LIST_LABEL } from "@/lib/market-pulse-defaults";
 import { statsListToAskTitle } from "./stats-labels";
 import { STATS_TOWN_COLOR } from "./stats-town-colors";
 import type { StatsKind } from "./stats-towns";
@@ -55,7 +56,7 @@ export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) 
       <StatsChartDataHead>
         <StatsChartDataRow>
           <StatsChartDataTh>Town</StatsChartDataTh>
-          <StatsChartDataTh align="right">List to ask</StatsChartDataTh>
+          <StatsChartDataTh align="right">{TRANSACT_TO_LIST_LABEL}</StatsChartDataTh>
           <StatsChartDataTh align="right">Vs ask</StatsChartDataTh>
           <StatsChartDataTh align="right">Avg gap</StatsChartDataTh>
           <StatsChartDataTh align="right">Closings</StatsChartDataTh>

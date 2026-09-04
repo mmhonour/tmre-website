@@ -116,7 +116,7 @@ export function PanelBarRow({
       </span>
       {/*
        * The bar is the link, not the label: a label may already hold its own
-       * control — Delta's explainer, List to ask's chart link — and one
+       * control — Delta's explainer, TRAN$ACT to LIST's chart link — and one
        * interactive element cannot sit inside another.
        */}
       <Bar

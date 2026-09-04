@@ -39,6 +39,8 @@ import {
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  TRANSACT_TO_LIST_LABEL,
+  MARKET_PULSE_JOIN_BRIEF_ID,
   marketPulseFavorSortLabel,
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
@@ -214,7 +216,7 @@ function marketPulseSortExplain(
     return "Towns stay in default town order. All Towns stays on top. Choose Seller Friendly or Buyer Friendly to reorder.";
   }
   if (chartLayout === "stacked") {
-    return `Ordered by a buyer/seller composite of months supply, avg days on market, closed, median, delta, average and list to ask, in the ${
+    return `Ordered by a buyer/seller composite of months supply, avg days on market, closed, median, delta, average and ${TRANSACT_TO_LIST_LABEL}, in the ${
       favorSort === "sellers"
         ? "seller-friendly direction"
         : "buyer-friendly direction"
@@ -1100,7 +1102,7 @@ function CombinedMetricsChart({
   title?: ReactNode;
   rows: CombinedTownRow[];
   townHref?: (cityLabel: string) => string;
-  /** Turns the List to ask row label into a link to its Stats chart. */
+  /** Turns the TRAN$ACT to LIST row label into a link to its Stats chart. */
   saleToAskTownHref?: (cityLabel: string) => string;
   /** Stats chart behind each bar, by metric and town. */
   metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
@@ -1329,7 +1331,7 @@ export default function WeeklyBriefContent({
   closedSalesTownHref?: (cityLabel: string) => string;
   /** Avg DOM town labels → Stats avg-dom chart. */
   avgDomTownHref?: (cityLabel: string) => string;
-  /** List to ask → Stats list-to-ask chart (its own graph and data table). */
+  /** TRAN$ACT to LIST → Stats list-to-ask chart (its own graph and data table). */
   saleToAskTownHref?: (cityLabel: string) => string;
   /** Stats chart behind each bar, by metric and town. */
   metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
@@ -1720,6 +1722,14 @@ export default function WeeklyBriefContent({
                   vs All towns
                 </p>
               ) : null}
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase">
+                <a
+                  href={`#${MARKET_PULSE_JOIN_BRIEF_ID}`}
+                  className="text-[var(--mp-accent)] underline underline-offset-2 hover:text-[var(--mp-text)]"
+                >
+                  Join the brief
+                </a>
+              </p>
               {kpiStrip}
               {chromeToolbar}
             </div>
@@ -1860,7 +1870,7 @@ export default function WeeklyBriefContent({
         />
 
         <BarChart
-          title="List to ask"
+          title={TRANSACT_TO_LIST_LABEL}
           rows={priceRows}
           valueOf={(r) =>
             r.saleToAskDollars == null ? null : Math.abs(r.saleToAskDollars)
