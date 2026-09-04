@@ -11,7 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import { HouseIcon } from "@/components/icons";
-import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
+import {
+  loadTmreZipBoundaries,
+  loadZipBoundariesForZips,
+} from "@/components/ZipBoundaryPopover";
+import { boundaryZipsForAllTowns } from "@/lib/tmre-towns";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
@@ -505,7 +509,14 @@ export default function DealBoardMap({
       return;
     }
     let cancelled = false;
-    void loadZipBoundariesForZips(boundZips)
+    const allTowns = boundaryZipsForAllTowns();
+    const loadAllTowns =
+      boundZips.length === allTowns.length &&
+      allTowns.every((zip) => boundZips.includes(zip));
+    void (loadAllTowns
+      ? loadTmreZipBoundaries()
+      : loadZipBoundariesForZips(boundZips)
+    )
       .then((byZip) => {
         if (cancelled) return;
         const next: ZipRings[] = [];
@@ -516,7 +527,8 @@ export default function DealBoardMap({
         setZipRings(next);
       })
       .catch(() => {
-        if (!cancelled) setZipRings([]);
+        // Keep whatever rings we already have — a failed All Towns bundle
+        // must not wipe a town outline that was already on screen.
       });
     return () => {
       cancelled = true;

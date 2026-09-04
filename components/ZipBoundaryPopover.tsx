@@ -34,6 +34,37 @@ export async function loadZipBoundariesForZips(
   return fetchBoundariesBatch(zips);
 }
 
+/** Load every mappable TMRE ZCTA via the dedicated bundle (All Towns overview). */
+export async function loadTmreZipBoundaries(): Promise<Map<string, Ring[]>> {
+  const all = boundaryZipsForAllTowns();
+  const out = new Map<string, Ring[]>();
+  const missing: string[] = [];
+  for (const zip of all) {
+    const hit = cache.get(zip);
+    if (hit?.length) out.set(zip, hit);
+    else missing.push(zip);
+  }
+  if (missing.length === 0) return out;
+
+  const res = await fetch(`/api/zip-boundaries?bundle=tmre`, {
+    cache: "force-cache",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    boundaries?: Record<string, Ring[]>;
+    error?: string;
+  };
+  if (data.error) throw new Error(data.error);
+
+  for (const [zip, rings] of Object.entries(data.boundaries ?? {})) {
+    if (Array.isArray(rings) && rings.length > 0) {
+      cache.set(zip, rings);
+      out.set(zip, rings);
+    }
+  }
+  return out;
+}
+
 async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string, Ring[]>> {
   const out = new Map<string, Ring[]>();
   const missing: string[] = [];
@@ -88,22 +119,12 @@ export function prefetchTownBoundaries(town: TmreTown): void {
   ]);
 }
 
-/** Prefetch all TMRE town zips (Intelligence “All Towns” hover). */
+/** Prefetch all TMRE town zips (Intelligence “All Towns” hover / click). */
 export function prefetchAllTownBoundaries(): void {
   if (boundaryZipsForAllTowns().every((zip) => cache.has(zip))) return;
-  void fetch(`/api/zip-boundaries?bundle=tmre`, { cache: "force-cache" })
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        boundaries?: Record<string, Ring[]>;
-      };
-      for (const [zip, rings] of Object.entries(data.boundaries ?? {})) {
-        if (Array.isArray(rings) && rings.length > 0) cache.set(zip, rings);
-      }
-    })
-    .catch(() => {
-      prefetchZipBoundaries(boundaryZipsForAllTowns());
-    });
+  void loadTmreZipBoundaries().catch(() => {
+    prefetchZipBoundaries(boundaryZipsForAllTowns());
+  });
 }
 
 function ringBBoxCenter(rings: Ring[]): Coord | null {
@@ -289,10 +310,12 @@ export default function ZipBoundaryPopover({
     return contextZips.filter((z) => hasZctaBoundary(z) && !highlightZipSet.has(z));
   }, [highlightAllTowns, highlightTown, contextZips, highlightZipSet, zipFallbackTown]);
 
+  const includeNeighborContext = Boolean(onSelectTown);
+
   const loadKey = highlightAllTowns
     ? "all-towns"
     : highlightTown
-      ? `town:${highlightTown}`
+      ? `town:${highlightTown}:${includeNeighborContext ? "ctx" : "solo"}`
       : highlightZip
         ? `zip:${highlightZip}:${resolvedContextZips.join(",")}`
         : "";
@@ -397,13 +420,16 @@ export default function ZipBoundaryPopover({
       return;
     }
 
-    const contextList = highlightAllTowns
-      ? []
-      : highlightTown
-        ? [...boundaryZipsForNeighborTowns(highlightTown)]
-        : zipFallbackTown
-          ? [...boundaryZipsForNeighborTowns(zipFallbackTown)]
-          : contextZips.filter((z) => hasZctaBoundary(z) && !highlightSet.has(z));
+    // Flash / tooltip (no town clicks) skips neighbors so a multi-zip town
+    // such as Fairfield frames to 06824+06825+06890 instead of one warm zip.
+    const contextList =
+      !includeNeighborContext || highlightAllTowns
+        ? []
+        : highlightTown
+          ? [...boundaryZipsForNeighborTowns(highlightTown)]
+          : zipFallbackTown
+            ? [...boundaryZipsForNeighborTowns(zipFallbackTown)]
+            : contextZips.filter((z) => hasZctaBoundary(z) && !highlightSet.has(z));
     const zipsToLoad = [
       ...highlightZips,
       ...contextList.filter((z) => !highlightSet.has(z)),
@@ -417,9 +443,12 @@ export default function ZipBoundaryPopover({
 
     const hasHighlight = (map: Map<string, Ring[]>) =>
       highlightZips.some((z) => (map.get(z)?.length ?? 0) > 0);
+    const hasAllHighlight = (map: Map<string, Ring[]>) =>
+      highlightZips.every((z) => (map.get(z)?.length ?? 0) > 0);
 
-    // Paint highlight immediately when any primary zip is already warm.
-    if (hasHighlight(byZip)) {
+    // Wait for every primary zip before painting. A single cached ring
+    // (Fairfield 06890) used to fill the popover and look like the whole town.
+    if (hasAllHighlight(byZip)) {
       setBoundary({ status: "ready", byZip: new Map(byZip) });
       if (byZip.size === zipsToLoad.length) {
         boundaryBundleCache.set(loadKey, new Map(byZip));
@@ -437,14 +466,17 @@ export default function ZipBoundaryPopover({
     const mergeZip = (zip: string, rings: Ring[]) => {
       if (cancelled || rings.length === 0) return;
       byZip.set(zip, rings);
-      setBoundary({ status: "ready", byZip: new Map(byZip) });
+      if (hasAllHighlight(byZip)) {
+        setBoundary({ status: "ready", byZip: new Map(byZip) });
+      }
     };
 
     void (async () => {
-      // Highlight first (one batched API call) so gold outlines paint before neighbors.
       if (highlightMissing.length > 0) {
         try {
-          const map = await fetchBoundariesBatch(highlightMissing);
+          const map = highlightAllTowns
+            ? await loadTmreZipBoundaries()
+            : await fetchBoundariesBatch(highlightMissing);
           for (const [zip, rings] of map) mergeZip(zip, rings);
         } catch {
           /* fall through — may still have partial cache */
@@ -455,6 +487,11 @@ export default function ZipBoundaryPopover({
       if (!hasHighlight(byZip)) {
         setBoundary({ status: "error" });
         return;
+      }
+      // Paint whatever highlight zips we have once the fetch has settled,
+      // even if a town is missing a ZCTA in the table.
+      if (!hasAllHighlight(byZip)) {
+        setBoundary({ status: "ready", byZip: new Map(byZip) });
       }
 
       if (contextMissing.length > 0) {
@@ -480,6 +517,7 @@ export default function ZipBoundaryPopover({
     highlightZip,
     zipFallbackTown,
     contextKey,
+    includeNeighborContext,
   ]);
 
   if (!pos || typeof document === "undefined") return null;
