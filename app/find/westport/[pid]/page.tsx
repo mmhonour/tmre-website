@@ -209,6 +209,32 @@ export default async function WestportParcelPage({
           <p className="mt-3 font-mono text-sm text-white/70">
             {property.addressFull}
           </p>
+          <div className="mt-6 max-w-xl rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-4">
+            <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
+              Owner of record
+            </p>
+            <p className="mt-1 font-serif text-xl sm:text-2xl text-white leading-snug">
+              {property.ownerDisplayName ?? "—"}
+            </p>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+                  Mailing address
+                </dt>
+                <dd className="mt-0.5 font-mono text-sm text-white/85 leading-relaxed">
+                  {property.ownerMailingAddress ?? "Pending Field Card"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+                  Bought
+                </dt>
+                <dd className="mt-0.5 font-mono text-sm text-white/85 tabular-nums">
+                  {property.purchaseYear ?? "—"}
+                </dd>
+              </div>
+            </dl>
+          </div>
           <p className="mt-4 font-mono text-2xl text-gold tabular-nums">
             {property.price.value != null
               ? fmtMoney(property.price.value)

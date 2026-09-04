@@ -27,8 +27,11 @@ import type { Listing } from '@/lib/rets'
 import {
   fieldCardFromTypedVision,
   lastSaleAsOwnership,
+  ownerDisplayNameFromFields,
+  ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
   parseVisionFieldCardJson,
+  visionPurchaseYear,
   type VisionFieldCardField,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
@@ -93,6 +96,12 @@ export type WestportMergedProperty = {
   acres: MergedField<number>
   zoning: MergedField<string>
   ownerName: MergedField<string>
+  /** Current owner (+ co-owner when the Field Card lists one). */
+  ownerDisplayName: string | null
+  /** VGSI mailing address (often the same as the parcel, sometimes a PO box / out of town). */
+  ownerMailingAddress: string | null
+  /** Year of the last paid purchase when we can tell; else last transfer year. */
+  purchaseYear: number | null
   assessedValue: MergedField<number>
   appraisalValue: MergedField<number>
   lastSalePrice: MergedField<number>
@@ -584,6 +593,18 @@ export async function mergeWestportProperty(
     acres: visionFill(listing?.lotAcres, vision.acres),
     zoning: visionFill(null, vision.zoning),
     ownerName: visionFill(listing?.ownerName, vision.ownerName),
+    ownerDisplayName: ownerDisplayNameFromFields(
+      fieldCard.fields,
+      vision.ownerName ?? listing?.ownerName,
+    ),
+    ownerMailingAddress:
+      ownerMailingAddressFromFields(fieldCard.fields) ??
+      vision.ownerMailingAddress,
+    purchaseYear: visionPurchaseYear({
+      lastSaleDate: vision.lastSaleDate,
+      lastSalePrice: vision.lastSalePrice,
+      ownership: fieldCard.ownership,
+    }),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
     appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),

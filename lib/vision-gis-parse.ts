@@ -16,6 +16,7 @@ export type VisionParcelParse = {
   state: string
   zip: string | null
   ownerName: string | null
+  ownerMailingAddress: string | null
   assessedValue: number | null
   appraisalValue: number | null
   buildingCount: number | null
@@ -155,6 +156,80 @@ export function ownershipFromFieldCardFields(
     })
   }
   return rows
+}
+
+/** VGSI mailing lines (`MainContent_lblAddr1` / `lblAddr2` → Owner address). */
+export function ownerMailingAddressFromFields(
+  fields: readonly VisionFieldCardField[],
+): string | null {
+  const line1 = fields.find((f) => /^owner address$/i.test(f.label))?.value
+  const line2 = fields.find((f) => /^owner address 2$/i.test(f.label))?.value
+  const parts = [line1, line2]
+    .map((s) => s?.replace(/\s+/g, ' ').trim())
+    .filter((s): s is string => Boolean(s))
+  return parts.length > 0 ? parts.join(', ') : null
+}
+
+export function ownerDisplayNameFromFields(
+  fields: readonly VisionFieldCardField[],
+  ownerName?: string | null,
+): string | null {
+  const owner =
+    ownerName?.trim() ||
+    fields.find((f) => /^owner$/i.test(f.label))?.value?.trim() ||
+    null
+  const coOwner = fields.find((f) => /^co-owner$/i.test(f.label))?.value?.trim()
+  if (owner && coOwner && !owner.toLowerCase().includes(coOwner.toLowerCase())) {
+    return `${owner} & ${coOwner}`
+  }
+  return owner || coOwner || null
+}
+
+/** Calendar year from VGSI dates (`03/21/2025`, `3-21-25`, `2025`). */
+export function yearFromVisionDate(
+  date: string | null | undefined,
+): number | null {
+  if (!date) return null
+  const full = date.match(/(18|19|20)\d{2}/)
+  if (full) {
+    const y = Number(full[0])
+    return y >= 1800 && y <= 2100 ? y : null
+  }
+  const short = date.match(/\d{1,2}[/-]\d{1,2}[/-](\d{2})\b/)
+  if (!short?.[1]) return null
+  const yy = Number(short[1])
+  const y = yy >= 70 ? 1900 + yy : 2000 + yy
+  return y >= 1800 && y <= 2100 ? y : null
+}
+
+/**
+ * Year the current owner took title. Prefers a paid sale (price > 0) so a
+ * $0 trust/quitclaim does not hide the last real purchase.
+ */
+export function visionPurchaseYear(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[]
+}): number | null {
+  const paidYears = (opts.ownership ?? [])
+    .map((row) => ({
+      year: yearFromVisionDate(row.date),
+      price: parseVisionMoney(row.price),
+    }))
+    .filter(
+      (row): row is { year: number; price: number } =>
+        row.year != null && row.price != null && row.price > 0,
+    )
+    .map((row) => row.year)
+  if (paidYears.length > 0) return Math.max(...paidYears)
+  if ((opts.lastSalePrice ?? 0) > 0) {
+    return yearFromVisionDate(opts.lastSaleDate)
+  }
+  const anyYears = (opts.ownership ?? [])
+    .map((row) => yearFromVisionDate(row.date))
+    .filter((y): y is number => y != null)
+  if (anyYears.length > 0) return Math.max(...anyYears)
+  return yearFromVisionDate(opts.lastSaleDate)
 }
 
 export function lastSaleAsOwnership(row: {
@@ -408,6 +483,7 @@ export function fieldCardFromTypedVision(row: {
   useCode?: string | null
   useCodeDescription?: string | null
   ownerName?: string | null
+  ownerMailingAddress?: string | null
   assessedValue?: number | null
   appraisalValue?: number | null
   yearBuilt?: number | null
@@ -429,6 +505,7 @@ export function fieldCardFromTypedVision(row: {
   const pairs: [string, string, string | number | null | undefined][] = [
     ['Parcel', 'Location', row.addressFull],
     ['Parcel', 'Owner', row.ownerName],
+    ['Parcel', 'Owner address', row.ownerMailingAddress],
     ['Parcel', 'MBLU', row.mblu],
     ['Parcel', 'Account', row.accountNumber],
     ['Parcel', 'PID', row.visionPid],
@@ -483,6 +560,16 @@ export function parseVisionParcelHtml(
   const mblu = spanById(html, 'MainContent_lblMblu')
   const acct = spanById(html, 'MainContent_lblAcctNum')
   const owner = spanById(html, 'MainContent_lblGenOwner')
+  const ownerAddr1 = spanById(html, 'MainContent_lblAddr1')
+  const ownerAddr2 = spanById(html, 'MainContent_lblAddr2')
+  const ownerMailingAddress = ownerMailingAddressFromFields([
+    ...(ownerAddr1
+      ? [{ section: 'Parcel', label: 'Owner address', value: ownerAddr1 }]
+      : []),
+    ...(ownerAddr2
+      ? [{ section: 'Parcel', label: 'Owner address 2', value: ownerAddr2 }]
+      : []),
+  ])
   const assessed = moneyToNumber(spanById(html, 'MainContent_lblGenAssessment'))
   const appraisal = moneyToNumber(spanById(html, 'MainContent_lblGenAppraisal'))
   const zone = spanById(html, 'MainContent_lblZone')
@@ -532,6 +619,7 @@ export function parseVisionParcelHtml(
     mblu,
     useCode,
     ownerName: owner,
+    ownerMailingAddress,
     assessedValue: assessed,
     appraisalValue: appraisal,
     yearBuilt,
@@ -562,6 +650,7 @@ export function parseVisionParcelHtml(
     state: 'CT',
     zip: null,
     ownerName: owner,
+    ownerMailingAddress,
     assessedValue: assessed,
     appraisalValue: appraisal,
     buildingCount,
