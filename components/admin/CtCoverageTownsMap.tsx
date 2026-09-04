@@ -80,24 +80,27 @@ const STRIP_FILL: Record<CoastalStripIndex, string> = {
   3: "rgba(232, 93, 58, 0.10)",
 };
 
+const STRIP_MARK_MIN_PX = 6;
+const STRIP_MARK_MAX_PX = 22;
+const STRIP_MARK_DEFAULT_PX = 10;
+
 function StripMark({
   lon,
   lat,
   strip,
   viewport,
   zoom,
+  fontSize,
 }: {
   lon: number;
   lat: number;
   strip: CoastalStripIndex;
   viewport: { left: number; top: number };
   zoom: number;
+  fontSize: number;
 }) {
   const x = lonToWorldX(lon, zoom) - viewport.left;
   const y = latToWorldY(lat, zoom) - viewport.top;
-  // Close-up only: at town-or-wider zoom the fill is the cue.
-  if (zoom < 13) return null;
-  const fontSize = zoom >= 15 ? 6 : 5;
   return (
     <text
       x={x}
@@ -105,8 +108,8 @@ function StripMark({
       dy="0.35em"
       textAnchor="middle"
       fill="#1a2744"
-      stroke="rgba(255,255,255,0.85)"
-      strokeWidth={1.1}
+      stroke="rgba(255,255,255,0.88)"
+      strokeWidth={Math.max(1, fontSize * 0.18)}
       paintOrder="stroke"
       style={{
         fontSize,
@@ -153,6 +156,28 @@ export default function CtCoverageTownsMap({
   const draftRef = useRef<TownCenterPlacement | null>(null);
   draftRef.current = draftCenter;
   const [hoverDisk, setHoverDisk] = useState<"center" | "rim" | null>(null);
+  const [editingDisk, setEditingDisk] = useState(false);
+  const [stripMarkPx, setStripMarkPx] = useState(STRIP_MARK_DEFAULT_PX);
+  const diskHideTimerRef = useRef<number | null>(null);
+
+  const flashHideGrid = () => {
+    setEditingDisk(true);
+    if (diskHideTimerRef.current != null) {
+      window.clearTimeout(diskHideTimerRef.current);
+    }
+    diskHideTimerRef.current = window.setTimeout(() => {
+      setEditingDisk(false);
+      diskHideTimerRef.current = null;
+    }, 400);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (diskHideTimerRef.current != null) {
+        window.clearTimeout(diskHideTimerRef.current);
+      }
+    };
+  }, []);
 
   const livePlacements = useMemo(() => {
     if (!focusTown || !draftCenter) return townCenters.placements;
@@ -448,6 +473,7 @@ export default function CtCoverageTownsMap({
       };
       e.currentTarget.setPointerCapture(e.pointerId);
       setDraftCenter(resolveTownCenter(focusTown, livePlacements));
+      setEditingDisk(true);
       return;
     }
     const key = cellAtClient(e.clientX, e.clientY);
@@ -521,6 +547,7 @@ export default function CtCoverageTownsMap({
       const next = draftRef.current;
       if (focusTown && next) townCenters.save(focusTown, next);
       setDraftCenter(null);
+      setEditingDisk(false);
     } else if (!drag.moved && !focusTown) {
       const pt = lonLatAtClient(e.clientX, e.clientY);
       if (pt) {
@@ -674,6 +701,7 @@ export default function CtCoverageTownsMap({
                     current.radiusMiles - TOWN_CENTER_RADIUS_STEP_MILES,
                   ),
                 };
+                flashHideGrid();
                 townCenters.save(focusTown, next);
               }}
               disabled={
@@ -701,6 +729,7 @@ export default function CtCoverageTownsMap({
                     current.radiusMiles + TOWN_CENTER_RADIUS_STEP_MILES,
                   ),
                 };
+                flashHideGrid();
                 townCenters.save(focusTown, next);
               }}
               disabled={
@@ -711,18 +740,38 @@ export default function CtCoverageTownsMap({
             >
               +
             </button>
-            <button
-              type="button"
-              onClick={() => townCenters.reset(focusTown)}
-              className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10"
-            >
-              Reset
-            </button>
+          <button
+            type="button"
+            onClick={() => townCenters.reset(focusTown)}
+            className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10"
+          >
+            Reset
+          </button>
           </div>
+          <label className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/45">
+              # size
+            </span>
+            <input
+              type="range"
+              min={STRIP_MARK_MIN_PX}
+              max={STRIP_MARK_MAX_PX}
+              step={1}
+              value={stripMarkPx}
+              onChange={(e) => setStripMarkPx(Number(e.target.value))}
+              className="h-1.5 w-24 accent-navy"
+              aria-label="Coastal strip number size"
+            />
+            <span className="min-w-[2.25rem] font-mono text-[11px] text-navy">
+              {stripMarkPx}px
+            </span>
+          </label>
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/40">
             {paint.saving || townCenters.saving
               ? "Saving…"
-              : "Drag the disk or use + / −"}
+              : editingDisk
+                ? "Grid hidden while moving the disk"
+                : "Drag the disk or use + / −"}
           </span>
         </div>
       ) : null}
@@ -808,7 +857,8 @@ export default function CtCoverageTownsMap({
               });
             })}
 
-            {zipCells.map(({ i, j }) => {
+            {!editingDisk
+              ? zipCells.map(({ i, j }) => {
               const key = cellKey(i, j);
               const strip = paint.cells[key];
               const c = cellCenter(i, j);
@@ -846,11 +896,13 @@ export default function CtCoverageTownsMap({
                       strip={strip}
                       viewport={viewport}
                       zoom={zoom}
+                      fontSize={stripMarkPx}
                     />
                   ) : null}
                 </g>
               );
-            })}
+            })
+              : null}
 
             {!focusTown
               ? Object.entries(paint.cells).map(([key, strip]) => {
@@ -879,6 +931,7 @@ export default function CtCoverageTownsMap({
                         strip={strip}
                         viewport={viewport}
                         zoom={zoom}
+                        fontSize={stripMarkPx}
                       />
                     </g>
                   );
