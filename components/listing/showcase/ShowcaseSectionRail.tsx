@@ -220,6 +220,7 @@ export default function ShowcaseSectionRail({
   onMapStateChange,
   onDetailsOnlyChange,
   compsFetchUrl,
+  uagFetchUrl,
   map,
 }: {
   mlsId: string;
@@ -237,6 +238,7 @@ export default function ShowcaseSectionRail({
   /** Lets the hero shift its price clear of the map column. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
   compsFetchUrl?: string | null;
+  uagFetchUrl?: string | null;
   /** Spotlight privacy: town-outline map instead of comps + pin. */
   map?: ShowcaseMapPresentation | null;
 }) {
@@ -468,6 +470,7 @@ export default function ShowcaseSectionRail({
             onToggleExpanded={() => setExpanded(!mapExpanded)}
             onExit={() => setOverlay(null)}
             fetchUrl={compsFetchUrl}
+            uagFetchUrl={uagFetchUrl}
             hideSubject={map?.hidePin ?? false}
           />
         )}

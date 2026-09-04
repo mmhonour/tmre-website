@@ -345,6 +345,7 @@ export default function ShowcaseDetailsPanel({
           townHint={host.townHint ?? host.city}
           postalCode={host.map.postalCode}
           fetchUrl={host.compsFetchUrl}
+          uagFetchUrl={host.uagFetchUrl}
           hideSubject={host.map.hidePin}
         />
       )}
