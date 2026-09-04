@@ -154,12 +154,13 @@ async function main() {
   await execute(
     `INSERT INTO vision_addresses (
        town, vision_pid, parcel_url, owner_name, owner_mailing_address,
-       last_sale_date, field_card, source_host, scraped_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now(), now())
+       last_sale_date, last_sale_price, field_card, source_host, scraped_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, now(), now())
      ON CONFLICT (town, vision_pid) DO UPDATE SET
        owner_name = EXCLUDED.owner_name,
        owner_mailing_address = EXCLUDED.owner_mailing_address,
        last_sale_date = EXCLUDED.last_sale_date,
+       last_sale_price = EXCLUDED.last_sale_price,
        field_card = EXCLUDED.field_card`,
     [
       TOWN,
@@ -168,6 +169,7 @@ async function main() {
       'SMITH JOHN',
       '9 PINE ST, WESTPORT, CT',
       '03/12/2019',
+      875000,
       JSON.stringify({
         version: 1,
         fields: [
@@ -189,9 +191,10 @@ async function main() {
       (row) =>
         row.visionPid === '1' &&
         row.ownerName === 'SMITH JOHN' &&
-        row.ownerMailingAddress === '9 PINE ST, WESTPORT, CT',
+        row.ownerMailingAddress === '9 PINE ST, WESTPORT, CT' &&
+        row.purchaseDate === '03/12/2019',
     ),
-    'street list should join owner_name and mailing',
+    'street list should join owner, mailing, and paid purchase date',
   )
   console.log('PASS  street parcel owner join and missing-owner queue')
 

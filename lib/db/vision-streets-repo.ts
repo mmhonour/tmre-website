@@ -2,7 +2,13 @@ import 'server-only'
 
 import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
-import { ownerMailingAddressFromFields } from '@/lib/vision-gis-parse'
+import {
+  ownerMailingAddressFromFields,
+  ownershipFromFieldCardFields,
+  visionPurchaseDate,
+  type VisionFieldCardField,
+  type VisionOwnershipRow,
+} from '@/lib/vision-gis-parse'
 import {
   VISION_GIS_TOWNS,
   missingVisionStreetLetters,
@@ -171,7 +177,10 @@ export type VisionStreetParcel = {
   syncedAt: string
   ownerName: string | null
   ownerMailingAddress: string | null
+  /** VGSI last sale / last transfer date (may be a $0 trust move). */
   lastSaleDate: string | null
+  /** Last paid purchase date when Field Card / last sale price shows a real sale. */
+  purchaseDate: string | null
 }
 
 export type VisionStreetPidMissingOwner = {
@@ -247,11 +256,12 @@ export async function listVisionStreetParcels(
     owner_name: string | null
     owner_mailing_address: string | null
     last_sale_date: string | null
+    last_sale_price: number | string | null
     field_card: unknown
   }>(
     `SELECT p.town, p.street_name, p.vision_pid, p.address_label, p.source_url,
             p.synced_at, v.owner_name, v.owner_mailing_address, v.last_sale_date,
-            v.field_card
+            v.last_sale_price, v.field_card
        FROM vision_street_parcels p
        LEFT JOIN vision_addresses v
          ON v.town = p.town AND v.vision_pid = p.vision_pid
@@ -261,15 +271,25 @@ export async function listVisionStreetParcels(
   return rows.map((row) => {
     const card =
       row.field_card && typeof row.field_card === 'object'
-        ? (row.field_card as { fields?: { section?: string; label: string; value: string }[] })
+        ? (row.field_card as {
+            fields?: { section?: string; label: string; value: string }[]
+            ownership?: VisionOwnershipRow[]
+          })
         : null
-    const fromCard = ownerMailingAddressFromFields(
-      (card?.fields ?? []).map((f) => ({
-        section: f.section ?? 'Parcel',
-        label: f.label,
-        value: f.value,
-      })),
-    )
+    const fields: VisionFieldCardField[] = (card?.fields ?? []).map((f) => ({
+      section: f.section ?? 'Parcel',
+      label: f.label,
+      value: f.value,
+    }))
+    const fromCard = ownerMailingAddressFromFields(fields)
+    const ownership =
+      card?.ownership && card.ownership.length > 0
+        ? card.ownership
+        : ownershipFromFieldCardFields(fields)
+    const lastSalePrice =
+      row.last_sale_price == null || row.last_sale_price === ''
+        ? null
+        : Number(row.last_sale_price)
     return {
       town: row.town,
       streetName: row.street_name,
@@ -284,6 +304,11 @@ export async function listVisionStreetParcels(
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,
+      purchaseDate: visionPurchaseDate({
+        lastSaleDate: row.last_sale_date,
+        lastSalePrice: Number.isFinite(lastSalePrice) ? lastSalePrice : null,
+        ownership,
+      }),
     }
   })
 }

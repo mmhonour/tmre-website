@@ -101,9 +101,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner, mailing address, and sale date come from the
-            Field Card once Vision sync ingests that PID — click through for
-            the full card.
+            street page. Owner, mailing address, and purchase date (last paid
+            sale — not a $0 last transfer) come from the Field Card once
+            Vision sync ingests that PID — click through for the full card.
           </p>
         </div>
       </section>
@@ -121,7 +121,13 @@ export default async function StreetsStreetPage({
               {parcels.map((row) => {
                 const owner = row.ownerName
                 const mailing = row.ownerMailingAddress
-                const sale = row.lastSaleDate
+                const bought = row.purchaseDate
+                const lastTransfer = row.lastSaleDate
+                const dateLine = bought
+                  ? `Bought ${bought}`
+                  : lastTransfer
+                    ? `Last transfer ${lastTransfer}`
+                    : null
                 return (
                   <li
                     key={`${row.visionPid}-${row.addressLabel}`}
@@ -135,7 +141,7 @@ export default async function StreetsStreetPage({
                     </Link>
                     <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
                       {owner ?? 'Owner pending Field Card ingest'}
-                      {owner && sale ? ` · ${sale}` : ''}
+                      {owner && dateLine ? ` · ${dateLine}` : ''}
                     </p>
                     {mailing ? (
                       <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">

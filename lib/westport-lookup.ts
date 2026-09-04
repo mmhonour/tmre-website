@@ -31,6 +31,7 @@ import {
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
   parseVisionFieldCardJson,
+  visionPurchaseDate,
   visionPurchaseYear,
   type VisionFieldCardField,
   type VisionOwnershipRow,
@@ -100,7 +101,9 @@ export type WestportMergedProperty = {
   ownerDisplayName: string | null
   /** VGSI mailing address (often the same as the parcel, sometimes a PO box / out of town). */
   ownerMailingAddress: string | null
-  /** Year of the last paid purchase when we can tell; else last transfer year. */
+  /** Date of the last paid purchase (not a $0 last-transfer). */
+  purchaseDate: string | null
+  /** Year from {@link purchaseDate}. */
   purchaseYear: number | null
   assessedValue: MergedField<number>
   appraisalValue: MergedField<number>
@@ -607,6 +610,11 @@ export async function mergeWestportProperty(
     ownerMailingAddress:
       ownerMailingAddressFromFields(fieldCard.fields) ??
       vision.ownerMailingAddress,
+    purchaseDate: visionPurchaseDate({
+      lastSaleDate: vision.lastSaleDate,
+      lastSalePrice: vision.lastSalePrice,
+      ownership: fieldCard.ownership,
+    }),
     purchaseYear: visionPurchaseYear({
       lastSaleDate: vision.lastSaleDate,
       lastSalePrice: vision.lastSalePrice,

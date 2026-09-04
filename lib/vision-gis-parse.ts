@@ -210,33 +210,42 @@ export function yearFromVisionDate(
 }
 
 /**
- * Year the current owner took title. Prefers a paid sale (price > 0) so a
- * $0 trust/quitclaim does not hide the last real purchase.
+ * Date of the last paid purchase (price > 0). A $0 trust/quitclaim is not
+ * a purchase — that is VGSI “last sale” / last transfer.
  */
+export function visionPurchaseDate(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[]
+}): string | null {
+  const paid = (opts.ownership ?? [])
+    .map((row) => ({
+      date: row.date?.trim() || null,
+      year: yearFromVisionDate(row.date),
+      price: parseVisionMoney(row.price),
+    }))
+    .filter(
+      (row): row is { date: string; year: number; price: number } =>
+        Boolean(row.date) &&
+        row.year != null &&
+        row.price != null &&
+        row.price > 0,
+    )
+    .sort((a, b) => b.year - a.year)
+  if (paid[0]) return paid[0].date
+  if ((opts.lastSalePrice ?? 0) > 0) {
+    return opts.lastSaleDate?.trim() || null
+  }
+  return null
+}
+
+/** Year from {@link visionPurchaseDate}, when a paid purchase exists. */
 export function visionPurchaseYear(opts: {
   lastSaleDate?: string | null
   lastSalePrice?: number | null
   ownership?: readonly VisionOwnershipRow[]
 }): number | null {
-  const paidYears = (opts.ownership ?? [])
-    .map((row) => ({
-      year: yearFromVisionDate(row.date),
-      price: parseVisionMoney(row.price),
-    }))
-    .filter(
-      (row): row is { year: number; price: number } =>
-        row.year != null && row.price != null && row.price > 0,
-    )
-    .map((row) => row.year)
-  if (paidYears.length > 0) return Math.max(...paidYears)
-  if ((opts.lastSalePrice ?? 0) > 0) {
-    return yearFromVisionDate(opts.lastSaleDate)
-  }
-  const anyYears = (opts.ownership ?? [])
-    .map((row) => yearFromVisionDate(row.date))
-    .filter((y): y is number => y != null)
-  if (anyYears.length > 0) return Math.max(...anyYears)
-  return yearFromVisionDate(opts.lastSaleDate)
+  return yearFromVisionDate(visionPurchaseDate(opts))
 }
 
 export function lastSaleAsOwnership(row: {

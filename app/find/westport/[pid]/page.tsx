@@ -230,7 +230,7 @@ export default async function WestportParcelPage({
                   Bought
                 </dt>
                 <dd className="mt-0.5 font-mono text-sm text-white/85 tabular-nums">
-                  {property.purchaseYear ?? "—"}
+                  {property.purchaseDate ?? "—"}
                 </dd>
               </div>
             </dl>
