@@ -156,28 +156,8 @@ export default function CtCoverageTownsMap({
   const draftRef = useRef<TownCenterPlacement | null>(null);
   draftRef.current = draftCenter;
   const [hoverDisk, setHoverDisk] = useState<"center" | "rim" | null>(null);
-  const [editingDisk, setEditingDisk] = useState(false);
+  const [townCenterMode, setTownCenterMode] = useState(false);
   const [stripMarkPx, setStripMarkPx] = useState(STRIP_MARK_DEFAULT_PX);
-  const diskHideTimerRef = useRef<number | null>(null);
-
-  const flashHideGrid = () => {
-    setEditingDisk(true);
-    if (diskHideTimerRef.current != null) {
-      window.clearTimeout(diskHideTimerRef.current);
-    }
-    diskHideTimerRef.current = window.setTimeout(() => {
-      setEditingDisk(false);
-      diskHideTimerRef.current = null;
-    }, 400);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (diskHideTimerRef.current != null) {
-        window.clearTimeout(diskHideTimerRef.current);
-      }
-    };
-  }, []);
 
   const livePlacements = useMemo(() => {
     if (!focusTown || !draftCenter) return townCenters.placements;
@@ -186,6 +166,7 @@ export default function CtCoverageTownsMap({
 
   useEffect(() => {
     setDraftCenter(null);
+    setTownCenterMode(false);
   }, [focusTown]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -473,7 +454,7 @@ export default function CtCoverageTownsMap({
       };
       e.currentTarget.setPointerCapture(e.pointerId);
       setDraftCenter(resolveTownCenter(focusTown, livePlacements));
-      setEditingDisk(true);
+      setTownCenterMode(true);
       return;
     }
     const key = cellAtClient(e.clientX, e.clientY);
@@ -547,7 +528,6 @@ export default function CtCoverageTownsMap({
       const next = draftRef.current;
       if (focusTown && next) townCenters.save(focusTown, next);
       setDraftCenter(null);
-      setEditingDisk(false);
     } else if (!drag.moved && !focusTown) {
       const pt = lonLatAtClient(e.clientX, e.clientY);
       if (pt) {
@@ -665,7 +645,10 @@ export default function CtCoverageTownsMap({
                 key={String(value)}
                 type="button"
                 aria-pressed={paint.brush === value}
-                onClick={() => paint.setBrush(value)}
+                onClick={() => {
+                  setTownCenterMode(false);
+                  paint.setBrush(value);
+                }}
                 className={`px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
                   paint.brush === value
                     ? "bg-navy text-white"
@@ -687,9 +670,18 @@ export default function CtCoverageTownsMap({
             Paint south shore
           </button>
           <div className="flex flex-wrap items-center gap-1">
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-charcoal/45">
+            <button
+              type="button"
+              aria-pressed={townCenterMode}
+              onClick={() => setTownCenterMode((on) => !on)}
+              className={`px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] ${
+                townCenterMode
+                  ? "bg-navy text-white"
+                  : "text-charcoal/45 hover:bg-navy/10 hover:text-navy"
+              }`}
+            >
               Town center
-            </span>
+            </button>
             <button
               type="button"
               aria-label="Smaller town-center radius"
@@ -701,7 +693,7 @@ export default function CtCoverageTownsMap({
                     current.radiusMiles - TOWN_CENTER_RADIUS_STEP_MILES,
                   ),
                 };
-                flashHideGrid();
+                setTownCenterMode(true);
                 townCenters.save(focusTown, next);
               }}
               disabled={
@@ -729,7 +721,7 @@ export default function CtCoverageTownsMap({
                     current.radiusMiles + TOWN_CENTER_RADIUS_STEP_MILES,
                   ),
                 };
-                flashHideGrid();
+                setTownCenterMode(true);
                 townCenters.save(focusTown, next);
               }}
               disabled={
@@ -769,8 +761,8 @@ export default function CtCoverageTownsMap({
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-charcoal/40">
             {paint.saving || townCenters.saving
               ? "Saving…"
-              : editingDisk
-                ? "Grid hidden while moving the disk"
+              : townCenterMode
+                ? "Grid hidden — click Town center to show it"
                 : "Drag the disk or use + / −"}
           </span>
         </div>
@@ -857,7 +849,7 @@ export default function CtCoverageTownsMap({
               });
             })}
 
-            {!editingDisk
+            {!townCenterMode
               ? zipCells.map(({ i, j }) => {
               const key = cellKey(i, j);
               const strip = paint.cells[key];
