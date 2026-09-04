@@ -572,10 +572,19 @@ export default function CtCoverageTownsMap({
       ? labeledTowns
           .map((town) => {
             const pt = resolveTownCenter(town, livePlacements);
+            const left = lonToWorldX(pt.lon, zoom) - viewport.left;
+            const cy = latToWorldY(pt.lat, zoom) - viewport.top;
+            const edgeY =
+              latToWorldY(
+                pt.lat + pt.radiusMiles / MILES_PER_DEG_LAT,
+                zoom,
+              ) - viewport.top;
+            const radiusPx = Math.abs(edgeY - cy);
             return {
               town,
-              left: lonToWorldX(pt.lon, zoom) - viewport.left,
-              top: latToWorldY(pt.lat, zoom) - viewport.top,
+              left,
+              top: cy,
+              radiusPx,
               active: activeTmre.has(town),
             };
           })
@@ -1063,7 +1072,11 @@ export default function CtCoverageTownsMap({
           </svg>
         ) : null}
 
-        {townLabels.map(({ town, left, top, active }) => (
+        {townLabels.map(({ town, left, top, radiusPx, active }) => {
+          const labelHalf = 9;
+          const gap = 6;
+          const sitsOnDisk = radiusPx > labelHalf;
+          return (
           <button
             key={`label-${town}`}
             type="button"
@@ -1074,7 +1087,7 @@ export default function CtCoverageTownsMap({
             className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-sm border bg-white/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em]"
             style={{
               left,
-              top: focusTown === town ? top - 18 : top,
+              top: sitsOnDisk ? top - radiusPx - labelHalf - gap : top - 14,
               borderColor:
                 focusTown === town
                   ? "#B8941F"
@@ -1086,7 +1099,8 @@ export default function CtCoverageTownsMap({
           >
             {town}
           </button>
-        ))}
+          );
+        })}
 
         <div className="absolute left-2 top-2 z-20 flex flex-col overflow-hidden rounded-md border border-white/15 bg-navy/80 shadow-lg backdrop-blur-sm">
           <button
