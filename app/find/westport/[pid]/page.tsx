@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
 import {
+  VISION_SALES_HISTORY_ID,
   formatVisionFieldValue,
   formatVisionMoney,
   isVisionQuitclaim,
@@ -231,11 +232,32 @@ export default async function WestportParcelPage({
               </div>
               <div>
                 <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
-                  Bought
+                  Last sold
                 </dt>
                 <dd className="mt-0.5 font-mono text-sm text-white/85 tabular-nums">
-                  {property.purchaseDate ?? "—"}
+                  {property.purchaseDate
+                    ? [
+                        property.purchaseDate,
+                        property.lastSoldPrice != null
+                          ? formatVisionMoney(property.lastSoldPrice)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : "—"}
                 </dd>
+                {property.quitclaimCount > 0 ? (
+                  <p className="mt-2">
+                    <a
+                      href={`#${VISION_SALES_HISTORY_ID}`}
+                      className="font-mono text-[11px] tracking-[0.08em] uppercase text-gold underline underline-offset-2 hover:text-white"
+                    >
+                      {property.quitclaimCount === 1
+                        ? "1 quitclaim"
+                        : `${property.quitclaimCount} quitclaims`}
+                    </a>
+                  </p>
+                ) : null}
               </div>
             </dl>
           </div>
@@ -348,13 +370,16 @@ export default async function WestportParcelPage({
               <FieldRow label="Owner" field={property.ownerName} />
             </dl>
 
-            <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
+            <h2
+              id={VISION_SALES_HISTORY_ID}
+              className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2 scroll-mt-24"
+            >
               Sales history
             </h2>
             <p className="mb-3 font-mono text-[10px] tracking-[0.06em] text-slate/50">
-              Vision Ownership History. A $0 / instrument 29 row is a quitclaim
-              — name(s) on record without warranty — not a purchase. Bought is
-              the last deed with consideration.
+              Vision Ownership History. Last sold is the last deed with
+              consideration. A $0 / instrument 29 row is a quitclaim — name(s)
+              on record without warranty — not a sale.
             </p>
             <div className="mb-10">
               <SalesHistoryTable rows={card.ownership} />

@@ -209,6 +209,50 @@ export function yearFromVisionDate(
   return y >= 1800 && y <= 2100 ? y : null
 }
 
+export const VISION_SALES_HISTORY_ID = 'sales-history'
+
+export type VisionPaidSale = {
+  date: string
+  year: number
+  price: number
+}
+
+/**
+ * Last deed with consideration. $0 / instrument 29 quitclaims do not count.
+ */
+export function visionLastPaidSale(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[]
+}): VisionPaidSale | null {
+  const paid = (opts.ownership ?? [])
+    .map((row) => ({
+      date: row.date?.trim() || null,
+      year: yearFromVisionDate(row.date),
+      price: parseVisionMoney(row.price),
+    }))
+    .filter(
+      (row): row is VisionPaidSale =>
+        Boolean(row.date) &&
+        row.year != null &&
+        row.price != null &&
+        row.price > 0,
+    )
+    .sort((a, b) => b.year - a.year)
+  if (paid[0]) return paid[0]
+  if ((opts.lastSalePrice ?? 0) > 0 && opts.lastSaleDate?.trim()) {
+    const year = yearFromVisionDate(opts.lastSaleDate)
+    if (year != null) {
+      return {
+        date: opts.lastSaleDate.trim(),
+        year,
+        price: opts.lastSalePrice as number,
+      }
+    }
+  }
+  return null
+}
+
 /**
  * Date of the last paid purchase (price > 0). A $0 / instrument 29 quitclaim
  * is not a purchase — it puts name(s) on record without warranty.
@@ -218,25 +262,7 @@ export function visionPurchaseDate(opts: {
   lastSalePrice?: number | null
   ownership?: readonly VisionOwnershipRow[]
 }): string | null {
-  const paid = (opts.ownership ?? [])
-    .map((row) => ({
-      date: row.date?.trim() || null,
-      year: yearFromVisionDate(row.date),
-      price: parseVisionMoney(row.price),
-    }))
-    .filter(
-      (row): row is { date: string; year: number; price: number } =>
-        Boolean(row.date) &&
-        row.year != null &&
-        row.price != null &&
-        row.price > 0,
-    )
-    .sort((a, b) => b.year - a.year)
-  if (paid[0]) return paid[0].date
-  if ((opts.lastSalePrice ?? 0) > 0) {
-    return opts.lastSaleDate?.trim() || null
-  }
-  return null
+  return visionLastPaidSale(opts)?.date ?? null
 }
 
 /** Year from {@link visionPurchaseDate}, when a paid purchase exists. */
@@ -267,6 +293,12 @@ export function isVisionQuitclaim(opts: {
   if (code === '29') return true
   const price = parseVisionMoney(opts.price)
   return price === 0
+}
+
+export function countVisionQuitclaims(
+  ownership: readonly VisionOwnershipRow[] | null | undefined,
+): number {
+  return (ownership ?? []).filter((row) => isVisionQuitclaim(row)).length
 }
 
 export function visionInstrumentLabel(

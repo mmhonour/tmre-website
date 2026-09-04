@@ -3,6 +3,7 @@ import 'server-only'
 import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
 import {
+  countVisionQuitclaims,
   isVisionQuitclaim,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
@@ -184,6 +185,7 @@ export type VisionStreetParcel = {
   purchaseDate: string | null
   /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
   lastDeedIsQuitclaim: boolean
+  quitclaimCount: number
 }
 
 export type VisionStreetPidMissingOwner = {
@@ -316,6 +318,7 @@ export async function listVisionStreetParcels(
         price: Number.isFinite(lastSalePrice) ? lastSalePrice : ownership[0]?.price,
         instrument: ownership[0]?.instrument,
       }),
+      quitclaimCount: countVisionQuitclaims(ownership),
     }
   })
 }
