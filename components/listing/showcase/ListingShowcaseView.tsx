@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
+import ShowcasePremiereLights from "@/components/listing/showcase/ShowcasePremiereLights";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { LISTING_PRODUCTION_PANEL_ID } from "@/components/listing/listing-section-ids";
@@ -196,6 +197,7 @@ export default function ListingShowcaseView({
 
         <div className="listing-showcase-scrim-bottom pointer-events-none absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top pointer-events-none absolute inset-0" aria-hidden />
+        {host.premiereLights ? <ShowcasePremiereLights /> : null}
 
         <ShowcaseStepArrow
           direction="prev"

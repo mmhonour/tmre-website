@@ -994,9 +994,98 @@ html.listing-split-test body {
   }
 }
 
+/* Opening-night movie spots on /spotlight — cones from below the frame,
+   sweeping across the full-bleed hero. No fixtures. */
+.spotlight-premiere {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  overflow: hidden;
+}
+
+.spotlight-premiere-beam {
+  position: absolute;
+  bottom: -18%;
+  width: min(72vw, 46rem);
+  height: 165%;
+  transform-origin: 50% 100%;
+  background: linear-gradient(
+    to top,
+    rgba(255, 228, 160, 0.04) 0%,
+    rgba(255, 232, 170, 0.42) 10%,
+    rgba(255, 240, 200, 0.2) 42%,
+    rgba(255, 248, 230, 0.07) 74%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  clip-path: polygon(49.2% 100%, 50.8% 100%, 86% 0%, 14% 0%);
+  filter: blur(14px);
+  mix-blend-mode: screen;
+  opacity: 0.85;
+  will-change: transform;
+}
+
+.spotlight-premiere-core {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(255, 236, 180, 0.08) 0%,
+    rgba(255, 244, 210, 0.55) 12%,
+    rgba(255, 250, 230, 0.16) 48%,
+    rgba(255, 255, 255, 0) 78%
+  );
+  clip-path: polygon(49.6% 100%, 50.4% 100%, 64% 0%, 36% 0%);
+  filter: blur(6px);
+}
+
+.spotlight-premiere-beam--a {
+  left: 6%;
+  animation: spotlightPremiereSweepA 9.5s ease-in-out infinite;
+}
+
+.spotlight-premiere-beam--b {
+  right: 6%;
+  left: auto;
+  animation: spotlightPremiereSweepB 12s ease-in-out infinite;
+}
+
+@keyframes spotlightPremiereSweepA {
+  0%,
+  100% {
+    transform: rotate(-30deg);
+  }
+  50% {
+    transform: rotate(20deg);
+  }
+}
+
+@keyframes spotlightPremiereSweepB {
+  0%,
+  100% {
+    transform: rotate(28deg);
+  }
+  50% {
+    transform: rotate(-22deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .listing-showcase-layer {
     transition-duration: 250ms;
+  }
+
+  .spotlight-premiere-beam--a,
+  .spotlight-premiere-beam--b {
+    animation: none;
+  }
+
+  .spotlight-premiere-beam--a {
+    transform: rotate(-16deg);
+  }
+
+  .spotlight-premiere-beam--b {
+    transform: rotate(14deg);
   }
 
   .listing-showcase-layer--drift {

@@ -70,6 +70,8 @@ export type ShowcaseHost = {
   propertyTabs?: ReactNode;
   /** Open this section after mount (deep links from /spotlight/photos etc.). */
   initialTab?: ListingTab | null;
+  /** Two opening-night beams on the full-bleed hero (Spotlight only). */
+  premiereLights?: boolean;
 };
 
 export function fmtShowcaseMoney(n: number | null): string | null {

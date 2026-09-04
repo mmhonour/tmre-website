@@ -213,6 +213,7 @@ export default function SpotlightShowcaseClient({
     uagFetchUrl: `/api/spotlight/uag${qs}`,
     propertyTabs: <SpotlightPropertyTabs />,
     initialTab,
+    premiereLights: true,
   };
 
   return (
