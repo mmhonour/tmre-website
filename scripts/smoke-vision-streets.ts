@@ -153,32 +153,45 @@ async function main() {
   )
   await execute(
     `INSERT INTO vision_addresses (
-       town, vision_pid, parcel_url, owner_name, last_sale_date,
-       source_host, scraped_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+       town, vision_pid, parcel_url, owner_name, owner_mailing_address,
+       last_sale_date, field_card, source_host, scraped_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now(), now())
      ON CONFLICT (town, vision_pid) DO UPDATE SET
        owner_name = EXCLUDED.owner_name,
-       last_sale_date = EXCLUDED.last_sale_date`,
+       owner_mailing_address = EXCLUDED.owner_mailing_address,
+       last_sale_date = EXCLUDED.last_sale_date,
+       field_card = EXCLUDED.field_card`,
     [
       TOWN,
       '1',
       'https://example.test/parcel',
       'SMITH JOHN',
+      '9 PINE ST, WESTPORT, CT',
       '03/12/2019',
+      JSON.stringify({
+        version: 1,
+        fields: [
+          { section: 'Parcel', label: 'Owner address', value: '9 PINE ST, WESTPORT, CT' },
+        ],
+        searchText: 'SMITH JOHN 9 PINE ST',
+      }),
       'test',
     ],
   )
   const afterOwner = await listVisionStreetPidsMissingOwner(TOWN, 10)
   assert(
     !afterOwner.some((row) => row.visionPid === '1'),
-    'PID with owner_name should leave the missing-owner queue',
+    'PID with owner and mailing should leave the missing-owner queue',
   )
   const locustOwned = await listVisionStreetParcels(TOWN, 'Locust Ln')
   assert(
     locustOwned.some(
-      (row) => row.visionPid === '1' && row.ownerName === 'SMITH JOHN',
+      (row) =>
+        row.visionPid === '1' &&
+        row.ownerName === 'SMITH JOHN' &&
+        row.ownerMailingAddress === '9 PINE ST, WESTPORT, CT',
     ),
-    'street list should join owner_name',
+    'street list should join owner_name and mailing',
   )
   console.log('PASS  street parcel owner join and missing-owner queue')
 

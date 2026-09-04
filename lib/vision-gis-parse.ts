@@ -158,16 +158,23 @@ export function ownershipFromFieldCardFields(
   return rows
 }
 
-/** VGSI mailing lines (`MainContent_lblAddr1` / `lblAddr2` → Owner address). */
+function isOwnerMailingLabel(label: string, section: string): boolean {
+  const l = label.trim().toLowerCase()
+  if (/^owner address/.test(l) || /mailing/.test(l)) return true
+  const sec = section.trim().toLowerCase()
+  return l === 'address' && /parcel|owner/.test(sec)
+}
+
+/** VGSI mailing lines (`MainContent_lblAddr1` / `lblAddr2`, or Parcel “Address”). */
 export function ownerMailingAddressFromFields(
   fields: readonly VisionFieldCardField[],
 ): string | null {
-  const line1 = fields.find((f) => /^owner address$/i.test(f.label))?.value
-  const line2 = fields.find((f) => /^owner address 2$/i.test(f.label))?.value
-  const parts = [line1, line2]
-    .map((s) => s?.replace(/\s+/g, ' ').trim())
-    .filter((s): s is string => Boolean(s))
-  return parts.length > 0 ? parts.join(', ') : null
+  const lines = fields
+    .filter((f) => isOwnerMailingLabel(f.label, f.section))
+    .map((f) => f.value.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  const unique = [...new Set(lines)]
+  return unique.length > 0 ? unique.join(', ') : null
 }
 
 export function ownerDisplayNameFromFields(
@@ -309,6 +316,11 @@ function decodeHtml(s: string): string {
     .trim()
 }
 
+/** VGSI puts street + city in one span separated by `<br>`. */
+function htmlInnerText(raw: string): string {
+  return decodeHtml(raw.replace(/<br\s*\/?>/gi, ', ').replace(/<[^>]+>/g, ' '))
+}
+
 function spanById(html: string, id: string): string | null {
   const re = new RegExp(
     `id=["']${id}["'][^>]*>([\\s\\S]*?)</(?:span|a|div|td)>`,
@@ -316,7 +328,7 @@ function spanById(html: string, id: string): string | null {
   )
   const m = html.match(re)
   if (!m) return null
-  return decodeHtml(m[1].replace(/<[^>]+>/g, ' '))
+  return htmlInnerText(m[1])
 }
 
 function tableCellAfterLabel(html: string, label: string): string | null {
@@ -454,7 +466,7 @@ export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
     if (SKIP_CONTROL_RE.test(id)) continue
     const meta = CONTROL_ID_META[id]
     if (!meta) continue
-    const raw = decodeHtml((m[2] ?? '').replace(/<[^>]+>/g, ' '))
+    const raw = htmlInnerText(m[2] ?? '')
     pushField(fields, seen, meta.section, meta.label, raw)
   }
 

@@ -156,7 +156,14 @@ async function resolveWestportFieldCard(
   vision: VisionAddressRecord,
 ): Promise<WestportFieldCard> {
   let json = vision.fieldCard
-  if (!json || json.fields.length === 0 || fieldCardNeedsRefresh(json)) {
+  const storedMailing =
+    ownerMailingAddressFromFields(json?.fields ?? []) ?? vision.ownerMailingAddress
+  if (
+    !json ||
+    json.fields.length === 0 ||
+    fieldCardNeedsRefresh(json) ||
+    !storedMailing
+  ) {
     try {
       const typed = fieldCardFromTypedVision(vision)
       let htmlCard: ReturnType<typeof parseVisionFieldCardJson> | null = null
