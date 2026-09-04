@@ -87,7 +87,10 @@ export type CamaTaxSyncOptions = {
   anchorFiscalYearEnd?: number
   /** How many computed rows to keep per town for reporting. */
   sampleSize?: number
-  /** Injectable for smoke tests that have no database. */
+  /**
+   * Injectable listing source. Supplying one means there is no database to
+   * read, so the MLS-ownership check is skipped along with the write.
+   */
   loadListings?: (town: string) => Promise<ListingParcelCandidate[]>
   onProgress?: (message: string) => void
 }
@@ -133,6 +136,7 @@ export async function syncCtCamaTaxHistory(
   const fiscalYears = historicalFiscalYears(anchor, options.years ?? 4)
   const sampleSize = options.sampleSize ?? DEFAULT_SAMPLE_SIZE
   const loadListings = options.loadListings ?? readListingParcelCandidates
+  const hasDatabase = !options.loadListings
   const towns = options.towns?.length ? [...options.towns] : [...TMRE_TOWNS]
   const progress = options.onProgress
 
@@ -216,7 +220,12 @@ export async function syncCtCamaTaxHistory(
         ? allListings.slice(0, options.limitPerTown)
         : allListings
 
-    const mlsOwned = dryRun ? new Set<string>() : await readMlsOwnedTaxYearKeys(town)
+    // Read on a dry run too. It is a read-only query, and skipping it made the
+    // dry run over-report: every row an MLS figure already owns would have been
+    // counted as one this sync was about to write.
+    const mlsOwned = hasDatabase
+      ? await readMlsOwnedTaxYearKeys(town)
+      : new Set<string>()
 
     const matchStrategies = emptyStrategyCounts()
     const computeSkips: Partial<Record<ComputeSkipReason, number>> = {}
