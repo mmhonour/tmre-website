@@ -1004,41 +1004,59 @@ html.listing-split-test body {
   overflow: hidden;
 }
 
-.spotlight-premiere-beam {
+/* Arm owns the sweep; the painted cone stays on its own layer so Chrome
+   does not discard the mask after the first cycle. Sweep stays on-stage —
+   the earlier ±30° park left the page and looked like a timeout. */
+.spotlight-premiere-arm {
   position: absolute;
   bottom: -6%;
   width: min(70vw, 44rem);
   height: 155%;
   transform-origin: 50% 100%;
-  /* Wide cone: point at the bottom, fan to the top. Soft edges via mask,
-     not clip-path + blur (that combo collapsed the beam to nothing). */
+}
+
+.spotlight-premiere-arm--a {
+  left: 4%;
+  animation: spotlightPremiereSweepA 11s ease-in-out infinite;
+}
+
+.spotlight-premiere-arm--b {
+  right: 4%;
+  left: auto;
+  animation: spotlightPremiereSweepB 14s ease-in-out infinite;
+}
+
+.spotlight-premiere-beam {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
     rgba(255, 220, 140, 0) 0%,
-    rgba(255, 226, 150, 0.18) 28%,
-    rgba(255, 236, 180, 0.55) 50%,
-    rgba(255, 226, 150, 0.18) 72%,
+    rgba(255, 226, 150, 0.28) 28%,
+    rgba(255, 236, 180, 0.7) 50%,
+    rgba(255, 226, 150, 0.28) 72%,
     rgba(255, 220, 140, 0) 100%
   );
   mask-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0.2) 0%,
     rgba(0, 0, 0, 0.95) 12%,
-    rgba(0, 0, 0, 0.7) 55%,
-    rgba(0, 0, 0, 0.2) 82%,
+    rgba(0, 0, 0, 0.75) 55%,
+    rgba(0, 0, 0, 0.25) 82%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0.2) 0%,
     rgba(0, 0, 0, 0.95) 12%,
-    rgba(0, 0, 0, 0.7) 55%,
-    rgba(0, 0, 0, 0.2) 82%,
+    rgba(0, 0, 0, 0.75) 55%,
+    rgba(0, 0, 0, 0.25) 82%,
     transparent 100%
   );
   clip-path: polygon(38% 100%, 62% 100%, 100% 0%, 0% 0%);
-  opacity: 0.95;
-  will-change: transform;
+  mix-blend-mode: screen;
+  mix-blend-mode: plus-lighter;
+  opacity: 0.9;
 }
 
 .spotlight-premiere-core {
@@ -1047,56 +1065,45 @@ html.listing-split-test body {
   background: linear-gradient(
     90deg,
     rgba(255, 236, 180, 0) 0%,
-    rgba(255, 244, 210, 0.35) 38%,
-    rgba(255, 252, 230, 0.85) 50%,
-    rgba(255, 244, 210, 0.35) 62%,
+    rgba(255, 244, 210, 0.45) 38%,
+    rgba(255, 252, 230, 0.95) 50%,
+    rgba(255, 244, 210, 0.45) 62%,
     rgba(255, 236, 180, 0) 100%
   );
   clip-path: polygon(46% 100%, 54% 100%, 78% 0%, 22% 0%);
   mask-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.4) 0%,
     black 14%,
-    rgba(0, 0, 0, 0.55) 60%,
+    rgba(0, 0, 0, 0.6) 60%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.4) 0%,
     black 14%,
-    rgba(0, 0, 0, 0.55) 60%,
+    rgba(0, 0, 0, 0.6) 60%,
     transparent 100%
   );
-}
-
-.spotlight-premiere-beam--a {
-  left: 6%;
-  animation: spotlightPremiereSweepA 9.5s ease-in-out infinite;
-}
-
-.spotlight-premiere-beam--b {
-  right: 6%;
-  left: auto;
-  animation: spotlightPremiereSweepB 12s ease-in-out infinite;
 }
 
 @keyframes spotlightPremiereSweepA {
   0%,
   100% {
-    transform: rotate(-30deg);
+    transform: rotate(-10deg);
   }
   50% {
-    transform: rotate(20deg);
+    transform: rotate(16deg);
   }
 }
 
 @keyframes spotlightPremiereSweepB {
   0%,
   100% {
-    transform: rotate(28deg);
+    transform: rotate(12deg);
   }
   50% {
-    transform: rotate(-22deg);
+    transform: rotate(-14deg);
   }
 }
 
@@ -1105,17 +1112,17 @@ html.listing-split-test body {
     transition-duration: 250ms;
   }
 
-  .spotlight-premiere-beam--a,
-  .spotlight-premiere-beam--b {
+  .spotlight-premiere-arm--a,
+  .spotlight-premiere-arm--b {
     animation: none;
   }
 
-  .spotlight-premiere-beam--a {
-    transform: rotate(-16deg);
+  .spotlight-premiere-arm--a {
+    transform: rotate(-8deg);
   }
 
-  .spotlight-premiere-beam--b {
-    transform: rotate(14deg);
+  .spotlight-premiere-arm--b {
+    transform: rotate(10deg);
   }
 
   .listing-showcase-layer--drift {
