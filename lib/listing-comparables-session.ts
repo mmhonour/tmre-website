@@ -4,6 +4,7 @@
  * Sold ↔ Rented tab changes.
  */
 
+import { defaultFurnishedMatchScope } from '@/lib/listing-furnished'
 import type { ComparableListing, ComparablesCriteria } from '@/lib/listing-comparables-shared'
 import { vintageCriteriaList } from '@/lib/listing-comparables-shared'
 import type { PricingMatchingConfig } from '@/lib/pricing-matching-config-shared'
@@ -55,13 +56,14 @@ export function sessionOverridesFromPricingConfig(
     .map((s) => s.trim())
     .filter(Boolean)
   const subjectZip = normalizeZip(criteria.zip) ?? criteria.zip
+  const furnishedScope = defaultFurnishedMatchScope(criteria.furnished)
   return {
     bedTolerance: clampInt(match.bedTolerance, 0, SESSION_BED_TOLERANCE_MAX),
     bathTolerance: clampInt(match.bathTolerance, 0, SESSION_BATH_TOLERANCE_MAX),
     sqftTolerancePct: percentFromFraction(match.sqftTolerance),
     allowedVintageLabels: labels.length > 0 ? labels : [criteria.vintageLabel],
     allowedZips: subjectZip ? [subjectZip] : [],
-    ...(criteria.furnished ? { furnishedScope: 'exact' as const } : {}),
+    ...(furnishedScope ? { furnishedScope } : {}),
   }
 }
 

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { parseLotAcres } from '@/lib/fixer-listings'
 import {
+  defaultFurnishedMatchScope,
   listingFurnished,
   subjectHasFurnishedCriteria,
 } from '@/lib/listing-furnished'
@@ -334,10 +335,13 @@ function matchesComparableCriteria(
   }
 
   if (criteria.furnished && !options?.relaxFurnished) {
-    const compFurnished = listingFurnished(comp)
-    // Unknown furnish status passes until disclosed; disclosed mismatches fail.
-    if (compFurnished != null && compFurnished !== criteria.furnished) {
-      return false
+    const scope = defaultFurnishedMatchScope(criteria.furnished) ?? 'exact'
+    if (scope === 'exact') {
+      const compFurnished = listingFurnished(comp)
+      // Unknown furnish status passes until disclosed; disclosed mismatches fail.
+      if (compFurnished != null && compFurnished !== criteria.furnished) {
+        return false
+      }
     }
   }
 
