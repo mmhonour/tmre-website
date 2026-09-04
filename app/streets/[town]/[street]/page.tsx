@@ -7,6 +7,7 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
+import { VisionDeedHistoryPopout } from '@/components/VisionDeedHistoryPopout'
 import { westportParcelHref } from '@/lib/listing-url'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
@@ -101,9 +102,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner, mailing address, and purchase date (last deed
-            with consideration) come from the Field Card. A $0 / instrument 29
-            row is a quitclaim, not a purchase.
+            street page. Owner, mailing, and Bought (last paid deed). Click
+            the Bought date for every deed — sales and quitclaims — newest
+            first.
           </p>
         </div>
       </section>
@@ -121,15 +122,7 @@ export default async function StreetsStreetPage({
               {parcels.map((row) => {
                 const owner = row.ownerName
                 const mailing = row.ownerMailingAddress
-                const bought = row.purchaseDate
-                const lastDeed = row.lastSaleDate
-                const dateLine = bought
-                  ? `Bought ${bought}`
-                  : lastDeed && row.lastDeedIsQuitclaim
-                    ? `Quitclaim ${lastDeed}`
-                    : lastDeed
-                      ? `Last deed ${lastDeed}`
-                      : null
+                const sold = row.purchaseDate
                 return (
                   <li
                     key={`${row.visionPid}-${row.addressLabel}`}
@@ -143,7 +136,27 @@ export default async function StreetsStreetPage({
                     </Link>
                     <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
                       {owner ?? 'Owner pending Field Card ingest'}
-                      {owner && dateLine ? ` · ${dateLine}` : ''}
+                      {owner && sold ? (
+                        <>
+                          {' · '}
+                          <VisionDeedHistoryPopout
+                            label={`Bought ${sold}`}
+                            addressLabel={row.addressLabel}
+                            ownerName={owner}
+                            rows={row.deedHistory}
+                          />
+                        </>
+                      ) : owner && row.deedHistory.length > 0 ? (
+                        <>
+                          {' · '}
+                          <VisionDeedHistoryPopout
+                            label="Deed history"
+                            addressLabel={row.addressLabel}
+                            ownerName={owner}
+                            rows={row.deedHistory}
+                          />
+                        </>
+                      ) : null}
                     </p>
                     {mailing ? (
                       <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">

@@ -3,10 +3,14 @@ import 'server-only'
 import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
 import {
+  countVisionQuitclaims,
   isVisionQuitclaim,
+  lastSaleAsOwnership,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
+  visionDeedDisplayRows,
   visionPurchaseDate,
+  type VisionDeedDisplayRow,
   type VisionFieldCardField,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
@@ -184,6 +188,8 @@ export type VisionStreetParcel = {
   purchaseDate: string | null
   /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
   lastDeedIsQuitclaim: boolean
+  quitclaimCount: number
+  deedHistory: VisionDeedDisplayRow[]
 }
 
 export type VisionStreetPidMissingOwner = {
@@ -293,6 +299,15 @@ export async function listVisionStreetParcels(
       row.last_sale_price == null || row.last_sale_price === ''
         ? null
         : Number(row.last_sale_price)
+    const paidPrice = Number.isFinite(lastSalePrice) ? lastSalePrice : null
+    const deeds =
+      ownership.length > 0
+        ? ownership
+        : lastSaleAsOwnership({
+            ownerName: row.owner_name,
+            lastSalePrice: paidPrice,
+            lastSaleDate: row.last_sale_date,
+          })
     return {
       town: row.town,
       streetName: row.street_name,
@@ -309,13 +324,15 @@ export async function listVisionStreetParcels(
       lastSaleDate: row.last_sale_date?.trim() || null,
       purchaseDate: visionPurchaseDate({
         lastSaleDate: row.last_sale_date,
-        lastSalePrice: Number.isFinite(lastSalePrice) ? lastSalePrice : null,
+        lastSalePrice: paidPrice,
         ownership,
       }),
       lastDeedIsQuitclaim: isVisionQuitclaim({
-        price: Number.isFinite(lastSalePrice) ? lastSalePrice : ownership[0]?.price,
+        price: paidPrice ?? ownership[0]?.price,
         instrument: ownership[0]?.instrument,
       }),
+      quitclaimCount: countVisionQuitclaims(ownership),
+      deedHistory: visionDeedDisplayRows(deeds),
     }
   })
 }
