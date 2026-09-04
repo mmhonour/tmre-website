@@ -33,6 +33,45 @@ export function coastalStripMark(strip: CoastalStripIndex): 1 | 2 | 3 | 4 {
   return (strip + 1) as 1 | 2 | 3 | 4
 }
 
+export type CoastalStripLegend = {
+  mark: 1 | 2 | 3 | 4
+  name: string
+  /** One line for admin / map chrome. */
+  blurb: string
+}
+
+/** Single source for what the painted 1–4 boxes mean. */
+export const COASTAL_STRIP_LEGEND: Record<
+  CoastalStripIndex,
+  CoastalStripLegend
+> = {
+  0: {
+    mark: 1,
+    name: 'Coast',
+    blurb: 'First ¼-mile inland from open water (Sound, harbor, or bay).',
+  },
+  1: {
+    mark: 2,
+    name: '2nd strip',
+    blurb: 'Next ¼-mile inland from Coast.',
+  },
+  2: {
+    mark: 3,
+    name: '3rd strip',
+    blurb: 'Third ¼-mile inland from Coast.',
+  },
+  3: {
+    mark: 4,
+    name: '4th strip',
+    blurb: 'Fourth ¼-mile inland from Coast.',
+  },
+}
+
+export function coastalStripLabel(strip: CoastalStripIndex): string {
+  const row = COASTAL_STRIP_LEGEND[strip]
+  return `${row.mark} ${row.name}`
+}
+
 export function parseZipGridPayload(raw: string | null | undefined): ZipGridPayload {
   if (!raw) return emptyZipGrid()
   try {

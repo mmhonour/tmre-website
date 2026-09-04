@@ -951,7 +951,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Location estimates',
     category: 'scoring',
     definition:
-      'Sold-derived PPSF for coastal areas and town centers. One town-center disk per town (not per zip); Admin → Data controls → CT coverage can move that disk and change its radius. Coastal value is a ¼-mile zip grid painted on the same map. The town-center disk overrides any square it covers. Distinct from What-if location-premium weights.',
+      'Sold-derived PPSF for coastal areas and town centers. One town-center disk per town (not per zip); Admin → Data controls → CT coverage can move that disk and change its radius. Coastal value is a ¼-mile zip grid: 1 Coast (first ¼-mile inland from open water), 2 2nd strip, 3 3rd, 4 4th. The town-center disk overrides any square it covers. Distinct from What-if location-premium weights.',
   },
   {
     term: 'Score breakdown',

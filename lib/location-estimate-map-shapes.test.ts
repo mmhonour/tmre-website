@@ -12,6 +12,7 @@ import {
   lonLatToCell,
   milesBetween,
   nextCellAction,
+  coastalStripLabel,
   coastalStripMark,
   countSuggestedOverwrite,
   hasSouthWaterShore,
@@ -70,6 +71,7 @@ describe('zip grid', () => {
     const rings = paintedGridOverlayRings({ [cellKey(i, j)]: 1 })
     assert.equal(rings.length, 1)
     assert.equal(rings[0]?.stripIndex, 1)
+    assert.equal(rings[0]?.label, '2 2nd strip')
   })
 
   it('numbers Coast through 4th as 1–4', () => {
@@ -77,6 +79,11 @@ describe('zip grid', () => {
     assert.equal(coastalStripMark(1), 2)
     assert.equal(coastalStripMark(2), 3)
     assert.equal(coastalStripMark(3), 4)
+  })
+
+  it('labels each strip with its mark and name', () => {
+    assert.equal(coastalStripLabel(0), '1 Coast')
+    assert.equal(coastalStripLabel(3), '4 4th strip')
   })
 
   it('paints four strips north from the south-facing town edge', () => {
