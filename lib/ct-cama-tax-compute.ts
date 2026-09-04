@@ -21,7 +21,11 @@
  */
 
 import type { CamaParcel } from '@/lib/ct-cama-source'
-import { fiscalYearEndFor, grandListYearFor } from '@/lib/ct-cama-source'
+import {
+  fiscalYearEndFor,
+  grandListYearFor,
+  isPlausibleAssessment,
+} from '@/lib/ct-cama-source'
 import { formatTaxYearLabel } from '@/lib/listing-property-tax'
 import {
   addressMatchKey,
@@ -85,6 +89,88 @@ function addressKeys(
 }
 
 /**
+ * How far a town's `valuation_year` label sits from the grand list it describes.
+ *
+ * Some towns label the extract with the collection year rather than the list
+ * year, putting the label one ahead: Weston, New Canaan and Ridgefield all file
+ * `2024 -> GL2024` when the assessments are the 2023 list. Others are honest
+ * and vary genuinely (Wilton files `2022 -> GL2020`; Westport reports GL2021 in
+ * all four collections), so the label cannot simply be overridden by a
+ * constant.
+ *
+ * The error is invisible in most years — assessments are frozen between
+ * revaluations, so shifting a flat series by a year changes nothing — and
+ * surfaces only at the revaluation step, where it pairs the old assessment with
+ * the new, lower mill rate and understates the bill by the whole revaluation
+ * uplift. Measured, that was a median 13-30% error on one specific fiscal year
+ * for three of six towns.
+ *
+ * So the offset is inferred from two signals the data already carries: the year
+ * a town's assessments actually step up, and the year its mill rate falls
+ * (which is on the true calendar, since the rate is published against the list
+ * rather than the extract). Whichever shift best reconciles the two wins, and
+ * ties or absent evidence keep the label as filed.
+ */
+const REVALUATION_ASSESSMENT_STEP = 1.08
+const MIN_YEAR_SAMPLE = 50
+const CANDIDATE_OFFSETS = [0, 1, -1] as const
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!
+}
+
+/** Labelled grand list years where the town's median assessment jumps. */
+export function assessmentStepYears(parcels: readonly CamaParcel[]): number[] {
+  const byYear = new Map<number, number[]>()
+  for (const parcel of parcels) {
+    if (parcel.grandListYear == null) continue
+    if (!isPlausibleAssessment(parcel.assessedTotal)) continue
+    const bucket = byYear.get(parcel.grandListYear)
+    if (bucket) bucket.push(parcel.assessedTotal!)
+    else byYear.set(parcel.grandListYear, [parcel.assessedTotal!])
+  }
+
+  const medians = [...byYear.entries()]
+    .filter(([, values]) => values.length >= MIN_YEAR_SAMPLE)
+    .map(([year, values]) => ({ year, value: median(values)! }))
+    .sort((a, b) => a.year - b.year)
+
+  const steps: number[] = []
+  for (let i = 1; i < medians.length; i += 1) {
+    const prev = medians[i - 1]!
+    const curr = medians[i]!
+    if (prev.value > 0 && curr.value / prev.value >= REVALUATION_ASSESSMENT_STEP) {
+      steps.push(curr.year)
+    }
+  }
+  return steps
+}
+
+export function inferValuationYearOffset(
+  parcels: readonly CamaParcel[],
+  revaluationYears: ReadonlySet<number>,
+): number {
+  const steps = assessmentStepYears(parcels)
+  if (steps.length === 0 || revaluationYears.size === 0) return 0
+
+  let best = { offset: 0, explained: -1 }
+  for (const offset of CANDIDATE_OFFSETS) {
+    const explained = steps.filter((year) =>
+      revaluationYears.has(year - offset),
+    ).length
+    // Strict improvement only, and 0 is evaluated first, so a tie keeps the
+    // label as filed.
+    if (explained > best.explained) best = { offset, explained }
+  }
+  return best.explained > 0 ? best.offset : 0
+}
+
+/**
  * Fold every vintage's rows into one record per street address.
  *
  * The address is the key rather than the parcel id because it is the only
@@ -99,7 +185,28 @@ function addressKeys(
  */
 export function buildCamaParcelIndex(
   parcelsNewestVintageFirst: readonly CamaParcel[],
+  options: {
+    /**
+     * Subtracted from every filed `valuation_year`. See
+     * `inferValuationYearOffset` — pass its result rather than a guess.
+     */
+    valuationYearOffset?: number
+  } = {},
 ): CamaParcelIndex {
+  const valuationYearOffset = options.valuationYearOffset ?? 0
+
+  // A town files one grand list year per extract, so a year carrying a handful
+  // of rows out of thousands is a mislabelled record rather than a year the
+  // town assessed. Westport has exactly one such row, and left alone it would
+  // hand that single parcel a bogus observation instead of the carried-forward
+  // value its neighbours get.
+  const rowsPerYear = new Map<number, number>()
+  for (const parcel of parcelsNewestVintageFirst) {
+    if (parcel.grandListYear == null) continue
+    if (!isPlausibleAssessment(parcel.assessedTotal)) continue
+    const year = parcel.grandListYear - valuationYearOffset
+    rowsPerYear.set(year, (rowsPerYear.get(year) ?? 0) + 1)
+  }
   const byAddress = new Map<string, ParcelAssessments>()
   const byAddressLoose = new Map<string, ParcelAssessments | null>()
   const byPid = new Map<string, ParcelAssessments | null>()
@@ -127,17 +234,19 @@ export function buildCamaParcelIndex(
       record.pids.push(parcel.pid)
     }
 
-    const { grandListYear, assessedTotal, vintage } = parcel
-    if (grandListYear == null || assessedTotal == null || assessedTotal <= 0) {
+    const { assessedTotal, vintage } = parcel
+    if (parcel.grandListYear == null || !isPlausibleAssessment(assessedTotal)) {
       continue
     }
+    const grandListYear = parcel.grandListYear - valuationYearOffset
+    if ((rowsPerYear.get(grandListYear) ?? 0) < MIN_YEAR_SAMPLE) continue
     const existing = record.observations.find(
       (o) => o.grandListYear === grandListYear,
     )
     if (!existing) {
       record.observations.push({
         grandListYear,
-        assessedValue: assessedTotal,
+        assessedValue: assessedTotal!,
         origin: 'cama',
         vintage,
       })

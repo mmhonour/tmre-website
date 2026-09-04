@@ -158,6 +158,24 @@ function toText(value: unknown): string | null {
   return s || null
 }
 
+/**
+ * Smallest assessment worth believing.
+ *
+ * Some towns file filler rather than leaving the field empty. Measured against
+ * these extracts the fillers are repdigit nines (`999999`, `999999999`) and
+ * absurd placeholders (`10`), and they are the entire outlier tail when
+ * computed tax is compared against reported bills. In towns where the cheapest
+ * real parcel is assessed in the tens of thousands, nothing under a thousand
+ * is a real assessment.
+ */
+const MIN_PLAUSIBLE_ASSESSMENT = 1_000
+
+export function isPlausibleAssessment(value: number | null | undefined): boolean {
+  if (value == null || !Number.isFinite(value)) return false
+  if (value < MIN_PLAUSIBLE_ASSESSMENT) return false
+  return !/^9{6,}$/.test(String(Math.round(value)))
+}
+
 /** `"1907.0"` and `"1907"` are the same parcel in different vintages. */
 export function normalizeCamaPid(value: unknown): string | null {
   const n = toInt(value)

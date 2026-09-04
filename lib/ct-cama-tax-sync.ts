@@ -27,6 +27,7 @@ import {
   buildCamaParcelIndex,
   computeTaxRowsForListing,
   historicalFiscalYears,
+  inferValuationYearOffset,
   matchListingToParcel,
   revaluationGrandListYears,
   type ComputedTaxRow,
@@ -56,6 +57,8 @@ export type CamaTaxTownResult = {
   fiscalYearsWithMillRate: number[]
   /** Grand list years the town appears to have revalued in. */
   revaluationYears: number[]
+  /** Correction applied to the filed `valuation_year`; 0 means filed as-is. */
+  valuationYearOffset: number
   rowsComputed: number
   rowsCarriedForward: number
   rowsDeferredToMls: number
@@ -166,6 +169,7 @@ export async function syncCtCamaTaxHistory(
         fiscalYears,
         fiscalYearsWithMillRate: [],
         revaluationYears: [],
+        valuationYearOffset: 0,
         rowsComputed: 0,
         rowsCarriedForward: 0,
         rowsDeferredToMls: 0,
@@ -193,6 +197,7 @@ export async function syncCtCamaTaxHistory(
         fiscalYears,
         fiscalYearsWithMillRate,
         revaluationYears: [],
+        valuationYearOffset: 0,
         rowsComputed: 0,
         rowsCarriedForward: 0,
         rowsDeferredToMls: 0,
@@ -212,7 +217,13 @@ export async function syncCtCamaTaxHistory(
 
     progress?.(`${town}: fetching CAMA vintages`)
     const { parcels, vintagesUsed } = await loadTownParcels(town, progress)
-    const index = buildCamaParcelIndex(parcels)
+    const valuationYearOffset = inferValuationYearOffset(parcels, revaluationYears)
+    if (valuationYearOffset !== 0) {
+      progress?.(
+        `${town}: valuation_year runs ${valuationYearOffset > 0 ? '+' : ''}${valuationYearOffset} ahead of the grand list it describes — correcting`,
+      )
+    }
+    const index = buildCamaParcelIndex(parcels, { valuationYearOffset })
 
     const allListings = await loadListings(town)
     const listings =
@@ -283,6 +294,7 @@ export async function syncCtCamaTaxHistory(
       fiscalYears,
       fiscalYearsWithMillRate,
       revaluationYears: [...revaluationYears].sort((a, b) => a - b),
+      valuationYearOffset,
       rowsComputed: rows.length,
       rowsCarriedForward: carriedForward,
       rowsDeferredToMls: deferredToMls,
