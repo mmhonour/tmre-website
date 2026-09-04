@@ -169,9 +169,9 @@ export default function FindClient({
 
   return (
     <>
-      <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
-        <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
+      <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative">
+        <div className="absolute inset-0 overflow-hidden hero-grid opacity-40" aria-hidden />
+        <div className="relative z-[60] mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Find · Westport
           </p>
@@ -184,8 +184,8 @@ export default function FindClient({
             of record, street address, mailing address, MBLU, or Vision PID.
           </p>
 
-          <div className="relative z-30 mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2">
-            <div className="relative z-30 flex-1 min-w-0">
+          <div className="relative mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl animate-fade-up-delay-2">
+            <div className="relative flex-1 min-w-0">
               <input
                 ref={inputRef}
                 type="search"
@@ -216,7 +216,7 @@ export default function FindClient({
                 <ul
                   id="find-suggestions"
                   role="listbox"
-                  className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-80 overflow-y-auto rounded-2xl border border-white/10 bg-navy/95 backdrop-blur-md shadow-2xl shadow-navy/40 py-1"
+                  className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] max-h-80 overflow-y-auto rounded-2xl border border-white/10 bg-navy/95 backdrop-blur-md shadow-2xl shadow-navy/40 py-1"
                 >
                   {suggestLoading && suggestions.length === 0 && (
                     <li className="px-4 py-3 font-mono text-[11px] text-white/50">
