@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo } from "react";
 
 /**
- * Desktop Overview right column: Remarks / Details / History / Admin as a
+ * Desktop Overview right column: Remarks / Details / History / Map / Admin as a
  * card deck. Headers always peek; at most one card is expanded and takes the
  * body space. Click a header (or a subnav tab) to expand; click again or the
  * minimize control to collapse.
@@ -12,6 +12,7 @@ export type ListingDesktopDeckCardId =
   | "remarks"
   | "details"
   | "history"
+  | "map"
   | "admin";
 
 export type ListingDesktopDeckApi = {

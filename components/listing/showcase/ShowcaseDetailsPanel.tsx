@@ -31,6 +31,7 @@ import { extractListingAgentContact } from "@/lib/listing-agent-contact";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
+import ListingMapSidePanel from "@/components/listing/ListingMapSidePanel";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import type { ShowcaseHost } from "@/components/listing/showcase/showcase-host";
 import { listingShowcaseHostDefaults } from "@/components/listing/showcase/showcase-host";
@@ -281,6 +282,16 @@ export default function ShowcaseDetailsPanel({
       // Desktop only: mobile has no deck and no room for a second column.
       setShowOverviewSection(tab === "overview");
       if (tab === "overview") setActiveDeckCard("details");
+      if (tab === "map") {
+        setActiveTab("map");
+        setActiveDeckCard((cur) => (cur === "map" ? null : "map"));
+        return;
+      }
+      if (tab === "history") {
+        setActiveTab("history");
+        setActiveDeckCard((cur) => (cur === "history" ? null : "history"));
+        return;
+      }
     }
     const section = showcaseSectionForTab(tab);
     if (section) {
@@ -312,6 +323,33 @@ export default function ShowcaseDetailsPanel({
     // Mount-only: deep links from /spotlight/photos etc.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const listingMap = (
+    <div className="h-[20rem] w-full sm:h-[22rem]">
+      {host.map.hidePin ? (
+        <ListingLocationMap
+          latitude={host.map.latitude}
+          longitude={host.map.longitude}
+          addressQuery={host.map.addressQuery}
+          hidePin
+          hideLabel
+          outlineTown={host.map.outlineTown}
+          defaultZoom={host.map.defaultZoom}
+          variant="hero"
+          className="h-full"
+        />
+      ) : (
+        <ShowcaseCompsMap
+          mlsId={listing.mlsId}
+          subject={subject}
+          townHint={host.townHint ?? host.city}
+          postalCode={host.map.postalCode}
+          fetchUrl={host.compsFetchUrl}
+          hideSubject={host.map.hidePin}
+        />
+      )}
+    </div>
+  );
 
   /** Deck cards overlap by their header strip, as on production Overview. */
   const deckCard = (
@@ -434,7 +472,15 @@ export default function ShowcaseDetailsPanel({
                 embedded
                 compact
                 onTabSelect={handleTabSelect}
-                onMapToggle={() => scrollToShowcaseSection("map")}
+                mapVisible={isDesktop && activeDeckCard === "map"}
+                onMapToggle={
+                  isDesktop
+                    ? () =>
+                        setActiveDeckCard((cur) =>
+                          cur === "map" ? null : "map",
+                        )
+                    : () => scrollToShowcaseSection("map")
+                }
                 showAdminTab={siteUnlocked}
               adminVisible={activeDeckCard === "admin"}
               onAdminToggle={
@@ -460,9 +506,9 @@ export default function ShowcaseDetailsPanel({
 
           {/*
           Desktop splits into main content + a sticky dashboard, matching the
-          production Overview grid. Remarks / Details / History live in the
-          dashboard there; below `lg` they stay as stacked sections, since the
-          mobile layout is being reviewed separately.
+          production Overview grid. Remarks / Details / History / Map live in
+          the dashboard there; below `lg` they stay as stacked sections, since
+          the mobile layout is being reviewed separately.
         */}
           {/* Always-present anchor: the mobile remarks block below is display:
               none at `lg`, and you cannot scroll to a hidden element. */}
@@ -606,34 +652,14 @@ export default function ShowcaseDetailsPanel({
                 </Section>
               </div>
 
-              <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
-                {/* `variant="hero"` fills its parent, so the height has to come
-                from here or the map collapses to nothing. */}
-                {/* Same deal-board engine as Intelligence: real pan / wheel zoom
-                and a pin per comparable, with the subject alongside them. */}
-                <div className="h-[20rem] w-full sm:h-[26rem]">
-                {host.map.hidePin ? (
-                  <ListingLocationMap
-                    latitude={host.map.latitude}
-                    longitude={host.map.longitude}
-                    addressQuery={host.map.addressQuery}
-                    hidePin
-                    hideLabel
-                    outlineTown={host.map.outlineTown}
-                    defaultZoom={host.map.defaultZoom}
-                    variant="hero"
-                    className="h-full"
-                  />
-                ) : (
-                  <ShowcaseCompsMap
-                    mlsId={listing.mlsId}
-                    subject={subject}
-                    townHint={host.townHint ?? host.city}
-                    postalCode={host.map.postalCode}
-                    fetchUrl={host.compsFetchUrl}
-                    hideSubject={host.map.hidePin}
-                  />
-                )}
+              <div className="lg:hidden">
+                <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
+                  {/* `variant="hero"` fills its parent, so the height has to come
+                  from here or the map collapses to nothing. */}
+                  {/* Same deal-board engine as Intelligence: real pan / wheel zoom
+                  and a pin per comparable, with the subject alongside them. */}
+                  {listingMap}
+                </Section>
               </div>
 
               {/*
@@ -653,7 +679,6 @@ export default function ShowcaseDetailsPanel({
                   draggable={false}
                 />
               ) : null}
-            </Section>
             </div>
 
             <aside
@@ -696,6 +721,14 @@ export default function ShowcaseDetailsPanel({
                         frameClass={listingPanelCompactClass}
                       />,
                       "history",
+                    )}
+                  </div>
+                  <div className="-mt-2">
+                    {deckCard(
+                      <ListingMapSidePanel frameClass={listingPanelCompactClass}>
+                        {listingMap}
+                      </ListingMapSidePanel>,
+                      "map",
                     )}
                   </div>
                   {siteUnlocked ? (

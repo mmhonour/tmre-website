@@ -6,7 +6,7 @@ import {
 } from "@/components/listing/ListingDesktopDeckContext";
 
 /**
- * Shared header for the desktop Remarks / Details / History / Admin deck.
+ * Shared header for the desktop Remarks / Details / History / Map / Admin deck.
  * Entire header toggles expand/minimize; More/Less hyperlink mirrors state.
  */
 export default function ListingDeckCardHeader({
