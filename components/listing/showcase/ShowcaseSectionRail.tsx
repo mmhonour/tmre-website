@@ -8,10 +8,12 @@ import {
   LISTING_RECENTLY_SOLD_PANEL_ID,
   LISTING_SALE_ON_MARKET_PANEL_ID,
 } from "@/components/listing/listing-section-ids";
+import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
+import type { ShowcaseMapPresentation } from "@/components/listing/showcase/showcase-host";
 import {
   jumpToListingSection,
   scrollToShowcaseSection,
@@ -217,6 +219,8 @@ export default function ShowcaseSectionRail({
   onNext,
   onMapStateChange,
   onDetailsOnlyChange,
+  compsFetchUrl,
+  map,
 }: {
   mlsId: string;
   insight: string | null;
@@ -232,6 +236,9 @@ export default function ShowcaseSectionRail({
   onDetailsOnlyChange?: (on: boolean) => void;
   /** Lets the hero shift its price clear of the map column. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
+  compsFetchUrl?: string | null;
+  /** Spotlight privacy: town-outline map instead of comps + pin. */
+  map?: ShowcaseMapPresentation | null;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
   /**
@@ -275,7 +282,10 @@ export default function ShowcaseSectionRail({
       active?: unknown[];
       soldWithinLookbackCount?: number;
       soldLookbackMonths?: number;
-    }>(`/api/listings/${encodeURIComponent(mlsId)}/comparables`).then((d) => {
+    }>(
+      compsFetchUrl ??
+        `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
+    ).then((d) => {
       if (cancelled || !d) return;
       setCounts({
         active: d.active?.length ?? 0,
@@ -293,7 +303,7 @@ export default function ShowcaseSectionRail({
     return () => {
       cancelled = true;
     };
-  }, [mlsId]);
+  }, [mlsId, compsFetchUrl]);
 
   const ifLabel = useMemo(() => {
     if (!amounts) return null;
@@ -436,15 +446,31 @@ export default function ShowcaseSectionRail({
     >
       <div className="flex shrink-0 justify-end">{iconRow}</div>
       <div className="min-h-0 flex-1">
-        <ShowcaseCompsMap
-          mlsId={mlsId}
-          subject={subject}
-          townHint={townHint}
-          postalCode={postalCode}
-          expanded={mapExpanded}
-          onToggleExpanded={() => setExpanded(!mapExpanded)}
-          onExit={() => setOverlay(null)}
-        />
+        {map?.hidePin ? (
+          <ListingLocationMap
+            latitude={map.latitude}
+            longitude={map.longitude}
+            addressQuery={map.addressQuery}
+            hidePin
+            hideLabel
+            outlineTown={map.outlineTown}
+            defaultZoom={map.defaultZoom}
+            variant="hero"
+            className="h-full"
+          />
+        ) : (
+          <ShowcaseCompsMap
+            mlsId={mlsId}
+            subject={subject}
+            townHint={townHint}
+            postalCode={postalCode}
+            expanded={mapExpanded}
+            onToggleExpanded={() => setExpanded(!mapExpanded)}
+            onExit={() => setOverlay(null)}
+            fetchUrl={compsFetchUrl}
+            hideSubject={map?.hidePin ?? false}
+          />
+        )}
       </div>
     </div>
   ) : null;

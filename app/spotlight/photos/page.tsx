@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightPhotosClient from "./SpotlightPhotosClient";
+import SpotlightShowcaseClient from "../SpotlightShowcaseClient";
 
 export const metadata = {
   title: "Spotlight Photos — TMRE",
@@ -9,7 +9,7 @@ export const metadata = {
 export default function SpotlightPhotosPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightPhotosClient />
+      <SpotlightShowcaseClient initialTab="photos" />
     </Suspense>
   );
 }

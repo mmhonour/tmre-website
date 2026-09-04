@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightListingClient from "./SpotlightListingClient";
+import SpotlightPageClient from "./SpotlightPageClient";
 
 export const metadata = {
   title: "Spotlight — TMRE",
@@ -13,7 +13,7 @@ export const metadata = {
 export default function SpotlightPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightListingClient />
+      <SpotlightPageClient />
     </Suspense>
   );
 }

@@ -30,7 +30,15 @@ import ListingAdminAgentPanel from "@/components/listing/ListingAdminAgentPanel"
 import { extractListingAgentContact } from "@/lib/listing-agent-contact";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
+import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
+import type { ShowcaseHost } from "@/components/listing/showcase/showcase-host";
+import { listingShowcaseHostDefaults } from "@/components/listing/showcase/showcase-host";
+import {
+  listingPhotoObfuscationImgClass,
+  listingPhotoObfuscationSizeForThumb,
+  ListingPhotoObfuscationOverlay,
+} from "@/components/listing/ListingPhotoObfuscation";
 import ListingSubnav, {
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
@@ -127,6 +135,7 @@ export default function ShowcaseDetailsPanel({
   vision = null,
   onSelectPhoto,
   score,
+  host: hostProp,
 }: {
   listing: ShowcaseListing;
   street: string;
@@ -146,7 +155,41 @@ export default function ShowcaseDetailsPanel({
   onSelectPhoto: (index: number) => void;
   /** Score + median-band fields straight off the listing chrome API. */
   score: ListingScoreApiFields;
+  /** Listing supplies defaults; Spotlight overrides privacy, routes, Interest. */
+  host?: ShowcaseHost;
 }) {
+  const host = hostProp ?? {
+    ...listingShowcaseHostDefaults(),
+    headline: street,
+    locationLine: city,
+    photoAlt: street,
+    street,
+    city,
+    addressHint: addressHint ?? null,
+    townHint: city,
+    ifAddressHint: street || addressHint || null,
+    headerAddress: {
+      street,
+      full: street,
+      city,
+      state: listing.address.state,
+      postalCode: listing.address.postalCode,
+    },
+    adminAddress: null,
+    shareHref: listingShareHref(listing.mlsId),
+    interest: detailsPanelProps.isClosed
+      ? null
+      : { mlsId: listing.mlsId, address: street, city },
+    map: {
+      latitude: listing.latitude,
+      longitude: listing.longitude,
+      hidePin: false,
+      outlineTown: null,
+      defaultZoom: 15,
+      addressQuery: street,
+      postalCode: listing.address.postalCode,
+    },
+  };
   const router = useRouter();
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const [activeDeckCard, setActiveDeckCard] =
@@ -202,11 +245,13 @@ export default function ShowcaseDetailsPanel({
     };
   }, []);
   const subject =
-    listing.latitude != null && listing.longitude != null
+    !host.map.hidePin &&
+    listing.latitude != null &&
+    listing.longitude != null
       ? {
           key: listing.listingKey || listing.mlsId,
-          address: street,
-          city,
+          address: host.street,
+          city: host.city,
           price: primaryListingPrice(listing) ?? 0,
           score: goldilocksScore ?? 0,
           isRental,
@@ -243,8 +288,30 @@ export default function ShowcaseDetailsPanel({
       scrollToShowcaseSection(section);
       return;
     }
-    router.push(listingSectionHref(listing.mlsId, tab, street, city));
+    if (host.routeBase === "spotlight") {
+      return;
+    }
+    router.push(listingSectionHref(listing.mlsId, tab, host.street, host.city));
   };
+
+  useEffect(() => {
+    const tab = host.initialTab;
+    if (tab && tab !== "overview" && tab !== "admin") {
+      handleTabSelect(tab);
+      return;
+    }
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    const section = (
+      Object.entries(SHOWCASE_SECTION_IDS) as [
+        keyof typeof SHOWCASE_SECTION_IDS,
+        string,
+      ][]
+    ).find(([, id]) => id === hash)?.[0];
+    if (section) scrollToShowcaseSection(section);
+    // Mount-only: deep links from /spotlight/photos etc.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Deck cards overlap by their header strip, as on production Overview. */
   const deckCard = (
@@ -283,14 +350,20 @@ export default function ShowcaseDetailsPanel({
           >
             <div className="mb-2 flex items-start justify-between gap-3">
               <ListingBackLink className="mb-0" />
-              <span className="shrink-0">
-                <DealBoardStatusBadge
-                  status={status}
-                  size="sm"
-                  surface="listing"
-                />
-              </span>
+              {host.hideStatusBadge ? null : (
+                <span className="shrink-0">
+                  <DealBoardStatusBadge
+                    status={status}
+                    size="sm"
+                    surface="listing"
+                  />
+                </span>
+              )}
             </div>
+
+            {host.propertyTabs ? (
+              <div className="mb-3">{host.propertyTabs}</div>
+            ) : null}
 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
               <div className="min-w-0 flex-1">
@@ -301,7 +374,7 @@ export default function ShowcaseDetailsPanel({
                   parts="meta"
                   mlsId={listing.mlsId}
                   status={listing.status}
-                  address={listing.address}
+                  address={host.headerAddress}
                   propertyType={listing.propertyType}
                   style={listing.style}
                   beds={listing.beds}
@@ -312,14 +385,16 @@ export default function ShowcaseDetailsPanel({
                   price={primaryListingPrice(listing)}
                   priceIsClosed={primaryListingPriceIsClosed(listing)}
                   bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
-                  shareHref={listingShareHref(listing.mlsId)}
+                  shareHref={host.shareHref ?? listingShareHref(listing.mlsId)}
+                  privacyMode={host.privacyMode}
+                  adminAddress={host.adminAddress}
                   compact
                   {...listingHeaderScoreProps({
                     goldilocksScore,
                     goldilocksBreakdown,
                     insight,
-                    title: street,
-                    subtitle: city,
+                    title: host.headline,
+                    subtitle: host.locationLine || host.city,
                     propertyType: listing.propertyType,
                   })}
                 />
@@ -352,8 +427,9 @@ export default function ShowcaseDetailsPanel({
               <ListingSubnav
                 mlsId={listing.mlsId}
                 active={activeTab}
-                addressHint={street || addressHint}
-                townHint={city}
+                addressHint={host.addressHint}
+                townHint={host.townHint ?? host.city}
+                routeBase={host.routeBase}
                 isRental={isRental}
                 embedded
                 compact
@@ -452,7 +528,15 @@ export default function ShowcaseDetailsPanel({
                             src={listingPhotoProxyUrl(listing.mlsId, i)}
                             alt=""
                             priority={i < 10}
+                            imgClassName={listingPhotoObfuscationImgClass(
+                              host.obfuscatePhoto(i),
+                              "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+                              listingPhotoObfuscationSizeForThumb(i),
+                            )}
                           />
+                          {host.obfuscatePhoto(i) ? (
+                            <ListingPhotoObfuscationOverlay />
+                          ) : null}
                         </button>
                       ),
                     )}
@@ -476,15 +560,21 @@ export default function ShowcaseDetailsPanel({
                 {txTab === "uag" ? (
                   <ListingUagPageContent
                     mlsId={listing.mlsId}
-                    townHint={city}
+                    townHint={host.townHint ?? host.city}
                     suppressPageChrome
+                    fetchUrl={host.uagFetchUrl ?? undefined}
                   />
                 ) : (
                   <ListingComparablesPageContent
                     mlsId={listing.mlsId}
-                    townHint={city}
+                    townHint={host.townHint ?? host.city}
                     kind={txTab === "comparable-rentals" ? "rental" : "sale"}
                     suppressPageChrome
+                    fetchUrl={
+                      txTab === "comparable-rentals"
+                        ? host.rentalCompsFetchUrl ?? undefined
+                        : host.compsFetchUrl ?? undefined
+                    }
                   />
                 )}
               </Section>
@@ -498,9 +588,10 @@ export default function ShowcaseDetailsPanel({
               >
                 <ListingIfPageContent
                   mlsId={listing.mlsId}
-                  addressHint={street || addressHint}
-                  townHint={city}
+                  addressHint={host.ifAddressHint}
+                  townHint={host.townHint ?? host.city}
                   isRental={isRental}
+                  routeBase={host.routeBase}
                   suppressPageChrome
                 />
               </Section>
@@ -509,7 +600,7 @@ export default function ShowcaseDetailsPanel({
                 <Section id={SHOWCASE_SECTION_IDS.history} title="History">
                   <ListingHistoryPanel
                     mlsId={listing.mlsId}
-                    townHint={city}
+                    townHint={host.townHint ?? host.city}
                     variant="page"
                   />
                 </Section>
@@ -521,12 +612,28 @@ export default function ShowcaseDetailsPanel({
                 {/* Same deal-board engine as Intelligence: real pan / wheel zoom
                 and a pin per comparable, with the subject alongside them. */}
                 <div className="h-[20rem] w-full sm:h-[26rem]">
-                <ShowcaseCompsMap
-                  mlsId={listing.mlsId}
-                  subject={subject}
-                  townHint={city}
-                  postalCode={listing.address.postalCode}
-                />
+                {host.map.hidePin ? (
+                  <ListingLocationMap
+                    latitude={host.map.latitude}
+                    longitude={host.map.longitude}
+                    addressQuery={host.map.addressQuery}
+                    hidePin
+                    hideLabel
+                    outlineTown={host.map.outlineTown}
+                    defaultZoom={host.map.defaultZoom}
+                    variant="hero"
+                    className="h-full"
+                  />
+                ) : (
+                  <ShowcaseCompsMap
+                    mlsId={listing.mlsId}
+                    subject={subject}
+                    townHint={host.townHint ?? host.city}
+                    postalCode={host.map.postalCode}
+                    fetchUrl={host.compsFetchUrl}
+                    hideSubject={host.map.hidePin}
+                  />
+                )}
               </div>
 
               {/*
@@ -557,13 +664,13 @@ export default function ShowcaseDetailsPanel({
               card scrolls on the wheel instead of running off-screen. */}
           <div className="showcase-hide-scrollbar sticky flex max-h-[calc(100dvh-var(--showcase-sticky-offset,12rem)-1.5rem)] flex-col gap-4 overflow-y-auto overscroll-contain lg:top-[var(--showcase-sticky-offset,12rem)]">
                 {/* Anchors the column width above the deck, as on production. */}
-                {detailsPanelProps.isClosed ? null : (
+                {host.interest ? (
                   <ListingInterestButton
-                    mlsId={listing.mlsId}
-                    address={street}
-                    city={city}
+                    mlsId={host.interest.mlsId}
+                    address={host.interest.address}
+                    city={host.interest.city}
                   />
-                )}
+                ) : null}
                 <div className="flex min-w-0 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
@@ -585,7 +692,7 @@ export default function ShowcaseDetailsPanel({
                     {deckCard(
                       <ListingHistorySidePanel
                         mlsId={listing.mlsId}
-                        townHint={city}
+                        townHint={host.townHint ?? host.city}
                         frameClass={listingPanelCompactClass}
                       />,
                       "history",

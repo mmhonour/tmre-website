@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightHistoryClient from "./SpotlightHistoryClient";
+import SpotlightShowcaseClient from "../SpotlightShowcaseClient";
 
 export const metadata = {
   title: "Spotlight History — TMRE",
@@ -9,7 +9,7 @@ export const metadata = {
 export default function SpotlightHistoryPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightHistoryClient />
+      <SpotlightShowcaseClient initialTab="history" />
     </Suspense>
   );
 }
