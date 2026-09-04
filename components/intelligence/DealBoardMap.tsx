@@ -1255,13 +1255,25 @@ export default function DealBoardMap({
             isSubject ? "z-30" : isActive ? "z-20 scale-125" : "z-10"
           }`;
           const pinStyle = { left: pin.left, top: pin.top };
+          const subjectPriceLabel = pinPriceLabel(
+            pin.listing.price,
+            pin.listing.isRental,
+          );
           const pill = isSubject ? (
             <span className="flex flex-col items-center">
               <span className="text-sky drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
                 <HouseIcon className="h-6 w-6" />
               </span>
-              <span className="mt-0.5 whitespace-nowrap rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy shadow-sm">
-                This home
+              <span className="mt-0.5 flex flex-col items-center rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 shadow-sm">
+                <span className="font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy">
+                  This home
+                </span>
+                {subjectPriceLabel !== "—" ? (
+                  <span className="mt-0.5 font-mono text-[10px] leading-none tabular-nums text-navy">
+                    {subjectPriceLabel}
+                    {pin.listing.isRental ? "/mo" : ""}
+                  </span>
+                ) : null}
               </span>
             </span>
           ) : (
