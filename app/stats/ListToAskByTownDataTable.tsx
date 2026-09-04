@@ -18,9 +18,17 @@ import {
 import { TRANSACT_TO_LIST_LABEL } from "@/lib/market-pulse-defaults";
 import { statsListToAskTitle } from "./stats-labels";
 import { STATS_TOWN_COLOR } from "./stats-town-colors";
-import type { StatsKind } from "./stats-towns";
+import type { StatsKind, Town } from "./stats-towns";
 
-export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) {
+export default function ListToAskByTownDataTable({
+  kind,
+  highlightTown,
+  onTownSelect,
+}: {
+  kind: StatsKind;
+  highlightTown?: Town | null;
+  onTownSelect?: (town: Town) => void;
+}) {
   const [loaded, setLoaded] = useState<{
     kind: StatsKind;
     rows: ListToAskRow[];
@@ -39,6 +47,13 @@ export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) 
   const loading = loaded?.kind !== kind;
   const rows = loading ? [] : (loaded?.rows ?? []);
   const noun = kind === "rental" ? "leases" : "sales";
+
+  useEffect(() => {
+    if (!highlightTown || loading) return;
+    document
+      .getElementById(`transact-to-list-row-${highlightTown}`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [highlightTown, loading, rows.length]);
 
   return (
     <StatsChartDataTable
@@ -71,11 +86,26 @@ export default function ListToAskByTownDataTable({ kind }: { kind: StatsKind }) 
           </StatsChartDataRow>
         ) : (
           rows.map((row) => (
-            <StatsChartDataRow key={row.town}>
+            <StatsChartDataRow
+              key={row.town}
+              id={`transact-to-list-row-${row.town}`}
+              active={highlightTown === row.town}
+            >
               <StatsChartDataTd>
-                <span style={{ color: STATS_TOWN_COLOR[row.town] }}>
-                  {row.town}
-                </span>
+                {onTownSelect ? (
+                  <button
+                    type="button"
+                    onClick={() => onTownSelect(row.town)}
+                    className="cursor-pointer hover:underline underline-offset-2"
+                    style={{ color: STATS_TOWN_COLOR[row.town] }}
+                  >
+                    {row.town}
+                  </button>
+                ) : (
+                  <span style={{ color: STATS_TOWN_COLOR[row.town] }}>
+                    {row.town}
+                  </span>
+                )}
               </StatsChartDataTd>
               <StatsChartDataTd align="right" bold>
                 {row.pct.toFixed(1)}%

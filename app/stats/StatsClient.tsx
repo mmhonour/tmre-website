@@ -245,6 +245,8 @@ export default function StatsClient() {
   const kindTabKit = useTabKitSegmentedStyle("pill-seg-dark-default");
   const deepLinkApplied = useRef(false);
   const chartScrollApplied = useRef(false);
+  const [transactToListDataOpen, setTransactToListDataOpen] = useState(false);
+  const [transactToListTown, setTransactToListTown] = useState<Town | null>(null);
 
   useStatsScrollOffset();
 
@@ -1166,10 +1168,16 @@ export default function StatsClient() {
                   chartId={TRANSACT_TO_LIST_CHART_ID}
                   aliasChartIds={[...TRANSACT_TO_LIST_CHART_ALIASES]}
                   title={statsListToAskTitle(statsKind)}
+                  showDataLabel="Show town data"
+                  hideDataLabel="Hide town data"
+                  dataOpen={transactToListDataOpen}
+                  onDataOpenChange={setTransactToListDataOpen}
                   dataPanel={
                     <ListToAskByTownDataTable
                       key={`${TRANSACT_TO_LIST_CHART_ID}-data-${statsKind}${chartVersionSuffix}`}
                       kind={statsKind}
+                      highlightTown={transactToListTown}
+                      onTownSelect={(town) => setTransactToListTown(town)}
                     />
                   }
                 >
@@ -1177,6 +1185,10 @@ export default function StatsClient() {
                     key={`${TRANSACT_TO_LIST_CHART_ID}-${statsKind}${chartVersionSuffix}`}
                     kind={statsKind}
                     selectedCity={selectedCity}
+                    onTownData={(town) => {
+                      if (town) setTransactToListTown(town);
+                      setTransactToListDataOpen(true);
+                    }}
                   />
                 </StatsChartPrintFrame>
               </StatsChartLazyMount>
