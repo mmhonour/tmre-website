@@ -191,10 +191,10 @@ async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
   if (shouldDeferScheduledJob(jobId)) return false
 
   if (jobId === 'vision-addresses') {
-    const { visionStreetIndexNeedsCatchUp } = await import(
+    const { visionGisNeedsCatchUp } = await import(
       '../../lib/db/vision-streets-repo'
     )
-    if (await visionStreetIndexNeedsCatchUp()) return true
+    if (await visionGisNeedsCatchUp()) return true
   }
 
   const config = await readSyncScheduleConfigFresh()

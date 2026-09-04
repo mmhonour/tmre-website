@@ -16,6 +16,7 @@ import {
 import {
   ensureVisionStreetsTable,
   listVisionStreetLetters,
+  listVisionStreetPidsMissingOwner,
   listVisionStreetsMissingParcels,
   replaceVisionStreetParcels,
   replaceVisionStreetsForLetter,
@@ -362,6 +363,54 @@ export async function fillMissingVisionStreetParcels(
     }
   }
   return result
+}
+
+/**
+ * Ingest Field Cards for street-house PIDs that still lack owner_name.
+ * Uses vision_street_parcels (already stored) — does not scrape Streets.aspx
+ * and does not move the letter/street Field Card cursor.
+ */
+async function fillMissingStreetParcelOwners(
+  cfg: VisionGisTownConfig,
+  delayMs: number,
+  maxParcels: number,
+  counts: {
+    fetched: number
+    changed: number
+    unchanged: number
+    neu: number
+    r2: number
+  },
+  ctx: {
+    phase: VisionTownPhase
+    session?: VisionSyncSessionTotals
+  },
+): Promise<number> {
+  const remaining = maxParcels - counts.fetched
+  if (remaining <= 0) return 0
+  const missing = await listVisionStreetPidsMissingOwner(cfg.town, remaining)
+  if (missing.length === 0) return 0
+  console.info(
+    `[vision-gis-sync] street owners ${cfg.town}: ${missing.length} pid(s) missing owner_name`,
+  )
+  let filled = 0
+  for (const row of missing) {
+    if (counts.fetched >= maxParcels) break
+    await ingestParcel(cfg, row.visionPid, delayMs, counts, {
+      phase: ctx.phase,
+      maxParcels,
+      street: row.streetName,
+      letter: null,
+      session: ctx.session,
+    })
+    filled += 1
+  }
+  return filled
+}
+
+function formatStreetOwnerFill(filled: number): string | null {
+  if (filled <= 0) return null
+  return `street owners +${filled}`
 }
 
 function formatStreetParcelFill(
@@ -718,7 +767,16 @@ export async function syncVisionAddresses(
     }
   }
 
+  let streetOwnerFill = 0
   try {
+    streetOwnerFill = await fillMissingStreetParcelOwners(
+      cfg,
+      delayMs,
+      maxParcels,
+      counts,
+      { phase: state.phase, session: options.sessionTotals },
+    )
+
     if (state.phase === 'full') {
       await sweepStreets(
         cfg,
@@ -795,6 +853,7 @@ export async function syncVisionAddresses(
       err instanceof Error ? err.message : String(err),
       formatStreetIndexFill(streetIndexFill),
       formatStreetParcelFill(streetParcelFill),
+      formatStreetOwnerFill(streetOwnerFill),
     ]
       .filter(Boolean)
       .join(' · ')
@@ -856,6 +915,7 @@ export async function syncVisionAddresses(
     `r2 ${counts.r2}`,
     formatStreetIndexFill(streetIndexFill),
     formatStreetParcelFill(streetParcelFill),
+    formatStreetOwnerFill(streetOwnerFill),
     townComplete ? 'full fill complete → incremental' : null,
     `linked vision=${visionLinked} listings=${listingsLinked}`,
   ]

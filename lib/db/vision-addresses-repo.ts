@@ -11,9 +11,10 @@ import {
   addressMatchKeyLoose,
   compactMblu,
 } from '@/lib/vision-listing-match'
-import type {
-  VisionFieldCardJson,
-  VisionParcelParse,
+import {
+  ownerMailingAddressFromFields,
+  type VisionFieldCardJson,
+  type VisionParcelParse,
 } from '@/lib/vision-gis-parse'
 
 let visionAddressesReady = false
@@ -41,6 +42,7 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             state                    text,
             zip                      text,
             owner_name               text,
+            owner_mailing_address    text,
             assessed_value           integer,
             appraisal_value          integer,
             building_count           integer,
@@ -100,6 +102,10 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             ADD COLUMN IF NOT EXISTS field_card jsonb
         `)
         await query(`
+          ALTER TABLE vision_addresses
+            ADD COLUMN IF NOT EXISTS owner_mailing_address text
+        `)
+        await query(`
           CREATE INDEX IF NOT EXISTS idx_vision_addr_field_card_gin
             ON vision_addresses USING gin (field_card)
         `)
@@ -151,16 +157,16 @@ export async function upsertVisionAddress(
     INSERT INTO vision_addresses (
       town, vision_pid, account_number, mblu, use_code, use_code_description,
       address_full, address_norm, street_no, street_name, city, state, zip,
-      owner_name, assessed_value, appraisal_value, building_count, year_built,
+      owner_name, owner_mailing_address, assessed_value, appraisal_value, building_count, year_built,
       living_area_sqft, beds, full_baths, half_baths, total_rooms, style, model,
       acres, zoning, last_sale_price, last_sale_date, last_sale_book_page,
       photo_url, parcel_url, field_card_r2_key, field_card_content_type,
       field_card_scraped_at, content_fingerprint, source_host, scraped_at, updated_at,
-      field_card
+      field_card, owner_mailing_address
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
       $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
-      $35,$36,$37,$38,$39,$40::jsonb
+      $35,$36,$37,$38,$39,$40::jsonb, $43
     )
     ON CONFLICT (town, vision_pid) DO UPDATE SET
       account_number = EXCLUDED.account_number,
@@ -175,6 +181,7 @@ export async function upsertVisionAddress(
       state = EXCLUDED.state,
       zip = COALESCE(EXCLUDED.zip, vision_addresses.zip),
       owner_name = EXCLUDED.owner_name,
+      owner_mailing_address = EXCLUDED.owner_mailing_address,
       assessed_value = EXCLUDED.assessed_value,
       appraisal_value = EXCLUDED.appraisal_value,
       building_count = EXCLUDED.building_count,
@@ -257,6 +264,7 @@ export async function upsertVisionAddress(
       JSON.stringify(parsed.fieldCard),
       opts.rewriteBlob,
       opts.changed,
+      parsed.ownerMailingAddress,
     ],
   )
 }
@@ -269,9 +277,15 @@ export async function persistVisionFieldCardJson(
   await ensureVisionAddressesTable()
   await execute(
     `UPDATE vision_addresses
-        SET field_card = $3::jsonb
+        SET field_card = $3::jsonb,
+            owner_mailing_address = COALESCE($4, owner_mailing_address)
       WHERE town = $1 AND vision_pid = $2`,
-    [town, visionPid, JSON.stringify(fieldCard)],
+    [
+      town,
+      visionPid,
+      JSON.stringify(fieldCard),
+      ownerMailingAddressFromFields(fieldCard.fields),
+    ],
   )
 }
 
@@ -711,6 +725,7 @@ export type VisionAddressRecord = {
   state: string | null
   zip: string | null
   ownerName: string | null
+  ownerMailingAddress: string | null
   assessedValue: number | null
   appraisalValue: number | null
   yearBuilt: number | null
@@ -750,6 +765,7 @@ type VisionAddressSqlRow = {
   state: string | null
   zip: string | null
   owner_name: string | null
+  owner_mailing_address: string | null
   assessed_value: number | string | null
   appraisal_value: number | string | null
   year_built: number | string | null
@@ -814,6 +830,7 @@ function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
     state: row.state,
     zip: row.zip,
     ownerName: row.owner_name,
+    ownerMailingAddress: row.owner_mailing_address?.trim() || null,
     assessedValue: numOrNull(row.assessed_value),
     appraisalValue: numOrNull(row.appraisal_value),
     yearBuilt: numOrNull(row.year_built),
@@ -842,7 +859,7 @@ function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
 const VISION_SELECT = `
   town, vision_pid, account_number, mblu, use_code, use_code_description,
   address_full, address_norm, street_no, street_name, city, state, zip,
-  owner_name, assessed_value, appraisal_value, year_built, living_area_sqft,
+  owner_name, owner_mailing_address, assessed_value, appraisal_value, year_built, living_area_sqft,
   beds, full_baths, half_baths, style, acres, zoning,
   last_sale_price, last_sale_date, last_sale_book_page,
   building_count, total_rooms, model,

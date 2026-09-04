@@ -12,6 +12,7 @@ import {
   ensureVisionStreetsTable,
   listVisionStreetLetters,
   listVisionStreetParcels,
+  listVisionStreetPidsMissingOwner,
   listVisionStreets,
   listVisionStreetsMissingParcels,
   replaceVisionStreetParcels,
@@ -19,6 +20,7 @@ import {
 } from '../lib/db/vision-streets-repo'
 import { compareAddressLabels } from '../lib/vision-streets-page'
 import { missingVisionStreetLetters } from '../lib/vision-gis-towns'
+import { ensureVisionAddressesTable } from '../lib/db/vision-addresses-repo'
 import { execute } from '../lib/db/postgres'
 
 const TOWN = '__smoke'
@@ -32,6 +34,9 @@ function assert(cond: unknown, message: string): asserts cond {
 async function main() {
   console.log('vision streets smoke')
   await ensureVisionStreetsTable()
+  await ensureVisionAddressesTable()
+  await execute(`DELETE FROM vision_addresses WHERE town = $1`, [TOWN])
+  await execute(`DELETE FROM vision_street_parcels WHERE town = $1`, [TOWN])
   await execute(`DELETE FROM vision_streets WHERE town = $1`, [TOWN])
   console.log('PASS  vision_streets exists')
 
@@ -136,6 +141,48 @@ async function main() {
   assert(compareAddressLabels('5 Locust Ln', '12 Locust Ln') < 0, '5 should sort before 12')
   console.log('PASS  street parcel replace is street-scoped')
 
+  const missingOwners = await listVisionStreetPidsMissingOwner(TOWN, 10)
+  assert(
+    missingOwners.some((row) => row.visionPid === '1'),
+    'Locust PID without Field Card should be missing owner',
+  )
+  const locustWithOwner = await listVisionStreetParcels(TOWN, 'Locust Ln')
+  assert(
+    locustWithOwner.every((row) => row.ownerName == null),
+    'joined owner should be empty before ingest',
+  )
+  await execute(
+    `INSERT INTO vision_addresses (
+       town, vision_pid, parcel_url, owner_name, last_sale_date,
+       source_host, scraped_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+     ON CONFLICT (town, vision_pid) DO UPDATE SET
+       owner_name = EXCLUDED.owner_name,
+       last_sale_date = EXCLUDED.last_sale_date`,
+    [
+      TOWN,
+      '1',
+      'https://example.test/parcel',
+      'SMITH JOHN',
+      '03/12/2019',
+      'test',
+    ],
+  )
+  const afterOwner = await listVisionStreetPidsMissingOwner(TOWN, 10)
+  assert(
+    !afterOwner.some((row) => row.visionPid === '1'),
+    'PID with owner_name should leave the missing-owner queue',
+  )
+  const locustOwned = await listVisionStreetParcels(TOWN, 'Locust Ln')
+  assert(
+    locustOwned.some(
+      (row) => row.visionPid === '1' && row.ownerName === 'SMITH JOHN',
+    ),
+    'street list should join owner_name',
+  )
+  console.log('PASS  street parcel owner join and missing-owner queue')
+
+  await execute(`DELETE FROM vision_addresses WHERE town = $1`, [TOWN])
   await execute(`DELETE FROM vision_street_parcels WHERE town = $1`, [TOWN])
   await execute(`DELETE FROM vision_streets WHERE town = $1`, [TOWN])
   console.log('PASS  cleanup')

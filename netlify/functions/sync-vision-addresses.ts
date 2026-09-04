@@ -30,10 +30,10 @@ export default async function handler() {
       )
     }
     if (shouldSkipScheduledJobNotDue('vision-addresses')) {
-      const { visionStreetIndexNeedsCatchUp } = await import(
+      const { visionGisNeedsCatchUp } = await import(
         '../../lib/db/vision-streets-repo'
       )
-      if (!(await visionStreetIndexNeedsCatchUp())) {
+      if (!(await visionGisNeedsCatchUp())) {
         return thinCronSkipped('not due yet — Configure frequency / start time')
       }
     }
