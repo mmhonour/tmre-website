@@ -35,11 +35,14 @@ import {
   parseCellKey,
   pointInRings,
   coastalStripMark,
+  countSuggestedOverwrite,
+  hasSouthWaterShore,
   suggestCoastalStrips,
   type CoastalStripIndex,
 } from "@/lib/location-estimate-zip-grid-shared";
 import {
   ZIP_AREA_NICKNAMES,
+  boundaryZipsForNeighborTowns,
   boundaryZipsForTown,
   isTmreTown,
   neighborTownsFor,
@@ -288,6 +291,26 @@ export default function CtCoverageTownsMap({
   const townCells = useMemo(
     () => (townRings.length ? cellsForZipRings(townRings) : []),
     [townRings],
+  );
+  const landCells = useMemo(() => {
+    if (!byZip || !focusTown) return townCells;
+    const rings = [
+      ...boundaryZipsForTown(focusTown),
+      ...boundaryZipsForNeighborTowns(focusTown),
+    ].flatMap((code) => byZip.get(code) ?? []);
+    return rings.length ? cellsForZipRings(rings) : townCells;
+  }, [byZip, focusTown, townCells]);
+  const southShoreSuggestion = useMemo(
+    () => suggestCoastalStrips(landCells, zipCells),
+    [landCells, zipCells],
+  );
+  const hasShore = useMemo(
+    () => hasSouthWaterShore(landCells, zipCells),
+    [landCells, zipCells],
+  );
+  const shoreOverwriteCount = useMemo(
+    () => countSuggestedOverwrite(paint.cells, southShoreSuggestion),
+    [paint.cells, southShoreSuggestion],
   );
 
   const fitArea = `${focusTown ?? "all"}:${zip || "all"}:${fitRings.length}`;
@@ -661,10 +684,33 @@ export default function CtCoverageTownsMap({
           </div>
           <button
             type="button"
-            onClick={() =>
-              paint.applyPatch(suggestCoastalStrips(townCells, zipCells))
+            title={
+              !hasShore
+                ? "Landlocked — no Sound, gulf, or bay on the south edge"
+                : shoreOverwriteCount > 0
+                  ? `Will overwrite ${shoreOverwriteCount} painted square${
+                      shoreOverwriteCount === 1 ? "" : "s"
+                    }`
+                  : "Seed Coast–4th from the south water edge"
             }
-            disabled={status !== "ready" || zipCells.length === 0}
+            onClick={() => {
+              if (!hasShore) return;
+              if (shoreOverwriteCount > 0) {
+                const ok = window.confirm(
+                  `Paint south shore will overwrite ${shoreOverwriteCount} already-painted square${
+                    shoreOverwriteCount === 1 ? "" : "s"
+                  } on this ${zip ? "zip" : "town"}. Continue?`,
+                );
+                if (!ok) return;
+              }
+              paint.applyPatch(southShoreSuggestion);
+            }}
+            disabled={
+              status !== "ready" ||
+              zipCells.length === 0 ||
+              !hasShore ||
+              Object.keys(southShoreSuggestion).length === 0
+            }
             className="border border-charcoal/15 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-navy hover:bg-navy/10 disabled:opacity-40"
           >
             Paint south shore

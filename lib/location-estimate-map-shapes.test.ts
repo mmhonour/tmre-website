@@ -13,6 +13,8 @@ import {
   milesBetween,
   nextCellAction,
   coastalStripMark,
+  countSuggestedOverwrite,
+  hasSouthWaterShore,
   suggestCoastalStrips,
   townCenterOwning,
 } from './location-estimate-zip-grid-shared'
@@ -101,6 +103,28 @@ describe('zip grid', () => {
     const inlandOnly = [{ i: 3, j: 9 }]
     const suggested = suggestCoastalStrips(town, inlandOnly)
     assert.deepEqual(suggested, {})
+  })
+
+  it('treats an open south edge as water and a landlocked block as not', () => {
+    const shore = [
+      { i: 4, j: 10 },
+      { i: 4, j: 11 },
+    ]
+    const inland = [
+      { i: 4, j: 20 },
+      { i: 4, j: 21 },
+      { i: 4, j: 22 },
+    ]
+    const neighborSouth = [{ i: 4, j: 19 }, ...inland]
+    assert.equal(hasSouthWaterShore(shore, shore), true)
+    assert.equal(hasSouthWaterShore(neighborSouth, inland), false)
+  })
+
+  it('counts painted cells the south-shore seed would overwrite', () => {
+    const suggested = { '1,1': 0 as const, '1,2': 1 as const }
+    assert.equal(countSuggestedOverwrite({}, suggested), 0)
+    assert.equal(countSuggestedOverwrite({ '1,1': 0 }, suggested), 0)
+    assert.equal(countSuggestedOverwrite({ '1,1': 2, '1,2': 1 }, suggested), 1)
   })
 
   it('toggles a painted square off when clicked with the same brush', () => {

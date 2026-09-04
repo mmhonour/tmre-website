@@ -190,6 +190,41 @@ export function cellsForZipRings(
   return out
 }
 
+function cellKeySet(cells: readonly { i: number; j: number }[]): Set<string> {
+  return new Set(cells.map((c) => cellKey(c.i, c.j)))
+}
+
+/**
+ * True when a cell in `paintWithin` has land to the north but no land
+ * immediately south — that open south side is water (Sound / harbor / bay),
+ * not the next inland zip. `landOccupied` should include every loaded
+ * neighbor town so Wilton / 06825 are not treated as shore.
+ */
+export function hasSouthWaterShore(
+  landOccupied: readonly { i: number; j: number }[],
+  paintWithin: readonly { i: number; j: number }[],
+): boolean {
+  const land = cellKeySet(landOccupied)
+  for (const { i, j } of paintWithin) {
+    if (!land.has(cellKey(i, j))) continue
+    if (land.has(cellKey(i, j - 1))) continue
+    return true
+  }
+  return false
+}
+
+export function countSuggestedOverwrite(
+  current: ZipGridCells,
+  suggested: ZipGridCells,
+): number {
+  let n = 0
+  for (const [key, next] of Object.entries(suggested)) {
+    const prev = current[key]
+    if (prev != null && prev !== next) n += 1
+  }
+  return n
+}
+
 /**
  * Mark ¼-mile cells stepping north from the town's south-facing edge.
  * A shore cell is occupied and its due-south neighbor is not — that is
@@ -201,8 +236,8 @@ export function suggestCoastalStrips(
   townOccupied: readonly { i: number; j: number }[],
   paintWithin: readonly { i: number; j: number }[] = townOccupied,
 ): ZipGridCells {
-  const occupied = new Set(townOccupied.map((c) => cellKey(c.i, c.j)))
-  const within = new Set(paintWithin.map((c) => cellKey(c.i, c.j)))
+  const occupied = cellKeySet(townOccupied)
+  const within = cellKeySet(paintWithin)
   const cells: ZipGridCells = {}
   for (const { i, j } of paintWithin) {
     if (occupied.has(cellKey(i, j - 1))) continue
