@@ -164,6 +164,7 @@ function reportText(result: CamaTaxSyncResult): void {
       `${LOG} ${town.town}: rows computed=${town.rowsComputed.toLocaleString()} ` +
         `carried-forward=${town.rowsCarriedForward.toLocaleString()} ` +
         `deferred-to-mls=${town.rowsDeferredToMls.toLocaleString()} ` +
+        `shared-assessor-record=${town.sharedRecordListings.toLocaleString()} ` +
         `written=${town.rowsWritten.toLocaleString()}`,
     )
     const skips = Object.entries(town.computeSkips).filter(([, n]) => (n ?? 0) > 0)

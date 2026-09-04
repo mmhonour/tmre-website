@@ -55,6 +55,11 @@ export type CamaTaxTownResult = {
   matchStrategies: Record<MatchStrategy, number>
   fiscalYears: number[]
   fiscalYearsWithMillRate: number[]
+  /**
+   * Listings dropped because several MLS parcels share one assessor record —
+   * a whole building assessed once. See the second matching pass.
+   */
+  sharedRecordListings: number
   /** Grand list years the town appears to have revalued in. */
   revaluationYears: number[]
   /** Correction applied to the filed `valuation_year`; 0 means filed as-is. */
@@ -168,6 +173,7 @@ export async function syncCtCamaTaxHistory(
         matchStrategies: emptyStrategyCounts(),
         fiscalYears,
         fiscalYearsWithMillRate: [],
+        sharedRecordListings: 0,
         revaluationYears: [],
         valuationYearOffset: 0,
         rowsComputed: 0,
@@ -196,6 +202,7 @@ export async function syncCtCamaTaxHistory(
         matchStrategies: emptyStrategyCounts(),
         fiscalYears,
         fiscalYearsWithMillRate,
+        sharedRecordListings: 0,
         revaluationYears: [],
         valuationYearOffset: 0,
         rowsComputed: 0,
@@ -245,15 +252,50 @@ export async function syncCtCamaTaxHistory(
     let carriedForward = 0
     let deferredToMls = 0
 
+    // Match first, compute second, because one answer depends on the whole set.
+    //
+    // A multi-unit building is filed by the assessor as a single record holding
+    // the whole building's value, while the MLS issues a parcel number per
+    // unit. Matching each unit to that record and computing from it hands every
+    // unit the entire building's tax: measured, three Westport units each came
+    // out at $208,337 from a shared $11m assessment against real bills of
+    // $22-23k. Those were the largest errors left in the run.
+    //
+    // The extract carries nothing to apportion a building across its units by,
+    // and unit values are not equal, so a shared record is refused rather than
+    // divided. This is the same judgement as the ambiguous-address case in the
+    // index: no number is better than a wrong one an owner would spot.
+    const candidates: { listing: ListingParcelCandidate; strategy: MatchStrategy; addressKey: string }[] = []
+    const parcelNumbersPerRecord = new Map<string, Set<string>>()
     for (const listing of listings) {
       const match = matchListingToParcel(listing, index)
       if (!match) continue
       matched += 1
       matchStrategies[match.strategy] += 1
+      const key = match.parcel.addressKey
+      candidates.push({ listing, strategy: match.strategy, addressKey: key })
+      const parcelNumber = listing.parcelNumber?.trim()
+      if (parcelNumber) {
+        const seen = parcelNumbersPerRecord.get(key)
+        if (seen) seen.add(parcelNumber)
+        else parcelNumbersPerRecord.set(key, new Set([parcelNumber]))
+      }
+    }
+
+    let sharedRecordListings = 0
+    for (const candidate of candidates) {
+      const distinctParcels = parcelNumbersPerRecord.get(candidate.addressKey)
+      if (distinctParcels && distinctParcels.size > 1) {
+        sharedRecordListings += 1
+        continue
+      }
+      const parcel = index.byAddress.get(candidate.addressKey)
+      if (!parcel) continue
+      const listing = candidate.listing
 
       const computed = computeTaxRowsForListing({
         listing,
-        parcel: match.parcel,
+        parcel,
         millRates,
         fiscalYears,
         revaluationYears,
@@ -280,6 +322,7 @@ export async function syncCtCamaTaxHistory(
     rowsWrittenTotal += rowsWritten
     progress?.(
       `${town}: ${matched.toLocaleString()}/${listings.length.toLocaleString()} listings matched, ` +
+        `${sharedRecordListings.toLocaleString()} dropped for sharing an assessor record, ` +
         `${rows.length.toLocaleString()} rows ${dryRun ? 'computed (dry run)' : 'written'}`,
     )
 
@@ -293,6 +336,7 @@ export async function syncCtCamaTaxHistory(
       matchStrategies,
       fiscalYears,
       fiscalYearsWithMillRate,
+      sharedRecordListings,
       revaluationYears: [...revaluationYears].sort((a, b) => a - b),
       valuationYearOffset,
       rowsComputed: rows.length,

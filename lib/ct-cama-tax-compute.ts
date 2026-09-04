@@ -499,13 +499,18 @@ export function computeTaxRowsForListing(options: {
 
   const observations = [...parcel.observations]
   // The MLS assessment is the current one, so it mostly matters for towns whose
-  // filed extract lags a revaluation.
-  if (listing.assessedValue != null && listing.taxYearEnd != null) {
+  // filed extract lags a revaluation. It needs the same filler-value guard as
+  // the CAMA side: the feed carries its own sentinels, and without this they
+  // were the only junk assessments still reaching the arithmetic.
+  if (
+    isPlausibleAssessment(listing.assessedValue) &&
+    listing.taxYearEnd != null
+  ) {
     const grandListYear = grandListYearFor(listing.taxYearEnd)
     if (!observations.some((o) => o.grandListYear === grandListYear)) {
       observations.push({
         grandListYear,
-        assessedValue: listing.assessedValue,
+        assessedValue: listing.assessedValue!,
         origin: 'mls',
       })
       observations.sort((a, b) => a.grandListYear - b.grandListYear)
