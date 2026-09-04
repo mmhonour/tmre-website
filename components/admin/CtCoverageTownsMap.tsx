@@ -34,7 +34,6 @@ import {
   milesBetween,
   parseCellKey,
   pointInRings,
-  COASTAL_STRIP_LEGEND,
   coastalStripLabel,
   coastalStripMark,
   countSuggestedOverwrite,
@@ -644,22 +643,6 @@ export default function CtCoverageTownsMap({
           })}
         </div>
       </div>
-
-      <dl className="grid gap-x-4 gap-y-1 border-b border-charcoal/[0.08] px-3 py-2 sm:grid-cols-2">
-        {([0, 1, 2, 3] as const).map((strip) => {
-          const row = COASTAL_STRIP_LEGEND[strip];
-          return (
-            <div key={row.mark} className="flex gap-2">
-              <dt className="shrink-0 font-mono text-[11px] font-semibold text-navy">
-                {row.mark} {row.name}
-              </dt>
-              <dd className="font-mono text-[10px] leading-snug text-charcoal/55">
-                {row.blurb}
-              </dd>
-            </div>
-          );
-        })}
-      </dl>
 
       {focusTown ? (
         <div className="flex flex-wrap items-end gap-2 border-b border-charcoal/[0.08] px-3 py-2">
