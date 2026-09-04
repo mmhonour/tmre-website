@@ -86,7 +86,26 @@ const STRIP_FILL: Record<CoastalStripIndex, string> = {
 
 const STRIP_MARK_MIN_PX = 6;
 const STRIP_MARK_MAX_PX = 22;
-const STRIP_MARK_DEFAULT_PX = 10;
+const STRIP_MARK_DEFAULT_PX = 7;
+const STRIP_MARK_PX_STORAGE_KEY = "tmre-ct-coverage-strip-mark-px";
+
+function clampStripMarkPx(value: number): number {
+  if (!Number.isFinite(value)) return STRIP_MARK_DEFAULT_PX;
+  return Math.min(
+    STRIP_MARK_MAX_PX,
+    Math.max(STRIP_MARK_MIN_PX, Math.round(value)),
+  );
+}
+
+function readStoredStripMarkPx(): number {
+  try {
+    const raw = window.localStorage.getItem(STRIP_MARK_PX_STORAGE_KEY);
+    if (raw == null) return STRIP_MARK_DEFAULT_PX;
+    return clampStripMarkPx(Number(raw));
+  } catch {
+    return STRIP_MARK_DEFAULT_PX;
+  }
+}
 
 function StripMark({
   lon,
@@ -162,6 +181,20 @@ export default function CtCoverageTownsMap({
   const [hoverDisk, setHoverDisk] = useState<"center" | "rim" | null>(null);
   const [townCenterMode, setTownCenterMode] = useState(false);
   const [stripMarkPx, setStripMarkPx] = useState(STRIP_MARK_DEFAULT_PX);
+
+  useEffect(() => {
+    setStripMarkPx(readStoredStripMarkPx());
+  }, []);
+
+  const onStripMarkPx = (value: number) => {
+    const next = clampStripMarkPx(value);
+    setStripMarkPx(next);
+    try {
+      window.localStorage.setItem(STRIP_MARK_PX_STORAGE_KEY, String(next));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  };
 
   const livePlacements = useMemo(() => {
     if (!focusTown || !draftCenter) return townCenters.placements;
@@ -806,7 +839,7 @@ export default function CtCoverageTownsMap({
               max={STRIP_MARK_MAX_PX}
               step={1}
               value={stripMarkPx}
-              onChange={(e) => setStripMarkPx(Number(e.target.value))}
+              onChange={(e) => onStripMarkPx(Number(e.target.value))}
               className="h-1.5 w-24 accent-navy"
               aria-label="Coastal strip number size"
             />
