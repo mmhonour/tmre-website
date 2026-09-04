@@ -7,8 +7,8 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
+import { VisionDeedHistoryPopout } from '@/components/VisionDeedHistoryPopout'
 import { westportParcelHref } from '@/lib/listing-url'
-import { VISION_SALES_HISTORY_ID } from '@/lib/vision-gis-parse'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
   compareAddressLabels,
@@ -102,9 +102,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner, mailing address, and last sold (paid deed)
-            come from the Field Card. Quitclaims are on the parcel page sales
-            history — they do not replace Last sold.
+            street page. Owner, mailing, and Bought (last paid deed). Click
+            the Bought date for every deed — sales and quitclaims — newest
+            first.
           </p>
         </div>
       </section>
@@ -123,7 +123,6 @@ export default async function StreetsStreetPage({
                 const owner = row.ownerName
                 const mailing = row.ownerMailingAddress
                 const sold = row.purchaseDate
-                const historyHref = `${parcelHref(town, row.visionPid, row.addressLabel)}#${VISION_SALES_HISTORY_ID}`
                 return (
                   <li
                     key={`${row.visionPid}-${row.addressLabel}`}
@@ -137,23 +136,31 @@ export default async function StreetsStreetPage({
                     </Link>
                     <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
                       {owner ?? 'Owner pending Field Card ingest'}
-                      {owner && sold ? ` · Last sold ${sold}` : ''}
+                      {owner && sold ? (
+                        <>
+                          {' · '}
+                          <VisionDeedHistoryPopout
+                            label={`Bought ${sold}`}
+                            addressLabel={row.addressLabel}
+                            ownerName={owner}
+                            rows={row.deedHistory}
+                          />
+                        </>
+                      ) : owner && row.deedHistory.length > 0 ? (
+                        <>
+                          {' · '}
+                          <VisionDeedHistoryPopout
+                            label="Deed history"
+                            addressLabel={row.addressLabel}
+                            ownerName={owner}
+                            rows={row.deedHistory}
+                          />
+                        </>
+                      ) : null}
                     </p>
                     {mailing ? (
                       <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
                         {mailing}
-                      </p>
-                    ) : null}
-                    {row.quitclaimCount > 0 ? (
-                      <p className="mt-0.5">
-                        <Link
-                          href={historyHref}
-                          className="font-mono text-[11px] tracking-[0.08em] uppercase text-navy/55 hover:text-navy underline underline-offset-2"
-                        >
-                          {row.quitclaimCount === 1
-                            ? '1 quitclaim'
-                            : `${row.quitclaimCount} quitclaims`}
-                        </Link>
                       </p>
                     ) : null}
                   </li>
