@@ -39,6 +39,7 @@ import {
   type SessionMatchOverrides,
 } from "@/lib/listing-comparables-session";
 import { listingRecentlyClosedPanelId } from "@/components/listing/listing-section-ids";
+import { usePublishComparablesMapSession } from "@/components/listing/ListingComparablesMapSessionContext";
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
   useListingDesktopLayout,
@@ -1188,6 +1189,12 @@ export default function ListingComparablesPanel({
       comparableListingMatchesSession(row, criteria, sessionMatch),
     );
   }, [pool?.active, criteria, sessionMatch]);
+
+  const mapSessionSnapshot = useMemo(() => {
+    if (!sessionReady) return null;
+    return { sold, active };
+  }, [sessionReady, sold, active]);
+  usePublishComparablesMapSession(kind, mapSessionSnapshot);
 
   const hasContent = sold.length > 0 || active.length > 0;
 

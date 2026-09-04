@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ListingComparablesMapSessionProvider } from "@/components/listing/ListingComparablesMapSessionContext";
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
@@ -183,7 +184,8 @@ export default function ListingShowcaseView({
   });
 
   return (
-    <div className="bg-navy-dark text-white">
+    <ListingComparablesMapSessionProvider>
+      <div className="bg-navy-dark text-white">
       <section className="relative min-h-[100dvh] w-full overflow-hidden">
         <ShowcasePhotoStage
           photos={livePhotos}
@@ -228,6 +230,8 @@ export default function ListingShowcaseView({
           onMapStateChange={setMapState}
           onDetailsOnlyChange={setRailDetailsOnly}
           compsFetchUrl={host.compsFetchUrl}
+          rentalCompsFetchUrl={host.rentalCompsFetchUrl}
+          isRental={isRental}
           map={host.map}
         />
 
@@ -380,5 +384,6 @@ export default function ListingShowcaseView({
         />
       )}
     </div>
+    </ListingComparablesMapSessionProvider>
   );
 }

@@ -168,7 +168,8 @@ export function formatFurnishedDetailLabel(
 
 /**
  * Criteria ± row: subject counts as “furnished” when not Unfurnished / unknown.
- * Default match is exact status; expand to any includes Unfurnished.
+ * Furnished / Partially default to exact status; Negotiable defaults to any
+ * (the listing accepts either) and the ± row can tighten to Negotiable-only.
  */
 export function subjectHasFurnishedCriteria(
   value: ListingFurnished | null | undefined,
@@ -178,6 +179,14 @@ export function subjectHasFurnishedCriteria(
     value === "Partially" ||
     value === "Negotiable"
   );
+}
+
+/** Seed for comps session / server default. Null = no furnish gate. */
+export function defaultFurnishedMatchScope(
+  value: ListingFurnished | null | undefined,
+): "exact" | "any" | null {
+  if (!subjectHasFurnishedCriteria(value)) return null;
+  return value === "Negotiable" ? "any" : "exact";
 }
 
 /** Short label for Matching Criteria value column. */

@@ -57,8 +57,8 @@ export type ComparablesCriteria = {
   /** Bordering vintage label(s) pulled in by the edge rule, when any. */
   vintageEdgeLabels?: string[]
   /**
-   * When set (subject is furnished / partial / negotiable), comps default to
-   * the same furnish status unless the session expands to any.
+   * When set (subject is furnished / partial / negotiable). Furnished and
+   * Partially default to the same status; Negotiable defaults to any furnish.
    */
   furnished?: ListingFurnished
 }

@@ -23,6 +23,15 @@ export const LISTING_PRODUCTION_PANEL_ID = "listing-production-panel";
 /** For-sale on-market panel anchor inside the Sold comps section. */
 export const LISTING_SALE_ON_MARKET_PANEL_ID = "comparables-on-market-sale";
 
+/** For-rent on-market panel anchor inside the Rented comps section. */
+export const LISTING_RENTAL_ON_MARKET_PANEL_ID = "comparables-on-market-rental";
+
+export function listingOnMarketPanelId(kind: "sale" | "rental"): string {
+  return kind === "rental"
+    ? LISTING_RENTAL_ON_MARKET_PANEL_ID
+    : LISTING_SALE_ON_MARKET_PANEL_ID;
+}
+
 /** Recently Sold / Recently Rented panel anchors (ListingComparablesPanel). */
 export const LISTING_RECENTLY_SOLD_PANEL_ID = "comparables-sold-sale";
 export const LISTING_RECENTLY_RENTED_PANEL_ID = "comparables-sold-rental";
@@ -63,6 +72,7 @@ export function listingTabFromSectionId(
   }
   if (
     id === LISTING_RECENTLY_RENTED_PANEL_ID ||
+    id === LISTING_RENTAL_ON_MARKET_PANEL_ID ||
     id === "comparables-on-market-rental"
   ) {
     return "comparable-rentals";

@@ -43,7 +43,10 @@ import ListingSubnav, {
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
 import { listingCriteriaLinkSlotId } from "@/components/listing/ListingCriteriaSideLayout";
-import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
+import {
+  LISTING_SECTION_IDS,
+  listingTabFromSectionId,
+} from "@/components/listing/listing-section-ids";
 import {
   SHOWCASE_SECTION_IDS,
   scrollToShowcaseSection,
@@ -212,7 +215,9 @@ export default function ShowcaseDetailsPanel({
    * which body renders — otherwise Rented and UAG scroll to a section still
    * showing sold comps and look like they did nothing.
    */
-  const [txTab, setTxTab] = useState<TransactionTab>("comparables");
+  const [txTab, setTxTab] = useState<TransactionTab>(
+    isRental ? "comparable-rentals" : "comparables",
+  );
   const [activeTab, setActiveTab] = useState<ListingTab>("overview");
   /** Desktop only — the Overview tab reveals the remarks as a full-width block. */
   const [showOverviewSection, setShowOverviewSection] = useState(false);
@@ -311,6 +316,18 @@ export default function ShowcaseDetailsPanel({
     if (section) scrollToShowcaseSection(section);
     // Mount-only: deep links from /spotlight/photos etc.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const syncFromHash = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      if (!hash) return;
+      const tab = listingTabFromSectionId(hash);
+      if (tab && isTransactionTab(tab)) setTxTab(tab);
+    };
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
 
   /** Deck cards overlap by their header strip, as on production Overview. */
@@ -631,6 +648,9 @@ export default function ShowcaseDetailsPanel({
                     townHint={host.townHint ?? host.city}
                     postalCode={host.map.postalCode}
                     fetchUrl={host.compsFetchUrl}
+                    rentalFetchUrl={host.rentalCompsFetchUrl}
+                    isRental={isRental}
+                    roomy
                     hideSubject={host.map.hidePin}
                   />
                 )}

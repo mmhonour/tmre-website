@@ -5,18 +5,28 @@ import DealBoardMap, {
   type DealBoardMapListing,
 } from "@/components/intelligence/DealBoardMap";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
+import { useComparablesMapSession } from "@/components/listing/ListingComparablesMapSessionContext";
 import type { ComparableListing } from "@/lib/listing-comparables-shared";
+import {
+  compsMapLayers,
+  defaultCompsMapLayer,
+  resolveCompsMapFetchUrls,
+  type ComparablesKind,
+  type CompsMapLayer,
+} from "@/lib/listing-comparables-map";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
-
-type Pool = "active" | "sold";
 
 type ComparablesResponse = {
   sold?: ComparableListing[];
   active?: ComparableListing[];
 };
 
-function toPin(comp: ComparableListing, pool: Pool): DealBoardMapListing | null {
+function toPin(
+  comp: ComparableListing,
+  pool: "active" | "sold",
+  isRental: boolean,
+): DealBoardMapListing | null {
   if (comp.latitude == null || comp.longitude == null) return null;
   const price = (pool === "sold" ? comp.closePrice : comp.price) ?? comp.price;
   if (price == null) return null;
@@ -26,7 +36,7 @@ function toPin(comp: ComparableListing, pool: Pool): DealBoardMapListing | null 
     city: comp.city,
     price,
     score: comp.goldilocksScore ?? 0,
-    isRental: false,
+    isRental,
     beds: comp.beds,
     baths: comp.baths,
     sqft: comp.sqft,
@@ -34,6 +44,16 @@ function toPin(comp: ComparableListing, pool: Pool): DealBoardMapListing | null 
     longitude: comp.longitude,
     photoCount: comp.photoCount,
   };
+}
+
+function pinsFor(
+  comps: readonly ComparableListing[],
+  pool: "active" | "sold",
+  isRental: boolean,
+): DealBoardMapListing[] {
+  return comps
+    .map((c) => toPin(c, pool, isRental))
+    .filter((p): p is DealBoardMapListing => p !== null);
 }
 
 /** North-up rose — DealBoardMap has a reset-view crosshair but no compass. */
@@ -64,6 +84,10 @@ function Compass() {
 /**
  * The Intelligence deal-board map pointed at this listing's comparables rather
  * than the board. Fills its parent, so the caller owns the height.
+ *
+ * Default pins match the comps panel's default criteria. When the panel's
+ * Matching Criteria ± changes, published session lists replace the fetch so
+ * the map stays interactive with the same filter.
  */
 export default function ShowcaseCompsMap({
   mlsId,
@@ -71,11 +95,14 @@ export default function ShowcaseCompsMap({
   townHint,
   postalCode,
   expanded = false,
+  roomy = false,
   onToggleExpanded,
   onExit,
   fetchUrl,
+  rentalFetchUrl,
   hrefFor: hrefForOverride,
   hideSubject = false,
+  isRental = false,
 }: {
   mlsId: string;
   subject: DealBoardMapListing | null;
@@ -83,47 +110,122 @@ export default function ShowcaseCompsMap({
   /** Drives the blue town outline via the map's zip-boundary layer. */
   postalCode?: string | null;
   expanded?: boolean;
+  /**
+   * Expanded overlay, details-section map, or a full-screen sheet — enough
+   * room to plot the other market's on-market matches alongside the subject's.
+   */
+  roomy?: boolean;
   onToggleExpanded?: () => void;
   onExit?: () => void;
   /** Spotlight uses `/api/spotlight/comparables`; listing uses the default. */
   fetchUrl?: string | null;
+  rentalFetchUrl?: string | null;
   hrefFor?: (listing: DealBoardMapListing) => string;
   /** Privacy: omit the subject pin so the property is not triangulated. */
   hideSubject?: boolean;
+  /** Subject is a rental — default layer is For rent / Rented. */
+  isRental?: boolean;
 }) {
-  const [data, setData] = useState<ComparablesResponse | null>(null);
-  const [pool, setPool] = useState<Pool>("active");
+  const subjectKind: ComparablesKind = isRental ? "rental" : "sale";
+  const hasRoom = expanded || roomy;
+  const layers = useMemo(
+    () => compsMapLayers({ subjectKind, roomy: hasRoom }),
+    [subjectKind, hasRoom],
+  );
+  const [saleData, setSaleData] = useState<ComparablesResponse | null>(null);
+  const [rentalData, setRentalData] = useState<ComparablesResponse | null>(null);
+  const [layer, setLayer] = useState<CompsMapLayer>(() =>
+    defaultCompsMapLayer(subjectKind),
+  );
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const overlay = useLocationEstimateOverlay();
+  const session = useComparablesMapSession();
+  const urls = useMemo(
+    () =>
+      resolveCompsMapFetchUrls(mlsId, {
+        fetchUrl,
+        rentalFetchUrl,
+        subjectKind,
+      }),
+    [mlsId, fetchUrl, rentalFetchUrl, subjectKind],
+  );
+
+  const loadSale = subjectKind === "sale" || hasRoom;
+  const loadRental = subjectKind === "rental" || hasRoom;
 
   useEffect(() => {
+    setLayer((current) =>
+      layers.some((l) => l.id === current)
+        ? current
+        : defaultCompsMapLayer(subjectKind),
+    );
+  }, [layers, subjectKind]);
+
+  useEffect(() => {
+    if (!loadSale) return;
     let cancelled = false;
-    void loadTabJson<ComparablesResponse>(
-      fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
-    )
+    void loadTabJson<ComparablesResponse>(urls.sale)
       .then((d) => {
-        if (!cancelled) setData(d ?? {});
+        if (!cancelled) setSaleData(d ?? {});
       })
       .catch(() => {
-        if (!cancelled) setData({});
+        if (!cancelled) setSaleData({});
       });
     return () => {
       cancelled = true;
     };
-  }, [mlsId, fetchUrl]);
+  }, [urls.sale, loadSale]);
+
+  useEffect(() => {
+    if (!loadRental) return;
+    let cancelled = false;
+    void loadTabJson<ComparablesResponse>(urls.rental)
+      .then((d) => {
+        if (!cancelled) setRentalData(d ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setRentalData({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [urls.rental, loadRental]);
+
+  const saleActive = session?.sale?.active ?? saleData?.active ?? [];
+  const saleSold = session?.sale?.sold ?? saleData?.sold ?? [];
+  const rentalActive = session?.rental?.active ?? rentalData?.active ?? [];
+  const rentalSold = session?.rental?.sold ?? rentalData?.sold ?? [];
 
   const listings = useMemo(() => {
-    const comps = (pool === "sold" ? data?.sold : data?.active) ?? [];
-    const pins = comps
-      .map((c) => toPin(c, pool))
-      .filter((p): p is DealBoardMapListing => p !== null);
+    let pins: DealBoardMapListing[] = [];
+    if (layer === "active-sale") {
+      pins = pinsFor(saleActive, "active", false);
+    } else if (layer === "active-rental") {
+      pins = pinsFor(rentalActive, "active", true);
+    } else {
+      pins = pinsFor(
+        subjectKind === "rental" ? rentalSold : saleSold,
+        "sold",
+        subjectKind === "rental",
+      );
+    }
     const pinSubject = hideSubject ? null : subject;
     return pinSubject ? [pinSubject, ...pins] : pins;
-  }, [data, pool, subject, hideSubject]);
+  }, [
+    layer,
+    saleActive,
+    saleSold,
+    rentalActive,
+    rentalSold,
+    subject,
+    hideSubject,
+    subjectKind,
+  ]);
 
-  const counts = {
-    active: data?.active?.length ?? 0,
-    sold: data?.sold?.length ?? 0,
+  const counts: Record<CompsMapLayer, number> = {
+    "active-sale": saleActive.length,
+    "active-rental": rentalActive.length,
+    closed: (subjectKind === "rental" ? rentalSold : saleSold).length,
   };
 
   const zips = useMemo(() => {
@@ -135,19 +237,21 @@ export default function ShowcaseCompsMap({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-2 bg-[#0d1424]/95 px-3 py-2">
         <div className="flex items-center gap-1">
-          {(["active", "sold"] as const).map((p) => (
+          {layers.map((item) => (
             <button
-              key={p}
+              key={item.id}
               type="button"
-              onClick={() => setPool(p)}
-              aria-pressed={pool === p}
+              onClick={() => setLayer(item.id)}
+              aria-pressed={layer === item.id}
               className={`px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
-                pool === p ? "bg-white/15 text-white" : "text-white/50 hover:text-white"
+                layer === item.id
+                  ? "bg-white/15 text-white"
+                  : "text-white/50 hover:text-white"
               }`}
             >
-              {p === "active" ? "For sale" : "Closed"}
+              {item.label}
               <span className="ml-1.5 tabular-nums text-white/40">
-                {p === "active" ? counts.active : counts.sold}
+                {counts[item.id]}
               </span>
             </button>
           ))}
