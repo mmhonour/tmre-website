@@ -11,6 +11,7 @@ import {
   TMRE_TOWNS,
   type TmreTown,
   townForZip,
+  townHasMultipleZips,
   zipsForTown,
 } from "@/lib/tmre-towns";
 
@@ -252,9 +253,17 @@ interface Props {
   highlightTown?: TmreTown;
   /** All TMRE town zips highlighted (gold) with town labels. */
   highlightAllTowns?: boolean;
+  /**
+   * When omitted the popover centres in the viewport — used on the phone
+   * when the town-pill row has not mounted yet.
+   */
   /** Other zips to show in grey behind the highlight (zip mode only). */
   contextZips?: readonly string[];
-  anchorEl: HTMLElement | null;
+  /**
+   * Pill / row to sit under. When omitted the popover centres in the
+   * viewport — the phone path when the town-pill row has not mounted yet.
+   */
+  anchorEl?: HTMLElement | null;
   /**
    * Open under this element (the filter row) when the viewport allows, so the
    * map never covers the pill or link that opened it.
@@ -348,28 +357,51 @@ export default function ZipBoundaryPopover({
   const [hoverTown, setHoverTown] = useState<TmreTown | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  const [box, setBox] = useState({ w: W, h: H });
   useEffect(() => {
-    if (!anchorEl) {
-      setPos(null);
-      return;
-    }
+    const sync = () => {
+      const coarse = window.matchMedia("(hover: none)").matches;
+      const w = coarse ? Math.min(window.innerWidth - 24, 340) : W;
+      const h = coarse ? Math.min(Math.round(w * 0.72), 260) : H;
+      setBox({ w, h });
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
+
+  useEffect(() => {
     const update = () => {
-      const rect = anchorEl.getBoundingClientRect();
-      const popH = H + 48;
+      const popH = box.h + 48;
       const gap = 8;
-      // Preferred: clear of the pill row entirely, opening underneath the whole
-      // town/zip link list. Falls back to floating above the pill when the row
-      // sits too low for the map to fit below it.
+      const maxTop = Math.max(gap, window.innerHeight - popH - gap);
+      const left = Math.min(
+        Math.max(
+          gap,
+          anchorEl
+            ? anchorEl.getBoundingClientRect().left +
+                anchorEl.getBoundingClientRect().width / 2 -
+                box.w / 2
+            : (window.innerWidth - box.w) / 2,
+        ),
+        window.innerWidth - box.w - gap,
+      );
+      if (!anchorEl) {
+        setPos({
+          top: Math.min(Math.max(gap, (window.innerHeight - popH) / 2), maxTop),
+          left,
+          placeAbove: false,
+        });
+        return;
+      }
+      const rect = anchorEl.getBoundingClientRect();
       const belowTop = placeBelowEl
         ? placeBelowEl.getBoundingClientRect().bottom + gap
         : null;
-      const placeBelow =
-        belowTop != null && belowTop + popH + gap <= window.innerHeight;
-      const top = placeBelow ? belowTop! : Math.max(gap, rect.top - popH - gap);
-      const left = Math.min(
-        Math.max(gap, rect.left + rect.width / 2 - W / 2),
-        window.innerWidth - W - gap,
-      );
+      const placeBelow = belowTop != null && belowTop <= maxTop;
+      const top = placeBelow
+        ? belowTop!
+        : Math.min(Math.max(gap, rect.top - popH - gap), maxTop);
       setPos({ top, left, placeAbove: !placeBelow });
     };
     update();
@@ -379,7 +411,7 @@ export default function ZipBoundaryPopover({
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  }, [anchorEl, placeBelowEl]);
+  }, [anchorEl, placeBelowEl, box.h, box.w]);
 
   const onSettledRef = useRef(onSettled);
   useEffect(() => {
@@ -529,8 +561,12 @@ export default function ZipBoundaryPopover({
 
   const { layers, projection } =
     boundary.status === "ready"
-      ? projectMultipleZips(zipBoundaries, highlightZipSet, W, H)
+      ? projectMultipleZips(zipBoundaries, highlightZipSet, box.w, box.h)
       : { layers: [], projection: null };
+
+  const labelZipsOnMap =
+    Boolean(highlightTown && townHasMultipleZips(highlightTown)) ||
+    Boolean(highlightAllTowns);
 
   const neighborLabels =
     (highlightTown || highlightAllTowns) &&
@@ -550,13 +586,16 @@ export default function ZipBoundaryPopover({
       : [];
 
   const zipLabels =
-    !isSingleZipHover &&
-    !highlightTown &&
-    !highlightAllTowns &&
+    labelZipsOnMap &&
     boundary.status === "ready" &&
     projection
       ? zipBoundaries
-          .filter(({ zip }) => zip !== highlightZip)
+          .filter(({ zip }) => {
+            if (!highlightZipSet.has(zip)) return false;
+            if (highlightTown) return true;
+            const town = townForZip(zip);
+            return Boolean(town && townHasMultipleZips(town));
+          })
           .map(({ zip, rings }) => {
             const center = ringBBoxCenter(rings);
             if (!center) return null;
@@ -566,7 +605,28 @@ export default function ZipBoundaryPopover({
             return { zip, cx, cy };
           })
           .filter((entry): entry is { zip: string; cx: number; cy: number } => entry != null)
-      : [];
+      : !isSingleZipHover &&
+          !highlightTown &&
+          !highlightAllTowns &&
+          boundary.status === "ready" &&
+          projection
+        ? zipBoundaries
+            .filter(({ zip }) => zip !== highlightZip)
+            .map(({ zip, rings }) => {
+              const center = ringBBoxCenter(rings);
+              if (!center) return null;
+              const [lon, lat] = center;
+              const cx =
+                projection.offsetX + (lon - projection.minLon) * projection.scale;
+              const cy =
+                projection.offsetY + (projection.maxLat - lat) * projection.scale;
+              return { zip, cx, cy };
+            })
+            .filter(
+              (entry): entry is { zip: string; cx: number; cy: number } =>
+                entry != null,
+            )
+        : [];
 
   const contextLayers = layers.filter((l) => l.role === "context");
   const highlightLayers = layers.filter((l) => l.role === "highlight");
@@ -596,7 +656,7 @@ export default function ZipBoundaryPopover({
       style={{
         top: pos.top,
         left: pos.left,
-        width: W,
+        width: box.w,
         // Above sticky Latest/Intel filter chrome (z-10) and status pills.
         zIndex: 11000,
         transitionDuration: "220ms",
@@ -615,7 +675,7 @@ export default function ZipBoundaryPopover({
       } ${exiting ? "opacity-0" : "opacity-100"}`}
     >
       <div className="rounded-2xl bg-white border border-charcoal/10 shadow-2xl shadow-black/25 overflow-hidden">
-        <div className="relative bg-slate-50" style={{ height: H }}>
+        <div className="relative bg-slate-50" style={{ height: box.h }}>
           {badgeLabel ? (
             <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
               <span className="font-mono text-[10px] font-semibold tracking-[0.12em] uppercase text-navy/90 bg-white/90 backdrop-blur-sm rounded-md px-2 py-1 border border-charcoal/10 shadow-sm">
@@ -623,7 +683,10 @@ export default function ZipBoundaryPopover({
               </span>
             </div>
           ) : null}
-          {primaryZips.length > 0 && !isSingleZipHover && boundary.status === "ready" ? (
+          {primaryZips.length > 0 &&
+          !isSingleZipHover &&
+          !labelZipsOnMap &&
+          boundary.status === "ready" ? (
             <div className="absolute bottom-2 right-2.5 z-10 pointer-events-none text-right">
               <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-charcoal/10 bg-white/90 px-2 py-1.5 shadow-sm backdrop-blur-sm">
                 {primaryZips.map((zip) => (
@@ -651,15 +714,15 @@ export default function ZipBoundaryPopover({
           )}
           {boundary.status === "ready" && (
             <svg
-              viewBox={`0 0 ${W} ${H}`}
-              width={W}
-              height={H}
+              viewBox={`0 0 ${box.w} ${box.h}`}
+              width={box.w}
+              height={box.h}
               aria-hidden={interactive ? undefined : true}
             >
               <pattern id={patternId} width="14" height="14" patternUnits="userSpaceOnUse">
                 <circle cx="1" cy="1" r="0.6" fill="rgba(15,23,42,0.08)" />
               </pattern>
-              <rect width={W} height={H} fill={`url(#${patternId})`} />
+              <rect width={box.w} height={box.h} fill={`url(#${patternId})`} />
 
               {contextLayers.flatMap((layer) =>
                 layer.paths.map((d, i) => (
@@ -732,7 +795,7 @@ export default function ZipBoundaryPopover({
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontFamily="monospace"
-                  fontSize="6.5"
+                  fontSize={labelZipsOnMap ? "8" : "6.5"}
                   fontWeight="600"
                   fill="rgba(15,23,42,0.88)"
                   letterSpacing="0.3"
