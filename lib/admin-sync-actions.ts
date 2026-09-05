@@ -806,30 +806,27 @@ async function runAdminSyncActionImpl(
     }
     case 'edge-scores': {
       if (shouldQueueOnServerless(options)) {
-        const { queueNetlifyListingEdgeScoreSync } = await import(
-          '@/lib/netlify-sync-trigger'
-        )
+        const { queueNetlifyListingEdgeScoreSync, isNetlifyQueueRateLimited } =
+          await import('@/lib/netlify-sync-trigger')
         const { queued, via } = await queueSyncNowThroughQueue(
           'edge-scores',
           () => queueNetlifyListingEdgeScoreSync(startedAt, { source: 'admin' }),
         )
-        try {
-          const { recordSyncRun } = await import('@/lib/db/listings-repo')
-          await recordSyncRun({
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            town: '(all)',
-            statusBucket: queued.ok ? 'Queued/edge' : 'Failed/edge',
-            listingsCount: 0,
-            ok: queued.ok,
-            error: queued.ok
-              ? `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`
-              : `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
-          })
-        } catch {
-          /* audit best-effort */
-        }
         if (queued.ok) {
+          try {
+            const { recordSyncRun } = await import('@/lib/db/listings-repo')
+            await recordSyncRun({
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              town: '(all)',
+              statusBucket: 'Queued/edge',
+              listingsCount: 0,
+              ok: true,
+              error: `queued background worker (${via}) — ${queued.base ?? 'site'} HTTP ${queued.status ?? '—'}`,
+            })
+          } catch {
+            /* audit best-effort */
+          }
           return {
             ok: true,
             action,
@@ -838,17 +835,62 @@ async function runAdminSyncActionImpl(
             durationMs: Date.now() - t0,
             backgroundQueued: true,
             message:
-              'Edge scores queued (background worker) — End updates when rebuild finishes',
+              via === 'sync-queue'
+                ? 'Edge scores queued on the sync runner — End updates when the rebuild finishes'
+                : 'Edge scores queued (background worker) — End updates when rebuild finishes',
             detail: queued.base
               ? `Queued via ${queued.base} (HTTP ${queued.status ?? '—'}).`
               : 'Queued on background worker.',
           }
         }
+        const finishedAt = new Date().toISOString()
+        if (isNetlifyQueueRateLimited(queued)) {
+          try {
+            const { recordSyncRun } = await import('@/lib/db/listings-repo')
+            await recordSyncRun({
+              startedAt,
+              finishedAt,
+              town: '(all)',
+              statusBucket: 'Failed/edge',
+              listingsCount: 0,
+              ok: false,
+              error:
+                'skipped — Netlify rate limited (HTTP 429); not retrying this window',
+            })
+          } catch {
+            /* audit best-effort */
+          }
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt,
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message:
+              'skipped — Netlify rate limited (HTTP 429); not retrying this window',
+            detail: queued.error ?? 'HTTP 429',
+          }
+        }
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt,
+            town: '(all)',
+            statusBucket: 'Failed/edge',
+            listingsCount: 0,
+            ok: false,
+            error: `queue failed (${via}) — ${queued.error ?? 'Could not reach background worker'}`,
+          })
+        } catch {
+          /* audit best-effort */
+        }
         return {
           ok: false,
           action,
           startedAt,
-          finishedAt: new Date().toISOString(),
+          finishedAt,
           durationMs: Date.now() - t0,
           message: 'Edge scores queue failed',
           detail: queued.error ?? 'Could not reach background worker',

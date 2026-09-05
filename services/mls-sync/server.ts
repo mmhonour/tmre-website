@@ -84,6 +84,12 @@ const SWEEPS: {
     label: 'goldilocks',
   },
   {
+    jobId: 'edge-scores',
+    everyMs: 5 * 60_000,
+    bootDelayMs: 3 * 60_000 + 30_000,
+    label: 'edge scores',
+  },
+  {
     jobId: 'deal-of-the-day',
     everyMs: 10 * 60_000,
     bootDelayMs: 4 * 60_000,
@@ -357,6 +363,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/run': 'incremental',
   '/stats': 'stats-cache',
   '/scores': 'listing-scores',
+  '/edge-scores': 'edge-scores',
   '/deal-of-the-day': 'deal-of-the-day',
   '/property-addresses': 'property-addresses',
   '/vision-addresses': 'vision-addresses',

@@ -187,6 +187,7 @@ export async function dispatchEventBridgeScheduledJob(
       }
       break
     case 'edge-scores':
+      // Queue-runner job — should have returned above. Worker is rescue-only.
       queue = await queueNetlifyListingEdgeScoreSync(startedAt, {
         source: 'eventbridge',
       })

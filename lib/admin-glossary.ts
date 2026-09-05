@@ -975,7 +975,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Edge scores',
     category: 'sync-admin',
     definition:
-      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Budget (job id `edge-scores`), own End stamp `last_listing_edge_scores`, and Netlify thin cron `sync-listing-edge-scores` → `sync-listing-edge-scores-worker`. Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score.',
+      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Budget (job id `edge-scores`), own End stamp `last_listing_edge_scores`. A due slot is enqueued on `sync_queue`; the Railway runner claims it. The Netlify thin cron `sync-listing-edge-scores` stands down after enqueue; `sync-listing-edge-scores-worker` is stranded-row rescue only (the function→function hop is HTTP 429). Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score, Railway mls-sync.',
   },
   {
     term: 'Superlatives',
