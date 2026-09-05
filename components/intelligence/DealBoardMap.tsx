@@ -50,6 +50,11 @@ const FALLBACK_ZOOM = 11;
  */
 const FIT_PAD_BOUNDARY = 1;
 const FIT_PAD_PINS = 36;
+/**
+ * Street-level box around a pin. `fitBounds` needs a span; pinCount=1 then
+ * caps zoom at 15 so a house is readable without going to MAX_ZOOM.
+ */
+const STREET_FIT_PAD_DEG = 0.0015;
 
 type FitInset = {
   top: number;
@@ -189,6 +194,15 @@ function boundsFromPins(
     if (pin.longitude > maxLon) maxLon = pin.longitude;
   }
   return { minLat, maxLat, minLon, maxLon };
+}
+
+function streetBoundsForPin(lat: number, lon: number): GeoBounds {
+  return {
+    minLat: lat - STREET_FIT_PAD_DEG,
+    maxLat: lat + STREET_FIT_PAD_DEG,
+    minLon: lon - STREET_FIT_PAD_DEG,
+    maxLon: lon + STREET_FIT_PAD_DEG,
+  };
 }
 
 function clampCenter(center: LonLat, bounds: GeoBounds | null): LonLat {
@@ -520,7 +534,11 @@ export default function DealBoardMap({
   /** Area the last auto-fit was for, so paging within it keeps the viewport. */
   const fitAreaRef = useRef<string | null>(null);
   /** Touch: first tap opens the preview card, the card itself opens the listing. */
-  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(hover: none)").matches,
+  );
 
   /** Rings stay grouped by zip so one zip can be restyled on its own. */
   const [zipRings, setZipRings] = useState<ZipRings[]>([]);
@@ -611,6 +629,15 @@ export default function DealBoardMap({
   }, [boundZips, rings, zipRings]);
   const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
   const fitTarget = searchBounds ?? pinBounds;
+  const subjectListing = useMemo(
+    () =>
+      subjectKey
+        ? (placeable.find((listing) => listing.key === subjectKey) ?? null)
+        : null,
+    [placeable, subjectKey],
+  );
+  /** Listing page on a phone: start on the house, not the town AABB. */
+  const fitStreetOnPhone = coarsePointer && subjectListing != null;
 
   // Gesture handlers run off refs so they never rebind mid-pinch.
   const centerRef = useRef(center);
@@ -646,7 +673,7 @@ export default function DealBoardMap({
     return () => observer.disconnect();
   }, []);
 
-  const fit = useCallback(() => {
+  const fitOverview = useCallback(() => {
     if (size.width <= 0 || size.height <= 0) return;
     const next = fitBounds(
       fitTarget,
@@ -662,11 +689,39 @@ export default function DealBoardMap({
     setZoom(next.zoom);
   }, [fitInset, fitTarget, placeable.length, searchBounds, size.height, size.width]);
 
-  /** Back to the default overview for the selected town(s), pin cleared. */
+  const fitToStreet = useCallback(
+    (listing: DealBoardMapListing & { latitude: number; longitude: number }) => {
+      if (size.width <= 0 || size.height <= 0) return;
+      const next = fitBounds(
+        streetBoundsForPin(listing.latitude, listing.longitude),
+        size.width,
+        size.height,
+        1,
+        FIT_PAD_PINS,
+        ZERO_FIT_INSET,
+      );
+      setCenter(next.center);
+      setZoom(next.zoom);
+    },
+    [size.height, size.width],
+  );
+
+  /** Phone listing maps open on the house. Intelligence (no subject) stays town-wide. */
+  const fit = useCallback(() => {
+    if (fitStreetOnPhone && subjectListing) {
+      userMovedRef.current = false;
+      setViewAdjusted(false);
+      fitToStreet(subjectListing);
+      return;
+    }
+    fitOverview();
+  }, [fitOverview, fitStreetOnPhone, fitToStreet, subjectListing]);
+
+  /** Town / zip overview, even on a listing page that opened at street level. */
   const resetView = useCallback(() => {
-    fit();
+    fitOverview();
     onSelectRef.current?.(null);
-  }, [fit]);
+  }, [fitOverview]);
 
   const areaSignature = `${boundKey}:${rings.length}`;
 
@@ -681,7 +736,9 @@ export default function DealBoardMap({
       placeable[0]?.key ?? ""
     }:${placeable[placeable.length - 1]?.key ?? ""}:${Math.round(
       size.width,
-    )}x${Math.round(size.height)}:${Math.round(fitInset.top ?? 0)}/${Math.round(fitInset.bottom ?? 0)}`;
+    )}x${Math.round(size.height)}:${Math.round(fitInset.top ?? 0)}/${Math.round(
+      fitInset.bottom ?? 0,
+    )}:${subjectKey ?? ""}:${coarsePointer ? "c" : "f"}`;
     if (fitSignatureRef.current === signature) return;
     const areaChanged = fitAreaRef.current !== areaSignature;
     fitSignatureRef.current = signature;
@@ -1129,6 +1186,16 @@ export default function DealBoardMap({
     if (lastCenteredKeyRef.current === activeKey) return;
     const listing = placeable.find((l) => l.key === activeKey);
     if (!listing) return;
+    lastCenteredKeyRef.current = activeKey;
+
+    // Phone: a pin is "on screen" at town zoom as a speck. Always go street-level.
+    if (coarsePointer) {
+      userMovedRef.current = true;
+      setViewAdjusted(true);
+      fitToStreet(listing);
+      return;
+    }
+
     const cx = lonToWorldX(center.lon, zoom);
     const cy = latToWorldY(center.lat, zoom);
     const left = lonToWorldX(listing.longitude, zoom) - (cx - size.width / 2);
@@ -1139,7 +1206,6 @@ export default function DealBoardMap({
       left <= size.width - pad &&
       top >= pad &&
       top <= size.height - pad;
-    lastCenteredKeyRef.current = activeKey;
     if (onScreen) return;
     setCenter(
       clampCenter(
@@ -1151,6 +1217,8 @@ export default function DealBoardMap({
     activeKey,
     center.lat,
     center.lon,
+    coarsePointer,
+    fitToStreet,
     placeable,
     searchBounds,
     size.height,
