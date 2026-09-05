@@ -9,7 +9,7 @@ type TaxYearEntry = {
   taxYearEnd: number;
   taxYearLabel: string;
   amount: number | null;
-  yoyChange?: number | null;
+  yoyChangePct?: number | null;
 };
 
 type PropertyTaxResponse = {
@@ -117,18 +117,18 @@ export default function PropertyTaxHistoryModal({
                         <span>
                           {row.amount != null ? fmtMoney(row.amount) : "—"}
                         </span>
-                        {row.yoyChange != null ? (
+                        {row.yoyChangePct != null ? (
                           <span
                             className={
-                              row.yoyChange > 0
+                              row.yoyChangePct > 0
                                 ? "text-coral"
-                                : row.yoyChange < 0
+                                : row.yoyChangePct < 0
                                   ? "text-sage"
                                   : "text-slate/70"
                             }
                             title="Year-over-year change"
                           >
-                            {formatTaxYoyChange(row.yoyChange)}
+                            {formatTaxYoyChange(row.yoyChangePct)}
                           </span>
                         ) : null}
                       </span>

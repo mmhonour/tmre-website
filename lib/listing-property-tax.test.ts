@@ -3,35 +3,36 @@ import { describe, it } from 'node:test'
 import {
   buildPropertyTaxHistorySlots,
   formatTaxYoyChange,
-  taxYoyChange,
+  taxYoyChangePct,
 } from './listing-property-tax'
 
-describe('taxYoyChange', () => {
-  it('subtracts the prior year and rounds to the cent', () => {
-    assert.equal(taxYoyChange(6171, 6092.46), 78.54)
-    assert.equal(taxYoyChange(5912.5, 6004.12), -91.62)
-    assert.equal(taxYoyChange(100, 100), 0)
+describe('taxYoyChangePct', () => {
+  it('is (this − prior) / prior as a one-decimal percent', () => {
+    assert.equal(taxYoyChangePct(6171, 6092.46), 1.3)
+    assert.equal(taxYoyChangePct(6092.46, 6004.12), 1.5)
+    assert.equal(taxYoyChangePct(5912.5, 6004.12), -1.5)
+    assert.equal(taxYoyChangePct(100, 100), 0)
   })
 
-  it('is null when either amount is missing', () => {
-    assert.equal(taxYoyChange(6171, null), null)
-    assert.equal(taxYoyChange(null, 6092), null)
-    assert.equal(taxYoyChange(6171, undefined), null)
+  it('is null when either amount is missing or the prior year is zero', () => {
+    assert.equal(taxYoyChangePct(6171, null), null)
+    assert.equal(taxYoyChangePct(null, 6092), null)
+    assert.equal(taxYoyChangePct(6171, undefined), null)
+    assert.equal(taxYoyChangePct(6171, 0), null)
   })
 })
 
 describe('formatTaxYoyChange', () => {
-  it('signs increases and decreases', () => {
-    assert.equal(formatTaxYoyChange(78.54), '+$78.54')
-    assert.equal(formatTaxYoyChange(-91.62), '−$91.62')
-    assert.equal(formatTaxYoyChange(88), '+$88')
-    assert.equal(formatTaxYoyChange(0), '$0')
+  it('signs percent increases and decreases', () => {
+    assert.equal(formatTaxYoyChange(1.3), '+1.3%')
+    assert.equal(formatTaxYoyChange(-1.5), '−1.5%')
+    assert.equal(formatTaxYoyChange(0), '0%')
     assert.equal(formatTaxYoyChange(null), null)
   })
 })
 
 describe('buildPropertyTaxHistorySlots', () => {
-  it('attaches YoY from the prior fiscal year, including one year past the window', () => {
+  it('attaches YoY percent from the prior fiscal year', () => {
     const slots = buildPropertyTaxHistorySlots(
       2026,
       [
@@ -45,13 +46,12 @@ describe('buildPropertyTaxHistorySlots', () => {
       5,
     )
 
-    assert.equal(slots[0]?.yoyChange, 78.54)
-    assert.equal(slots[1]?.yoyChange, 88.34)
-    assert.equal(slots[2]?.yoyChange, 91.62)
-    assert.equal(slots[3]?.yoyChange, 112.5)
-    // Oldest displayed year still gets YoY from a prior year outside the 5 slots.
+    assert.equal(slots[0]?.yoyChangePct, 1.3)
+    assert.equal(slots[1]?.yoyChangePct, 1.5)
+    assert.equal(slots[2]?.yoyChangePct, 1.5)
+    assert.equal(slots[3]?.yoyChangePct, 1.9)
     assert.equal(slots[4]?.amount, 5800)
-    assert.equal(slots[4]?.yoyChange, 100)
+    assert.equal(slots[4]?.yoyChangePct, 1.8)
   })
 
   it('leaves YoY blank when the prior year has no amount', () => {
@@ -60,8 +60,8 @@ describe('buildPropertyTaxHistorySlots', () => {
       [{ taxYearEnd: 2026, taxYearLabel: 'July 2025-June 2026', amount: 6171 }],
       5,
     )
-    assert.equal(slots[0]?.yoyChange, null)
+    assert.equal(slots[0]?.yoyChangePct, null)
     assert.equal(slots[1]?.amount, null)
-    assert.equal(slots[1]?.yoyChange, null)
+    assert.equal(slots[1]?.yoyChangePct, null)
   })
 })

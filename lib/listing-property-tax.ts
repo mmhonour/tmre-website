@@ -139,14 +139,14 @@ export type PropertyTaxYearEntry = {
   taxYearLabel: string;
   amount: number | null;
   /**
-   * This fiscal year's tax minus the prior year's, rounded to the cent.
-   * Null when either year has no amount — the oldest slot usually has none.
+   * Percent change vs the prior fiscal year: `(this − prior) / prior * 100`,
+   * rounded to one decimal. Null when either year has no amount.
    */
-  yoyChange: number | null;
+  yoyChangePct: number | null;
 };
 
-/** Signed dollar change between two consecutive fiscal-year tax amounts. */
-export function taxYoyChange(
+/** Signed percent change between two consecutive fiscal-year tax amounts. */
+export function taxYoyChangePct(
   amount: number | null,
   priorAmount: number | null | undefined,
 ): number | null {
@@ -154,26 +154,20 @@ export function taxYoyChange(
     amount == null ||
     priorAmount == null ||
     !Number.isFinite(amount) ||
-    !Number.isFinite(priorAmount)
+    !Number.isFinite(priorAmount) ||
+    priorAmount === 0
   ) {
     return null;
   }
-  return Math.round((amount - priorAmount) * 100) / 100;
+  return Math.round(((amount - priorAmount) / priorAmount) * 1000) / 10;
 }
 
-/** `+$79` / `−$88.34` / `$0` — null when there is no prior year to compare. */
-export function formatTaxYoyChange(delta: number | null): string | null {
-  if (delta == null || !Number.isFinite(delta)) return null;
-  if (delta === 0) return "$0";
-  const sign = delta > 0 ? "+" : "−";
-  const abs = Math.abs(delta);
-  const body = Number.isInteger(abs)
-    ? abs.toLocaleString("en-US")
-    : abs.toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-  return `${sign}$${body}`;
+/** `+1.3%` / `−1.5%` / `0%` — null when there is no prior year to compare. */
+export function formatTaxYoyChange(pct: number | null): string | null {
+  if (pct == null || !Number.isFinite(pct)) return null;
+  if (pct === 0) return "0%";
+  const sign = pct > 0 ? "+" : "−";
+  return `${sign}${Math.abs(pct).toFixed(1)}%`;
 }
 
 /** Connecticut fiscal year ending year (July–June). */
@@ -199,7 +193,7 @@ export function buildPropertyTaxHistorySlots(
       taxYearEnd,
       taxYearLabel: hit?.taxYearLabel ?? formatTaxYearLabel(taxYearEnd),
       amount,
-      yoyChange: taxYoyChange(amount, byYear.get(taxYearEnd - 1)?.amount),
+      yoyChangePct: taxYoyChangePct(amount, byYear.get(taxYearEnd - 1)?.amount),
     };
   });
 }
