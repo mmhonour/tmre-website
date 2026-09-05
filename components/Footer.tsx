@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import FooterMarketsColumn from "@/components/FooterMarketsColumn";
-import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { coverageTownsLabel, FALLBACK_COVERAGE_TOWNS } from "@/lib/active-coverage-towns";
 import { getLastFullSync } from "@/lib/listings-store";
 import { AGENT_MLS_ID, AGENT_NAME } from "@/lib/business-info";
 import { getBrokerageNameFresh } from "@/lib/brokerage-config";
@@ -64,11 +64,15 @@ function EqualHousingMark({ className }: { className?: string }) {
 
 export default async function Footer({
   brokerageName,
+  townsLabel,
 }: {
   brokerageName?: string;
+  townsLabel?: string;
 } = {}) {
   const lastBuilt = formatLastBuilt(getLastFullSync());
   const brokerage = brokerageName?.trim() || (await getBrokerageNameFresh());
+  const coverageLabel =
+    townsLabel?.trim() || coverageTownsLabel(FALLBACK_COVERAGE_TOWNS);
   return (
     <footer className="navy-gradient text-white mt-auto">
       <div className="mx-auto max-w-7xl px-6 lg:px-10 py-20">
@@ -95,7 +99,7 @@ export default async function Footer({
               </Link>
             </div>
             <p className="text-white/70 text-sm leading-relaxed max-w-sm">
-              Market intelligence for {TMRE_CORE_TOWNS_LABEL}, CT.
+              Market intelligence for {coverageLabel}, CT.
               Confidence through clarity — where smart real estate decisions
               begin.
             </p>
@@ -130,7 +134,7 @@ export default async function Footer({
 
         <div className="mt-16 pt-8 border-t border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <p className="text-xs text-white/50 font-mono tracking-wide">
-            © {new Date().getFullYear()} TMRE · {TMRE_CORE_TOWNS_LABEL}, CT
+            © {new Date().getFullYear()} TMRE · {coverageLabel}, CT
           </p>
           <nav className="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="Legal">
             {[

@@ -4,15 +4,17 @@ import HomeMethodOverview from "@/components/HomeMethodOverview";
 import HomeScrollReset from "@/components/HomeScrollReset";
 import LeadForm from "@/components/LeadForm";
 import { loadHomeMarketPulseTowns } from "@/lib/home-market-pulse";
-import { TMRE_PROPERTIES_TOWNS_LABEL, TMRE_TOWNS } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsFresh, getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 import Image from "next/image";
 import { Suspense } from "react";
 
-const tools = [
+function toolCards(towns: readonly string[]) {
+  const townsLabel = towns.join(", ");
+  return [
   {
     name: "Market Pulse",
     tagline: "Daily city signal",
-    body: `Real-time read on inventory, velocity, and pricing pressure across ${TMRE_TOWNS.join(", ")} — refreshed with the stats cache.`,
+    body: `Real-time read on inventory, velocity, and pricing pressure across ${townsLabel} — refreshed with the stats cache.`,
     icon: "◐",
   },
   {
@@ -33,7 +35,8 @@ const tools = [
     body: "Tell us your buy box. We watch listings, off-market, and pre-foreclosure feeds and ping you within minutes of a match.",
     icon: "◈",
   },
-];
+  ];
+}
 
 const audiences = [
   {
@@ -59,7 +62,11 @@ const audiences = [
 ];
 
 export default async function Home() {
-  const pulseTowns = await loadHomeMarketPulseTowns();
+  const [pulseTowns, coverageTowns, townsLabel] = await Promise.all([
+    loadHomeMarketPulseTowns(),
+    getActiveCoverageTownsFresh(),
+    getActiveCoverageTownsLabel(),
+  ]);
 
   return (
     <>
@@ -69,14 +76,14 @@ export default async function Home() {
         <DealOfTheWeekHero afterOverview />
       </Suspense>
       <HomeMarketPulse towns={pulseTowns} />
-      <ToolsSection />
+      <ToolsSection towns={coverageTowns} />
       <AudiencesSection />
-      <EmailCtaSection />
+      <EmailCtaSection townsLabel={townsLabel} />
     </>
   );
 }
 
-function ToolsSection() {
+function ToolsSection({ towns }: { towns: readonly string[] }) {
   return (
     <section className="bg-cream py-14 lg:py-28">
       <div className="mx-auto max-w-7xl px-6 lg:px-10">
@@ -88,7 +95,7 @@ function ToolsSection() {
             <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-navy leading-[1.1]">
               Four lenses on the same{" "}
               <span className="italic">
-                {TMRE_TOWNS.length} markets.
+                {towns.length} markets.
               </span>
             </h2>
             <p className="mt-4 text-slate text-base lg:text-lg leading-relaxed">
@@ -109,7 +116,7 @@ function ToolsSection() {
           </figure>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-          {tools.map((tool) => (
+          {toolCards(towns).map((tool) => (
             <article
               key={tool.name}
               className="group relative rounded-2xl bg-white border border-charcoal/[0.06] p-5 lg:p-7 transition-all hover:border-gold/40 hover:shadow-xl hover:shadow-navy/5 hover:-translate-y-1"
@@ -174,7 +181,7 @@ function AudiencesSection() {
   );
 }
 
-function EmailCtaSection() {
+function EmailCtaSection({ townsLabel }: { townsLabel: string }) {
   return (
     <section className="relative py-14 lg:py-28 overflow-hidden navy-gradient">
       <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
@@ -187,7 +194,7 @@ function EmailCtaSection() {
           <span className="italic gold-shimmer">begin Monday.</span>
         </h2>
         <p className="mt-6 text-white/70 text-lg leading-relaxed">
-          One email a week. {TMRE_PROPERTIES_TOWNS_LABEL} intel, scored deals, and the
+          One email a week. {townsLabel} intel, scored deals, and the
           one chart that mattered. Free.
         </p>
         <div className="mt-10">

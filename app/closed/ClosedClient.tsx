@@ -29,7 +29,8 @@ import {
 import { latestRowActivityMs } from "@/lib/latest-activity";
 import { groupRowsByDay } from "@/lib/latest-day-groups";
 import { prefetchMlsPhotoThumbsOrdered } from "@/lib/prefetch-listing-images";
-import { TMRE_TOWNS_LABEL, isTmreTown, normalizeZip } from "@/lib/tmre-towns";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
+import { isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
 type ClosedApiResponse = {
   listings: LatestListingRow[];
@@ -100,6 +101,7 @@ export default function ClosedClient({
   initialFrom: string;
   initialTo: string;
 }) {
+  const { townsLabel } = useCoverageTowns();
   const days = useMemo(() => closedHorizonDays(), []);
   const defaults = useMemo(() => defaultClosedRange(), []);
   const [startIndex, setStartIndex] = useState(() =>
@@ -360,7 +362,7 @@ export default function ClosedClient({
             Closed <span className="italic gold-shimmer">sales.</span>
           </h1>
           <p className="mt-2 text-sm leading-snug text-white/70">
-            {TMRE_TOWNS_LABEL}
+            {townsLabel}
             {" · "}
             {formatClosedDayLabel(fromDay)} → {formatClosedDayLabel(toDay)}
           </p>
@@ -382,7 +384,7 @@ export default function ClosedClient({
             Closed <span className="italic gold-shimmer">sales.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/70 animate-fade-up-delay-1">
-            Closed listings across {TMRE_TOWNS_LABEL}. Drag both ends of the
+            Closed listings across {townsLabel}. Drag both ends of the
             lookback to set the start and end of the window. Town stats are
             precomputed daily totals — the slider only range-sums them.
           </p>

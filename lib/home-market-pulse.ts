@@ -10,6 +10,7 @@ import {
   type MarketStatsPayload,
   type SalesByMonthPayload,
 } from '@/lib/stats-compute'
+import { getActiveKnownCoverageTowns } from '@/lib/ct-coverage'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 export type { HomeMarketPulseTown } from '@/lib/home-market-pulse-types'
@@ -215,7 +216,9 @@ async function enrichTown(town: TmreTown): Promise<HomeMarketPulseTown> {
   return base
 }
 
-/** All searchable TMRE towns for the home Market Pulse grid. */
+/** Active CT coverage towns (known zip/MLS set) for the home Market Pulse grid. */
 export async function loadHomeMarketPulseTowns(): Promise<HomeMarketPulseTown[]> {
-  return Promise.all(TMRE_TOWNS.map((town) => enrichTown(town)))
+  const towns = await getActiveKnownCoverageTowns()
+  const list = towns.length > 0 ? towns : [...TMRE_TOWNS]
+  return Promise.all(list.map((town) => enrichTown(town)))
 }

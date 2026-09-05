@@ -178,8 +178,8 @@ export default function AdminCtCoveragePanel() {
           All Connecticut counties and municipalities. Checking Activate opens
           the{" "}
           <span className="text-navy/80">canonical town-activation playbook</span>{" "}
-          first — Phase 0 only flips the Postgres flag today (not wired into
-          public pages or RETS yet). The large map is the same street tiles as
+          first — Phase 0 flips the Postgres flag and the public town list
+          (copy, pills, Market Pulse). RETS incremental is still later. The large map is the same street tiles as
           Intelligence and showcase (OSM via{" "}
           <span className="font-mono text-[11px]">/api/map/tile</span>) with the
           same TIGER ZCTA rings on top. County thumbnails are TIGER county
