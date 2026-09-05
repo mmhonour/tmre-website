@@ -4,10 +4,8 @@ import type { ReactNode } from "react";
 import ListingDeckCardHeader from "@/components/listing/ListingDeckCardHeader";
 
 /**
- * Desktop right-column Map card.
- *
- * Less: fills leftover height under Remarks / Details / History labels.
- * More: covers those labels so the map can use the full dashboard column.
+ * Desktop right-column Map card. Minimized is header-only. Selected, it
+ * overlays the other deck cards so only the map body is visible.
  */
 export default function ListingMapSidePanel({
   frameClass,
@@ -36,9 +34,14 @@ export default function ListingMapSidePanel({
       />
       <div
         id="listing-deck-body-map"
-        className="mt-2 flex min-h-0 flex-1 flex-col"
+        className={
+          covering
+            ? "mt-2 flex min-h-0 flex-1 flex-col"
+            : "hidden"
+        }
+        aria-hidden={!covering}
       >
-        <div className="h-full min-h-[12rem] flex-1">{children}</div>
+        <div className="h-full min-h-0 flex-1">{children}</div>
       </div>
     </div>
   );

@@ -195,10 +195,9 @@ export default function ShowcaseDetailsPanel({
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const [activeDeckCard, setActiveDeckCard] =
     useState<ListingDesktopDeckCardId | null>("remarks");
-  /** Deck card that was open before Map — restored when the page-width map is shown. */
+  /** Card that was open before Map — restored when Map is Less. */
   const priorDeckCardRef = useRef<ListingDesktopDeckCardId | null>("remarks");
-  /** More: Map covers the other deck labels. Less: leftover height under them. */
-  const [mapCovering, setMapCovering] = useState(false);
+  const mapOpen = activeDeckCard === "map";
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -276,20 +275,24 @@ export default function ShowcaseDetailsPanel({
     return cur;
   };
 
-  const restoreDeckAfterMap = () => {
-    setMapCovering(false);
+  const openMapDeck = () => {
+    setActiveTab("map");
     setActiveDeckCard((cur) => {
       rememberDeckBeforeMap(cur);
-      if (cur !== "map") return cur;
-      return priorDeckCardRef.current;
+      return "map";
     });
   };
 
-  /** Map tab / Map section: full-width panel map, then put the deck back. */
-  const goToPageMap = () => {
-    setActiveTab("map");
-    restoreDeckAfterMap();
-    scrollToShowcaseSection("map");
+  const closeMapDeck = (
+    restore: ListingDesktopDeckCardId | null = priorDeckCardRef.current,
+  ) => {
+    setActiveDeckCard(restore ?? "remarks");
+  };
+
+  /** Bottom page map is on screen — Overview (remarks) is the default card. */
+  const restoreOverviewDeck = () => {
+    setActiveTab("overview");
+    setActiveDeckCard("remarks");
   };
 
   /**
@@ -308,9 +311,9 @@ export default function ShowcaseDetailsPanel({
       // the property facts alongside the copy instead of duplicating it.
       // Desktop only: mobile has no deck and no room for a second column.
       setShowOverviewSection(tab === "overview");
-      if (tab === "overview") setActiveDeckCard("details");
+      if (tab === "overview") setActiveDeckCard("remarks");
       if (tab === "map") {
-        goToPageMap();
+        openMapDeck();
         return;
       }
       if (tab === "history") {
@@ -351,7 +354,7 @@ export default function ShowcaseDetailsPanel({
   }, []);
 
   // Full-width Map at the bottom of the panel is the destination. Once it is
-  // on screen, put the dashboard back to the card that was open before Map.
+  // on screen, Overview (remarks) re-expands and the deck Map overlay closes.
   useEffect(() => {
     if (!isDesktop) return;
     const el = document.getElementById(SHOWCASE_SECTION_IDS.map);
@@ -359,7 +362,7 @@ export default function ShowcaseDetailsPanel({
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry?.isIntersecting) return;
-        restoreDeckAfterMap();
+        restoreOverviewDeck();
       },
       { threshold: 0.3 },
     );
@@ -422,6 +425,9 @@ export default function ShowcaseDetailsPanel({
       onActiveCardChange={(id) => {
         setActiveDeckCard((cur) => {
           if (id === "map") rememberDeckBeforeMap(cur);
+          if (id !== "map" && cur === "map" && id == null) {
+            return priorDeckCardRef.current ?? "remarks";
+          }
           return id;
         });
       }}
@@ -524,8 +530,15 @@ export default function ShowcaseDetailsPanel({
                 embedded
                 compact
                 onTabSelect={handleTabSelect}
-                mapVisible={activeTab === "map"}
-                onMapToggle={goToPageMap}
+                mapVisible={mapOpen}
+                onMapToggle={
+                  isDesktop
+                    ? () => (mapOpen ? closeMapDeck() : openMapDeck())
+                    : () => {
+                        setActiveTab("map");
+                        scrollToShowcaseSection("map");
+                      }
+                }
                 showAdminTab={siteUnlocked}
               adminVisible={activeDeckCard === "admin"}
               onAdminToggle={
@@ -764,29 +777,26 @@ export default function ShowcaseDetailsPanel({
                       "history",
                     )}
                   </div>
-                  <div className="-mt-2 flex min-h-0 flex-1 flex-col">
-                    {mapCovering ? (
-                      <div className="min-h-[12rem] flex-1" aria-hidden />
-                    ) : null}
-                    <div
-                      className={
-                        mapCovering
-                          ? "absolute inset-0 z-40 flex min-h-0 flex-col"
-                          : "flex h-full min-h-0 flex-1 flex-col"
-                      }
-                    >
-                      {deckCard(
-                        <ListingMapSidePanel
-                          frameClass={listingPanelCompactClass}
-                          covering={mapCovering}
-                          onToggleCover={() => setMapCovering((on) => !on)}
-                        >
-                          {listingMap("h-full min-h-0 w-full")}
-                        </ListingMapSidePanel>,
-                        "map",
-                        true,
-                      )}
-                    </div>
+                  <div
+                    className={
+                      mapOpen
+                        ? "absolute inset-0 z-40 flex min-h-0 flex-col"
+                        : "-mt-2 shrink-0"
+                    }
+                  >
+                    {deckCard(
+                      <ListingMapSidePanel
+                        frameClass={`${listingPanelCompactClass} h-full`}
+                        covering={mapOpen}
+                        onToggleCover={() =>
+                          mapOpen ? closeMapDeck() : openMapDeck()
+                        }
+                      >
+                        {listingMap("h-full min-h-0 w-full")}
+                      </ListingMapSidePanel>,
+                      "map",
+                      mapOpen,
+                    )}
                   </div>
                   {siteUnlocked ? (
                     <div className="-mt-2">
