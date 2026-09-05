@@ -13,22 +13,27 @@ export default function ListingDeckCardHeader({
   cardId,
   title,
   titleClassName = "font-mono text-[9px] tracking-[0.18em] uppercase text-gold",
+  expanded: expandedProp,
+  onToggle,
 }: {
   cardId: ListingDesktopDeckCardId;
   title: string;
   titleClassName?: string;
+  /** Override deck expand state (Map covering is independent of the active card). */
+  expanded?: boolean;
+  onToggle?: () => void;
 }) {
   const deck = useListingDesktopDeck();
-  if (!deck) {
+  if (!deck && !onToggle) {
     return <p className={titleClassName}>{title}</p>;
   }
 
-  const expanded = deck.isExpanded(cardId);
+  const expanded = expandedProp ?? deck?.isExpanded(cardId) ?? false;
 
   return (
     <button
       type="button"
-      onClick={() => deck.toggleCard(cardId)}
+      onClick={() => (onToggle ? onToggle() : deck?.toggleCard(cardId))}
       className="mb-0 flex w-full items-center justify-between gap-2 text-left transition-colors hover:opacity-95"
       aria-expanded={expanded}
       aria-controls={`listing-deck-body-${cardId}`}

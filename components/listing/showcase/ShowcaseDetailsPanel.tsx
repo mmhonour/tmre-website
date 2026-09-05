@@ -197,6 +197,8 @@ export default function ShowcaseDetailsPanel({
     useState<ListingDesktopDeckCardId | null>("remarks");
   /** Deck card that was open before Map — restored when the page-width map is shown. */
   const priorDeckCardRef = useRef<ListingDesktopDeckCardId | null>("remarks");
+  /** More: Map covers the other deck labels. Less: leftover height under them. */
+  const [mapCovering, setMapCovering] = useState(false);
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -275,6 +277,7 @@ export default function ShowcaseDetailsPanel({
   };
 
   const restoreDeckAfterMap = () => {
+    setMapCovering(false);
     setActiveDeckCard((cur) => {
       rememberDeckBeforeMap(cur);
       if (cur !== "map") return cur;
@@ -734,7 +737,7 @@ export default function ShowcaseDetailsPanel({
                     city={host.interest.city}
                   />
                 ) : null}
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
                       remarks={remarks || null}
@@ -762,13 +765,28 @@ export default function ShowcaseDetailsPanel({
                     )}
                   </div>
                   <div className="-mt-2 flex min-h-0 flex-1 flex-col">
-                    {deckCard(
-                      <ListingMapSidePanel frameClass={listingPanelCompactClass}>
-                        {listingMap("h-full min-h-0 w-full")}
-                      </ListingMapSidePanel>,
-                      "map",
-                      true,
-                    )}
+                    {mapCovering ? (
+                      <div className="min-h-[12rem] flex-1" aria-hidden />
+                    ) : null}
+                    <div
+                      className={
+                        mapCovering
+                          ? "absolute inset-0 z-40 flex min-h-0 flex-col"
+                          : "flex h-full min-h-0 flex-1 flex-col"
+                      }
+                    >
+                      {deckCard(
+                        <ListingMapSidePanel
+                          frameClass={listingPanelCompactClass}
+                          covering={mapCovering}
+                          onToggleCover={() => setMapCovering((on) => !on)}
+                        >
+                          {listingMap("h-full min-h-0 w-full")}
+                        </ListingMapSidePanel>,
+                        "map",
+                        true,
+                      )}
+                    </div>
                   </div>
                   {siteUnlocked ? (
                     <div className="-mt-2">
