@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import ModalPortal, { MODAL_PANEL_CLASS } from "@/components/ModalPortal";
 import { fmtMoney } from "@/lib/listing-history";
+import { formatTaxYoyChange } from "@/lib/listing-property-tax";
 
 type TaxYearEntry = {
   taxYearEnd: number;
   taxYearLabel: string;
   amount: number | null;
+  yoyChange?: number | null;
 };
 
 type PropertyTaxResponse = {
@@ -111,7 +113,25 @@ export default function PropertyTaxHistoryModal({
                   >
                     <td className="py-3 pr-4 text-navy/90">{row.taxYearLabel}</td>
                     <td className="py-3 text-right font-mono tabular-nums text-navy">
-                      {row.amount != null ? fmtMoney(row.amount) : "—"}
+                      <span className="inline-flex items-baseline justify-end gap-2.5">
+                        <span>
+                          {row.amount != null ? fmtMoney(row.amount) : "—"}
+                        </span>
+                        {row.yoyChange != null ? (
+                          <span
+                            className={
+                              row.yoyChange > 0
+                                ? "text-coral"
+                                : row.yoyChange < 0
+                                  ? "text-sage"
+                                  : "text-slate/70"
+                            }
+                            title="Year-over-year change"
+                          >
+                            {formatTaxYoyChange(row.yoyChange)}
+                          </span>
+                        ) : null}
+                      </span>
                     </td>
                   </tr>
                 ))}
