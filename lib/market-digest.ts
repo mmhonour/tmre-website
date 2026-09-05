@@ -73,7 +73,13 @@ import {
   statsCacheKey,
   type MarketStatsPayload,
 } from '@/lib/stats-compute'
-import { TMRE_TOWNS } from '@/lib/tmre-towns'
+import { getActiveKnownCoverageTowns } from '@/lib/ct-coverage'
+import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
+
+async function digestCoverageTowns(): Promise<readonly TmreTown[]> {
+  const towns = await getActiveKnownCoverageTowns()
+  return towns.length > 0 ? towns : TMRE_TOWNS
+}
 
 export type {
   MarketDigestCategorySlice,
@@ -181,7 +187,7 @@ async function avgDomByTownFromStats(
   kind: ListingKind,
 ): Promise<MarketDigestDomTownCount[]> {
   try {
-    const cities = ['All', ...TMRE_TOWNS] as const
+    const cities = ['All', ...(await digestCoverageTowns())]
     const rows = await Promise.all(
       cities.map(async (city) => {
         const cached = await readStatsCacheRow(
@@ -222,7 +228,7 @@ async function priceByTownFromStats(
   kind: ListingKind,
 ): Promise<MarketDigestPriceTownCount[]> {
   try {
-    const cities = ['All', ...TMRE_TOWNS] as const
+    const cities = ['All', ...(await digestCoverageTowns())]
     const rows = await Promise.all(
       cities.map(async (city) => {
         const cached = await readStatsCacheRow(
@@ -344,7 +350,7 @@ async function bestDealOfTheDay(
   const bundle = await readDealOfTheDayBundle(kind, propertyClass)
   if (!bundle) return null
   let best: DealOfTheDayResponse | null = null
-  for (const town of TMRE_TOWNS) {
+  for (const town of await digestCoverageTowns()) {
     const row = bundle.deals[town]
     if (!row) continue
     if (!best || row.score.composite > best.score.composite) best = row
@@ -414,7 +420,7 @@ async function buildCachedCategorySlice(
       priceByTownFromStats(spec.kind),
       readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
       readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
-      ...TMRE_TOWNS.map((town) =>
+      ...(await digestCoverageTowns()).map((town) =>
         readMonthsSupplyCached(town, spec.kind, spec.propertyClass),
       ),
     ])
@@ -570,7 +576,7 @@ async function buildCommercialCategorySlice(
     const sinceIso = since.toISOString()
 
     const perTown = await Promise.all(
-      TMRE_TOWNS.map(async (town) => {
+      (await digestCoverageTowns()).map(async (town) => {
         const [active, closed] = await Promise.all([
           readListingsFromDb(town, 'Active', 500),
           readRecentClosedListingsFromDb(town, sinceIso, 2000),

@@ -8,7 +8,9 @@ import Footer from "@/components/Footer";
 import VisitorBeacon from "@/components/VisitorBeacon";
 import ListingReturnNavTracker from "@/components/listing/ListingReturnNavTracker";
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
-import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { CoverageTownsProvider } from "@/components/CoverageTownsProvider";
+import { getActiveCoverageTownsFresh } from "@/lib/ct-coverage";
+import { coverageTownsLabel } from "@/lib/active-coverage-towns";
 import { SiteUnlockProvider } from "@/components/SiteUnlockProvider";
 import {
   BRAND_NAME,
@@ -40,9 +42,14 @@ const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
 });
 
-const siteDescription = `${BRAND_NAME}. Market intelligence and investment for ${TMRE_CORE_TOWNS_LABEL}, CT. Where smart real estate decisions begin.`;
+function siteDescriptionFor(townsLabel: string): string {
+  return `${BRAND_NAME}. Market intelligence and investment for ${townsLabel}, CT. Where smart real estate decisions begin.`;
+}
 
-export const metadata: Metadata = {
+export async function generateMetadata(): Promise<Metadata> {
+  const towns = await getActiveCoverageTownsFresh();
+  const siteDescription = siteDescriptionFor(coverageTownsLabel(towns));
+  return {
   // Absolute-URL base for canonical + Open Graph/Twitter cards. Lets automated
   // categorizers and link unfurlers resolve a real, self-consistent business.
   metadataBase: new URL(SITE_URL),
@@ -64,6 +71,7 @@ export const metadata: Metadata = {
     "real estate investment",
     "Westport CT",
     BRAND_NAME,
+    ...towns,
   ],
   alternates: {
     canonical: "/",
@@ -107,7 +115,8 @@ export const metadata: Metadata = {
     shortcut: "/images/four-lens-camera-tiny.png",
     apple: "/images/four-lens-camera-tiny.png",
   },
-};
+  };
+}
 
 export default async function RootLayout({
   children,
@@ -119,6 +128,7 @@ export default async function RootLayout({
   const phone = await getContactPhoneFresh();
   const brokerageName = await getBrokerageNameFresh();
   const navConfig = await getSiteNavFresh();
+  const coverageTowns = await getActiveCoverageTownsFresh();
 
   return (
     <html
@@ -139,18 +149,23 @@ export default async function RootLayout({
           }}
         />
         <SiteUnlockProvider unlocked={siteUnlocked}>
-          <Suspense fallback={null}>
-            <ListingReturnNavTracker />
-          </Suspense>
-          <VisitorBeacon />
-          <Navigation
-            siteUnlocked={siteUnlocked}
-            phone={phone}
-            brokerageName={brokerageName}
-            navConfig={navConfig}
-          />
-          <main className="flex-1">{children}</main>
-          <Footer brokerageName={brokerageName} />
+          <CoverageTownsProvider towns={coverageTowns}>
+            <Suspense fallback={null}>
+              <ListingReturnNavTracker />
+            </Suspense>
+            <VisitorBeacon />
+            <Navigation
+              siteUnlocked={siteUnlocked}
+              phone={phone}
+              brokerageName={brokerageName}
+              navConfig={navConfig}
+            />
+            <main className="flex-1">{children}</main>
+            <Footer
+              brokerageName={brokerageName}
+              townsLabel={coverageTownsLabel(coverageTowns)}
+            />
+          </CoverageTownsProvider>
         </SiteUnlockProvider>
       </body>
     </html>

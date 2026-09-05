@@ -15,6 +15,7 @@ import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { TOWN_LIST, STATS_CITIES, STATS_KINDS, type StatsCity, type StatsKind, type Town } from "./stats-towns";
 import { formatTownList } from "@/lib/tmre-towns";
 import type { TownCountMap } from "@/lib/town-listing-counts";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
 import TownFilterPills from "@/components/TownFilterPills";
 import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
 import { usePersistedFilter, usePersistedNullableFilter } from "@/hooks/usePersistedFilter";
@@ -183,6 +184,7 @@ function fmt$(n: number | null): string {
 }
 
 export default function StatsClient() {
+  const { knownTowns } = useCoverageTowns();
   const searchParams = useSearchParams();
   const urlCity = searchParams.get("city");
   const urlView = searchParams.get("view");
@@ -241,7 +243,7 @@ export default function StatsClient() {
   const dismissedRefreshAtRef = useRef<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const townKindResetReady = useRef(false);
-  const orderedTowns = usePersonalizedTowns(TOWN_LIST);
+  const orderedTowns = usePersonalizedTowns(knownTowns);
   const kindTabKit = useTabKitSegmentedStyle("pill-seg-dark-default");
   const deepLinkApplied = useRef(false);
   const chartScrollApplied = useRef(false);
@@ -725,7 +727,7 @@ export default function StatsClient() {
             </h1>
             <p className="text-xs sm:text-sm text-white/65 max-w-md leading-snug pb-0.5 animate-fade-up-delay-1">
               {selectedCity === "All"
-                ? `${isRental ? "Rental" : "For-sale"} stats across ${formatTownList(TOWN_LIST)} — refreshed every 30 minutes.`
+                ? `${isRental ? "Rental" : "For-sale"} stats across ${formatTownList(knownTowns)} — refreshed every 30 minutes.`
                 : `${selectedCity}, CT ${isRental ? "rental" : "for-sale"} stats — refreshed every 30 minutes.`}
             </p>
           </div>
@@ -808,7 +810,7 @@ export default function StatsClient() {
                 View
               </span>
               <span className="text-white font-medium">
-                {selectedCity === "All" ? `${TOWN_LIST.length} towns` : selectedCity}
+                {selectedCity === "All" ? `${knownTowns.length} towns` : selectedCity}
               </span>
             </div>
             <div className="flex items-center gap-2">

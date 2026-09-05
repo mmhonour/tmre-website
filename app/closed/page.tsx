@@ -4,15 +4,18 @@ import { readClosedDailyCache, rebuildClosedDailyCache } from "@/lib/closed-dail
 import { fetchClosedListings } from "@/lib/closed-listings";
 import { defaultClosedRange } from "@/lib/closed-shared";
 import { listingPhotoThumbUrls } from "@/lib/listing-url";
-import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 import type { LatestListingRow } from "@/lib/latest-listings";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Closed — TMRE",
-  description: `Closed sales across ${TMRE_TOWNS_LABEL}, with a start-to-end lookback and precomputed town stats.`,
-};
+export async function generateMetadata() {
+  const townsLabel = await getActiveCoverageTownsLabel();
+  return {
+    title: "Closed — TMRE",
+    description: `Closed sales across ${townsLabel}, with a start-to-end lookback and precomputed town stats.`,
+  };
+}
 
 function heroPhotoPreloadUrls(rows: LatestListingRow[], limit = 12): string[] {
   return rows.slice(0, limit).flatMap((row) => {

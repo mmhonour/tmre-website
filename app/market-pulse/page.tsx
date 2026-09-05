@@ -14,24 +14,28 @@ import {
   getMarketPulseThemeFresh,
   marketPulseThemeCssVars,
 } from "@/lib/page-theme-config";
-import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 import { MARKET_PULSE_JOIN_BRIEF_ID } from "@/lib/market-pulse-defaults";
 
 export const dynamic = "force-dynamic";
 /** Commercial tab hits Neon for Active + recent Closed; keep under Netlify's SSR budget. */
 export const maxDuration = 26;
 
-export const metadata: Metadata = {
-  title: "Market Pulse",
-  description: `TMRE Market Pulse — live web preview of the Monday market brief for ${TMRE_CORE_TOWNS_LABEL}, CT: months supply, inventory, and Deal of the Week.`,
-  alternates: { canonical: "/market-pulse" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const townsLabel = await getActiveCoverageTownsLabel();
+  return {
+    title: "Market Pulse",
+    description: `TMRE Market Pulse — live web preview of the Monday market brief for ${townsLabel}, CT: months supply, inventory, and Deal of the Week.`,
+    alternates: { canonical: "/market-pulse" },
+  };
+}
 
 export default async function MarketPulsePage() {
-  const [snapshot, theme, digest] = await Promise.all([
+  const [snapshot, theme, digest, townsLabel] = await Promise.all([
     buildMarketDigestSnapshot(),
     getMarketPulseThemeFresh(),
     getMarketDigestConfigFresh(),
+    getActiveCoverageTownsLabel(),
   ]);
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -53,7 +57,7 @@ export default async function MarketPulsePage() {
     <>
       <MarketPulseHero
         etDate={etDate}
-        townsLabel={TMRE_CORE_TOWNS_LABEL}
+        townsLabel={townsLabel}
         lastEmailDate={lastEmailDate}
         nextEmailDate={nextEmailDate}
       />

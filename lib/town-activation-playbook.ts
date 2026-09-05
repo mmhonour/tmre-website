@@ -29,11 +29,12 @@ export const TOWN_ACTIVATION_PHASES: readonly TownActivationPhase[] = [
     title: 'Activate flag',
     status: 'now',
     summary:
-      'Checkbox writes ct_towns.active in Neon, highlights the map, and unlocks the Admin town-budget source row. No public site or RETS change.',
+      'Checkbox writes ct_towns.active in Neon, highlights the map, unlocks the Admin town-budget source row, and drives the public town list (copy, pills, Market Pulse). RETS incremental is still Phase 3.',
     bullets: [
       'Persists in Postgres only',
       'Budget URL row appears when active',
-      'Does not add the town to Intelligence, Stats, DOTD, Latest, or incremental pulls',
+      'Public copy and town pills pick up the flag on the next page load',
+      'Does not add the town to RETS incremental or stats_cache rebuild yet',
     ],
   },
   {
@@ -53,13 +54,13 @@ export const TOWN_ACTIVATION_PHASES: readonly TownActivationPhase[] = [
     id: 'phase-2',
     phase: 2,
     title: 'Coverage → runtime',
-    status: 'built-later',
+    status: 'now',
     summary:
-      'Public coverage reads active towns from Postgres (cached), not only the TMRE_TOWNS constant.',
+      'Public coverage reads active towns from Postgres (cached). Copy, pills, Market Pulse, and the footer follow ct_towns.active.',
     bullets: [
-      'listActiveCtTownNames() (or snapshot) becomes the live set',
-      'Keep compile-time fallback for the original seven until proven',
-      'Touches filters, sync loops, stats keys, TmreTown unions',
+      'getActiveCoverageTownsFresh() is the live set (30s process cache)',
+      'Compile-time TMRE_TOWNS remains the zip/MLS-code fallback',
+      'RETS incremental and stats_cache rebuild still use TMRE_TOWNS until Phase 3',
     ],
   },
   {
@@ -155,4 +156,4 @@ export function townActivationExampleNote(townName: string): string | null {
 }
 
 export const TOWN_ACTIVATION_TODAY_WARNING =
-  'Activate today only flips the Postgres flag (+ map / budget row). It does not wire RETS or public pages. Phases 1–5 are still build work.'
+  'Activate today writes ct_towns.active and the public town list (copy, pills, Market Pulse). It does not start RETS pulls or rebuild stats_cache. Phases 1 and 3–5 are still build work.'

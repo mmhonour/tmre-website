@@ -1,13 +1,15 @@
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
 import { loadDealOfTheDayFssrSeed } from "@/lib/deal-of-the-day-fssr";
-import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 import { Suspense } from "react";
 
-export const metadata = {
-  title: "Deal of the Day — TMRE",
-  description:
-    `Today's best below-median value pick in ${TMRE_TOWNS_LABEL} — established homes and rentals, not new construction.`,
-};
+export async function generateMetadata() {
+  const townsLabel = await getActiveCoverageTownsLabel();
+  return {
+    title: "Deal of the Day — TMRE",
+    description: `Today's best below-median value pick in ${townsLabel} — established homes and rentals, not new construction.`,
+  };
+}
 
 export default async function DealOfTheDayPage() {
   const seed = await loadDealOfTheDayFssrSeed("sale", "homes");

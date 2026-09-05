@@ -85,6 +85,7 @@ import { monthsSupplyColorStyle } from "@/lib/months-supply-color";
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
 import ListingHistoryModal from "./ListingHistoryModal";
 import ModalPortal, { MODAL_PANEL_CLASS } from "./ModalPortal";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
 import TownFilterPills from "./TownFilterPills";
 import ZipFilterPills from "./ZipFilterPills";
 import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
@@ -1722,6 +1723,7 @@ export default function IntelligenceClient({
   /** Admin-tuned idle filter descriptor sizes (mobile / desktop). */
   initialDescriptorSizes?: IntelligenceDescriptorSizes;
 } = {}) {
+  const { knownTowns } = useCoverageTowns();
   const siteUnlocked = useSiteUnlocked();
   const searchParams = useSearchParams();
   const [descriptorSizes, setDescriptorSizes] =
@@ -2411,7 +2413,7 @@ export default function IntelligenceClient({
     MonthsSupplyCacheEntry[] | null
   >(null);
 
-  const orderedCities = usePersonalizedTowns(TMRE_TOWNS);
+  const orderedCities = usePersonalizedTowns(knownTowns);
 
   useEffect(() => {
     setExpandedSnapshotKeys(readExpandedSnapshotKeys());
