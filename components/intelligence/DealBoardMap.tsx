@@ -558,10 +558,10 @@ export default function DealBoardMap({
     }
     let cancelled = false;
     const allTowns = boundaryZipsForAllTowns();
-    const loadAllTowns =
-      boundZips.length === allTowns.length &&
-      allTowns.every((zip) => boundZips.includes(zip));
-    void (loadAllTowns || boundZips.length > 1
+    // Listing pages pass one zip (06824). Use the same TMRE bundle Intelligence
+    // warms so a cold listing map does not miss rings and fall through to the
+    // downtown ZIP_CENTERS point.
+    void (boundZips.some((zip) => allTowns.includes(zip))
       ? loadTmreZipBoundaries()
       : loadZipBoundariesForZips(boundZips)
     )
@@ -609,23 +609,26 @@ export default function DealBoardMap({
   );
   const searchBounds = useMemo(() => {
     const fromRings = boundsFromRings(rings);
-    let minLat = fromRings?.minLat ?? Infinity;
-    let maxLat = fromRings?.maxLat ?? -Infinity;
-    let minLon = fromRings?.minLon ?? Infinity;
-    let maxLon = fromRings?.maxLon ?? -Infinity;
-    let any = fromRings != null;
+    // ZIP_CENTERS are downtown points (Fairfield 06824 ≈ Granville / Post Rd /
+    // Mill Plain). A single centroid as min=max makes fitBounds think the town
+    // is one block, which is the street cluster the phone was landing on.
+    // Only pad an existing TIGER box when a sibling zip's rings are still late.
+    if (!fromRings) return null;
+    let minLat = fromRings.minLat;
+    let maxLat = fromRings.maxLat;
+    let minLon = fromRings.minLon;
+    let maxLon = fromRings.maxLon;
     const loaded = new Set(zipRings.map((entry) => entry.zip));
     for (const zip of boundZips) {
       if (loaded.has(zip)) continue;
       const center = ZIP_CENTERS[zip];
       if (!center) continue;
-      any = true;
       if (center.lat < minLat) minLat = center.lat;
       if (center.lat > maxLat) maxLat = center.lat;
       if (center.lon < minLon) minLon = center.lon;
       if (center.lon > maxLon) maxLon = center.lon;
     }
-    return any ? { minLat, maxLat, minLon, maxLon } : null;
+    return { minLat, maxLat, minLon, maxLon };
   }, [boundZips, rings, zipRings]);
   const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
   const fitTarget = searchBounds ?? pinBounds;

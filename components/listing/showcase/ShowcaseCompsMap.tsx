@@ -8,6 +8,7 @@ import { useLocationEstimateOverlay } from "@/components/intelligence/use-locati
 import type { ComparableListing } from "@/lib/listing-comparables-shared";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
 
 type Pool = "active" | "sold" | "uag";
 
@@ -112,6 +113,10 @@ export default function ShowcaseCompsMap({
     fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`;
   const uagUrl =
     uagFetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/uag`;
+
+  useEffect(() => {
+    prefetchAllTownBoundaries();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
