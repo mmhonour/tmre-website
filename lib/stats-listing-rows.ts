@@ -12,6 +12,8 @@ export type StatsListingRow = {
   price: number | null
   /** Closed/sold price when available. */
   closedPrice: number | null
+  /** First published ask — denominator of TRAN$ACT to LIST. */
+  originalListPrice: number | null
   listDate: string | null
   dom: number | null
   sqft: number | null
@@ -69,6 +71,21 @@ export function resolveListingTown(l: Listing, fallbackTown?: string): string {
   return city || '—'
 }
 
+/** Same pool as the TRAN$ACT to LIST town ratio: close and original ask, since 2024. */
+export function isTransactToListRow(row: {
+  closedPrice?: number | null
+  originalListPrice?: number | null
+  listDate?: string | null
+}): boolean {
+  return (
+    row.closedPrice != null &&
+    row.closedPrice > 0 &&
+    row.originalListPrice != null &&
+    row.originalListPrice > 0 &&
+    inStatsClosedPeriod(row.listDate ?? null)
+  )
+}
+
 export function listingToStatsRow(
   l: Listing,
   town: string,
@@ -84,6 +101,10 @@ export function listingToStatsRow(
     address: l.address.street?.trim() || l.address.full?.trim() || '—',
     price: listPrice,
     closedPrice,
+    originalListPrice:
+      l.originalListPrice != null && l.originalListPrice > 0
+        ? l.originalListPrice
+        : null,
     listDate: rowDate(l, kind),
     dom: l.dom,
     sqft: l.sqft,

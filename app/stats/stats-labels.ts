@@ -73,6 +73,15 @@ export function statsListToAskTitle(kind: StatsKind): string {
     : `${TRANSACT_TO_LIST_LABEL} · by town`
 }
 
+export function statsTransactToListListingsTitle(
+  kind: StatsKind,
+  town: string,
+): string {
+  return kind === 'rental'
+    ? `${TRANSACT_TO_LIST_LABEL} · ${town} leases`
+    : `${TRANSACT_TO_LIST_LABEL} · ${town} sales`
+}
+
 export function statsPriceSpreadTitle(kind: StatsKind): string {
   return kind === 'rental'
     ? 'Median, average and delta · rentals · by town'
