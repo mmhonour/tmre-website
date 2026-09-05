@@ -289,10 +289,16 @@ export default function ShowcaseDetailsPanel({
     setActiveDeckCard(restore ?? "remarks");
   };
 
-  /** Bottom page map is on screen — Overview (remarks) is the default card. */
-  const restoreOverviewDeck = () => {
-    setActiveTab("overview");
+  /** Overview card in the deck — independent of which strip tab is lit. */
+  const expandOverviewDeck = () => {
     setActiveDeckCard("remarks");
+  };
+
+  /** Map tab: jump to the full-width page map. Deck Map card is a separate peek. */
+  const goToPageMap = () => {
+    setActiveTab("map");
+    expandOverviewDeck();
+    scrollToShowcaseSection("map");
   };
 
   /**
@@ -313,7 +319,7 @@ export default function ShowcaseDetailsPanel({
       setShowOverviewSection(tab === "overview");
       if (tab === "overview") setActiveDeckCard("remarks");
       if (tab === "map") {
-        openMapDeck();
+        goToPageMap();
         return;
       }
       if (tab === "history") {
@@ -362,7 +368,7 @@ export default function ShowcaseDetailsPanel({
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry?.isIntersecting) return;
-        restoreOverviewDeck();
+        expandOverviewDeck();
       },
       { threshold: 0.3 },
     );
@@ -530,15 +536,8 @@ export default function ShowcaseDetailsPanel({
                 embedded
                 compact
                 onTabSelect={handleTabSelect}
-                mapVisible={mapOpen}
-                onMapToggle={
-                  isDesktop
-                    ? () => (mapOpen ? closeMapDeck() : openMapDeck())
-                    : () => {
-                        setActiveTab("map");
-                        scrollToShowcaseSection("map");
-                      }
-                }
+                mapVisible={activeTab === "map"}
+                onMapToggle={goToPageMap}
                 showAdminTab={siteUnlocked}
               adminVisible={activeDeckCard === "admin"}
               onAdminToggle={
