@@ -8,6 +8,7 @@ import { useLocationEstimateOverlay } from "@/components/intelligence/use-locati
 import type { ComparableListing } from "@/lib/listing-comparables-shared";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
 
 type Pool = "active" | "sold" | "uag";
 
@@ -112,6 +113,10 @@ export default function ShowcaseCompsMap({
     fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`;
   const uagUrl =
     uagFetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/uag`;
+
+  useEffect(() => {
+    prefetchAllTownBoundaries();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,8 +236,9 @@ export default function ShowcaseCompsMap({
       <div className="relative min-h-0 flex-1">
         {/* DealBoardMap puts `heightClass` on an inner div, so its own outer
             wrapper needs a height too or `h-full` resolves against auto. */}
-        {/* `highlightZip` is what paints the boundary blue; `boundZips` alone
-            draws it navy and also frames the initial viewport on the town. */}
+        {/* `highlightZip` paints the boundary blue. `boundZips` draws it and
+            frames desktop / Reset view. On a phone DealBoardMap opens on the
+            subject pin so the house is not a speck inside the town AABB. */}
         <DealBoardMap
           listings={listings}
           subjectKey={hideSubject ? null : subject?.key ?? null}

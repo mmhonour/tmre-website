@@ -6,6 +6,7 @@ import "./globals.css";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import VisitorBeacon from "@/components/VisitorBeacon";
+import TmreBoundaryWarm from "@/components/TmreBoundaryWarm";
 import ListingReturnNavTracker from "@/components/listing/ListingReturnNavTracker";
 import { SITE_PASSWORD_COOKIE } from "@/lib/site-password";
 import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
@@ -143,6 +144,7 @@ export default async function RootLayout({
             <ListingReturnNavTracker />
           </Suspense>
           <VisitorBeacon />
+          <TmreBoundaryWarm />
           <Navigation
             siteUnlocked={siteUnlocked}
             phone={phone}

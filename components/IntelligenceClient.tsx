@@ -4912,6 +4912,17 @@ export default function IntelligenceClient({
     setSortDir("desc");
   };
 
+  /** Phone town/zip taps open the deal-board map instead of a floating card. */
+  const openBoardMapOnPhone = () => {
+    clearTownMapFlashTimer();
+    clearZipMapFlashTimer();
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(false);
+    setFlashedTown(null);
+    setFlashedZip(null);
+    setMapOnPref("on");
+  };
+
   /** Town pill, town link, and boundary-map click all land here. */
   const applyTownFilter = (city: IntelCity) => {
     if (city !== active) resetSortToDefault();
@@ -4928,7 +4939,11 @@ export default function IntelligenceClient({
       setFilterChromeCollapsed(true);
       setFilterChromePeeks(townHasMultipleZips(city) ? ["towns"] : []);
     }
-    flashTownMapOnSelect(city);
+    if (prefersFineHover()) {
+      flashTownMapOnSelect(city);
+    } else {
+      openBoardMapOnPhone();
+    }
   };
 
   /** Clicking a town inside the boundary map filters to it. */
@@ -5917,7 +5932,11 @@ export default function IntelligenceClient({
                                   setFilterChromeCollapsed(true);
                                   setFilterChromePeeks([]);
                                 }
-                                flashZipMapOnSelect(next);
+                                if (prefersFineHover()) {
+                                  flashZipMapOnSelect(next);
+                                } else {
+                                  openBoardMapOnPhone();
+                                }
                               }}
                               counts={zipCounts}
                               allCount={zipAllCount}
@@ -5976,7 +5995,11 @@ export default function IntelligenceClient({
                                 setFilterChromeCollapsed(true);
                                 setFilterChromePeeks([]);
                               }
-                              flashZipMapOnSelect(next);
+                              if (prefersFineHover()) {
+                                flashZipMapOnSelect(next);
+                              } else {
+                                openBoardMapOnPhone();
+                              }
                             }}
                             counts={zipCounts}
                             allCount={zipAllCount}
@@ -6950,15 +6973,13 @@ export default function IntelligenceClient({
           </p>
         </div>
       </ModalPortal>
-      {hoveredTown && hoveredTownEl ? (
+      {fineHoverPointer && hoveredTown && hoveredTownEl ? (
         hoveredTown === "All" ? (
           <ZipBoundaryPopover
             highlightAllTowns
             anchorEl={hoveredTownEl}
             placeBelowEl={townFilterAnchorEl}
-            onSelectTown={
-              fineHoverPointer ? selectTownFromBoundaryMap : undefined
-            }
+            onSelectTown={selectTownFromBoundaryMap}
             onPointerStay={holdBoundaryMapOpen}
             onPointerAway={releaseBoundaryMap}
             exiting={boundaryMapExiting}
@@ -6968,15 +6989,13 @@ export default function IntelligenceClient({
             highlightTown={hoveredTown}
             anchorEl={hoveredTownEl}
             placeBelowEl={townFilterAnchorEl}
-            onSelectTown={
-              fineHoverPointer ? selectTownFromBoundaryMap : undefined
-            }
+            onSelectTown={selectTownFromBoundaryMap}
             onPointerStay={holdBoundaryMapOpen}
             onPointerAway={releaseBoundaryMap}
             exiting={boundaryMapExiting}
           />
         )
-      ) : flashedTown && !showMap ? (
+      ) : fineHoverPointer && flashedTown && !showMap ? (
         // Do not gate on the pill-row ref — that row remounts after a town
         // tap. Hold starts after rings paint, then the card leaves.
         flashedTown === "All" ? (
@@ -6997,9 +7016,10 @@ export default function IntelligenceClient({
           />
         )
       ) : null}
-      {/* With the board map open it carries the blue highlight itself, so the
-          floating mini-map would only compete with it. */}
-      {showMap ? null : hoveredZip && hoveredZipEl ? (
+      {/* Phone never mounts the floating card — outlines live on DealBoardMap.
+          Desktop hover still uses the popover; the board map carries highlight
+          itself when it is already open. */}
+      {showMap || !fineHoverPointer ? null : hoveredZip && hoveredZipEl ? (
         <ZipBoundaryPopover
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
