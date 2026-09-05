@@ -18,6 +18,7 @@ import {
 import { ZIP_CENTERS } from "@/lib/tmre-geo";
 import {
   boundaryZipsForAllTowns,
+  hasZctaBoundary,
   townForZip,
   townHasMultipleZips,
 } from "@/lib/tmre-towns";
@@ -55,6 +56,10 @@ const FIT_PAD_PINS = 36;
  * caps zoom at 15 so a house is readable without going to MAX_ZOOM.
  */
 const STREET_FIT_PAD_DEG = 0.0015;
+/** Listing subject: wide enough for nearby comps and a local zip line. */
+const NEIGHBORHOOD_FIT_PAD_DEG = 0.0075;
+/** Drop comps farther than ~0.8 mi so one distant sold does not re-frame the town. */
+const NEIGHBORHOOD_COMP_MAX_DEG = 0.012;
 
 type FitInset = {
   top: number;
@@ -203,6 +208,29 @@ function streetBoundsForPin(lat: number, lon: number): GeoBounds {
     minLon: lon - STREET_FIT_PAD_DEG,
     maxLon: lon + STREET_FIT_PAD_DEG,
   };
+}
+
+function neighborhoodBoundsForSubject(
+  subject: { latitude: number; longitude: number },
+  neighbors: readonly { latitude: number; longitude: number }[],
+): GeoBounds {
+  let minLat = subject.latitude - NEIGHBORHOOD_FIT_PAD_DEG;
+  let maxLat = subject.latitude + NEIGHBORHOOD_FIT_PAD_DEG;
+  let minLon = subject.longitude - NEIGHBORHOOD_FIT_PAD_DEG;
+  let maxLon = subject.longitude + NEIGHBORHOOD_FIT_PAD_DEG;
+  for (const pin of neighbors) {
+    if (Math.abs(pin.latitude - subject.latitude) > NEIGHBORHOOD_COMP_MAX_DEG) {
+      continue;
+    }
+    if (Math.abs(pin.longitude - subject.longitude) > NEIGHBORHOOD_COMP_MAX_DEG) {
+      continue;
+    }
+    minLat = Math.min(minLat, pin.latitude);
+    maxLat = Math.max(maxLat, pin.latitude);
+    minLon = Math.min(minLon, pin.longitude);
+    maxLon = Math.max(maxLon, pin.longitude);
+  }
+  return { minLat, maxLat, minLon, maxLon };
 }
 
 function clampCenter(center: LonLat, bounds: GeoBounds | null): LonLat {
@@ -572,7 +600,14 @@ export default function DealBoardMap({
           const found = byZip.get(zip);
           if (found) next.push({ zip, rings: found });
         }
-        setZipRings(next);
+        setZipRings((prev) => {
+          const needed = boundZips.filter(hasZctaBoundary);
+          const prevHits = prev.filter((entry) => boundZips.includes(entry.zip));
+          if (next.length < needed.length && prevHits.length > next.length) {
+            return prev;
+          }
+          return next;
+        });
       })
       .catch(() => {
         // Keep whatever rings we already have — a failed All Towns bundle
@@ -709,16 +744,34 @@ export default function DealBoardMap({
     [size.height, size.width],
   );
 
-  /** Phone listing maps open on the house. Intelligence (no subject) stays town-wide. */
+  const fitToNeighborhood = useCallback(
+    (listing: DealBoardMapListing & { latitude: number; longitude: number }) => {
+      if (size.width <= 0 || size.height <= 0) return;
+      const nearby = placeable.filter((pin) => pin.key !== listing.key);
+      const next = fitBounds(
+        neighborhoodBoundsForSubject(listing, nearby),
+        size.width,
+        size.height,
+        1,
+        FIT_PAD_PINS,
+        ZERO_FIT_INSET,
+      );
+      setCenter(next.center);
+      setZoom(next.zoom);
+    },
+    [placeable, size.height, size.width],
+  );
+
+  /** Phone listing maps open on the house + nearby comps. Intelligence stays town-wide. */
   const fit = useCallback(() => {
     if (fitStreetOnPhone && subjectListing) {
       userMovedRef.current = false;
       setViewAdjusted(false);
-      fitToStreet(subjectListing);
+      fitToNeighborhood(subjectListing);
       return;
     }
     fitOverview();
-  }, [fitOverview, fitStreetOnPhone, fitToStreet, subjectListing]);
+  }, [fitOverview, fitStreetOnPhone, fitToNeighborhood, subjectListing]);
 
   /** Town / zip overview, even on a listing page that opened at street level. */
   const resetView = useCallback(() => {

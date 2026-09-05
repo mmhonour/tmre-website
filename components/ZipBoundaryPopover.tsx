@@ -48,8 +48,10 @@ export async function loadTmreZipBoundaries(): Promise<Map<string, Ring[]>> {
   }
   if (missing.length === 0) return out;
 
+  // Honor the API's no-store on an incomplete bundle. force-cache pinned a
+  // 06890-only Fairfield answer and Intelligence kept drawing one zip.
   const res = await fetch(`/api/zip-boundaries?bundle=tmre`, {
-    cache: "force-cache",
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = (await res.json()) as {
@@ -62,6 +64,16 @@ export async function loadTmreZipBoundaries(): Promise<Map<string, Ring[]>> {
     if (Array.isArray(rings) && rings.length > 0) {
       cache.set(zip, rings);
       out.set(zip, rings);
+    }
+  }
+  const stillMissing = all.filter((zip) => !(out.get(zip)?.length));
+  if (stillMissing.length > 0) {
+    const extra = await fetchBoundariesBatch(stillMissing);
+    for (const [zip, rings] of extra) {
+      if (rings.length) {
+        cache.set(zip, rings);
+        out.set(zip, rings);
+      }
     }
   }
   return out;
@@ -80,7 +92,7 @@ async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string
   if (missing.length === 0) return out;
 
   const res = await fetch(`/api/zip-boundaries?zips=${missing.join(",")}`, {
-    cache: "force-cache",
+    cache: missing.length > 1 ? "no-store" : "force-cache",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = (await res.json()) as {
