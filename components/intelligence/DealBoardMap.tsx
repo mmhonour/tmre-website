@@ -15,6 +15,7 @@ import {
   loadTmreZipBoundaries,
   loadZipBoundariesForZips,
 } from "@/components/ZipBoundaryPopover";
+import { ZIP_CENTERS } from "@/lib/tmre-geo";
 import {
   boundaryZipsForAllTowns,
   townForZip,
@@ -542,7 +543,7 @@ export default function DealBoardMap({
     const loadAllTowns =
       boundZips.length === allTowns.length &&
       allTowns.every((zip) => boundZips.includes(zip));
-    void (loadAllTowns
+    void (loadAllTowns || boundZips.length > 1
       ? loadTmreZipBoundaries()
       : loadZipBoundariesForZips(boundZips)
     )
@@ -588,7 +589,26 @@ export default function DealBoardMap({
     () => zipRings.flatMap((entry) => entry.rings),
     [zipRings],
   );
-  const searchBounds = useMemo(() => boundsFromRings(rings), [rings]);
+  const searchBounds = useMemo(() => {
+    const fromRings = boundsFromRings(rings);
+    let minLat = fromRings?.minLat ?? Infinity;
+    let maxLat = fromRings?.maxLat ?? -Infinity;
+    let minLon = fromRings?.minLon ?? Infinity;
+    let maxLon = fromRings?.maxLon ?? -Infinity;
+    let any = fromRings != null;
+    const loaded = new Set(zipRings.map((entry) => entry.zip));
+    for (const zip of boundZips) {
+      if (loaded.has(zip)) continue;
+      const center = ZIP_CENTERS[zip];
+      if (!center) continue;
+      any = true;
+      if (center.lat < minLat) minLat = center.lat;
+      if (center.lat > maxLat) maxLat = center.lat;
+      if (center.lon < minLon) minLon = center.lon;
+      if (center.lon > maxLon) maxLon = center.lon;
+    }
+    return any ? { minLat, maxLat, minLon, maxLon } : null;
+  }, [boundZips, rings, zipRings]);
   const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
   const fitTarget = searchBounds ?? pinBounds;
 

@@ -14,6 +14,7 @@ import {
   townHasMultipleZips,
   zipsForTown,
 } from "@/lib/tmre-towns";
+import { ZIP_CENTERS } from "@/lib/tmre-geo";
 
 type Coord = [number, number];
 type Ring = Coord[];
@@ -151,6 +152,7 @@ function projectMultipleZips(
   w: number,
   h: number,
   pad = 12,
+  extraPoints: Coord[] = [],
 ): {
   layers: { zip: string; paths: string[]; role: "highlight" | "context" }[];
   highlightCx: number;
@@ -166,7 +168,7 @@ function projectMultipleZips(
   } | null;
 } {
   const allRings = zipBoundaries.flatMap((z) => z.rings);
-  if (allRings.length === 0) {
+  if (allRings.length === 0 && extraPoints.length === 0) {
     return {
       layers: [],
       highlightCx: w / 2,
@@ -186,6 +188,12 @@ function projectMultipleZips(
       if (lat < minLat) minLat = lat;
       if (lat > maxLat) maxLat = lat;
     }
+  }
+  for (const [lon, lat] of extraPoints) {
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
   }
 
   const scaleX = (w - pad * 2) / (maxLon - minLon || 1);
@@ -361,8 +369,8 @@ export default function ZipBoundaryPopover({
   useEffect(() => {
     const sync = () => {
       const coarse = window.matchMedia("(hover: none)").matches;
-      const w = coarse ? Math.min(window.innerWidth - 24, 340) : W;
-      const h = coarse ? Math.min(Math.round(w * 0.72), 260) : H;
+      const w = coarse ? Math.min(window.innerWidth - 32, 260) : W;
+      const h = coarse ? 180 : H;
       setBox({ w, h });
     };
     sync();
@@ -387,8 +395,9 @@ export default function ZipBoundaryPopover({
         window.innerWidth - box.w - gap,
       );
       if (!anchorEl) {
+        // Pin under the intel chrome — never the middle of the listings.
         setPos({
-          top: Math.min(Math.max(gap, (window.innerHeight - popH) / 2), maxTop),
+          top: Math.min(72, maxTop),
           left,
           placeAbove: false,
         });
@@ -447,7 +456,10 @@ export default function ZipBoundaryPopover({
     }
 
     const bundled = boundaryBundleCache.get(loadKey);
-    if (bundled) {
+    const bundledComplete =
+      bundled != null &&
+      highlightZips.every((z) => (bundled.get(z)?.length ?? 0) > 0);
+    if (bundledComplete && bundled) {
       setBoundary({ status: "ready", byZip: bundled });
       return;
     }
@@ -506,9 +518,10 @@ export default function ZipBoundaryPopover({
     void (async () => {
       if (highlightMissing.length > 0) {
         try {
-          const map = highlightAllTowns
-            ? await loadTmreZipBoundaries()
-            : await fetchBoundariesBatch(highlightMissing);
+          const map =
+            highlightAllTowns || highlightZips.length > 1
+              ? await loadTmreZipBoundaries()
+              : await fetchBoundariesBatch(highlightMissing);
           for (const [zip, rings] of map) mergeZip(zip, rings);
         } catch {
           /* fall through — may still have partial cache */
@@ -536,7 +549,9 @@ export default function ZipBoundaryPopover({
       }
 
       if (cancelled) return;
-      boundaryBundleCache.set(loadKey, new Map(byZip));
+      if (hasAllHighlight(byZip)) {
+        boundaryBundleCache.set(loadKey, new Map(byZip));
+      }
     })();
 
     return () => {
@@ -561,7 +576,19 @@ export default function ZipBoundaryPopover({
 
   const { layers, projection } =
     boundary.status === "ready"
-      ? projectMultipleZips(zipBoundaries, highlightZipSet, box.w, box.h)
+      ? projectMultipleZips(
+          zipBoundaries,
+          highlightZipSet,
+          box.w,
+          box.h,
+          12,
+          [...highlightZipSet]
+            .filter((zip) => !zipBoundaries.some((row) => row.zip === zip))
+            .flatMap((zip) => {
+              const center = ZIP_CENTERS[zip];
+              return center ? ([[center.lon, center.lat]] as Coord[]) : [];
+            }),
+        )
       : { layers: [], projection: null };
 
   const labelZipsOnMap =
@@ -585,7 +612,7 @@ export default function ZipBoundaryPopover({
           .filter((entry): entry is { town: TmreTown; cx: number; cy: number } => entry != null)
       : [];
 
-  const zipLabels =
+  const zipLabels: { zip: string; cx: number; cy: number }[] =
     labelZipsOnMap &&
     boundary.status === "ready" &&
     projection
@@ -627,6 +654,24 @@ export default function ZipBoundaryPopover({
                 entry != null,
             )
         : [];
+
+  if (labelZipsOnMap && projection) {
+    const seen = new Set(zipLabels.map((row) => row.zip));
+    for (const zip of highlightZipSet) {
+      if (seen.has(zip)) continue;
+      const center = ZIP_CENTERS[zip];
+      if (!center) continue;
+      zipLabels.push({
+        zip,
+        cx:
+          projection.offsetX +
+          (center.lon - projection.minLon) * projection.scale,
+        cy:
+          projection.offsetY +
+          (projection.maxLat - center.lat) * projection.scale,
+      });
+    }
+  }
 
   const contextLayers = layers.filter((l) => l.role === "context");
   const highlightLayers = layers.filter((l) => l.role === "highlight");

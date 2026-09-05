@@ -2031,10 +2031,11 @@ export default function IntelligenceClient({
   /** Desktop hover flash hold; touch uses the shorter touch constants below. */
   const TOWN_MAP_FLASH_MS = 1_000;
   const ZIP_MAP_FLASH_MS = 1_500;
-  const TOWN_MAP_FLASH_MS_TOUCH = 900;
-  const ZIP_MAP_FLASH_MS_TOUCH = 1_200;
+  /** After rings paint — long enough to read, then it must leave. */
+  const TOWN_MAP_FLASH_MS_TOUCH = 4_000;
+  const ZIP_MAP_FLASH_MS_TOUCH = 2_500;
   const ALL_TOWNS_MAP_FLASH_MS = 2_000;
-  const ALL_TOWNS_MAP_FLASH_MS_TOUCH = 1_800;
+  const ALL_TOWNS_MAP_FLASH_MS_TOUCH = 4_000;
   const MAP_FADE_MS = 220;
   const [flashedTown, setFlashedTown] = useState<TmreTown | "All" | null>(null);
   const townMapHoldCityRef = useRef<TmreTown | "All" | null>(null);
@@ -2151,19 +2152,20 @@ export default function IntelligenceClient({
     if (city === "All") prefetchAllTownBoundaries();
     else prefetchTownBoundaries(city);
     setFlashedTown(city);
-    // Phone: keep the outline up until the next town/zip tap. A 0.9s flash
-    // after the last TIGER fix is why Fairfield vanished.
-    if (prefersFineHover()) beginTownMapHold(8_000);
+    beginTownMapHold(prefersFineHover() ? 8_000 : 12_000);
   };
 
-  /** Desktop only — replace the fallback hold once rings have painted. */
+  /** Replace the fallback hold once rings have painted, then dismiss. */
   const onTownMapSettled = () => {
     if (townMapHoldCityRef.current == null) return;
-    if (!prefersFineHover()) return;
     const holdMs =
       townMapHoldCityRef.current === "All"
-        ? ALL_TOWNS_MAP_FLASH_MS
-        : TOWN_MAP_FLASH_MS;
+        ? prefersFineHover()
+          ? ALL_TOWNS_MAP_FLASH_MS
+          : ALL_TOWNS_MAP_FLASH_MS_TOUCH
+        : prefersFineHover()
+          ? TOWN_MAP_FLASH_MS
+          : TOWN_MAP_FLASH_MS_TOUCH;
     beginTownMapHold(holdMs);
   };
 
@@ -2177,6 +2179,7 @@ export default function IntelligenceClient({
     setHoveredTown(null);
     setHoveredTownEl(null);
     if (!nextZip) {
+      zipMapHoldZipRef.current = null;
       setFlashedZip(null);
       setHoveredZip(null);
       setHoveredZipEl(null);
@@ -2189,12 +2192,23 @@ export default function IntelligenceClient({
     setHoveredZip(null);
     setHoveredZipEl(null);
     setFlashedZip(nextZip);
-    if (!prefersFineHover()) return;
-    const holdMs = ZIP_MAP_FLASH_MS;
+    zipMapHoldZipRef.current = nextZip;
+    beginZipMapHold(prefersFineHover() ? 8_000 : 12_000);
+  };
+  const zipMapHoldZipRef = useRef<string | null>(null);
+  const beginZipMapHold = (holdMs: number) => {
+    clearZipMapFlashTimer();
     zipMapFlashTimerRef.current = setTimeout(() => {
       zipMapFlashTimerRef.current = null;
+      zipMapHoldZipRef.current = null;
       fadeClearBoundaryMaps(() => setFlashedZip(null));
     }, holdMs);
+  };
+  const onZipMapSettled = () => {
+    if (zipMapHoldZipRef.current == null) return;
+    beginZipMapHold(
+      prefersFineHover() ? ZIP_MAP_FLASH_MS : ZIP_MAP_FLASH_MS_TOUCH,
+    );
   };
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
   const [scoreBreakdownListing, setScoreBreakdownListing] = useState<DisplayListing | null>(null);
@@ -6963,9 +6977,8 @@ export default function IntelligenceClient({
           />
         )
       ) : flashedTown && !showMap ? (
-        // Phone keeps this up until the next town/zip tap. Desktop still
-        // flashes. Do not gate on the pill-row ref — that row remounts
-        // after a town tap and left Fairfield with no map.
+        // Do not gate on the pill-row ref — that row remounts after a town
+        // tap. Hold starts after rings paint, then the card leaves.
         flashedTown === "All" ? (
           <ZipBoundaryPopover
             highlightAllTowns
@@ -7001,6 +7014,7 @@ export default function IntelligenceClient({
           anchorEl={zipFilterAnchorEl}
           placeBelowEl={zipFilterAnchorEl}
           exiting={boundaryMapExiting}
+          onSettled={onZipMapSettled}
         />
       ) : null}
     </div>
