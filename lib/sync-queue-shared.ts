@@ -20,6 +20,7 @@ import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'incremental',
   'listing-scores',
+  'edge-scores',
   'stats-cache',
   'deal-of-the-day',
   'property-addresses',

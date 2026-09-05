@@ -947,12 +947,13 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listing-edge-scores",
     detail:
-      "Thin Edge scores (3b) trigger — queues sync-listing-edge-scores-worker when Configure is due",
+      "Thin Edge scores (3b) trigger — enqueues edge-scores on the sync runner when Configure is due; worker hop is stranded-row rescue only",
     schedule: "Every 30 min (weekly-gated)",
   },
   {
     label: "sync-listing-edge-scores-worker",
-    detail: "Background comparable edge-score warm pass (always runs; stamps last_listing_edge_scores)",
+    detail:
+      "Background comparable edge-score rebuild (stranded-row rescue; stamps last_listing_edge_scores)",
     schedule: "On invoke (background)",
   },
   {

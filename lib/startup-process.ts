@@ -340,7 +340,7 @@ export function describeStartupProcess(): {
           title: "Rebuild @ 2:00 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "rebuildAllListingEdgeScores(): zip benchmarks, layout, condition (remarks + cached finish-quality) into listing_edge_scores. Netlify */30 thin cron sync-listing-edge-scores + edge-scores Configure cadence, gated on last_listing_edge_scores (not Goldilocks End). Skips when Pause is checked on Edge scores (3b).",
+            "rebuildAllListingEdgeScores(): zip benchmarks, layout, condition (remarks + cached finish-quality) into listing_edge_scores. The Railway 5-min sweep and the Netlify thin */30 both enqueue on sync_queue at the configured wall-clock slot; the runner claims one row into a forked child under Configure → Edge scores → Budget. The Netlify worker is stranded-row rescue only — the function→function hop is refused with HTTP 429. Gated on last_listing_edge_scores (not Goldilocks End). Skips when Pause is checked on Edge scores (3b).",
           status: edgeScoreRebuildEnabled ? "scheduled" : "skipped",
           statusLabel: edgeScoreRebuildEnabled ? "Armed" : "Disabled",
         },
