@@ -113,6 +113,12 @@ const SWEEPS: {
     bootDelayMs: 8 * 60_000,
     label: 'vision addresses',
   },
+  {
+    jobId: 'cama-tax',
+    everyMs: 30 * 60_000,
+    bootDelayMs: 9 * 60_000,
+    label: 'cama tax history',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {

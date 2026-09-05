@@ -191,6 +191,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'fomc-sync',
       'cpi-sync',
       'market-digest',
+      'cama-tax',
     ],
     jobs: {
       'full-resync': {
@@ -254,6 +255,14 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         frequency: 'weekly',
         startTimeEt: '08:00',
         weekdayEt: 1,
+      },
+      // OPM republishes the parcel & CAMA extracts once a year and the mill
+      // rate table once a spring, so there is nothing to gain from running this
+      // often. Monthly is frequent enough to pick a new filing up without
+      // waiting, and the whole run is a few dozen requests.
+      'cama-tax': {
+        frequency: 'monthly',
+        startTimeEt: '03:30',
       },
     },
   }

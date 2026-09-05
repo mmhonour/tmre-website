@@ -26,6 +26,7 @@ export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'vision-addresses',
   'market-digest',
   'open-houses',
+  'cama-tax',
 ]
 
 export function isSyncQueueRunnerJob(
@@ -128,6 +129,9 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     'fomc-sync': 10,
     'cpi-sync': 10,
     'market-digest': 15,
+    // Six towns x four CAMA vintages, plus one listings read each. Bounded by
+    // data.ct.gov response time rather than by any local work.
+    'cama-tax': 30,
   }
 
 export const SYNC_JOB_BUDGET_MIN_MINUTES = 1

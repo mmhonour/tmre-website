@@ -613,8 +613,10 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'listing-derived',
     medium: 'postgres',
     location: 'listing_tax_history',
-    keyPattern: 'table rows by listing_id',
+    keyPattern: 'rows by parcel_number + tax_year_end',
     owner: 'lib/listing-property-tax-cache.ts',
+    notes:
+      'Two writers, distinguished by `source`. Incremental sync writes the current fiscal year from the MLS PropertyTax/TaxYear pair (source=mls); the monthly CAMA job fills earlier years from CT assessments × mill rates (source=cama) and never overwrites an MLS row.',
     live: { kind: 'postgres_table', table: 'listing_tax_history' },
   },
   {

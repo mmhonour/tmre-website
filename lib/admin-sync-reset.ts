@@ -86,6 +86,7 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
     'sync_next_override_market-digest',
   ],
   'full-resync': ['last_full_sync', 'last_full_sync_started'],
+  'cama-tax': ['cama_tax_history_synced_at'],
 }
 
 /** Global refresh lock sources that belong to this job. */

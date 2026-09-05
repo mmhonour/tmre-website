@@ -64,6 +64,11 @@ export const ADMIN_SYNC_ACTIONS = {
     description:
       'Weekly Resend months-supply / inventory digest email (Configure day + start time ET) for /market-pulse',
   },
+  'cama-tax': {
+    label: 'Property tax history (CAMA)',
+    description:
+      'CT Parcel & CAMA assessments × OPM mill rates → historical years in listing_tax_history. Fills the four year slots the MLS feed cannot; the current year stays MLS-reported. Norwalk skipped (per-district mill rates).',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -115,6 +120,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'fomc-sync': 10,
   'cpi-sync': 11,
   'market-digest': 12,
+  'cama-tax': 13,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

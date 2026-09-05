@@ -14,6 +14,7 @@ export type AdminSyncPanelRowId =
   | 'fomc-sync'
   | 'cpi-sync'
   | 'market-digest'
+  | 'cama-tax'
 
 /** Wall clocks on Admin Sync (Start / End / Next / schedules). */
 export const ADMIN_SYNC_TZ = 'America/New_York'

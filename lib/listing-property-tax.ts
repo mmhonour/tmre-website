@@ -138,7 +138,37 @@ export type PropertyTaxYearEntry = {
   taxYearEnd: number;
   taxYearLabel: string;
   amount: number | null;
+  /**
+   * Percent change vs the prior fiscal year: `(this − prior) / prior * 100`,
+   * rounded to one decimal. Null when either year has no amount.
+   */
+  yoyChangePct: number | null;
 };
+
+/** Signed percent change between two consecutive fiscal-year tax amounts. */
+export function taxYoyChangePct(
+  amount: number | null,
+  priorAmount: number | null | undefined,
+): number | null {
+  if (
+    amount == null ||
+    priorAmount == null ||
+    !Number.isFinite(amount) ||
+    !Number.isFinite(priorAmount) ||
+    priorAmount === 0
+  ) {
+    return null;
+  }
+  return Math.round(((amount - priorAmount) / priorAmount) * 1000) / 10;
+}
+
+/** `+1.3%` / `−1.5%` / `0%` — null when there is no prior year to compare. */
+export function formatTaxYoyChange(pct: number | null): string | null {
+  if (pct == null || !Number.isFinite(pct)) return null;
+  if (pct === 0) return "0%";
+  const sign = pct > 0 ? "+" : "−";
+  return `${sign}${Math.abs(pct).toFixed(1)}%`;
+}
 
 /** Connecticut fiscal year ending year (July–June). */
 export function currentFiscalYearEnd(): number {
@@ -158,10 +188,12 @@ export function buildPropertyTaxHistorySlots(
   return Array.from({ length: count }, (_, index) => {
     const taxYearEnd = anchor - index;
     const hit = byYear.get(taxYearEnd);
+    const amount = hit?.amount ?? null;
     return {
       taxYearEnd,
       taxYearLabel: hit?.taxYearLabel ?? formatTaxYearLabel(taxYearEnd),
-      amount: hit?.amount ?? null,
+      amount,
+      yoyChangePct: taxYoyChangePct(amount, byYear.get(taxYearEnd - 1)?.amount),
     };
   });
 }

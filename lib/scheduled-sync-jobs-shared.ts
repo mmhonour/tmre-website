@@ -14,6 +14,7 @@ export const SCHEDULED_SYNC_JOB_IDS = [
   'fomc-sync',
   'cpi-sync',
   'market-digest',
+  'cama-tax',
 ] as const
 
 export type ScheduledSyncJobId = (typeof SCHEDULED_SYNC_JOB_IDS)[number]
@@ -58,5 +59,6 @@ export function emptyScheduledSyncPausedJobs(): ScheduledSyncPausedJobs {
     'fomc-sync': false,
     'cpi-sync': false,
     'market-digest': false,
+    'cama-tax': false,
   }
 }
