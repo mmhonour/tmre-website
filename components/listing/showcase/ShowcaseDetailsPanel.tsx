@@ -195,8 +195,9 @@ export default function ShowcaseDetailsPanel({
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const [activeDeckCard, setActiveDeckCard] =
     useState<ListingDesktopDeckCardId | null>("remarks");
-  /** Deck card that was open before Map — restored when the page-width map is shown. */
+  /** Card that was open before Map — restored when Map is Less. */
   const priorDeckCardRef = useRef<ListingDesktopDeckCardId | null>("remarks");
+  const mapOpen = activeDeckCard === "map";
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -274,18 +275,29 @@ export default function ShowcaseDetailsPanel({
     return cur;
   };
 
-  const restoreDeckAfterMap = () => {
+  const openMapDeck = () => {
+    setActiveTab("map");
     setActiveDeckCard((cur) => {
       rememberDeckBeforeMap(cur);
-      if (cur !== "map") return cur;
-      return priorDeckCardRef.current;
+      return "map";
     });
   };
 
-  /** Map tab / Map section: full-width panel map, then put the deck back. */
+  const closeMapDeck = (
+    restore: ListingDesktopDeckCardId | null = priorDeckCardRef.current,
+  ) => {
+    setActiveDeckCard(restore ?? "remarks");
+  };
+
+  /** Overview card in the deck — independent of which strip tab is lit. */
+  const expandOverviewDeck = () => {
+    setActiveDeckCard("remarks");
+  };
+
+  /** Map tab: jump to the full-width page map. Deck Map card is a separate peek. */
   const goToPageMap = () => {
     setActiveTab("map");
-    restoreDeckAfterMap();
+    expandOverviewDeck();
     scrollToShowcaseSection("map");
   };
 
@@ -305,7 +317,7 @@ export default function ShowcaseDetailsPanel({
       // the property facts alongside the copy instead of duplicating it.
       // Desktop only: mobile has no deck and no room for a second column.
       setShowOverviewSection(tab === "overview");
-      if (tab === "overview") setActiveDeckCard("details");
+      if (tab === "overview") setActiveDeckCard("remarks");
       if (tab === "map") {
         goToPageMap();
         return;
@@ -348,7 +360,7 @@ export default function ShowcaseDetailsPanel({
   }, []);
 
   // Full-width Map at the bottom of the panel is the destination. Once it is
-  // on screen, put the dashboard back to the card that was open before Map.
+  // on screen, Overview (remarks) re-expands and the deck Map overlay closes.
   useEffect(() => {
     if (!isDesktop) return;
     const el = document.getElementById(SHOWCASE_SECTION_IDS.map);
@@ -356,7 +368,7 @@ export default function ShowcaseDetailsPanel({
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry?.isIntersecting) return;
-        restoreDeckAfterMap();
+        expandOverviewDeck();
       },
       { threshold: 0.3 },
     );
@@ -419,6 +431,9 @@ export default function ShowcaseDetailsPanel({
       onActiveCardChange={(id) => {
         setActiveDeckCard((cur) => {
           if (id === "map") rememberDeckBeforeMap(cur);
+          if (id !== "map" && cur === "map" && id == null) {
+            return priorDeckCardRef.current ?? "remarks";
+          }
           return id;
         });
       }}
@@ -734,7 +749,7 @@ export default function ShowcaseDetailsPanel({
                     city={host.interest.city}
                   />
                 ) : null}
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
                       remarks={remarks || null}
@@ -761,13 +776,25 @@ export default function ShowcaseDetailsPanel({
                       "history",
                     )}
                   </div>
-                  <div className="-mt-2 flex min-h-0 flex-1 flex-col">
+                  <div
+                    className={
+                      mapOpen
+                        ? "absolute inset-0 z-40 flex min-h-0 flex-col"
+                        : "-mt-2 shrink-0"
+                    }
+                  >
                     {deckCard(
-                      <ListingMapSidePanel frameClass={listingPanelCompactClass}>
+                      <ListingMapSidePanel
+                        frameClass={`${listingPanelCompactClass} h-full`}
+                        covering={mapOpen}
+                        onToggleCover={() =>
+                          mapOpen ? closeMapDeck() : openMapDeck()
+                        }
+                      >
                         {listingMap("h-full min-h-0 w-full")}
                       </ListingMapSidePanel>,
                       "map",
-                      true,
+                      mapOpen,
                     )}
                   </div>
                   {siteUnlocked ? (
