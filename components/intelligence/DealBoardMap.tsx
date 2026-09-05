@@ -15,7 +15,11 @@ import {
   loadTmreZipBoundaries,
   loadZipBoundariesForZips,
 } from "@/components/ZipBoundaryPopover";
-import { boundaryZipsForAllTowns } from "@/lib/tmre-towns";
+import {
+  boundaryZipsForAllTowns,
+  townForZip,
+  townHasMultipleZips,
+} from "@/lib/tmre-towns";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
@@ -269,6 +273,24 @@ function fitBounds(
     { width, height },
   );
   return { center, zoom: fittedZoom };
+}
+
+function ringBBoxCenter(rings: Ring[]): LonLat | null {
+  if (rings.length === 0) return null;
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const ring of rings) {
+    for (const [lon, lat] of ring) {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+  }
+  if (!Number.isFinite(minLon)) return null;
+  return { lon: (minLon + maxLon) / 2, lat: (minLat + maxLat) / 2 };
 }
 
 function ringToPath(
@@ -1116,6 +1138,23 @@ export default function DealBoardMap({
     zoom,
   ]);
 
+  const zipLocaleLabels = useMemo(() => {
+    if (!viewport || zipRings.length < 2) return [];
+    return zipRings.flatMap((entry) => {
+      const town = townForZip(entry.zip);
+      if (!town || !townHasMultipleZips(town)) return [];
+      const center = ringBBoxCenter(entry.rings);
+      if (!center) return [];
+      return [
+        {
+          zip: entry.zip,
+          left: lonToWorldX(center.lon, zoom) - viewport.left,
+          top: latToWorldY(center.lat, zoom) - viewport.top,
+        },
+      ];
+    });
+  }, [viewport, zipRings, zoom]);
+
   const boundaryLayers = useMemo(() => {
     if (!viewport) return [];
     const source = extraRings ? [...zipRings, extraRings] : zipRings;
@@ -1251,6 +1290,16 @@ export default function DealBoardMap({
             })}
           </svg>
         ) : null}
+
+        {zipLocaleLabels.map((label) => (
+          <span
+            key={`zip-locale-${label.zip}`}
+            className="pointer-events-none absolute z-[6] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm border border-navy/20 bg-white/90 px-1 py-px font-mono text-[9px] font-semibold tabular-nums tracking-wide text-navy shadow-sm"
+            style={{ left: label.left, top: label.top }}
+          >
+            {label.zip}
+          </span>
+        ))}
 
         {estimateOverlayPaths.length > 0 && size.width > 0 ? (
           <svg

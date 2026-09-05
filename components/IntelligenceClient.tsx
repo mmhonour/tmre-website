@@ -2039,9 +2039,21 @@ export default function IntelligenceClient({
   const [flashedTown, setFlashedTown] = useState<TmreTown | "All" | null>(null);
   const townMapHoldCityRef = useRef<TmreTown | "All" | null>(null);
   const townFilterAnchorRef = useRef<HTMLDivElement>(null);
+  const [townFilterAnchorEl, setTownFilterAnchorEl] =
+    useState<HTMLDivElement | null>(null);
+  const bindTownFilterAnchor = (el: HTMLDivElement | null) => {
+    townFilterAnchorRef.current = el;
+    setTownFilterAnchorEl(el);
+  };
   const townMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [flashedZip, setFlashedZip] = useState<string | null>(null);
   const zipFilterAnchorRef = useRef<HTMLDivElement>(null);
+  const [zipFilterAnchorEl, setZipFilterAnchorEl] =
+    useState<HTMLDivElement | null>(null);
+  const bindZipFilterAnchor = (el: HTMLDivElement | null) => {
+    zipFilterAnchorRef.current = el;
+    setZipFilterAnchorEl(el);
+  };
   const zipMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [boundaryMapExiting, setBoundaryMapExiting] = useState(false);
   const boundaryMapFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2139,21 +2151,19 @@ export default function IntelligenceClient({
     if (city === "All") prefetchAllTownBoundaries();
     else prefetchTownBoundaries(city);
     setFlashedTown(city);
-    // Fallback if rings never settle (missing table rows / network).
-    beginTownMapHold(8_000);
+    // Phone: keep the outline up until the next town/zip tap. A 0.9s flash
+    // after the last TIGER fix is why Fairfield vanished.
+    if (prefersFineHover()) beginTownMapHold(8_000);
   };
 
-  /** Replace the fallback hold once every primary zip has painted. */
+  /** Desktop only — replace the fallback hold once rings have painted. */
   const onTownMapSettled = () => {
     if (townMapHoldCityRef.current == null) return;
+    if (!prefersFineHover()) return;
     const holdMs =
       townMapHoldCityRef.current === "All"
-        ? prefersFineHover()
-          ? ALL_TOWNS_MAP_FLASH_MS
-          : ALL_TOWNS_MAP_FLASH_MS_TOUCH
-        : prefersFineHover()
-          ? TOWN_MAP_FLASH_MS
-          : TOWN_MAP_FLASH_MS_TOUCH;
+        ? ALL_TOWNS_MAP_FLASH_MS
+        : TOWN_MAP_FLASH_MS;
     beginTownMapHold(holdMs);
   };
 
@@ -2179,7 +2189,8 @@ export default function IntelligenceClient({
     setHoveredZip(null);
     setHoveredZipEl(null);
     setFlashedZip(nextZip);
-    const holdMs = prefersFineHover() ? ZIP_MAP_FLASH_MS : ZIP_MAP_FLASH_MS_TOUCH;
+    if (!prefersFineHover()) return;
+    const holdMs = ZIP_MAP_FLASH_MS;
     zipMapFlashTimerRef.current = setTimeout(() => {
       zipMapFlashTimerRef.current = null;
       fadeClearBoundaryMaps(() => setFlashedZip(null));
@@ -5802,7 +5813,7 @@ export default function IntelligenceClient({
                       >
                         {showMobileTownPills ? (
                           <div
-                            ref={townFilterAnchorRef}
+                            ref={bindTownFilterAnchor}
                             className={
                               inlineTownZip
                                 ? "min-w-0 shrink-0"
@@ -5878,7 +5889,7 @@ export default function IntelligenceClient({
 
                         {showMobileZipPills && inlineTownZip ? (
                           <div
-                            ref={zipFilterAnchorRef}
+                            ref={bindZipFilterAnchor}
                             className="min-w-0 shrink-0"
                           >
                             <ZipFilterPills
@@ -5937,7 +5948,7 @@ export default function IntelligenceClient({
                       showZipFilters &&
                       !inlineTownZip ? (
                         <div
-                          ref={zipFilterAnchorRef}
+                          ref={bindZipFilterAnchor}
                           className="self-start w-full min-w-0"
                         >
                           <ZipFilterPills
@@ -6930,7 +6941,7 @@ export default function IntelligenceClient({
           <ZipBoundaryPopover
             highlightAllTowns
             anchorEl={hoveredTownEl}
-            placeBelowEl={townFilterAnchorRef.current}
+            placeBelowEl={townFilterAnchorEl}
             onSelectTown={
               fineHoverPointer ? selectTownFromBoundaryMap : undefined
             }
@@ -6942,7 +6953,7 @@ export default function IntelligenceClient({
           <ZipBoundaryPopover
             highlightTown={hoveredTown}
             anchorEl={hoveredTownEl}
-            placeBelowEl={townFilterAnchorRef.current}
+            placeBelowEl={townFilterAnchorEl}
             onSelectTown={
               fineHoverPointer ? selectTownFromBoundaryMap : undefined
             }
@@ -6951,22 +6962,23 @@ export default function IntelligenceClient({
             exiting={boundaryMapExiting}
           />
         )
-      ) : flashedTown && townFilterAnchorRef.current ? (
-        // Selection feedback only — stays click-through so it cannot swallow a
-        // click on the board while it fades. Hold starts after rings paint.
+      ) : flashedTown && !showMap ? (
+        // Phone keeps this up until the next town/zip tap. Desktop still
+        // flashes. Do not gate on the pill-row ref — that row remounts
+        // after a town tap and left Fairfield with no map.
         flashedTown === "All" ? (
           <ZipBoundaryPopover
             highlightAllTowns
-            anchorEl={townFilterAnchorRef.current}
-            placeBelowEl={townFilterAnchorRef.current}
+            anchorEl={townFilterAnchorEl}
+            placeBelowEl={townFilterAnchorEl}
             exiting={boundaryMapExiting}
             onSettled={onTownMapSettled}
           />
         ) : (
           <ZipBoundaryPopover
             highlightTown={flashedTown}
-            anchorEl={townFilterAnchorRef.current}
-            placeBelowEl={townFilterAnchorRef.current}
+            anchorEl={townFilterAnchorEl}
+            placeBelowEl={townFilterAnchorEl}
             exiting={boundaryMapExiting}
             onSettled={onTownMapSettled}
           />
@@ -6979,15 +6991,15 @@ export default function IntelligenceClient({
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
           anchorEl={hoveredZipEl}
-          placeBelowEl={zipFilterAnchorRef.current}
+          placeBelowEl={zipFilterAnchorEl}
           exiting={boundaryMapExiting}
         />
-      ) : flashedZip && zipFilterAnchorRef.current ? (
+      ) : flashedZip ? (
         <ZipBoundaryPopover
           highlightZip={flashedZip}
           contextZips={availableZips.filter((z) => z !== flashedZip)}
-          anchorEl={zipFilterAnchorRef.current}
-          placeBelowEl={zipFilterAnchorRef.current}
+          anchorEl={zipFilterAnchorEl}
+          placeBelowEl={zipFilterAnchorEl}
           exiting={boundaryMapExiting}
         />
       ) : null}
