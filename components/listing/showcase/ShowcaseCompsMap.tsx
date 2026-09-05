@@ -9,6 +9,7 @@ import type { ComparableListing } from "@/lib/listing-comparables-shared";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { prefetchAllTownBoundaries } from "@/components/ZipBoundaryPopover";
+import { mapBoundZipsForListing } from "@/lib/tmre-towns";
 
 type Pool = "active" | "sold" | "uag";
 
@@ -173,10 +174,10 @@ export default function ShowcaseCompsMap({
     uag: uagPins.length,
   };
 
-  const zips = useMemo(() => {
-    const zip = postalCode?.trim().slice(0, 5);
-    return zip && /^\d{5}$/.test(zip) ? [zip] : [];
-  }, [postalCode]);
+  const { boundZips, highlightZip } = useMemo(
+    () => mapBoundZipsForListing(townHint, postalCode),
+    [postalCode, townHint],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -236,14 +237,13 @@ export default function ShowcaseCompsMap({
       <div className="relative min-h-0 flex-1">
         {/* DealBoardMap puts `heightClass` on an inner div, so its own outer
             wrapper needs a height too or `h-full` resolves against auto. */}
-        {/* `highlightZip` paints the boundary blue. `boundZips` draws it and
-            frames desktop / Reset view. On a phone DealBoardMap opens on the
-            subject pin so the house is not a speck inside the town AABB. */}
+        {/* Town zips all draw (Fairfield is three). The listing zip is blue.
+            Phone camera stays on the house + nearby comps; Reset is town-wide. */}
         <DealBoardMap
           listings={listings}
           subjectKey={hideSubject ? null : subject?.key ?? null}
-          boundZips={zips}
-          highlightZip={zips[0] ?? null}
+          boundZips={boundZips}
+          highlightZip={highlightZip}
           activeKey={activeKey}
           onSelect={setActiveKey}
           hrefFor={
