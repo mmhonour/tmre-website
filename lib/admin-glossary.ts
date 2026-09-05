@@ -1205,7 +1205,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'CT coverage',
     category: 'product',
     definition:
-      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save (flag only — not RETS/public yet). Each town also has a Playbook link. The large map is the same street tiles and TIGER ZCTA rings as Intelligence / showcase; zoom a town to paint ¼-mile coastal squares or drag the town-center disk to move/resize it. County thumbnails use TIGER county outlines (same Census family, different layer). Public pages still use hardcoded TMRE_TOWNS until wired.',
+      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save. Public copy, town pills, Market Pulse, and the footer follow ct_towns.active (cached). RETS incremental still uses compile-time TMRE_TOWNS until Phase 3. Each town also has a Playbook link. The large map is the same street tiles and TIGER ZCTA rings as Intelligence / showcase; zoom a town to paint ¼-mile coastal squares or drag the town-center disk to move/resize it. County thumbnails use TIGER county outlines (same Census family, different layer).',
   },
   {
     term: 'Town activation playbook',

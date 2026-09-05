@@ -1,12 +1,14 @@
 import StatsClient from "./StatsClient";
-import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 import { Suspense } from "react";
 
-export const metadata = {
-  title: "Market Stats — TMRE",
-  description:
-    `Live market statistics for ${TMRE_TOWNS_LABEL}, CT — median price, days on market, price per sqft, and more.`,
-};
+export async function generateMetadata() {
+  const townsLabel = await getActiveCoverageTownsLabel();
+  return {
+    title: "Market Stats — TMRE",
+    description: `Live market statistics for ${townsLabel}, CT — median price, days on market, price per sqft, and more.`,
+  };
+}
 
 export default function StatsPage() {
   return (

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { TMRE_TOWNS } from "@/lib/tmre-towns";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
 
 export default function FooterMarketsColumn() {
   const [expanded, setExpanded] = useState(false);
+  const { towns } = useCoverageTowns();
 
   return (
     <div>
@@ -30,7 +31,7 @@ export default function FooterMarketsColumn() {
           </button>
           {expanded ? (
             <ul className="mt-2 ml-6 space-y-2 border-l border-white/10 pl-3">
-              {TMRE_TOWNS.map((town) => (
+              {towns.map((town) => (
                 <li key={town}>
                   <Link
                     href={`/intelligence?city=${encodeURIComponent(town)}`}

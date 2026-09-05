@@ -262,10 +262,12 @@ export function formatTownList(towns: readonly string[]): string {
 
 export const TMRE_TOWNS_LABEL = formatTownList(TMRE_TOWNS)
 
-/** Legacy four-town subset used on homepage, footer, and layout copy. */
+/** @deprecated Public copy uses Admin → CT coverage via getActiveCoverageTownsLabel. */
 export const TMRE_CORE_TOWNS = ['Norwalk', 'Westport', 'Wilton', 'Fairfield'] as const
+/** @deprecated Use getActiveCoverageTownsLabel() / useCoverageTowns(). */
 export const TMRE_CORE_TOWNS_LABEL = formatTownList(TMRE_CORE_TOWNS)
 
-/** Properties page metadata subset. */
+/** @deprecated Public copy uses Admin → CT coverage via getActiveCoverageTownsLabel. */
 export const TMRE_PROPERTIES_TOWNS = ['Norwalk', 'Westport', 'Fairfield'] as const
+/** @deprecated Use getActiveCoverageTownsLabel() / useCoverageTowns(). */
 export const TMRE_PROPERTIES_TOWNS_LABEL = formatTownList(TMRE_PROPERTIES_TOWNS)
