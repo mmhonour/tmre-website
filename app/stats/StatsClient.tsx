@@ -34,6 +34,8 @@ import SalesByTownDataTable from "./SalesByTownDataTable";
 import VintageSalesDataTable from "./VintageSalesDataTable";
 import PriceSalesByTownDataTable from "./PriceSalesByTownDataTable";
 import ListToAskByTownDataTable from "./ListToAskByTownDataTable";
+import TransactToListListingsTable from "./TransactToListListingsTable";
+import type { StatsListingRow } from "@/lib/stats-listing-rows";
 import PriceSpreadByTownDataTable from "./PriceSpreadByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
@@ -247,6 +249,10 @@ export default function StatsClient() {
   const chartScrollApplied = useRef(false);
   const [transactToListDataOpen, setTransactToListDataOpen] = useState(false);
   const [transactToListTown, setTransactToListTown] = useState<Town | null>(null);
+  const [transactDrillTown, setTransactDrillTown] = useState<Town | null>(null);
+  const [transactListings, setTransactListings] = useState<StatsListingRow[]>([]);
+  const [transactListingsLoadState, setTransactListingsLoadState] =
+    useState<LoadState>("ready");
 
   useStatsScrollOffset();
 
@@ -377,6 +383,8 @@ export default function StatsClient() {
     setSelectedPriceBucketId(null);
     setPriceBand(null);
     setPriceBandRows([]);
+    setTransactDrillTown(null);
+    setTransactListings([]);
   }, [selectedCity, statsKind, setTableMode, setSelectedPriceBucketId]);
 
   useEffect(() => {
@@ -406,6 +414,8 @@ export default function StatsClient() {
   }, [tableMode, selectedPriceBucketId, selectedCity, statsKind, statsDataVersion]);
 
   const showMedianDetail = (town: Town | "All") => {
+    setTransactDrillTown(null);
+    setTransactListings([]);
     setTableMode("median");
     setListingPool("closed");
     setSelectedPriceBucketId(null);
@@ -416,7 +426,43 @@ export default function StatsClient() {
     });
   };
 
+  const showTransactDetail = (town: Town) => {
+    setTransactToListTown(town);
+    setTransactToListDataOpen(true);
+    setTransactDrillTown(town);
+    requestAnimationFrame(() => {
+      if (tableRef.current) scrollToStatsAnchor(tableRef.current);
+    });
+  };
+
+  useEffect(() => {
+    if (!transactDrillTown) return;
+    let cancelled = false;
+    setTransactListingsLoadState("loading");
+    setTransactListings([]);
+    fetch(
+      `/api/market-stats/listings?city=${encodeURIComponent(transactDrillTown)}&kind=${statsKind}&view=transact-to-list`,
+      { cache: "no-store" },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { listings?: StatsListingRow[] } | null) => {
+        if (cancelled) return;
+        setTransactListings(data?.listings ?? []);
+        setTransactListingsLoadState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTransactListings([]);
+        setTransactListingsLoadState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [transactDrillTown, statsKind]);
+
   const showPriceBandDetail = (bucket: { id: string; label: string }) => {
+    setTransactDrillTown(null);
+    setTransactListings([]);
     setTableMode("price-band");
     setPriceBand(bucket);
     setSelectedPriceBucketId(bucket.id);
@@ -1177,7 +1223,7 @@ export default function StatsClient() {
                       key={`${TRANSACT_TO_LIST_CHART_ID}-data-${statsKind}${chartVersionSuffix}`}
                       kind={statsKind}
                       highlightTown={transactToListTown}
-                      onTownSelect={(town) => setTransactToListTown(town)}
+                      onTownSelect={showTransactDetail}
                     />
                   }
                 >
@@ -1186,8 +1232,8 @@ export default function StatsClient() {
                     kind={statsKind}
                     selectedCity={selectedCity}
                     onTownData={(town) => {
-                      if (town) setTransactToListTown(town);
-                      setTransactToListDataOpen(true);
+                      if (town) showTransactDetail(town);
+                      else setTransactToListDataOpen(true);
                     }}
                   />
                 </StatsChartPrintFrame>
@@ -1197,7 +1243,14 @@ export default function StatsClient() {
                 ref={tableRef}
                 className={`mt-16 pt-10 border-t border-charcoal/[0.08] ${STATS_SCROLL_MT}`}
               >
-                {tableMode === "price-band" ? (
+                {transactDrillTown ? (
+                  <TransactToListListingsTable
+                    town={transactDrillTown}
+                    kind={statsKind}
+                    rows={transactListings}
+                    loading={transactListingsLoadState === "loading"}
+                  />
+                ) : tableMode === "price-band" ? (
                   <MedianPriceListingsTable
                     rows={priceBandRows}
                     townFilter={tableTown}

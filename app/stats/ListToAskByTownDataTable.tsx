@@ -65,6 +65,9 @@ export default function ListToAskByTownDataTable({
         <p className="font-mono text-[10px] text-charcoal/45">
           Total close prices ÷ total original asks, so larger {noun} carry the
           weight they should. Closings since 2024 that published both prices.
+          {onTownSelect
+            ? " Click a town to see those closings one by one."
+            : null}
         </p>
       }
     >

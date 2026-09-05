@@ -21,6 +21,7 @@ export type MedianListingRow = {
   address: string;
   price: number | null;
   closedPrice: number | null;
+  originalListPrice: number | null;
   listDate: string | null;
   dom: number | null;
   sqft: number | null;

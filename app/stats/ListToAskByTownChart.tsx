@@ -192,7 +192,7 @@ export default function ListToAskByTownChart({
           <p className="font-mono text-[9px] tracking-wide text-white/20">
             Total close prices ÷ total original asks since 2024 · sorted furthest
             under ask → furthest over · above the line favours sellers
-            {onTownData ? " · click a town for the numbers" : ""}
+            {onTownData ? " · click a town for its closings" : ""}
           </p>
           {onTownData ? (
             <div className="flex flex-wrap items-center gap-4">
@@ -202,7 +202,7 @@ export default function ListToAskByTownChart({
                   type="button"
                   onClick={() => onTownData(row.town)}
                   className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
-                  aria-label={`View ${row.town} ${kind === "rental" ? "lease" : "sale"}-to-list numbers`}
+                  aria-label={`View ${row.town} closings against first ask`}
                 >
                   <div
                     className="w-2 h-2 rounded-full"
