@@ -455,6 +455,13 @@ export default function DealBoardMap({
   const locationGrid = useLocationEstimateZipGrid();
   const locationCenters = useLocationEstimateTownCenters();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Desktop page scroll must pass over the map. Wheel zoom only after a click
+   * on the canvas (same idea as Google Maps “click to zoom”).
+   */
+  const wheelArmedRef = useRef(false);
+  const [wheelArmed, setWheelArmed] = useState(false);
+  const [mapHovered, setMapHovered] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [center, setCenter] = useState<LonLat>(FALLBACK_CENTER);
   const [zoom, setZoom] = useState(FALLBACK_ZOOM);
@@ -816,8 +823,21 @@ export default function DealBoardMap({
   // Mouse and pen only. Touch runs through the native listeners below, which
   // own panning and pinching together — two systems both moving the viewport is
   // what made pinches jump and the panel strobe.
+  const armWheelZoom = () => {
+    if (wheelArmedRef.current) return;
+    wheelArmedRef.current = true;
+    setWheelArmed(true);
+  };
+
+  const disarmWheelZoom = () => {
+    if (!wheelArmedRef.current) return;
+    wheelArmedRef.current = false;
+    setWheelArmed(false);
+  };
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "touch") return;
+    armWheelZoom();
     dragRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -861,6 +881,8 @@ export default function DealBoardMap({
     // pinch arrives as ctrl+wheel and gets the finer, continuous step.
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaY) < 1) return;
+      // Unarmed: do not preventDefault — the page (or parent) keeps scrolling.
+      if (!wheelArmedRef.current) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const step = e.ctrlKey
@@ -877,6 +899,25 @@ export default function DealBoardMap({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoomAround]);
+
+  useEffect(() => {
+    if (!wheelArmed) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      const root = containerRef.current;
+      if (!root || root.contains(e.target as Node)) return;
+      disarmWheelZoom();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") disarmWheelZoom();
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [wheelArmed]);
 
   /**
    * Touch gestures, native because iOS Safari often never sends a second
@@ -1136,6 +1177,8 @@ export default function DealBoardMap({
         onPointerMove={handlePointerMove}
         onPointerUp={endPointer}
         onPointerCancel={endPointer}
+        onMouseEnter={() => setMapHovered(true)}
+        onMouseLeave={() => setMapHovered(false)}
         role="application"
         aria-label="Map of filtered listings"
       >
@@ -1267,13 +1310,25 @@ export default function DealBoardMap({
             isSubject ? "z-30" : isActive ? "z-20 scale-125" : "z-10"
           }`;
           const pinStyle = { left: pin.left, top: pin.top };
+          const subjectPriceLabel = pinPriceLabel(
+            pin.listing.price,
+            pin.listing.isRental,
+          );
           const pill = isSubject ? (
             <span className="flex flex-col items-center">
               <span className="text-sky drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
                 <HouseIcon className="h-6 w-6" />
               </span>
-              <span className="mt-0.5 whitespace-nowrap rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy shadow-sm">
-                This home
+              <span className="mt-0.5 flex flex-col items-center rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 shadow-sm">
+                <span className="font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy">
+                  This home
+                </span>
+                {subjectPriceLabel !== "—" ? (
+                  <span className="mt-0.5 font-mono text-[10px] leading-none tabular-nums text-navy">
+                    {subjectPriceLabel}
+                    {pin.listing.isRental ? "/mo" : ""}
+                  </span>
+                ) : null}
               </span>
             </span>
           ) : (
@@ -1409,6 +1464,15 @@ export default function DealBoardMap({
           >
             {locationOverlay.enabled ? "Hide corridors" : "Show corridors"}
           </button>
+        ) : null}
+
+        {mapHovered && !wheelArmed ? (
+          <div
+            className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-md border border-white/15 bg-navy/80 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/80 shadow-lg backdrop-blur-sm"
+            aria-hidden
+          >
+            Click to zoom
+          </div>
         ) : null}
 
         <MapControls

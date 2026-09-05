@@ -9,14 +9,23 @@ import type { ComparableListing } from "@/lib/listing-comparables-shared";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
-type Pool = "active" | "sold";
+type Pool = "active" | "sold" | "uag";
 
 type ComparablesResponse = {
   sold?: ComparableListing[];
   active?: ComparableListing[];
 };
 
-function toPin(comp: ComparableListing, pool: Pool): DealBoardMapListing | null {
+type UagResponse = {
+  sale?: ComparableListing[];
+  rental?: ComparableListing[];
+};
+
+function toPin(
+  comp: ComparableListing,
+  pool: "active" | "sold",
+  isRental = false,
+): DealBoardMapListing | null {
   if (comp.latitude == null || comp.longitude == null) return null;
   const price = (pool === "sold" ? comp.closePrice : comp.price) ?? comp.price;
   if (price == null) return null;
@@ -26,7 +35,7 @@ function toPin(comp: ComparableListing, pool: Pool): DealBoardMapListing | null 
     city: comp.city,
     price,
     score: comp.goldilocksScore ?? 0,
-    isRental: false,
+    isRental,
     beds: comp.beds,
     baths: comp.baths,
     sqft: comp.sqft,
@@ -74,6 +83,7 @@ export default function ShowcaseCompsMap({
   onToggleExpanded,
   onExit,
   fetchUrl,
+  uagFetchUrl,
   hrefFor: hrefForOverride,
   hideSubject = false,
 }: {
@@ -87,20 +97,25 @@ export default function ShowcaseCompsMap({
   onExit?: () => void;
   /** Spotlight uses `/api/spotlight/comparables`; listing uses the default. */
   fetchUrl?: string | null;
+  /** Spotlight uses `/api/spotlight/uag`; listing uses the default. */
+  uagFetchUrl?: string | null;
   hrefFor?: (listing: DealBoardMapListing) => string;
   /** Privacy: omit the subject pin so the property is not triangulated. */
   hideSubject?: boolean;
 }) {
   const [data, setData] = useState<ComparablesResponse | null>(null);
+  const [uagData, setUagData] = useState<UagResponse | null>(null);
   const [pool, setPool] = useState<Pool>("active");
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const overlay = useLocationEstimateOverlay();
+  const comparablesUrl =
+    fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`;
+  const uagUrl =
+    uagFetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/uag`;
 
   useEffect(() => {
     let cancelled = false;
-    void loadTabJson<ComparablesResponse>(
-      fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
-    )
+    void loadTabJson<ComparablesResponse>(comparablesUrl)
       .then((d) => {
         if (!cancelled) setData(d ?? {});
       })
@@ -110,20 +125,47 @@ export default function ShowcaseCompsMap({
     return () => {
       cancelled = true;
     };
-  }, [mlsId, fetchUrl]);
+  }, [comparablesUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadTabJson<UagResponse>(uagUrl)
+      .then((d) => {
+        if (!cancelled) setUagData(d ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setUagData({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [uagUrl]);
+
+  const uagPins = useMemo(() => {
+    const sale = (uagData?.sale ?? [])
+      .map((c) => toPin(c, "active", false))
+      .filter((p): p is DealBoardMapListing => p !== null);
+    const rental = (uagData?.rental ?? [])
+      .map((c) => toPin(c, "active", true))
+      .filter((p): p is DealBoardMapListing => p !== null);
+    return [...sale, ...rental];
+  }, [uagData]);
 
   const listings = useMemo(() => {
-    const comps = (pool === "sold" ? data?.sold : data?.active) ?? [];
-    const pins = comps
-      .map((c) => toPin(c, pool))
-      .filter((p): p is DealBoardMapListing => p !== null);
+    const pins =
+      pool === "uag"
+        ? uagPins
+        : ((pool === "sold" ? data?.sold : data?.active) ?? [])
+            .map((c) => toPin(c, pool))
+            .filter((p): p is DealBoardMapListing => p !== null);
     const pinSubject = hideSubject ? null : subject;
     return pinSubject ? [pinSubject, ...pins] : pins;
-  }, [data, pool, subject, hideSubject]);
+  }, [data, pool, subject, hideSubject, uagPins]);
 
   const counts = {
     active: data?.active?.length ?? 0,
     sold: data?.sold?.length ?? 0,
+    uag: uagPins.length,
   };
 
   const zips = useMemo(() => {
@@ -135,20 +177,25 @@ export default function ShowcaseCompsMap({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-2 bg-[#0d1424]/95 px-3 py-2">
         <div className="flex items-center gap-1">
-          {(["active", "sold"] as const).map((p) => (
+          {(
+            [
+              { id: "active" as const, label: "For sale", count: counts.active },
+              { id: "uag" as const, label: "UAG", count: counts.uag },
+              { id: "sold" as const, label: "Closed", count: counts.sold },
+            ] as const
+          ).map((p) => (
             <button
-              key={p}
+              key={p.id}
               type="button"
-              onClick={() => setPool(p)}
-              aria-pressed={pool === p}
+              onClick={() => setPool(p.id)}
+              aria-pressed={pool === p.id}
+              title={p.id === "uag" ? "Under agreement" : undefined}
               className={`px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
-                pool === p ? "bg-white/15 text-white" : "text-white/50 hover:text-white"
+                pool === p.id ? "bg-white/15 text-white" : "text-white/50 hover:text-white"
               }`}
             >
-              {p === "active" ? "For sale" : "Closed"}
-              <span className="ml-1.5 tabular-nums text-white/40">
-                {p === "active" ? counts.active : counts.sold}
-              </span>
+              {p.label}
+              <span className="ml-1.5 tabular-nums text-white/40">{p.count}</span>
             </button>
           ))}
         </div>
