@@ -230,6 +230,7 @@ export default function ListingShowcaseView({
           onMapStateChange={setMapState}
           onDetailsOnlyChange={setRailDetailsOnly}
           compsFetchUrl={host.compsFetchUrl}
+          uagFetchUrl={host.uagFetchUrl}
           map={host.map}
         />
 
