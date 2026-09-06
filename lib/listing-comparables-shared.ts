@@ -1,5 +1,6 @@
 import type { ListingFurnished } from '@/lib/listing-furnished'
 import { formatLotAcresLabel } from '@/lib/listing-lot-acres'
+import type { CoastalStripIndex } from '@/lib/location-estimate-zip-grid-shared'
 import { VINTAGE_BUCKETS, type VintageBucketId } from '@/lib/vintage-buckets'
 
 export type ComparableListing = {
@@ -27,6 +28,8 @@ export type ComparableListing = {
   longitude: number | null
   /** Location premium multiplier (water, center, golf) for If weighting. */
   locationPremiumMultiplier: number
+  /** Painted zip-grid strip (0 = Coast … 3 = 4th). Null/omitted when unpainted. */
+  coastalStrip?: CoastalStripIndex | null
   /** Goldilocks composite (0–100), same model as Intelligence. */
   goldilocksScore?: number | null
   /** Weekly metadata edge score (0–100), comparable across listings. */

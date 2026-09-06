@@ -3,6 +3,7 @@ import 'server-only'
 import {
   findComparableRentals,
   findComparables,
+  stampComparableLocation,
 } from '@/lib/listing-comparables'
 import { readCachedComparables } from '@/lib/listing-comparables-cache'
 import {
@@ -19,6 +20,8 @@ import {
   type ListingIfPayload,
 } from '@/lib/listing-if-estimates'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
+import { getLocationEstimateZipGridFresh } from '@/lib/location-estimate-zip-grid-config'
+import type { ZipGridCells } from '@/lib/location-estimate-zip-grid-shared'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
   getPricingMatchingConfig,
@@ -47,7 +50,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 13
+export const IF_ESTIMATES_ALGO_VERSION = 14
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -74,6 +77,27 @@ function subjectMarketPrice(subject: Listing): number | null {
 function vintageLabel(id: VintageBucketId): string | null {
   if (id === 'unknown') return null
   return VINTAGE_BUCKETS.find((b) => b.id === id)?.label ?? null
+}
+
+async function loadWhatIfLocationCells(): Promise<ZipGridCells | undefined> {
+  try {
+    const grid = await getLocationEstimateZipGridFresh()
+    return grid.cells
+  } catch {
+    return undefined
+  }
+}
+
+function applyGridToComparables(
+  comps: ComparablesResult,
+  cells: ZipGridCells | undefined,
+): ComparablesResult {
+  if (!cells) return comps
+  return {
+    ...comps,
+    sold: comps.sold.map((comp) => stampComparableLocation(comp, cells)),
+    active: comps.active.map((comp) => stampComparableLocation(comp, cells)),
+  }
 }
 
 function isFresh(iso: string | null | undefined, ttlMs: number): boolean {
@@ -125,6 +149,7 @@ function scenariosFromComparablesResults(
   saleComps: ComparablesResult,
   rentComps: ComparablesResult,
   match: PricingMatchingConfig,
+  cells?: ZipGridCells,
 ): {
   sale: IfScenario
   rent: IfScenario
@@ -141,24 +166,27 @@ function scenariosFromComparablesResults(
     subject.longitude,
     subject.address.postalCode,
     subject.address.city,
+    { cells },
   )
   const subjectVintage = subjectVintageFromYear(subject.yearBuilt)
   const estimateContext = {
     subjectVintage,
     locationPremium,
   }
+  const sale = applyGridToComparables(saleComps, cells)
+  const rent = applyGridToComparables(rentComps, cells)
 
   return {
     sale: scenarioFromComparablesResult(
       'sale',
-      saleComps,
+      sale,
       subject,
       match,
       estimateContext,
     ),
     rent: scenarioFromComparablesResult(
       'rent',
-      rentComps,
+      rent,
       subject,
       match,
       estimateContext,
@@ -174,6 +202,7 @@ function computeIfEstimates(
   soldPool: Listing[],
   activePool: Listing[],
   match: PricingMatchingConfig,
+  cells?: ZipGridCells,
 ): {
   sale: IfScenario
   rent: IfScenario
@@ -182,7 +211,11 @@ function computeIfEstimates(
   subjectVintageLabel: string | null
 } {
   const lookbackMonths = match.defaultLookbackMonths
-  const rankOpts = { soldLookbackMonths: lookbackMonths, match }
+  const rankOpts = {
+    soldLookbackMonths: lookbackMonths,
+    match,
+    locationCells: cells,
+  }
   const saleComps = findComparables(
     subject,
     soldPool,
@@ -196,7 +229,13 @@ function computeIfEstimates(
     activePool,
     rankOpts,
   )
-  return scenariosFromComparablesResults(subject, saleComps, rentComps, match)
+  return scenariosFromComparablesResults(
+    subject,
+    saleComps,
+    rentComps,
+    match,
+    cells,
+  )
 }
 
 export async function cacheIfEstimatesForListing(
@@ -206,8 +245,9 @@ export async function cacheIfEstimatesForListing(
 ): Promise<ListingIfPayload> {
   const id = listingRowId(subject)
   const match = await getPricingMatchingConfigFresh()
+  const cells = await loadWhatIfLocationCells()
   const { sale, rent, locationLabel, locationPremiumLabels, subjectVintageLabel } =
-    computeIfEstimates(subject, soldPool, activePool, match)
+    computeIfEstimates(subject, soldPool, activePool, match, cells)
   const computedAt = new Date().toISOString()
 
   if (id) {
@@ -289,6 +329,7 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
   const match =
     (await getPricingMatchingConfigFresh().catch(() => null)) ??
     getPricingMatchingConfig()
+  const cells = await loadWhatIfLocationCells()
 
   for (const town of TMRE_TOWNS) {
     const soldPool = await readAllListingsFromDb([town], 'Closed')
@@ -302,6 +343,7 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
         soldPool,
         activePool,
         match,
+        cells,
       )
       await upsertListingIfEstimate({
         listingId: id,
@@ -332,6 +374,7 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
           subject.longitude,
           subject.address.postalCode,
           subject.address.city,
+          { cells },
         ).labels,
         subjectVintageLabel: vintageLabel(subjectVintageFromYear(subject.yearBuilt)),
         subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
@@ -424,16 +467,23 @@ export async function resolveListingIfPayload(
   // Prefer warm Sales/Rentals edges — avoids loading every Closed+Active row
   // for the town when the matcher already ranked comps for this subject.
   const match = await getPricingMatchingConfigFresh()
-  const [saleCached, rentCached] = await Promise.all([
+  const [saleCached, rentCached, cells] = await Promise.all([
     readCachedComparables(listing, 'sale'),
     readCachedComparables(listing, 'rental'),
+    loadWhatIfLocationCells(),
   ])
 
   if (saleCached && rentCached) {
     return persistIfPayload(
       listing,
       match,
-      scenariosFromComparablesResults(listing, saleCached, rentCached, match),
+      scenariosFromComparablesResults(
+        listing,
+        saleCached,
+        rentCached,
+        match,
+        cells,
+      ),
     )
   }
 
@@ -441,7 +491,11 @@ export async function resolveListingIfPayload(
   if (saleCached || rentCached) {
     const { soldPool, activePool } = await compPoolsForListing(listing)
     const lookbackMonths = match.defaultLookbackMonths
-    const rankOpts = { soldLookbackMonths: lookbackMonths, match }
+    const rankOpts = {
+      soldLookbackMonths: lookbackMonths,
+      match,
+      locationCells: cells,
+    }
     const saleComps =
       saleCached ??
       findComparables(listing, soldPool, activePool, 'sale', rankOpts)
@@ -451,7 +505,13 @@ export async function resolveListingIfPayload(
     return persistIfPayload(
       listing,
       match,
-      scenariosFromComparablesResults(listing, saleComps, rentComps, match),
+      scenariosFromComparablesResults(
+        listing,
+        saleComps,
+        rentComps,
+        match,
+        cells,
+      ),
     )
   }
 

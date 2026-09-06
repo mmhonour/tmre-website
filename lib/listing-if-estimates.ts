@@ -11,6 +11,7 @@ import {
   formatLocationPremiumLabels,
   type LocationPremiumFactors,
 } from '@/lib/listing-location-premium'
+import type { CoastalStripIndex } from '@/lib/location-estimate-zip-grid-shared'
 import {
   DEFAULT_PRICING_MATCHING_CONFIG,
   type PricingMatchingConfig,
@@ -51,6 +52,8 @@ export const IF_LOCATION_WEIGHT_TIER_1 = 2.5
 export const IF_LOCATION_WEIGHT_TIER_2 = 1.6
 export const IF_LOCATION_WEIGHT_TIER_3 = 1.2
 export const IF_LOCATION_WEIGHT_FAR = 0.85
+/** Prefer same-strip homes when this many painted comps have a usable $/sqft. */
+export const IF_SAME_STRIP_MIN_COMPS = 3
 
 /** Midpoint $/sqft (or price) aggregations — all three are cached on each scenario. */
 export const IF_MIDPOINT_METHODS = [
@@ -94,8 +97,9 @@ export function ifCompWeightExplainLines(): string[] {
     'wt is the weight each comparable gets when you pick Weighted avg for the What if midpoint. Higher wt pulls that average more toward that property. Median and Average ignore wt.',
     'wt = vintage factor × location-tier factor.',
     `Vintage factor: same era ×${IF_VINTAGE_WEIGHT_SAME}, neighboring era ×${IF_VINTAGE_WEIGHT_ADJACENT}, farther eras ×${IF_VINTAGE_WEIGHT_FAR}. If this home’s vintage is unknown, every comp uses ×1.`,
-    `Location-tier factor: compare this home’s location-premium multiplier to the comp’s. Difference ≤${IF_LOCATION_PREMIUM_TIER_1} → ×${IF_LOCATION_WEIGHT_TIER_1}; ≤${IF_LOCATION_PREMIUM_TIER_2} → ×${IF_LOCATION_WEIGHT_TIER_2}; ≤${IF_LOCATION_PREMIUM_TIER_3} → ×${IF_LOCATION_WEIGHT_TIER_3}; otherwise ×${IF_LOCATION_WEIGHT_FAR}. If this home has no location premium, every comp uses ×1.`,
-    'Example: same-vintage (×4) and close location tier (×2.5) → wt 10.00. Neighboring vintage (×1.75) and far tier (×0.85) → wt 1.49.',
+    `Location-tier factor (painted coastal strips): when this home and the comp are both on the Admin 1–4 grid, weight by strip distance — same strip ×${IF_LOCATION_WEIGHT_TIER_1}, one strip inland/out ×${IF_LOCATION_WEIGHT_TIER_2}, two strips ×${IF_LOCATION_WEIGHT_TIER_3}, farther ×${IF_LOCATION_WEIGHT_FAR}. Same-strip solds are preferred when at least ${IF_SAME_STRIP_MIN_COMPS} are available. Across strips, $/sqft is scaled by the 0.75^n inland rule.`,
+    `Location-tier factor (unpainted): compare this home’s location-premium multiplier to the comp’s. Difference ≤${IF_LOCATION_PREMIUM_TIER_1} → ×${IF_LOCATION_WEIGHT_TIER_1}; ≤${IF_LOCATION_PREMIUM_TIER_2} → ×${IF_LOCATION_WEIGHT_TIER_2}; ≤${IF_LOCATION_PREMIUM_TIER_3} → ×${IF_LOCATION_WEIGHT_TIER_3}; otherwise ×${IF_LOCATION_WEIGHT_FAR}. If this home has no location premium, every comp uses ×1.`,
+    'Example: same-vintage (×4) and same coastal strip (×2.5) → wt 10.00. Neighboring vintage (×1.75) and far tier (×0.85) → wt 1.49.',
   ]
 }
 
@@ -212,14 +216,37 @@ function vintageWeight(
   return IF_VINTAGE_WEIGHT_FAR
 }
 
+function paintedStripOf(
+  premium: LocationPremiumFactors | null | undefined,
+): CoastalStripIndex | null {
+  return premium?.coastalStrip ?? null
+}
+
+/** Same 0.75^n inland rule as location estimates (`coastalStripRelativeValue`). */
+function stripRelativeValue(strip: number): number {
+  if (!Number.isFinite(strip) || strip <= 0) return 1
+  return 0.75 ** strip
+}
+
 function locationPremiumWeight(
   subjectPremium: LocationPremiumFactors | null | undefined,
-  compMultiplier: number,
+  comp: ComparableListing,
 ): number {
+  const subjectStrip = paintedStripOf(subjectPremium)
+  const compStrip = comp.coastalStrip ?? null
+  if (subjectStrip != null && compStrip != null) {
+    const delta = Math.abs(subjectStrip - compStrip)
+    if (delta === 0) return IF_LOCATION_WEIGHT_TIER_1
+    if (delta === 1) return IF_LOCATION_WEIGHT_TIER_2
+    if (delta === 2) return IF_LOCATION_WEIGHT_TIER_3
+    return IF_LOCATION_WEIGHT_FAR
+  }
   if (!subjectPremium || subjectPremium.combinedMultiplier === 1) {
     return 1
   }
-  const diff = Math.abs(compMultiplier - subjectPremium.combinedMultiplier)
+  const diff = Math.abs(
+    comp.locationPremiumMultiplier - subjectPremium.combinedMultiplier,
+  )
   if (diff <= IF_LOCATION_PREMIUM_TIER_1) return IF_LOCATION_WEIGHT_TIER_1
   if (diff <= IF_LOCATION_PREMIUM_TIER_2) return IF_LOCATION_WEIGHT_TIER_2
   if (diff <= IF_LOCATION_PREMIUM_TIER_3) return IF_LOCATION_WEIGHT_TIER_3
@@ -228,9 +255,20 @@ function locationPremiumWeight(
 
 function locationPremiumRatio(
   subjectPremium: LocationPremiumFactors | null | undefined,
-  compMultiplier: number,
+  comp: ComparableListing,
 ): number {
+  const subjectStrip = paintedStripOf(subjectPremium)
+  const compStrip = comp.coastalStrip ?? null
+  if (subjectStrip != null && compStrip != null) {
+    const subjectRel = stripRelativeValue(subjectStrip)
+    const compRel = stripRelativeValue(compStrip)
+    if (compRel > 0 && Math.abs(subjectRel - compRel) > 0.001) {
+      return subjectRel / compRel
+    }
+    return 1
+  }
   const subjectMult = subjectPremium?.combinedMultiplier ?? 1
+  const compMultiplier = comp.locationPremiumMultiplier
   if (compMultiplier <= 0 || subjectMult === compMultiplier) return 1
   return subjectMult / compMultiplier
 }
@@ -240,7 +278,7 @@ function adjustedCompPpsf(
   subjectPremium: LocationPremiumFactors | null | undefined,
 ): number | null {
   if (!validPpsf(comp.pricePerSqft)) return null
-  return comp.pricePerSqft! * locationPremiumRatio(subjectPremium, comp.locationPremiumMultiplier)
+  return comp.pricePerSqft! * locationPremiumRatio(subjectPremium, comp)
 }
 
 function adjustedCompPrice(
@@ -248,7 +286,7 @@ function adjustedCompPrice(
   price: number,
   subjectPremium: LocationPremiumFactors | null | undefined,
 ): number {
-  return price * locationPremiumRatio(subjectPremium, comp.locationPremiumMultiplier)
+  return price * locationPremiumRatio(subjectPremium, comp)
 }
 
 function compWeight(
@@ -258,8 +296,26 @@ function compWeight(
 ): number {
   return (
     vintageWeight(subjectVintage, comp.vintageBucket) *
-    locationPremiumWeight(subjectPremium, comp.locationPremiumMultiplier)
+    locationPremiumWeight(subjectPremium, comp)
   )
+}
+
+/** Same-strip pool when the subject is painted and enough strip peers exist. */
+function locationPeerPools(
+  sold: ComparableListing[],
+  active: ComparableListing[],
+  subjectPremium: LocationPremiumFactors | null | undefined,
+): { sold: ComparableListing[]; active: ComparableListing[] } {
+  const strip = paintedStripOf(subjectPremium)
+  if (strip == null) return { sold, active }
+  const sameCount = [...sold, ...active].filter(
+    (comp) => comp.coastalStrip === strip && validPpsf(comp.pricePerSqft),
+  ).length
+  if (sameCount < IF_SAME_STRIP_MIN_COMPS) return { sold, active }
+  return {
+    sold: sold.filter((comp) => comp.coastalStrip === strip),
+    active: active.filter((comp) => comp.coastalStrip === strip),
+  }
 }
 
 /** Prefer comps at a similar $/sqft tier (same zip/neighborhood price level). */
@@ -889,11 +945,12 @@ export function estimateFromComparables(
     buildIfMatchParams(kind, null, COMPARABLES_DEFAULT_LOOKBACK_MONTHS)
   const matchedSold = matchedSoldCount ?? sold.length
   const matchedActive = matchedActiveCount ?? active.length
+  const peers = locationPeerPools(sold, active, context.locationPremium)
 
   if (subjectSqft != null && subjectSqft > 0) {
     const fromPpsf = estimateFromPpsf(
-      sold,
-      active,
+      peers.sold,
+      peers.active,
       subjectSqft,
       subjectPrice,
       context,
@@ -902,8 +959,8 @@ export function estimateFromComparables(
     if (fromPpsf.amount != null) {
       return finalizeScenario(
         fromPpsf,
-        sold,
-        active,
+        peers.sold,
+        peers.active,
         subjectSqft,
         subjectPrice,
         context,
@@ -918,8 +975,8 @@ export function estimateFromComparables(
   }
 
   const fromPrices = estimateFromPrices(
-    sold,
-    active,
+    peers.sold,
+    peers.active,
     subjectPrice,
     subjectSqft,
     context,
@@ -927,8 +984,8 @@ export function estimateFromComparables(
   )
   return finalizeScenario(
     fromPrices,
-    sold,
-    active,
+    peers.sold,
+    peers.active,
     subjectSqft ?? null,
     subjectPrice,
     context,

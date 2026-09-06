@@ -75,22 +75,29 @@ export default function AdminLocationEstimateOverlayPanel() {
               What if on listing / showcase
             </p>
             <p className="mt-1 text-[12px] leading-snug text-slate">
-              Painting a square does not change What if today. Those numbers
-              use distance to hardcoded water-access points, then weight comps
-              by how close that multiplier is to the subject.
+              What if reads these painted 1–4 squares. Same-strip homes weigh
+              more; $/sqft is scaled by the 0.75^n inland rule when comparing
+              across strips. Unpainted houses still use distance to water-access
+              pins.
             </p>
             <ul className="mt-2 space-y-1">
-              {LOCATION_PREMIUM_WATER_TIERS.map((tier) => (
-                <li
-                  key={tier.label}
-                  className="flex justify-between gap-3 font-mono text-[11px] text-navy"
-                >
-                  <span>≤ {tier.maxMiles} mi · {tier.label}</span>
-                  <span className="shrink-0 tabular-nums text-charcoal/60">
-                    {formatLocationPremiumBoost(tier.boost)}
-                  </span>
-                </li>
-              ))}
+              {([0, 1, 2, 3] as const).map((strip) => {
+                const row = COASTAL_STRIP_LEGEND[strip]
+                const tier = LOCATION_PREMIUM_WATER_TIERS[strip]
+                return (
+                  <li
+                    key={row.mark}
+                    className="flex justify-between gap-3 font-mono text-[11px] text-navy"
+                  >
+                    <span>
+                      {row.mark} {row.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-charcoal/60">
+                      {formatLocationPremiumBoost(tier.boost)}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
             <p className="mt-2 font-mono text-[10px] leading-snug text-charcoal/45">
               Village-center and golf stack on top; combined cap is +22%.

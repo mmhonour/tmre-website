@@ -6,6 +6,7 @@ import {
   subjectHasFurnishedCriteria,
 } from '@/lib/listing-furnished'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
+import type { ZipGridCells } from '@/lib/location-estimate-zip-grid-shared'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
   COMPARABLES_MATCH_LIMIT,
@@ -86,6 +87,8 @@ export type ComparablesRankOptions = {
    * session allowed-zip set). Used for the interactive wide pool only.
    */
   relaxZip?: boolean
+  /** Painted zip-grid cells so comps pick up the same coastal-strip cues as What if. */
+  locationCells?: ZipGridCells | null
 }
 
 function applyRankLimit<T>(rows: T[], limit: number | undefined): T[] {
@@ -182,7 +185,10 @@ function resolveMatchConfig(
   return options?.match ?? DEFAULT_PRICING_MATCHING_CONFIG
 }
 
-export function buildComparableListing(l: Listing): ComparableListing {
+export function buildComparableListing(
+  l: Listing,
+  ctx?: { cells?: ZipGridCells | null },
+): ComparableListing {
   const { closeDate, closePrice } = closeFieldsFromListing(l)
   const lotAcres = parseLotAcres(l)
   const vintageBucket = classifyYearBuilt(l.yearBuilt)
@@ -204,6 +210,7 @@ export function buildComparableListing(l: Listing): ComparableListing {
     l.longitude,
     l.address.postalCode,
     l.address.city,
+    { cells: ctx?.cells },
   )
 
   return {
@@ -228,6 +235,26 @@ export function buildComparableListing(l: Listing): ComparableListing {
     photoCount: l.photoCount,
     latitude: l.latitude,
     longitude: l.longitude,
+    locationPremiumMultiplier: locationPremium.combinedMultiplier,
+    coastalStrip: locationPremium.coastalStrip,
+  }
+}
+
+/** Re-apply painted-strip / pin premium onto an already-built comp (cached edges). */
+export function stampComparableLocation(
+  comp: ComparableListing,
+  cells?: ZipGridCells | null,
+): ComparableListing {
+  const locationPremium = computeLocationPremium(
+    comp.latitude,
+    comp.longitude,
+    comp.zip,
+    comp.city,
+    { cells },
+  )
+  return {
+    ...comp,
+    coastalStrip: locationPremium.coastalStrip,
     locationPremiumMultiplier: locationPremium.combinedMultiplier,
   }
 }
@@ -429,7 +456,7 @@ function rankSoldComps(
     })
 
   return applyRankLimit(ranked, limit).map(({ listing, fitDistance }, index) => ({
-    listing: buildComparableListing(listing),
+    listing: buildComparableListing(listing, { cells: options?.locationCells }),
     fitDistance,
     rank: index + 1,
   }))
@@ -463,7 +490,7 @@ function rankActiveComps(
     })
 
   return applyRankLimit(ranked, limit).map(({ listing, fitDistance }, index) => ({
-    listing: buildComparableListing(listing),
+    listing: buildComparableListing(listing, { cells: options?.locationCells }),
     fitDistance,
     rank: index + 1,
   }))

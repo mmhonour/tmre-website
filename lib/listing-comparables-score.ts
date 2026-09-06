@@ -129,8 +129,8 @@ export async function buildScoredComparableListings(
   active: Listing[],
 ): Promise<{ sold: ComparableListing[]; active: ComparableListing[] }> {
   const base = {
-    sold: sold.map(buildComparableListing),
-    active: active.map(buildComparableListing),
+    sold: sold.map((listing) => buildComparableListing(listing)),
+    active: active.map((listing) => buildComparableListing(listing)),
   }
   const enriched = await enrichComparablesWithScores(subject, {
     sold: base.sold,
