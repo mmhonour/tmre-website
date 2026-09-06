@@ -21,11 +21,20 @@ export function minDistanceMiles(
   lon: number,
   points: readonly { lat: number; lon: number }[],
 ): number | null {
+  return nearestPoint(lat, lon, points)?.miles ?? null
+}
+
+/** Nearest of `points` to (lat, lon), with great-circle miles. */
+export function nearestPoint<T extends { lat: number; lon: number }>(
+  lat: number,
+  lon: number,
+  points: readonly T[],
+): { point: T; miles: number } | null {
   if (points.length === 0) return null
-  let best = Number.POSITIVE_INFINITY
+  let best: { point: T; miles: number } | null = null
   for (const p of points) {
-    const d = haversineMiles(lat, lon, p.lat, p.lon)
-    if (d < best) best = d
+    const miles = haversineMiles(lat, lon, p.lat, p.lon)
+    if (!best || miles < best.miles) best = { point: p, miles }
   }
-  return Number.isFinite(best) ? best : null
+  return best
 }

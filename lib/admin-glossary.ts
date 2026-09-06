@@ -957,7 +957,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Location estimates',
     category: 'scoring',
     definition:
-      'Sold-derived PPSF for coastal areas and town centers (map overlay). One town-center disk per town (not per zip); Admin → Data controls → CT coverage can move that disk and change its radius. Coastal value is a ¼-mile zip grid: 1 Coast (first ¼-mile inland from open water), 2 2nd strip, 3 3rd, 4 4th. The town-center disk overrides any square it covers. What if on listing / showcase does not read this grid — it uses distance to hardcoded water-access points in listing-location-premium (≤0.20 mi +10%, ≤0.45 +6%, ≤0.85 +3%, ≤1.40 +1.5%, stacked with village-center and golf, cap +22%).',
+      'Sold-derived PPSF for coastal areas and town centers — the two areas that typically trade above the town median. Town-center comps use the one Admin-placed disk per TMRE town (default ¼-mile; CT coverage can move/resize it). Coastal comps use the painted ¼-mile zip grid (1 Coast, 2 2nd strip, 3 3rd, 4 4th): solds in the same painted strip along a ¼-mile stretch, with a 0.75^n rule of thumb inland. Cached on listing_location_estimates; snapshots on listing_location_estimate_snapshots. Overnight backfill writes slowly; listing pages only read. Map outlines show the same painted grid + disks (unlocked only). Distinct from What if, which still uses listing-location-premium distance tiers to hardcoded water-access points and does not read this grid. See PPSF, Location premium, What if.',
+  },
+  {
+    term: 'Location premium',
+    category: 'scoring',
+    definition:
+      'Hand-tuned proximity boosts (water, town/zip center, golf) used to weight What-if comps. Different from location estimates, which read painted coastal strips and town-center disks from historical solds. See Location estimates, What if.',
   },
   {
     term: 'Score breakdown',

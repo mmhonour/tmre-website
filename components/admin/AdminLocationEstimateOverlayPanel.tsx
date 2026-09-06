@@ -96,6 +96,14 @@ export default function AdminLocationEstimateOverlayPanel() {
               Village-center and golf stack on top; combined cap is +22%.
             </p>
             <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
+              Location estimates (listing / Insight)
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-slate">
+              Sold PPSF reads these painted strips and the town-center disks.
+              Same-strip solds along a ¼-mile stretch; 0.75^n is the inland
+              rule of thumb, not a price multiplier.
+            </p>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
               Painted 1–4 (this map)
             </p>
             <ul className="mt-1 space-y-1">

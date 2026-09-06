@@ -580,6 +580,42 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'listing_if_estimates' },
   },
   {
+    id: 'listing-location-estimates',
+    name: 'Location estimates',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'listing_location_estimates',
+    keyPattern: 'table rows by listing_id',
+    owner: 'lib/listing-location-estimates-resolve.ts',
+    notes:
+      'Coastal-strip and town-center-radius sold PPSF vs the town median. Written by the overnight backfill (and opportunistically with What-if estimates). Listing pages only read. Admin can flip dotted corridor / town-center outlines on the showcase and Intelligence maps (sync_meta location_estimate_map_overlay). Not a town market-stats payload.',
+    live: { kind: 'postgres_table', table: 'listing_location_estimates' },
+  },
+  {
+    id: 'listing-location-estimate-snapshots',
+    name: 'Location estimate snapshots',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'listing_location_estimate_snapshots',
+    keyPattern: 'listing_id + computed_at',
+    owner: 'lib/db/listing-location-estimates-repo.ts',
+    notes:
+      'Time series of location estimates. Overnight and later estimates sync append a row each write.',
+    live: { kind: 'postgres_table', table: 'listing_location_estimate_snapshots' },
+  },
+  {
+    id: 'location-estimate-cache',
+    name: 'Location estimate cache',
+    category: 'listing-derived',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'location:estimate:v{N}:{listingId}',
+    owner: 'lib/listing-location-estimates-resolve.ts',
+    notes:
+      'Same payload as listing_location_estimates, keyed like if:detail. Not town market-stats rows.',
+    live: { kind: 'stats_cache_prefix', prefix: 'location:estimate:' },
+  },
+  {
     id: 'if-detail-cache',
     name: 'IF detail payload cache',
     category: 'listing-derived',

@@ -6,6 +6,8 @@ import {
   medianPpsfBand,
   type MedianPpsfBand,
 } from '@/lib/insight-median-ppsf'
+import type { LocationEstimate } from '@/lib/listing-location-estimates'
+import { readLocationEstimateForListing } from '@/lib/listing-location-estimates-resolve'
 import type { Listing } from '@/lib/rets'
 import { resolveListingTown } from '@/lib/tmre-towns'
 
@@ -15,6 +17,7 @@ export type ListingDetailScore = {
   cityMedianPpsf: number | null
   pricePerSqft: number | null
   medianPpsfBand: MedianPpsfBand | null
+  locationEstimate: LocationEstimate | null
 }
 
 export async function scoreListingForDetailPage(
@@ -34,12 +37,20 @@ export async function scoreListingForDetailPage(
       pricePerSqft != null && cityMedianPpsf != null && cityMedianPpsf > 0
         ? medianPpsfBand(pricePerSqft, cityMedianPpsf)
         : null
+    const locationEstimate = await readLocationEstimateForListing(
+      listing,
+      cityMedianPpsf,
+    ).catch((err) => {
+      console.warn('[listing-detail-score] location estimate read failed', err)
+      return null
+    })
     return {
       breakdown: row.score,
-      insight: buildInsight(row),
+      insight: buildInsight({ ...row, locationEstimate }),
       cityMedianPpsf,
       pricePerSqft,
       medianPpsfBand: band,
+      locationEstimate,
     }
   } catch (err) {
     console.warn('[listing-detail-score] score failed', err)

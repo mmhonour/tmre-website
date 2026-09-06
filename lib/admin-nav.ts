@@ -176,7 +176,8 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
   {
     id: "intel-deal-board",
     label: "Deal board",
-    subtitle: "Read-only middle-tier rules for the Intelligence deal board",
+    subtitle:
+      "Location-estimate map outlines plus read-only middle-tier rules for the Intelligence deal board",
   },
   {
     id: "ct-coverage",
