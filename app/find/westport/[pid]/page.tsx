@@ -3,14 +3,8 @@ import { notFound } from "next/navigation";
 import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
-import {
-  getVisionStreetParcelByPid,
-  listVisionStreetParcels,
-} from "@/lib/db/vision-streets-repo";
-import {
-  compareAddressLabels,
-  visionStreetPageHref,
-} from "@/lib/vision-streets-page";
+import { getVisionStreetParcelByPid } from "@/lib/db/vision-streets-repo";
+import { visionStreetPageHref } from "@/lib/vision-streets-page";
 import {
   VISION_SALES_HISTORY_ID,
   formatVisionFieldValue,
@@ -173,11 +167,6 @@ export default async function WestportParcelPage({
     property.town,
     property.visionPid,
   );
-  const streetParcels = streetRow
-    ? (await listVisionStreetParcels(property.town, streetRow.streetName)).sort(
-        (a, b) => compareAddressLabels(a.addressLabel, b.addressLabel),
-      )
-    : [];
   const streetHref = streetRow
     ? visionStreetPageHref(
         property.town,
@@ -325,56 +314,6 @@ export default async function WestportParcelPage({
           ) : null}
         </div>
       </section>
-
-      {streetParcels.length > 0 && streetHref ? (
-        <section className="border-b border-charcoal/10 bg-white">
-          <div className="mx-auto max-w-7xl px-6 py-6 lg:px-10">
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
-                Street · {streetRow?.streetName}
-              </h2>
-              <Link
-                href={streetHref}
-                className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy/60 hover:text-navy"
-              >
-                Open street
-              </Link>
-            </div>
-            <ul className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-              {streetParcels.map((row) => {
-                const here = row.visionPid === property.visionPid;
-                return (
-                  <li key={`${row.visionPid}-${row.addressLabel}`}>
-                    <VisionDeedHistoryPopout
-                      label={row.addressLabel}
-                      addressLabel={row.addressLabel}
-                      ownerName={row.ownerName}
-                      mailingAddress={row.ownerMailingAddress}
-                      soldLabel={
-                        row.purchaseDate ? `Bought ${row.purchaseDate}` : null
-                      }
-                      rows={row.deedHistory}
-                      parcelHref={westportParcelHref(row.visionPid)}
-                      triggerClassName={`flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left ${
-                        here
-                          ? "bg-gold/15 text-navy"
-                          : "text-charcoal/80 hover:bg-cream hover:text-navy"
-                      }`}
-                    >
-                      <span className="min-w-0 truncate text-sm">
-                        {row.addressLabel}
-                      </span>
-                      <span className="max-w-[55%] truncate font-mono text-[10px] text-charcoal/50">
-                        {row.ownerName ?? "Pending"}
-                      </span>
-                    </VisionDeedHistoryPopout>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </section>
-      ) : null}
 
       <section className="bg-cream py-10 lg:py-14">
         <div className="mx-auto max-w-7xl px-6 lg:px-10 grid lg:grid-cols-[1.2fr_0.8fr] gap-8">
@@ -531,61 +470,36 @@ export default async function WestportParcelPage({
             </p>
           </div>
 
-          {streetParcels.length > 0 || property.siblings.length > 0 ? (
-            <div className="space-y-5 h-fit">
-              {streetParcels.length > 0 && streetRow && streetHref ? (
-                <aside className="rounded-2xl bg-white border border-charcoal/[0.08] p-5">
-                  <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-1">
-                    On this street
-                  </p>
-                  <p className="font-serif text-lg text-navy mb-1">
-                    {streetRow.streetName}
-                  </p>
-                  <p className="mb-3 font-mono text-[11px] text-charcoal/55">
-                    {streetParcels.length.toLocaleString()}{" "}
-                    {streetParcels.length === 1 ? "address" : "addresses"} ·{" "}
-                    {streetRow.addressLabel}
-                  </p>
-                  <Link
-                    href={streetHref}
-                    className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy/70 hover:text-navy"
-                  >
-                    Streets index
-                  </Link>
-                </aside>
-              ) : null}
-              {property.siblings.length > 0 ? (
-                <aside className="rounded-2xl bg-white border border-charcoal/[0.08] p-5">
-                  <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-3">
-                    Other parcels at this address
-                  </p>
-                  <ul className="space-y-2">
-                    {property.siblings.map((sib) => (
-                      <li key={sib.visionPid}>
-                        <Link
-                          href={westportParcelHref(sib.visionPid)}
-                          className="block rounded-xl px-3 py-2 hover:bg-cream transition-colors"
-                        >
-                          <span className="block text-sm text-navy">
-                            {sib.street}
-                          </span>
-                          <span className="font-mono text-[10px] text-slate/60">
-                            {[
-                              sib.mblu
-                                ? `MBLU ${sib.mblu}`
-                                : `PID ${sib.visionPid}`,
-                              sib.ownerName,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </aside>
-              ) : null}
-            </div>
+          {property.siblings.length > 0 ? (
+            <aside className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 h-fit">
+              <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-3">
+                Other parcels at this address
+              </p>
+              <ul className="space-y-2">
+                {property.siblings.map((sib) => (
+                  <li key={sib.visionPid}>
+                    <Link
+                      href={westportParcelHref(sib.visionPid)}
+                      className="block rounded-xl px-3 py-2 hover:bg-cream transition-colors"
+                    >
+                      <span className="block text-sm text-navy">
+                        {sib.street}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate/60">
+                        {[
+                          sib.mblu
+                            ? `MBLU ${sib.mblu}`
+                            : `PID ${sib.visionPid}`,
+                          sib.ownerName,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </aside>
           ) : null}
         </div>
       </section>
