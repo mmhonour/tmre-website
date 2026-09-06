@@ -32,10 +32,12 @@ import {
 import {
   formatSaleToAskPct,
   isMarketPulsePriceScaleMetric,
+  isMarketPulseTaxScaleMetric,
   marketPulseDeltaBarSpan,
   marketPulsePriceBarMax,
   marketPulsePricePct,
   marketPulseStackedMetrics,
+  marketPulseTaxBarMax,
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
 import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
@@ -282,17 +284,23 @@ function metricAside(
   row: MarketPulseCombinedTownRow,
 ): string | null {
   if (id === 'priceDelta') return formatPriceDeltaPct(row.priceDeltaPct)
+  if (id === 'taxDelta') return formatPriceDeltaPct(row.taxDeltaPct)
   if (id === 'saleToAsk') return formatSaleToAskPct(row.saleToAskPct)
   return null
 }
 
 function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
+  includeTax = false,
+  taxYearLabel?: string | null,
 ): string {
   const lookbackLabel = marketPulseLookbackChartLabel(
     DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   )
-  const metrics = marketPulseStackedMetrics(lookbackLabel)
+  const metrics = marketPulseStackedMetrics(lookbackLabel, 'sale', {
+    includeTax,
+    taxYearLabel,
+  })
 
   if (rows.length === 0) {
     return `
@@ -311,6 +319,7 @@ function stackedTownMetricsSection(
     ),
   )
   const priceMax = marketPulsePriceBarMax(rows)
+  const taxMax = marketPulseTaxBarMax(rows)
   const heatByCity = marketPulseHeatByCity(
     rows,
     (r) => ({
@@ -333,6 +342,8 @@ function stackedTownMetricsSection(
           const v = m.barValueOf(row)
           const max = isMarketPulsePriceScaleMetric(m.id)
             ? priceMax
+            : isMarketPulseTaxScaleMetric(m.id)
+              ? taxMax
             : (maxByMetric[i] ?? 0)
           const pct =
             max > 0 && v != null && Number.isFinite(v)
@@ -344,12 +355,18 @@ function stackedTownMetricsSection(
                   marketPulsePricePct(row.medianPrice, priceMax),
                   marketPulsePricePct(row.averagePrice, priceMax),
                 )
+              : m.id === 'taxDelta'
+                ? marketPulseDeltaBarSpan(
+                    marketPulsePricePct(row.medianTax, taxMax),
+                    marketPulsePricePct(row.averageTax, taxMax),
+                  )
               : { leftPct: 0, widthPct: pct }
           return metricBarRow(m.label, m.format(row), span.widthPct, {
             leftPct: span.leftPct,
             aside: metricAside(m.id, row),
             asideNegative:
-              m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0,
+              (m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0) ||
+              (m.id === 'taxDelta' && (row.taxDeltaPct ?? 0) < 0),
           })
         })
         .join('')
@@ -588,7 +605,11 @@ export function formatMarketDigestHtml(
           <tr>
             <td style="padding:8px 22px 0 22px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${stackedTownMetricsSection(combinedRows)}
+                ${stackedTownMetricsSection(
+                  combinedRows,
+                  snapshot.taxReady === true,
+                  snapshot.taxYearLabel,
+                )}
                 ${dealSection}
                 <tr><td style="padding:0 0 10px 0;">
                   <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:${NAVY};">How Seller / Buyer Friendly is scored</p>

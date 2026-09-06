@@ -3,6 +3,7 @@ import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap
 import type { ListingTab } from "@/components/listing/ListingSubnav";
 import type { ShowcaseDetailRow, ShowcaseListing } from "@/components/listing/showcase/showcase-types";
 import { formatMlsStatus } from "@/lib/listing-history";
+import { plausibleTaxAmount } from "@/lib/listing-property-tax";
 
 export type ShowcaseRouteBase = "listing" | "spotlight";
 
@@ -111,7 +112,7 @@ export function buildShowcaseDetailRows(
       label: listing.propertyTaxYear
         ? `Taxes (${listing.propertyTaxYear})`
         : "Taxes",
-      value: fmtShowcaseMoney(listing.propertyTax) ?? "—",
+      value: fmtShowcaseMoney(plausibleTaxAmount(listing.propertyTax)) ?? "—",
     },
     { label: "Elementary", value: listing.schools.elementary || "—" },
     { label: "High school", value: listing.schools.high || "—" },

@@ -7,6 +7,7 @@ import { marketPulseHeatByCity } from '@/lib/market-pulse-favorability'
 import {
   marketPulsePriceBarMax,
   marketPulseStackedMetrics,
+  marketPulseTaxBarMax,
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
 
@@ -24,6 +25,8 @@ export type MarketPulseTownScale = {
   maxByMetric: Record<MarketPulseStackedMetricId, number>
   /** Shared dollar axis for Median, Delta and Average. */
   priceMax: number
+  /** Shared dollar axis for Median tax, Tax delta and Average tax. */
+  taxMax: number
   /** Closed axis, when the caller holds a wider ceiling than these rows show. */
   closedBarMax: number
   /** Seller (0) ↔ buyer (1) position per city. */
@@ -39,11 +42,14 @@ export function marketPulseTownScale(
     kind?: ListingKind
     /** 24-month Closed ceiling, so a 7d window stays a slice of it. */
     closedBarMax?: number
+    includeTax?: boolean
+    taxYearLabel?: string | null
   },
 ): MarketPulseTownScale {
   const metrics = marketPulseStackedMetrics(
     options.closedLookbackLabel,
     options.kind ?? 'sale',
+    { includeTax: options.includeTax, taxYearLabel: options.taxYearLabel },
   )
 
   const maxByMetric = {} as Record<MarketPulseStackedMetricId, number>
@@ -59,6 +65,7 @@ export function marketPulseTownScale(
   return {
     maxByMetric,
     priceMax: marketPulsePriceBarMax(rows),
+    taxMax: marketPulseTaxBarMax(rows),
     closedBarMax: options.closedBarMax ?? 0,
     heatByCity: marketPulseHeatByCity(
       rows,
@@ -85,6 +92,9 @@ export function marketPulseMetricMax(
   if (id === 'closed' && scale.closedBarMax > 0) return scale.closedBarMax
   if (id === 'medianPrice' || id === 'averagePrice' || id === 'priceDelta') {
     return scale.priceMax
+  }
+  if (id === 'medianTax' || id === 'averageTax' || id === 'taxDelta') {
+    return scale.taxMax
   }
   return scale.maxByMetric[id] ?? 0
 }

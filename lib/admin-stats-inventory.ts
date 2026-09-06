@@ -194,6 +194,19 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-closed:' },
   },
   {
+    id: 'market-pulse-tax',
+    name: 'Market Pulse tax year',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern:
+      'market-pulse-tax:{sale|rental}:{all|homes|condos|commercial}:v4',
+    owner: 'lib/market-pulse-tax-cache.ts',
+    notes:
+      'Median / average / delta tax per town for one fiscal year (every listing, any status). Current year only after 80% of the sale book has that bill; otherwise prior. Bars stay off until CAMA has run once and a stats-cache rebuild writes v4. Tipping-point % lives on Syncs → Overview, not Data Controls. Drops Matrix placeholder bills (all-nines, 5+ digits).',
+    live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-tax:' },
+  },
+  {
     id: 'nar-housing',
     name: 'NAR existing-home series (FRED)',
     category: 'market',

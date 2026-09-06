@@ -873,19 +873,19 @@ type PriceMetricId = (typeof PRICE_METRIC_IDS)[number];
  * also the state — dim until this metric is the one ordering the towns, then
  * solid and pointing the way it has put them.
  */
-function PriceSortLabel({
+function PriceSortLabel<Id extends string>({
   id,
   name,
   label,
   sort,
   onSort,
 }: {
-  id: PriceMetricId;
+  id: Id;
   /** Plain name for the control's accessible label. */
   name: string;
   label: ReactNode;
-  sort: { id: PriceMetricId; dir: MetricSortDir } | null;
-  onSort: (next: { id: PriceMetricId; dir: MetricSortDir }) => void;
+  sort: { id: Id; dir: MetricSortDir } | null;
+  onSort: (next: { id: Id; dir: MetricSortDir }) => void;
 }) {
   const active = sort?.id === id;
   const ascending = active && sort.dir === "asc";
@@ -1079,6 +1079,175 @@ function UnstackedPricePanel({
   );
 }
 
+const TAX_METRIC_IDS = ["medianTax", "taxDelta", "averageTax"] as const;
+type TaxMetricId = (typeof TAX_METRIC_IDS)[number];
+
+function UnstackedTaxPanel({
+  rows,
+  scale,
+  metrics,
+  settle,
+  townsExpanded,
+  onAllTownsToggle,
+  townHref,
+}: {
+  rows: CombinedTownRow[];
+  scale: MarketPulseTownScale;
+  metrics: ReturnType<typeof marketPulseTownMetrics>;
+  settle: MarketPulseSettleState;
+  townsExpanded: boolean;
+  onAllTownsToggle: () => void;
+  townHref?: (cityLabel: string) => string;
+}) {
+  const taxMetrics = TAX_METRIC_IDS.map((id) =>
+    metrics.find((m) => m.id === id),
+  ).filter((m): m is (typeof metrics)[number] => m != null);
+  const [sort, setSort] = useState<{
+    id: TaxMetricId;
+    dir: MetricSortDir;
+  } | null>(null);
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const valueOf = (r: CombinedTownRow) =>
+      sort.id === "medianTax"
+        ? r.medianTax
+        : sort.id === "averageTax"
+          ? r.averageTax
+          : r.taxDelta;
+    return sortRowsByMetricValue(rows, valueOf, sort.dir);
+  }, [rows, sort]);
+  const rotateNames = rotatingTownNames(rows);
+  const widthTransition =
+    settle.phase === "scramble"
+      ? "duration-300"
+      : settle.phase === "countup"
+        ? "duration-75"
+        : "duration-150";
+
+  if (rows.length === 0 || taxMetrics.length === 0) return null;
+  if (!rows.some((r) => r.medianTax != null || r.averageTax != null)) return null;
+
+  const medianTaxLabel =
+    taxMetrics.find((m) => m.id === "medianTax")?.label ?? "Median tax";
+  const averageTaxLabel =
+    taxMetrics.find((m) => m.id === "averageTax")?.label ?? "Average tax";
+
+  return (
+    <section className={PANEL_SURFACE}>
+      <div className="flex items-center justify-between gap-2">
+        <PriceSortLabel
+          id="medianTax"
+          name="median tax"
+          label={medianTaxLabel}
+          sort={sort}
+          onSort={setSort}
+        />
+        <PriceSortLabel
+          id="taxDelta"
+          name="tax delta"
+          label="Tax delta"
+          sort={sort}
+          onSort={setSort}
+        />
+        <PriceSortLabel
+          id="averageTax"
+          name="average tax"
+          label={averageTaxLabel}
+          sort={sort}
+          onSort={setSort}
+        />
+      </div>
+      <ul className="mt-2 space-y-3">
+        {visibleTownRows(sorted, townsExpanded).map((row, rowIndex) => {
+          const label = cityLabel(row);
+          return (
+            <li key={`tax-${row.city}`} data-mp-town={row.city}>
+              <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={townHref?.(row.city ?? label)}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
+                />
+              </p>
+              <div className="mt-1 border-t border-white/[0.08] pt-0.5">
+                {taxMetrics.map((m, i) => {
+                  const scrambleIndex = rowIndex * metrics.length + i;
+                  const pctOf = (id: "medianTax" | "averageTax") =>
+                    settleBarPercent(
+                      marketPulsePricePct(
+                        id === "medianTax" ? row.medianTax : row.averageTax,
+                        scale.taxMax,
+                      ),
+                      rowIndex * metrics.length +
+                        metrics.findIndex((x) => x.id === id),
+                      settle,
+                      barScrambleNone,
+                    );
+                  const aligned =
+                    m.id === "taxDelta"
+                      ? marketPulseDeltaBarSpan(
+                          pctOf("medianTax"),
+                          pctOf("averageTax"),
+                        )
+                      : {
+                          leftPct: 0,
+                          widthPct: pctOf(
+                            m.id === "medianTax" ? "medianTax" : "averageTax",
+                          ),
+                        };
+                  const valueText =
+                    m.id === "taxDelta"
+                      ? formatPriceDeltaK(
+                          settleSignedNumber(
+                            row.taxDelta,
+                            settle,
+                            scrambleIndex,
+                            0,
+                          ),
+                        )
+                      : formatMarketPulseMoney(
+                          m.id === "medianTax" ? row.medianTax : row.averageTax,
+                        );
+                  return (
+                    <PanelBarRow
+                      key={m.id}
+                      label={m.label}
+                      valueText={valueText}
+                      leftPct={aligned.leftPct}
+                      widthPct={aligned.widthPct}
+                      aside={
+                        m.id === "taxDelta"
+                          ? formatPriceDeltaPct(
+                              settleSignedNumber(
+                                row.taxDeltaPct,
+                                settle,
+                                scrambleIndex + 19,
+                                1,
+                              ),
+                            )
+                          : null
+                      }
+                      asideNegative={
+                        m.id === "taxDelta" && (row.taxDeltaPct ?? 0) < 0
+                      }
+                      widthTransition={widthTransition}
+                      dense
+                    />
+                  );
+                })}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** This panel rides the page settle, not the per-chart scramble frames. */
 const barScrambleNone = null;
 
@@ -1097,6 +1266,8 @@ function CombinedMetricsChart({
   saleToAskTownHref,
   metricStatsHref,
   kind,
+  includeTax = false,
+  taxYearLabel = null,
   lookbackRail,
 }: {
   title?: ReactNode;
@@ -1107,6 +1278,8 @@ function CombinedMetricsChart({
   /** Stats chart behind each bar, by metric and town. */
   metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
   kind: ListingKind;
+  includeTax?: boolean;
+  taxYearLabel?: string | null;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
   settle: MarketPulseSettleState;
@@ -1118,7 +1291,10 @@ function CombinedMetricsChart({
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
 }) {
-  const metrics = marketPulseTownMetrics(closedLookbackLabel, kind);
+  const metrics = marketPulseTownMetrics(closedLookbackLabel, kind, {
+    includeTax,
+    taxYearLabel,
+  });
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
   useEffect(() => {
@@ -1438,6 +1614,7 @@ export default function WeeklyBriefContent({
   const closedRows = snapshot.closedTrailing ?? [];
   const domRows = snapshot.avgDomByTown ?? [];
   const priceRows = snapshot.priceByTown ?? [];
+  const taxRows = snapshot.taxByTown ?? [];
 
   const allTownsAvgDom = useMemo(() => {
     const allRow = domRows.find((r) => isAllTownsCity(r.city));
@@ -1450,7 +1627,12 @@ export default function WeeklyBriefContent({
     : (snapshot.market?.monthsSupply ?? null);
   const allTownsActive = snapshot.market?.activeCount ?? null;
 
-  const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind);
+  const includeTax = snapshot.taxReady === true;
+  const taxYearLabel = snapshot.taxYearLabel ?? null;
+  const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind, {
+    includeTax,
+    taxYearLabel,
+  });
 
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
@@ -1458,6 +1640,7 @@ export default function WeeklyBriefContent({
       domRows,
       closedRows,
       priceRows,
+      taxRows,
     );
     return sortRowsByBuyerFriendlyScore(
       built,
@@ -1473,7 +1656,7 @@ export default function WeeklyBriefContent({
       favorSort,
       (r) => isAllTownsCity(r.city),
     );
-  }, [inventoryRows, domRows, closedRows, priceRows, favorSort]);
+  }, [inventoryRows, domRows, closedRows, priceRows, taxRows, favorSort]);
 
   // Unstacked's price panel ranks the same towns on the same axis the stacked
   // view uses, so it reads off the same scale rather than a second one.
@@ -1483,8 +1666,10 @@ export default function WeeklyBriefContent({
         closedLookbackLabel,
         kind,
         closedBarMax,
+        includeTax,
+        taxYearLabel,
       }),
-    [combinedRows, closedLookbackLabel, kind, closedBarMax],
+    [combinedRows, closedLookbackLabel, kind, closedBarMax, includeTax, taxYearLabel],
   );
 
   const compareRow = useMemo(() => {
@@ -1756,6 +1941,8 @@ export default function WeeklyBriefContent({
             saleToAskTownHref={saleToAskTownHref}
             metricStatsHref={metricStatsHref}
             kind={kind}
+            includeTax={includeTax}
+            taxYearLabel={taxYearLabel}
             lookbackRail={
               onLookbackIdChange ? (
                 <ClosedLookbackSlider
@@ -1860,6 +2047,16 @@ export default function WeeklyBriefContent({
         </div>
 
         <UnstackedPricePanel
+          rows={combinedRows}
+          scale={unstackedScale}
+          metrics={unstackedMetrics}
+          settle={settle}
+          townsExpanded={townsExpanded}
+          onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+          townHref={townHref}
+        />
+
+        <UnstackedTaxPanel
           rows={combinedRows}
           scale={unstackedScale}
           metrics={unstackedMetrics}

@@ -48,6 +48,8 @@ export type ListingDetailsSchoolsPanelProps = {
   assessedMarketValue: number | null;
   annualPropertyTax: number | null;
   propertyTaxLabel: string;
+  /** MLS TaxYear — keep the row clickable when the current bill is a placeholder. */
+  propertyTaxYear?: string | null;
   photoCount: number;
   photosHref?: string | null;
   /** City peer median $/sqft from Goldilocks scoring (sale or rent). */
@@ -146,6 +148,7 @@ export default function ListingDetailsSchoolsPanel({
   assessedMarketValue,
   annualPropertyTax,
   propertyTaxLabel,
+  propertyTaxYear = null,
   photoCount,
   photosHref = null,
   cityMedianPpsf = null,
@@ -427,6 +430,7 @@ export default function ListingDetailsSchoolsPanel({
     furnishedLabel,
     assessedMarketValue,
     annualPropertyTax,
+    propertyTaxYear,
     photoCount,
     showAnalysis,
     hasSchools,
@@ -534,10 +538,15 @@ export default function ListingDetailsSchoolsPanel({
               value={fmtMoney(assessedMarketValue)}
             />
           ) : null}
-          {!isRental && annualPropertyTax != null && (
+          {!isRental &&
+            (annualPropertyTax != null || Boolean(propertyTaxYear)) && (
             <Stat
               label={propertyTaxLabel}
-              value={fmtMoney(annualPropertyTax)}
+              value={
+                annualPropertyTax != null
+                  ? fmtMoney(annualPropertyTax)
+                  : "—"
+              }
               labelButton
               onLabelClick={() => setTaxModalOpen(true)}
             />

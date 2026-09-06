@@ -13,6 +13,26 @@ function parseTaxAmount(value: string | undefined): number | null {
 }
 
 /**
+ * Matrix / MLS placeholder tax bills are all-nines with 5+ digits
+ * ($99,999, $999,999, $9,999,999, …) — the 36 Maple Avenue South
+ * "July 2025-June 2026 $999,999 / +9502%" case. $9,999 (4 nines) can
+ * be a real small-lot bill and is kept. Assessment placeholders use a
+ * different rule in `isPlausibleAssessment`.
+ */
+export function isPlausibleTaxAmount(
+  value: number | null | undefined,
+): value is number {
+  if (value == null || !Number.isFinite(value) || value <= 0) return false;
+  return !/^9{5,}$/.test(String(Math.round(value)));
+}
+
+export function plausibleTaxAmount(
+  value: number | null | undefined,
+): number | null {
+  return isPlausibleTaxAmount(value) ? value : null;
+}
+
+/**
  * SmartMLS `AssessedValue` (town assessment) from a synced RETS raw record.
  * Rejects the Matrix TBD sentinel (nine 9s) used when assessment is not yet
  * available. Callers must pass Postgres-hydrated `raw` (or sync-time RETS
@@ -46,7 +66,8 @@ export function propertyTaxFromRaw(raw?: Record<string, string>): {
 
   const propertyTax = parseTaxAmount(raw.PropertyTax);
   const districtTax = parseTaxAmount(raw.TaxDistrictAmount);
-  const annualAmount = propertyTax ?? districtTax;
+  const annualAmount =
+    plausibleTaxAmount(propertyTax) ?? plausibleTaxAmount(districtTax);
   const yearLabel = raw.TaxYear?.trim() || null;
 
   return { annualAmount, yearLabel };
@@ -62,7 +83,8 @@ export function propertyTaxDbFields(listing: ListingWithPropertyTax): {
   property_tax_year: string | null;
 } {
   const fromRaw = propertyTaxFromRaw(listing.raw);
-  const property_tax = fromRaw.annualAmount ?? listing.propertyTax ?? null;
+  const property_tax =
+    fromRaw.annualAmount ?? plausibleTaxAmount(listing.propertyTax);
   const property_tax_year = fromRaw.yearLabel ?? listing.propertyTaxYear ?? null;
   return { property_tax, property_tax_year };
 }
@@ -170,10 +192,157 @@ export function formatTaxYoyChange(pct: number | null): string | null {
   return `${sign}${Math.abs(pct).toFixed(1)}%`;
 }
 
-/** Connecticut fiscal year ending year (July–June). */
-export function currentFiscalYearEnd(): number {
-  const now = new Date();
+/** Connecticut fiscal year ending year (July–June). Sep 2026 → 2027. */
+export function currentFiscalYearEnd(now = new Date()): number {
   return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+/**
+ * Coverage lookback when measuring how much of the book has each FY.
+ * Pulse median / average / delta use one chosen year, not this whole window.
+ */
+export const PULSE_TAX_LOOKBACK_YEARS = 5;
+
+/**
+ * Share of the Pulse listing book that must have a plausible tax amount
+ * for a fiscal year before that year is in play. A handful of new MLS
+ * current-year bills must not flip the town comparison.
+ */
+export const PULSE_TAX_YEAR_QUORUM = 0.8;
+
+/**
+ * Sanity floor so an empty book cannot flash a one-row median even if
+ * the 80% ratio is vacuously true on a tiny universe.
+ */
+export const PULSE_TAX_YEAR_MIN_N = 125;
+
+export type PulseTaxYearKind = "current" | "prior";
+
+export type PulseTaxYearDecision = {
+  yearEnd: number;
+  kind: PulseTaxYearKind;
+  ready: boolean;
+  listingUniverse: number;
+  countCurrent: number;
+  countPrior: number;
+  pctCurrent: number;
+  pctPrior: number;
+  quorumPct: number;
+  camaHasRun: boolean;
+};
+
+export function pulseTaxCoveragePct(
+  have: number,
+  universe: number,
+): number {
+  if (universe <= 0) return 0;
+  return Math.max(0, have) / universe;
+}
+
+export function pulseTaxYearHasQuorum(
+  have: number,
+  universe: number,
+  quorum = PULSE_TAX_YEAR_QUORUM,
+): boolean {
+  return (
+    universe > 0 &&
+    have >= PULSE_TAX_YEAR_MIN_N &&
+    have / universe >= quorum
+  );
+}
+
+export function formatPulseTaxCoveragePct(pct: number): string {
+  if (!Number.isFinite(pct)) return "0%";
+  return `${Math.round(pct * 100)}%`;
+}
+
+/** `July 2025-June 2026 · prior` — the year Pulse is comparing. */
+export function formatPulseTaxComparedLabel(
+  yearEnd: number,
+  kind: PulseTaxYearKind,
+): string {
+  return `${formatTaxYearLabel(yearEnd)} · ${kind}`;
+}
+
+export function pulseTaxYearEnds(
+  newestYearEnd = currentFiscalYearEnd(),
+  count = PULSE_TAX_LOOKBACK_YEARS,
+): number[] {
+  const n = Math.max(1, Math.floor(count));
+  return Array.from({ length: n }, (_, index) => newestYearEnd - index);
+}
+
+/** `July 2022-June 2027` for FY ends 2023…2027; single year uses formatTaxYearLabel. */
+export function formatPulseTaxWindowLabel(
+  yearEnds: readonly number[],
+): string {
+  if (yearEnds.length === 0) return formatTaxYearLabel(currentFiscalYearEnd());
+  const newest = Math.max(...yearEnds);
+  const oldest = Math.min(...yearEnds);
+  if (oldest === newest) return formatTaxYearLabel(newest);
+  return `July ${oldest - 1}-June ${newest}`;
+}
+
+export function pulseTaxCoverageIsReady(
+  sampleSize: number | null | undefined,
+  minN = PULSE_TAX_YEAR_MIN_N,
+): boolean {
+  return (sampleSize ?? 0) >= minN;
+}
+
+/**
+ * Pick current FY only at the 80% tipping point. Otherwise stay on prior.
+ * Bars stay off until CAMA has run once and the chosen year has quorum.
+ */
+export function decidePulseTaxYear(input: {
+  currentYearEnd: number;
+  listingUniverse: number;
+  countCurrent: number;
+  countPrior: number;
+  camaHasRun: boolean;
+  quorum?: number;
+}): PulseTaxYearDecision {
+  const quorum = input.quorum ?? PULSE_TAX_YEAR_QUORUM;
+  const universe = Math.max(0, input.listingUniverse);
+  const countCurrent = Math.max(0, input.countCurrent);
+  const countPrior = Math.max(0, input.countPrior);
+  const currentReady = pulseTaxYearHasQuorum(countCurrent, universe, quorum);
+  const priorReady = pulseTaxYearHasQuorum(countPrior, universe, quorum);
+
+  const useCurrent = currentReady;
+  const yearEnd = useCurrent
+    ? input.currentYearEnd
+    : input.currentYearEnd - 1;
+  const kind: PulseTaxYearKind = useCurrent ? "current" : "prior";
+  const yearReady = useCurrent ? currentReady : priorReady;
+
+  return {
+    yearEnd,
+    kind,
+    ready: input.camaHasRun && yearReady,
+    listingUniverse: universe,
+    countCurrent,
+    countPrior,
+    pctCurrent: pulseTaxCoveragePct(countCurrent, universe),
+    pctPrior: pulseTaxCoveragePct(countPrior, universe),
+    quorumPct: quorum,
+    camaHasRun: input.camaHasRun,
+  };
+}
+
+export function choosePulseTaxYearEnd(
+  currentYearEnd: number,
+  countCurrent: number,
+  countPrior: number,
+  listingUniverse = Math.max(countCurrent, countPrior),
+): number {
+  return decidePulseTaxYear({
+    currentYearEnd,
+    listingUniverse,
+    countCurrent,
+    countPrior,
+    camaHasRun: true,
+  }).yearEnd;
 }
 
 export function buildPropertyTaxHistorySlots(
@@ -188,12 +357,15 @@ export function buildPropertyTaxHistorySlots(
   return Array.from({ length: count }, (_, index) => {
     const taxYearEnd = anchor - index;
     const hit = byYear.get(taxYearEnd);
-    const amount = hit?.amount ?? null;
+    const amount = plausibleTaxAmount(hit?.amount ?? null);
+    const priorAmount = plausibleTaxAmount(
+      byYear.get(taxYearEnd - 1)?.amount ?? null,
+    );
     return {
       taxYearEnd,
       taxYearLabel: hit?.taxYearLabel ?? formatTaxYearLabel(taxYearEnd),
       amount,
-      yoyChangePct: taxYoyChangePct(amount, byYear.get(taxYearEnd - 1)?.amount),
+      yoyChangePct: taxYoyChangePct(amount, priorAmount),
     };
   });
 }

@@ -71,6 +71,7 @@ import {
   writeMonthsSupplyForTown,
 } from '@/lib/months-supply-cache'
 import { rebuildMarketPulseClosedCache } from '@/lib/market-pulse-closed-cache'
+import { rebuildMarketPulseTaxCache } from '@/lib/market-pulse-tax-cache'
 import {
   SqliteWriteStatsCollector,
   type TableWriteStats,
@@ -1086,6 +1087,13 @@ export async function rebuildStatsCache(
       console.error('[stats-cache] market-pulse closed rebuild failed', err)
     }
 
+    try {
+      const tax = await rebuildMarketPulseTaxCache()
+      written += tax.written
+    } catch (err) {
+      console.error('[stats-cache] market-pulse tax rebuild failed', err)
+    }
+
     // Only stamp End when something actually landed — empty writes must not
     // paint the Admin row green or advance Next.
     if (written > 0) {
@@ -1243,6 +1251,16 @@ export async function rebuildStatsCacheForTowns(
     } catch (err) {
       console.error(
         '[stats-cache] market-pulse closed rebuild failed (per-town)',
+        err,
+      )
+    }
+
+    try {
+      const tax = await rebuildMarketPulseTaxCache()
+      written += tax.written
+    } catch (err) {
+      console.error(
+        '[stats-cache] market-pulse tax rebuild failed (per-town)',
         err,
       )
     }

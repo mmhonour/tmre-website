@@ -34,6 +34,9 @@ const METRIC_MAX_KEY: Record<
   priceDelta: "priceDelta",
   averagePrice: "averagePrice",
   saleToAsk: "saleToAskDollars",
+  medianTax: "medianTax",
+  taxDelta: "taxDelta",
+  averageTax: "averageTax",
 };
 
 /**
@@ -137,8 +140,12 @@ export default function ShowcaseTownPulse({
   const pending = !failed && data?.propertyClass !== propertyClass;
 
   const metrics = useMemo(
-    () => marketPulseStackedMetrics(data?.closedLookbackLabel ?? "12 mos"),
-    [data?.closedLookbackLabel],
+    () =>
+      marketPulseStackedMetrics(data?.closedLookbackLabel ?? "12 mos", "sale", {
+        includeTax: data?.taxReady === true,
+        taxYearLabel: data?.taxYearLabel,
+      }),
+    [data?.closedLookbackLabel, data?.taxReady, data?.taxYearLabel],
   );
 
   if (pending && !data) {

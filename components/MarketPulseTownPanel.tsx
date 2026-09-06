@@ -193,6 +193,18 @@ export default function MarketPulseTownPanel({
               barScramble,
             );
           };
+          const settledTaxPct = (id: "medianTax" | "averageTax") => {
+            const idx = metrics.findIndex((x) => x.id === id);
+            return settleBarPercent(
+              marketPulsePricePct(
+                id === "medianTax" ? row.medianTax : row.averageTax,
+                scale.taxMax,
+              ),
+              rowIndex * metrics.length + (idx >= 0 ? idx : metricIndex),
+              settle,
+              barScramble,
+            );
+          };
           // Delta spans the gap between median and average rather than starting
           // at zero, which is the edge the percent is placed against.
           const aligned =
@@ -201,6 +213,11 @@ export default function MarketPulseTownPanel({
                   settledPct("medianPrice"),
                   settledPct("averagePrice"),
                 )
+              : m.id === "taxDelta"
+                ? marketPulseDeltaBarSpan(
+                    settledTaxPct("medianTax"),
+                    settledTaxPct("averageTax"),
+                  )
               : {
                   leftPct: 0,
                   widthPct: settleBarPercent(
@@ -231,6 +248,10 @@ export default function MarketPulseTownPanel({
                 ? formatPriceDeltaK(
                     settleSignedNumber(row.priceDelta, settle, scrambleIndex, 0),
                   )
+                : m.id === "taxDelta"
+                  ? formatPriceDeltaK(
+                      settleSignedNumber(row.taxDelta, settle, scrambleIndex, 0),
+                    )
                 : m.id === "saleToAsk"
                   ? formatPriceDeltaK(
                       settleSignedNumber(
@@ -252,6 +273,15 @@ export default function MarketPulseTownPanel({
                     1,
                   ),
                 )
+              : m.id === "taxDelta"
+                ? formatPriceDeltaPct(
+                    settleSignedNumber(
+                      row.taxDeltaPct,
+                      settle,
+                      scrambleIndex + 19,
+                      1,
+                    ),
+                  )
               : m.id === "saleToAsk"
                 ? formatSaleToAskPct(row.saleToAskPct)
                 : null;
@@ -276,7 +306,8 @@ export default function MarketPulseTownPanel({
               widthPct={aligned.widthPct}
               aside={asideText}
               asideNegative={
-                m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0
+                (m.id === "priceDelta" && (row.priceDeltaPct ?? 0) < 0) ||
+                (m.id === "taxDelta" && (row.taxDeltaPct ?? 0) < 0)
               }
               widthTransition={widthTransition}
               href={metricHref?.(m.id)}

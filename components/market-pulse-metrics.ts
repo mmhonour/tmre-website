@@ -15,6 +15,7 @@ type Row = MarketPulseCombinedTownRow;
 export function marketPulseTownMetrics(
   closedLookbackLabel: string,
   kind: ListingKind,
+  options?: { includeTax?: boolean; taxYearLabel?: string | null },
 ) {
   const chrome: Record<
     MarketPulseStackedMetricId,
@@ -64,9 +65,24 @@ export function marketPulseTownMetrics(
       valueKind: "int",
       calcOf: (r) => r.saleToAskCalc,
     },
+    medianTax: {
+      barClassName: METRIC_COLORS.medianTax,
+      valueKind: "money",
+      calcOf: (r) => r.medianTaxCalc,
+    },
+    taxDelta: {
+      barClassName: METRIC_COLORS.taxDelta,
+      valueKind: "money",
+      calcOf: (r) => r.taxDeltaCalc,
+    },
+    averageTax: {
+      barClassName: METRIC_COLORS.averageTax,
+      valueKind: "money",
+      calcOf: (r) => r.averageTaxCalc,
+    },
   };
 
-  return marketPulseStackedMetrics(closedLookbackLabel, kind).map((m) => ({
+  return marketPulseStackedMetrics(closedLookbackLabel, kind, options).map((m) => ({
     ...m,
     ...chrome[m.id],
     valueOf: m.barValueOf,

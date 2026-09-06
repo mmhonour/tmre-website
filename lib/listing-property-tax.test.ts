@@ -2,7 +2,18 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   buildPropertyTaxHistorySlots,
+  choosePulseTaxYearEnd,
+  currentFiscalYearEnd,
+  decidePulseTaxYear,
+  formatPulseTaxComparedLabel,
+  formatPulseTaxCoveragePct,
   formatTaxYoyChange,
+  isPlausibleTaxAmount,
+  propertyTaxFromRaw,
+  pulseTaxCoverageIsReady,
+  pulseTaxYearEnds,
+  pulseTaxYearHasQuorum,
+  formatPulseTaxWindowLabel,
   taxYoyChangePct,
 } from './listing-property-tax'
 
@@ -31,6 +42,46 @@ describe('formatTaxYoyChange', () => {
   })
 })
 
+describe('isPlausibleTaxAmount', () => {
+  it('keeps ordinary bills and $9,999', () => {
+    assert.equal(isPlausibleTaxAmount(10_414.17), true)
+    assert.equal(isPlausibleTaxAmount(9_999), true)
+    assert.equal(isPlausibleTaxAmount(1), true)
+  })
+
+  it('rejects all-nines Matrix placeholders with 5+ digits', () => {
+    assert.equal(isPlausibleTaxAmount(99_999), false)
+    assert.equal(isPlausibleTaxAmount(999_999), false)
+    assert.equal(isPlausibleTaxAmount(9_999_999), false)
+    assert.equal(isPlausibleTaxAmount(999_999.17), false)
+    assert.equal(isPlausibleTaxAmount(0), false)
+    assert.equal(isPlausibleTaxAmount(null), false)
+  })
+})
+
+describe('propertyTaxFromRaw', () => {
+  it('treats a $999,999 PropertyTax as missing', () => {
+    assert.deepEqual(
+      propertyTaxFromRaw({
+        PropertyTax: '999999',
+        TaxYear: 'July 2025-June 2026',
+      }),
+      { annualAmount: null, yearLabel: 'July 2025-June 2026' },
+    )
+  })
+
+  it('falls through to district tax when PropertyTax is a placeholder', () => {
+    assert.equal(
+      propertyTaxFromRaw({
+        PropertyTax: '999999',
+        TaxDistrictAmount: '10414.17',
+        TaxYear: 'July 2025-June 2026',
+      }).annualAmount,
+      10414.17,
+    )
+  })
+})
+
 describe('buildPropertyTaxHistorySlots', () => {
   it('attaches YoY percent from the prior fiscal year', () => {
     const slots = buildPropertyTaxHistorySlots(
@@ -54,6 +105,22 @@ describe('buildPropertyTaxHistorySlots', () => {
     assert.equal(slots[4]?.yoyChangePct, 1.8)
   })
 
+  it('hides a $999,999 current year and does not invent a +9502% YoY', () => {
+    const slots = buildPropertyTaxHistorySlots(
+      2026,
+      [
+        { taxYearEnd: 2026, taxYearLabel: 'July 2025-June 2026', amount: 999_999 },
+        { taxYearEnd: 2025, taxYearLabel: 'July 2024-June 2025', amount: 10_414.17 },
+        { taxYearEnd: 2024, taxYearLabel: 'July 2023-June 2024', amount: 10_263.16 },
+      ],
+      5,
+    )
+    assert.equal(slots[0]?.amount, null)
+    assert.equal(slots[0]?.yoyChangePct, null)
+    assert.equal(slots[1]?.amount, 10_414.17)
+    assert.equal(slots[1]?.yoyChangePct, 1.5)
+  })
+
   it('leaves YoY blank when the prior year has no amount', () => {
     const slots = buildPropertyTaxHistorySlots(
       2026,
@@ -63,5 +130,78 @@ describe('buildPropertyTaxHistorySlots', () => {
     assert.equal(slots[0]?.yoyChangePct, null)
     assert.equal(slots[1]?.amount, null)
     assert.equal(slots[1]?.yoyChangePct, null)
+  })
+})
+
+describe('decidePulseTaxYear', () => {
+  it('stays on prior until 80% of the book has the current FY', () => {
+    const thin = decidePulseTaxYear({
+      currentYearEnd: 2027,
+      listingUniverse: 2000,
+      countCurrent: 125,
+      countPrior: 1800,
+      camaHasRun: true,
+    })
+    assert.equal(thin.yearEnd, 2026)
+    assert.equal(thin.kind, 'prior')
+    assert.equal(thin.ready, true)
+    assert.equal(choosePulseTaxYearEnd(2027, 125, 1800, 2000), 2026)
+    assert.equal(currentFiscalYearEnd(new Date('2026-09-06T12:00:00Z')), 2027)
+  })
+
+  it('flips to current only at the 80% tipping point', () => {
+    const tipped = decidePulseTaxYear({
+      currentYearEnd: 2027,
+      listingUniverse: 2000,
+      countCurrent: 1600,
+      countPrior: 1800,
+      camaHasRun: true,
+    })
+    assert.equal(tipped.yearEnd, 2027)
+    assert.equal(tipped.kind, 'current')
+    assert.equal(tipped.ready, true)
+    assert.equal(formatPulseTaxComparedLabel(2027, 'current'), 'July 2026-June 2027 · current')
+    assert.equal(formatPulseTaxCoveragePct(tipped.pctCurrent), '80%')
+  })
+
+  it('keeps bars off until CAMA has run even when prior has quorum', () => {
+    const waiting = decidePulseTaxYear({
+      currentYearEnd: 2027,
+      listingUniverse: 2000,
+      countCurrent: 10,
+      countPrior: 1700,
+      camaHasRun: false,
+    })
+    assert.equal(waiting.kind, 'prior')
+    assert.equal(waiting.ready, false)
+    assert.equal(pulseTaxYearHasQuorum(1700, 2000), true)
+  })
+
+  it('does not skip back further than one year', () => {
+    assert.equal(choosePulseTaxYearEnd(2027, 0, 0, 0), 2026)
+  })
+})
+
+describe('pulseTaxYearEnds', () => {
+  it('walks the last five fiscal-year ends newest first', () => {
+    assert.deepEqual(pulseTaxYearEnds(2027), [2027, 2026, 2025, 2024, 2023])
+  })
+})
+
+describe('formatPulseTaxWindowLabel', () => {
+  it('spans the oldest July through the newest June', () => {
+    assert.equal(
+      formatPulseTaxWindowLabel([2027, 2026, 2025, 2024, 2023]),
+      'July 2022-June 2027',
+    )
+  })
+})
+
+describe('pulseTaxCoverageIsReady', () => {
+  it('hides tax bars until the All-towns sample reaches 125', () => {
+    assert.equal(pulseTaxCoverageIsReady(50), false)
+    assert.equal(pulseTaxCoverageIsReady(124), false)
+    assert.equal(pulseTaxCoverageIsReady(125), true)
+    assert.equal(pulseTaxCoverageIsReady(null), false)
   })
 })

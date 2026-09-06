@@ -6,6 +6,7 @@ import {
   readRecentClosedListingsFromDb,
 } from '@/lib/db/listings-repo'
 import { readMarketPulseClosedCounts } from '@/lib/market-pulse-closed-cache'
+import { readMarketPulseTaxByTown } from '@/lib/market-pulse-tax-cache'
 import {
   readDealOfTheDayBundle,
   type DealOfTheDayResponse,
@@ -65,6 +66,7 @@ import type {
   MarketDigestDomTownCount,
   MarketDigestPriceTownCount,
   MarketDigestSnapshot,
+  MarketDigestTaxTownCount,
 } from '@/lib/market-digest-types'
 import { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
 import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
@@ -220,6 +222,36 @@ async function avgDomByTownFromStats(
       err instanceof Error ? err.message : err,
     )
     return []
+  }
+}
+
+async function taxByTownFromCache(
+  kind: ListingKind,
+  propertyClass?: ListingPropertyClass,
+  commercialOnly?: boolean,
+): Promise<{
+  rows: MarketDigestTaxTownCount[]
+  ready: boolean
+  taxYearLabel: string | null
+  yearKind: 'current' | 'prior' | null
+}> {
+  try {
+    const { payload } = await readMarketPulseTaxByTown(
+      { kind, propertyClass, commercialOnly },
+      { allowCompute: false },
+    )
+    return {
+      rows: payload.rows,
+      ready: payload.ready,
+      taxYearLabel: payload.ready ? payload.taxYearLabel : null,
+      yearKind: payload.ready ? payload.yearKind : null,
+    }
+  } catch (err) {
+    console.warn(
+      '[market-digest] tax by town failed',
+      err instanceof Error ? err.message : err,
+    )
+    return { rows: [], ready: false, taxYearLabel: null, yearKind: null }
   }
 }
 
@@ -408,7 +440,7 @@ async function buildCachedCategorySlice(
   spec: CachedCategorySpec,
   includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
-  const [closedTrailing, avgDomByTown, priceByTown, market, westport, ...townRows] =
+  const [closedTrailing, avgDomByTown, priceByTown, tax, market, westport, ...townRows] =
     await Promise.all([
       includeClosedTrailing
         ? closedTrailingCounts({
@@ -418,6 +450,7 @@ async function buildCachedCategorySlice(
         : Promise.resolve<MarketDigestClosedTownCount[]>([]),
       avgDomByTownFromStats(spec.kind),
       priceByTownFromStats(spec.kind),
+      taxByTownFromCache(spec.kind, spec.propertyClass),
       readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
       readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
       ...(await digestCoverageTowns()).map((town) =>
@@ -438,6 +471,10 @@ async function buildCachedCategorySlice(
     closedTrailing,
     avgDomByTown,
     priceByTown,
+    taxByTown: tax.rows,
+    taxReady: tax.ready,
+    taxYearLabel: tax.taxYearLabel,
+    taxYearKind: tax.yearKind,
     deal: null,
   }
 }
@@ -458,6 +495,10 @@ function emptyCommercialCategorySlice(
     closedTrailing: [],
     avgDomByTown: [],
     priceByTown: [],
+    taxByTown: [],
+    taxReady: false,
+    taxYearLabel: null,
+    taxYearKind: null,
     deal: null,
   }
 }
@@ -667,6 +708,7 @@ async function buildCommercialCategorySlice(
         dealErr instanceof Error ? dealErr.message : dealErr,
       )
     }
+    const tax = await taxByTownFromCache('sale', undefined, true)
     return {
       id: 'commercial',
       label: 'Commercial',
@@ -680,6 +722,10 @@ async function buildCommercialCategorySlice(
         : [],
       avgDomByTown,
       priceByTown,
+      taxByTown: tax.rows,
+      taxReady: tax.ready,
+      taxYearLabel: tax.taxYearLabel,
+      taxYearKind: tax.yearKind,
       deal,
     }
   } catch (err) {
@@ -748,6 +794,10 @@ export async function buildMarketDigestSnapshot(options?: {
     closedTrailing: allSlice?.closedTrailing ?? [],
     avgDomByTown: allSlice?.avgDomByTown ?? [],
     priceByTown: allSlice?.priceByTown ?? [],
+    taxByTown: allSlice?.taxByTown ?? [],
+    taxReady: allSlice?.taxReady === true,
+    taxYearLabel: allSlice?.taxYearLabel ?? null,
+    taxYearKind: allSlice?.taxYearKind ?? null,
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
@@ -807,6 +857,11 @@ export function formatMarketDigestEmail(
 
   const stackedMetrics = marketPulseStackedMetrics(
     marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
+    'sale',
+    {
+      includeTax: snapshot.taxReady === true,
+      taxYearLabel: snapshot.taxYearLabel,
+    },
   )
   const heatByCity = marketPulseHeatByCity(
     combined,

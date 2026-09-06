@@ -21,6 +21,9 @@ export const MARKET_PULSE_STACKED_METRIC_IDS = [
   'priceDelta',
   'averagePrice',
   'saleToAsk',
+  'medianTax',
+  'taxDelta',
+  'averageTax',
 ] as const
 
 export type MarketPulseStackedMetricId =
@@ -71,9 +74,13 @@ export function formatSaleToAskPct(n: number | null | undefined): string {
 export function marketPulseStackedMetrics(
   closedLookbackLabel: string,
   kind: ListingKind = 'sale',
+  options?: { includeTax?: boolean; taxYearLabel?: string | null },
 ): MarketPulseStackedMetricDef[] {
   const leased = kind === 'rental'
-  return [
+  const taxYear = options?.taxYearLabel?.trim() || null
+  const medianTaxLabel = taxYear ? `Median tax · ${taxYear}` : 'Median tax'
+  const averageTaxLabel = taxYear ? `Average tax · ${taxYear}` : 'Average tax'
+  const defs: MarketPulseStackedMetricDef[] = [
     {
       id: 'inventory',
       label: 'Inventory',
@@ -131,7 +138,44 @@ export function marketPulseStackedMetrics(
       barValueOf: (r) => absOrNull(r.saleToAskDollars),
       format: (r) => formatPriceDeltaK(r.saleToAskDollars),
     },
+    {
+      id: 'medianTax',
+      label: medianTaxLabel,
+      barValueOf: (r) => r.medianTax,
+      format: (r) => formatMarketPulseMoney(r.medianTax),
+    },
+    {
+      id: 'taxDelta',
+      label: 'Tax delta',
+      labelOf: (r) => `Tax delta ${formatPriceDeltaPct(r.taxDeltaPct)}`,
+      barValueOf: (r) => absOrNull(r.taxDelta),
+      format: (r) => formatPriceDeltaK(r.taxDelta),
+    },
+    {
+      id: 'averageTax',
+      label: averageTaxLabel,
+      barValueOf: (r) => r.averageTax,
+      format: (r) => formatMarketPulseMoney(r.averageTax),
+    },
   ]
+  if (options?.includeTax === true) return defs
+  return defs.filter((m) => !isMarketPulseTaxScaleMetric(m.id))
+}
+
+/** Shared dollar axis for Median tax / Tax delta / Average tax. */
+export function marketPulseTaxBarMax(
+  rows: readonly {
+    medianTax: number | null
+    averageTax: number | null
+  }[],
+): number {
+  let max = 0
+  for (const r of rows) {
+    for (const v of [r.medianTax, r.averageTax]) {
+      if (v != null && Number.isFinite(v) && v > max) max = v
+    }
+  }
+  return max
 }
 
 /** Shared dollar axis for Median, Delta, and Average (do not scale Delta to its own max). */
@@ -182,4 +226,10 @@ export function isMarketPulsePriceScaleMetric(
   id: MarketPulseStackedMetricId,
 ): boolean {
   return id === 'medianPrice' || id === 'averagePrice' || id === 'priceDelta'
+}
+
+export function isMarketPulseTaxScaleMetric(
+  id: MarketPulseStackedMetricId,
+): boolean {
+  return id === 'medianTax' || id === 'averageTax' || id === 'taxDelta'
 }
