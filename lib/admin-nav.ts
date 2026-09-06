@@ -979,6 +979,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     schedule: "On invoke (background)",
   },
   {
+    label: "sync-cama-tax",
+    detail:
+      "Thin CAMA tax-history trigger — enqueues cama-tax on the sync runner when Configure is due (never-finished is due immediately). No Netlify worker.",
+    schedule: "Every 30 min (monthly-gated)",
+  },
+  {
     label: "sync-zip-boundaries",
     detail:
       "Thin monthly trigger — queues sync-zip-boundaries-worker (Census TIGERweb → zip_boundaries)",
