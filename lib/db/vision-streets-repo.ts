@@ -250,6 +250,26 @@ export async function replaceVisionStreetParcels(
   })
 }
 
+export async function getVisionStreetParcelByPid(
+  town: string,
+  visionPid: string,
+): Promise<{ streetName: string; addressLabel: string } | null> {
+  await ensureVisionStreetsTable()
+  const rows = await query<{ street_name: string; address_label: string }>(
+    `SELECT street_name, address_label
+       FROM vision_street_parcels
+      WHERE town = $1 AND vision_pid = $2
+      LIMIT 1`,
+    [town, visionPid],
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    streetName: row.street_name,
+    addressLabel: row.address_label,
+  }
+}
+
 export async function listVisionStreetParcels(
   town: string,
   streetName: string,

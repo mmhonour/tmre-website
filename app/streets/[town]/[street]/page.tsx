@@ -125,8 +125,9 @@ export default async function StreetsStreetPage({
                 const sold = row.purchaseDate
                 return (
                   <li
+                    id={`pid-${row.visionPid}`}
                     key={`${row.visionPid}-${row.addressLabel}`}
-                    className="py-2.5"
+                    className="scroll-mt-28 py-2.5 target:bg-gold/10 target:-mx-3 target:px-3 target:rounded-xl"
                   >
                     <Link
                       href={parcelHref(town, row.visionPid, row.addressLabel)}
