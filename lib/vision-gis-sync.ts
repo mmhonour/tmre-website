@@ -27,6 +27,7 @@ import {
   mergeFieldCardJson,
 } from '@/lib/vision-field-card-pdf'
 import {
+  ownerDisplayNameFromFields,
   parcelLinksFromStreetHtml,
   parseVisionParcelHtml,
   streetNamesFromLetterHtml,
@@ -469,6 +470,9 @@ async function ingestParcel(
   if (pdfCard) {
     parsed.fieldCard = mergeFieldCardJson(parsed.fieldCard, pdfCard)
   }
+  parsed.ownerName =
+    ownerDisplayNameFromFields(parsed.fieldCard.fields, parsed.ownerName) ??
+    parsed.ownerName
   const prev = await getVisionFingerprint(cfg.town, visionPid)
   const isNew = prev == null
   const changed = isNew || prev !== parsed.contentFingerprint

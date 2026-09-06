@@ -177,6 +177,40 @@ export function ownerMailingAddressFromFields(
   return unique.length > 0 ? unique.join(', ') : null
 }
 
+/**
+ * VGSI `lblGenOwner` often ends with a dangling `&` and puts the rest on
+ * `lblCoOwner`. The Field Card PDF has both current owners; HTML does not
+ * glue them. One separator, no `A & & B`.
+ */
+export function joinVisionOwnerNames(
+  owner?: string | null,
+  coOwner?: string | null,
+): string | null {
+  const a = (owner ?? '').replace(/\s+/g, ' ').trim()
+  const b = (coOwner ?? '').replace(/\s+/g, ' ').trim()
+  if (a && b) {
+    if (a.toLowerCase().includes(b.toLowerCase())) return a
+    const parts = a.split(/\s*&\s*/).map((p) => p.trim()).filter(Boolean)
+    const last = parts[parts.length - 1] ?? ''
+    if (
+      parts.length > 1 &&
+      last &&
+      b.toLowerCase().startsWith(last.toLowerCase()) &&
+      b.length > last.length
+    ) {
+      parts[parts.length - 1] = b
+      return parts.join(' & ')
+    }
+    const stem = a.replace(/\s*(&|AND)\s*$/i, '').trim()
+    if (!stem) return b
+    if (b.toLowerCase().includes(stem.toLowerCase()) && b.length > stem.length) {
+      return b
+    }
+    return `${stem} & ${b}`
+  }
+  return a || b || null
+}
+
 export function ownerDisplayNameFromFields(
   fields: readonly VisionFieldCardField[],
   ownerName?: string | null,
@@ -186,10 +220,7 @@ export function ownerDisplayNameFromFields(
     fields.find((f) => /^owner$/i.test(f.label))?.value?.trim() ||
     null
   const coOwner = fields.find((f) => /^co-owner$/i.test(f.label))?.value?.trim()
-  if (owner && coOwner && !owner.toLowerCase().includes(coOwner.toLowerCase())) {
-    return `${owner} & ${coOwner}`
-  }
-  return owner || coOwner || null
+  return joinVisionOwnerNames(owner, coOwner)
 }
 
 /** Calendar year from VGSI dates (`03/21/2025`, `3-21-25`, `2025`). */
@@ -317,12 +348,35 @@ export type VisionDeedDisplayRow = {
   deedLabel: string
 }
 
+/**
+ * VGSI ownership-history cells often stop at a dangling `&` even when
+ * `lblCoOwner` / current owner-of-record already has the rest. Complete
+ * that one line from the joined current name. Do not glue a prior deed
+ * (Malter, Hartmann, …) onto today’s owner.
+ */
+export function completeDanglingDeedOwner(
+  rowOwner: string | null | undefined,
+  currentOwner?: string | null,
+): string {
+  const row = (rowOwner ?? '').replace(/\s+/g, ' ').trim()
+  const current = (currentOwner ?? '').replace(/\s+/g, ' ').trim()
+  if (!row) return current || '—'
+  if (!current) return row
+  if (!/[&]\s*$/.test(row)) return row
+  const stem = row.replace(/\s*(&|AND)\s*$/i, '').trim()
+  if (stem && current.toLowerCase().startsWith(stem.toLowerCase())) {
+    return current
+  }
+  return row
+}
+
 export function visionDeedDisplayRows(
   rows: readonly VisionOwnershipRow[],
+  currentOwner?: string | null,
 ): VisionDeedDisplayRow[] {
   return sortVisionOwnershipDesc(rows).map((row) => ({
     date: row.date?.trim() || '—',
-    owner: row.owner?.trim() || '—',
+    owner: completeDanglingDeedOwner(row.owner, currentOwner),
     priceLabel: isVisionQuitclaim(row)
       ? '—'
       : formatVisionMoney(row.price) ?? row.price ?? '—',
@@ -409,8 +463,6 @@ const CONTROL_ID_META: Record<string, { section: string; label: string }> = {
   MainContent_lblNbhd: { section: 'Parcel', label: 'Neighborhood' },
   MainContent_lblLUC: { section: 'Parcel', label: 'LUC' },
 }
-
-const SKIP_CONTROL_RE = /(img|btn|hyp|menu|script|link|panel|tab|grid)/i
 
 function decodeHtml(s: string): string {
   return s
@@ -566,17 +618,12 @@ export function parseVisionFieldCardJson(html: string): VisionFieldCardJson {
   const fields: VisionFieldCardField[] = []
   const seen = new Set<string>()
 
-  const idRe =
-    /id=["'](MainContent_[^"']+)["'][^>]*>([\s\S]*?)<\/(?:span|a|div|td|label)>/gi
-  let m: RegExpExecArray | null
-  while ((m = idRe.exec(html)) !== null) {
-    const id = m[1] ?? ''
-    if (SKIP_CONTROL_RE.test(id)) continue
-    const meta = CONTROL_ID_META[id]
-    if (!meta) continue
-    const raw = htmlInnerText(m[2] ?? '')
-    pushField(fields, seen, meta.section, meta.label, raw)
+  for (const [id, meta] of Object.entries(CONTROL_ID_META)) {
+    const raw = spanById(html, id)
+    if (raw) pushField(fields, seen, meta.section, meta.label, raw)
   }
+
+  let m: RegExpExecArray | null
 
   const tdRe =
     /<td[^>]*>\s*([^<]{1,80}?)\s*:?\s*<\/td>\s*<td[^>]*>\s*([^<]+)\s*<\/td>/gi
@@ -680,6 +727,8 @@ export function parseVisionParcelHtml(
   const mblu = spanById(html, 'MainContent_lblMblu')
   const acct = spanById(html, 'MainContent_lblAcctNum')
   const owner = spanById(html, 'MainContent_lblGenOwner')
+  const coOwner = spanById(html, 'MainContent_lblCoOwner')
+  const ownerName = joinVisionOwnerNames(owner, coOwner) ?? owner
   const ownerAddr1 = spanById(html, 'MainContent_lblAddr1')
   const ownerAddr2 = spanById(html, 'MainContent_lblAddr2')
   const ownerMailingAddress = ownerMailingAddressFromFields([
@@ -738,7 +787,7 @@ export function parseVisionParcelHtml(
     accountNumber: acct,
     mblu,
     useCode,
-    ownerName: owner,
+    ownerName,
     ownerMailingAddress,
     assessedValue: assessed,
     appraisalValue: appraisal,
@@ -769,7 +818,7 @@ export function parseVisionParcelHtml(
     city: opts.town,
     state: 'CT',
     zip: null,
-    ownerName: owner,
+    ownerName,
     ownerMailingAddress,
     assessedValue: assessed,
     appraisalValue: appraisal,

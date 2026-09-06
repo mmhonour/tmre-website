@@ -6,6 +6,7 @@ import {
   countVisionQuitclaims,
   isVisionQuitclaim,
   lastSaleAsOwnership,
+  ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
   visionDeedDisplayRows,
@@ -249,6 +250,26 @@ export async function replaceVisionStreetParcels(
   })
 }
 
+export async function getVisionStreetParcelByPid(
+  town: string,
+  visionPid: string,
+): Promise<{ streetName: string; addressLabel: string } | null> {
+  await ensureVisionStreetsTable()
+  const rows = await query<{ street_name: string; address_label: string }>(
+    `SELECT street_name, address_label
+       FROM vision_street_parcels
+      WHERE town = $1 AND vision_pid = $2
+      LIMIT 1`,
+    [town, visionPid],
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    streetName: row.street_name,
+    addressLabel: row.address_label,
+  }
+}
+
 export async function listVisionStreetParcels(
   town: string,
   streetName: string,
@@ -291,6 +312,10 @@ export async function listVisionStreetParcels(
       value: f.value,
     }))
     const fromCard = ownerMailingAddressFromFields(fields)
+    const ownerName =
+      ownerDisplayNameFromFields(fields, row.owner_name) ||
+      row.owner_name?.trim() ||
+      null
     const ownership =
       card?.ownership && card.ownership.length > 0
         ? card.ownership
@@ -304,7 +329,7 @@ export async function listVisionStreetParcels(
       ownership.length > 0
         ? ownership
         : lastSaleAsOwnership({
-            ownerName: row.owner_name,
+            ownerName,
             lastSalePrice: paidPrice,
             lastSaleDate: row.last_sale_date,
           })
@@ -318,7 +343,7 @@ export async function listVisionStreetParcels(
         row.synced_at instanceof Date
           ? row.synced_at.toISOString()
           : String(row.synced_at),
-      ownerName: row.owner_name?.trim() || null,
+      ownerName,
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,
@@ -332,7 +357,7 @@ export async function listVisionStreetParcels(
         instrument: ownership[0]?.instrument,
       }),
       quitclaimCount: countVisionQuitclaims(ownership),
-      deedHistory: visionDeedDisplayRows(deeds),
+      deedHistory: visionDeedDisplayRows(deeds, ownerName),
     }
   })
 }

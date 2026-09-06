@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
+import { getVisionStreetParcelByPid } from "@/lib/db/vision-streets-repo";
+import { visionStreetPageHref } from "@/lib/vision-streets-page";
 import {
   VISION_SALES_HISTORY_ID,
   formatVisionFieldValue,
@@ -161,6 +163,17 @@ export default async function WestportParcelPage({
   const { pid } = await params;
   const property = await mergeWestportProperty(pid.trim());
   if (!property) notFound();
+  const streetRow = await getVisionStreetParcelByPid(
+    property.town,
+    property.visionPid,
+  );
+  const streetHref = streetRow
+    ? visionStreetPageHref(
+        property.town,
+        streetRow.streetName,
+        property.visionPid,
+      )
+    : null;
 
   const onMarket = property.listing != null;
   const baths =
@@ -207,6 +220,17 @@ export default async function WestportParcelPage({
             <Link href="/find" className="hover:text-white transition-colors">
               Find · Westport
             </Link>
+            {streetHref ? (
+              <>
+                {" · "}
+                <Link
+                  href={streetHref}
+                  className="hover:text-white transition-colors"
+                >
+                  Streets · {streetRow?.streetName}
+                </Link>
+              </>
+            ) : null}
             {onMarket ? " · On market" : " · Off market"}
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl text-white leading-[1.08] max-w-3xl">
@@ -248,7 +272,17 @@ export default async function WestportParcelPage({
                         .join(" · ")}
                       addressLabel={property.street}
                       ownerName={property.ownerDisplayName}
+                      mailingAddress={property.ownerMailingAddress}
+                      soldLabel={[
+                        `Bought ${property.purchaseDate}`,
+                        property.lastSoldPrice != null
+                          ? formatVisionMoney(property.lastSoldPrice)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                       rows={property.deedHistory}
+                      parcelHref={westportParcelHref(property.visionPid)}
                       tone="dark"
                     />
                   ) : (
@@ -452,7 +486,12 @@ export default async function WestportParcelPage({
                         {sib.street}
                       </span>
                       <span className="font-mono text-[10px] text-slate/60">
-                        {[sib.mblu ? `MBLU ${sib.mblu}` : `PID ${sib.visionPid}`, sib.ownerName]
+                        {[
+                          sib.mblu
+                            ? `MBLU ${sib.mblu}`
+                            : `PID ${sib.visionPid}`,
+                          sib.ownerName,
+                        ]
                           .filter(Boolean)
                           .join(" · ")}
                       </span>

@@ -21,6 +21,16 @@ export function streetNameToSlug(streetName: string): string {
   return townToStreetSlug(streetName)
 }
 
+export function visionStreetPageHref(
+  town: string,
+  streetName: string,
+  visionPid?: string | null,
+): string {
+  const path = `/streets/${townToStreetSlug(town)}/${streetNameToSlug(streetName)}`
+  const pid = visionPid?.trim()
+  return pid ? `${path}#pid-${encodeURIComponent(pid)}` : path
+}
+
 export function resolveStreetName(
   slug: string,
   knownStreets: readonly string[],
