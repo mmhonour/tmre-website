@@ -9,7 +9,7 @@ export const metadata = {
 export default function UiPreviewIndexPage() {
   return (
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+      <div className="mx-auto max-w-3xl px-4 pb-12 pt-28 sm:px-6">
         <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
           UI preview
         </p>

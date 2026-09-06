@@ -85,7 +85,7 @@ export default function StatsTownDeckPreviewClient() {
 
   return (
     <div className="min-h-screen bg-cream">
-      <div className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
+      <div className="mx-auto max-w-7xl px-6 pb-8 pt-28 lg:px-10">
         <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
           UI preview
         </p>
