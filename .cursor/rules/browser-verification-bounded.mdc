@@ -1,0 +1,58 @@
+---
+description: Browser/computer-use verification must be bounded and never stall a turn
+alwaysApply: true
+---
+
+# Browser verification must be bounded
+
+Browser / computer-use checks have no timeout setting. A blocking browser check
+that gets stuck — dead dev server, blank page, retry loop — stalls the whole
+turn until the user cancels it. Assume that will happen and design around it.
+
+## Default: don't
+
+Skip browser verification for logic, data, backend, and refactor work, and for
+small edits to components that already render. `npx tsc --noEmit`, `eslint`, and
+a bounded `curl` are cheaper and stronger signals.
+
+Reach for a browser only when the deliverable is visual or time-based — new page
+layouts, animation, crossfades, responsive behaviour — and say why.
+
+## Never hand a browser a URL you have not proved is live
+
+This is the most common way these hang. Before launching any browser check:
+
+1. Start the dev server yourself in a background shell. Never ask the browser
+   agent to start it, and never ask it to "wait for the server to come up".
+2. Prove the exact URL responds, with a time-boxed request:
+
+```bash
+curl -s -o /dev/null -m 10 -w "%{http_code}\n" http://localhost:3000/the/path
+```
+
+3. If that does not return 2xx/3xx, stop. Report that the server is not serving
+   and why. Do not launch a browser agent against a dead URL.
+
+## Run it non-blocking
+
+Launch browser checks with `run_in_background: true`. That is the only mechanism
+that actually guarantees a stuck check cannot stall the turn.
+
+## One pass, finite checklist
+
+Give the check a numbered list of steps and tell it to report after those steps
+even if something is ambiguous, rather than retrying. Do not launch a second
+browser check to re-test the same hypothesis: these agents produce false
+negatives (keystrokes landing in devtools, cached CSS, stale tabs), and chasing
+them costs more than the verification is worth.
+
+## If it stalls anyway
+
+Say plainly that the change is unverified and why, then hand over the exact
+steps to check it by hand. An honest "unverified" beats a hung turn.
+
+## Deployed previews beat local browsers
+
+When the branch is pushed and the host builds a deploy preview, verify against
+that URL instead of a local dev server. It removes the whole class of "the
+server never came up" hangs.
