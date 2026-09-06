@@ -412,6 +412,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Primary listings database: Postgres hosted on Neon (DATABASE_URL). Shared by Netlify production and local next dev when DATABASE_URL points at Neon; a localhost DATABASE_URL is a separate non-prod store.',
   },
   {
+    term: 'Size & growth (Neon)',
+    category: 'sync-admin',
+    definition:
+      'Admin → NEON → Size & growth (and `npm run db:size`): on-demand report of table heap/toast/index bytes, MLS listed/closed increments, rows added by birth timestamp, and pg_stat_statements chatter. Explains whether a Neon bill is storage ($0.35/GB-month) or an always-awake compute. Does not write anything; Run report hits GET /api/admin/db-size.',
+  },
+  {
     term: 'SQLite',
     category: 'sync-admin',
     definition:
