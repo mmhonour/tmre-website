@@ -306,7 +306,7 @@ async function readSyncQueueCooldown(jobId: string): Promise<string | null> {
  * Take the next waiting job. Non-incremental jobs go first (see
  * syncQueueClaimYieldRank), then oldest-first within a priority band.
  *
- * Incremental is due every half hour and will otherwise sit at the front of
+ * Incremental is the most frequent job and will otherwise sit at the front of
  * the line forever while stats / edge / CAMA wait.
  *
  * `SKIP LOCKED` means a second runner polling the same table walks past a row
