@@ -604,7 +604,13 @@ export async function mergeWestportProperty(
     yearBuilt: visionFill(listing?.yearBuilt, vision.yearBuilt),
     acres: visionFill(listing?.lotAcres, vision.acres),
     zoning: visionFill(null, vision.zoning),
-    ownerName: visionFill(listing?.ownerName, vision.ownerName),
+    ownerName: visionFill(
+      listing?.ownerName,
+      ownerDisplayNameFromFields(
+        fieldCard.fields,
+        vision.ownerName ?? listing?.ownerName,
+      ) ?? vision.ownerName,
+    ),
     ownerDisplayName: ownerDisplayNameFromFields(
       fieldCard.fields,
       vision.ownerName ?? listing?.ownerName,

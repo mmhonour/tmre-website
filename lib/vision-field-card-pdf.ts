@@ -1,6 +1,7 @@
 import { inflateSync } from 'node:zlib'
 import {
   formatVisionMoney,
+  joinVisionOwnerNames,
   parseVisionMoney,
   type VisionFieldCardField,
   type VisionFieldCardJson,
@@ -260,6 +261,10 @@ function constructionBlock(text: string): string | null {
 /**
  * Parse a VGSI printable Field Card PDF (prototype: Westport PID 3959).
  * Layout is a fixed assessor form — labels then values, often concatenated.
+ *
+ * CURRENT OWNER is painted one glyph at a time (not LTR highlight order), so
+ * we do not scrape that box. Parcel HTML already splits the same names onto
+ * `lblGenOwner` + `lblCoOwner`; {@link joinVisionOwnerNames} glues them.
  */
 export function parseVisionFieldCardPdf(text: string): VisionFieldCardJson {
   const fields: VisionFieldCardField[] = []
@@ -423,7 +428,12 @@ export function fieldCardNeedsRefresh(json: VisionFieldCardJson | null | undefin
   const labels = new Set(fields.map((f) => f.label.toLowerCase()))
   const hasBuilding = ['style', 'year built', 'living area', 'beds'].some((l) => labels.has(l))
   const hasOwnership = (json?.ownership?.length ?? 0) > 0
-  return !hasBuilding || !hasOwnership
+  const owner = fields.find((f) => /^owner$/i.test(f.label))?.value?.trim() ?? ''
+  const hasCoOwner = fields.some(
+    (f) => /^co-owner$/i.test(f.label) && f.value.trim() !== '',
+  )
+  const danglingAnd = /(&|AND)\s*$/i.test(owner)
+  return !hasBuilding || !hasOwnership || (danglingAnd && !hasCoOwner)
 }
 
 function ownershipScore(rows: VisionOwnershipRow[]): number {
@@ -449,6 +459,11 @@ export function mergeFieldCardJson(
     const rows = card?.ownership ?? []
     if (ownershipScore(rows) > ownershipScore(ownership)) ownership = rows
   }
+  const ownerField = fields.find((f) => /^owner$/i.test(f.label))
+  const coField = fields.find((f) => /^co-owner$/i.test(f.label))
+  const joinedOwner = joinVisionOwnerNames(ownerField?.value, coField?.value)
+  if (ownerField && joinedOwner) ownerField.value = joinedOwner
+
   const searchText = [
     ...fields.map((f) => `${f.label} ${f.value}`),
     ...ownership.map((r) =>

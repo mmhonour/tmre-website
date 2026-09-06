@@ -6,6 +6,7 @@ import {
   countVisionQuitclaims,
   isVisionQuitclaim,
   lastSaleAsOwnership,
+  ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
   visionDeedDisplayRows,
@@ -318,7 +319,10 @@ export async function listVisionStreetParcels(
         row.synced_at instanceof Date
           ? row.synced_at.toISOString()
           : String(row.synced_at),
-      ownerName: row.owner_name?.trim() || null,
+      ownerName:
+        ownerDisplayNameFromFields(fields, row.owner_name) ||
+        row.owner_name?.trim() ||
+        null,
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,

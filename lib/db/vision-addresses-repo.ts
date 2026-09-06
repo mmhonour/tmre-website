@@ -12,6 +12,7 @@ import {
   compactMblu,
 } from '@/lib/vision-listing-match'
 import {
+  ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   type VisionFieldCardJson,
   type VisionParcelParse,
@@ -128,6 +129,27 @@ export async function ensureVisionAddressesTable(): Promise<void> {
              AND v.vision_pid = sub.vision_pid
              AND (v.owner_mailing_address IS NULL
                   OR btrim(v.owner_mailing_address) = '')
+        `)
+        await query(`
+          UPDATE vision_addresses v
+             SET owner_name = btrim(
+               regexp_replace(btrim(v.owner_name), '\\s*(&|AND)\\s*$', '', 'i')
+               || ' & ' || sub.co
+             )
+            FROM (
+              SELECT v2.town, v2.vision_pid,
+                     NULLIF(btrim(f->>'value'), '') AS co
+                FROM vision_addresses v2
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  coalesce(v2.field_card->'fields', '[]'::jsonb)
+                ) f
+               WHERE f->>'label' ~* '^co-owner$'
+            ) sub
+           WHERE v.town = sub.town
+             AND v.vision_pid = sub.vision_pid
+             AND sub.co IS NOT NULL
+             AND v.owner_name ~* '(&|AND)\\s*$'
+             AND lower(v.owner_name) NOT LIKE '%' || lower(sub.co) || '%'
         `)
         await query(`
           CREATE INDEX IF NOT EXISTS idx_vision_addr_field_card_gin
@@ -329,16 +351,19 @@ export async function persistVisionFieldCardJson(
   fieldCard: VisionFieldCardJson,
 ): Promise<void> {
   await ensureVisionAddressesTable()
+  const ownerName = ownerDisplayNameFromFields(fieldCard.fields)
   await execute(
     `UPDATE vision_addresses
         SET field_card = $3::jsonb,
-            owner_mailing_address = COALESCE($4, owner_mailing_address)
+            owner_mailing_address = COALESCE($4, owner_mailing_address),
+            owner_name = COALESCE($5, owner_name)
       WHERE town = $1 AND vision_pid = $2`,
     [
       town,
       visionPid,
       JSON.stringify(fieldCard),
       ownerMailingAddressFromFields(fieldCard.fields),
+      ownerName,
     ],
   )
 }
