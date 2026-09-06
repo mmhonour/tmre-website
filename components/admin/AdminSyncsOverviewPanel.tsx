@@ -28,6 +28,7 @@ const NETLIFY_PAUSE_BY_FN: Record<string, (typeof SCHEDULED_SYNC_JOB_IDS)[number
   "sync-deal-of-the-day": "deal-of-the-day",
   "sync-deal-of-the-day-worker": "deal-of-the-day",
   "sync-cama-tax": "cama-tax",
+  "sync-cama-tax-worker": "cama-tax",
   "sync-zip-boundaries": "zip-boundaries",
   "sync-zip-boundaries-worker": "zip-boundaries",
   "market-digest": "market-digest",

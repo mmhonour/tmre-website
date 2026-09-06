@@ -343,6 +343,16 @@ export function queueNetlifyListingEdgeScoreSync(
   })
 }
 
+export function queueNetlifyCamaTaxSync(
+  startedAt?: string,
+  options?: { source?: IncrementalQueueSource },
+): Promise<NetlifyFunctionQueueResult> {
+  return queueNetlifyFunction('/.netlify/functions/sync-cama-tax-worker', {
+    source: options?.source ?? 'netlify-sync-trigger',
+    startedAt: startedAt ?? new Date().toISOString(),
+  })
+}
+
 export function queueNetlifyZipBoundariesSync(): Promise<NetlifyFunctionQueueResult> {
   return queueNetlifyFunction('/.netlify/functions/sync-zip-boundaries-worker', {
     source: 'netlify-sync-trigger',

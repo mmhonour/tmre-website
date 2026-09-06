@@ -109,12 +109,16 @@
   included_files = []
   background = true
 
-# CAMA tax history — no background worker. Thin cron enqueues on sync_queue;
-# the Railway runner owns the work. Dense */30; Configure monthly 03:30 ET
-# (and never-finished) decides whether this wake does anything.
+# CAMA tax history — thin cron enqueues on sync_queue; the Railway runner
+# owns the work. Worker is stranded-row rescue when the runner is silent.
+# Dense */30; Configure monthly 03:30 ET (and never-finished) gates new work.
 [functions."sync-cama-tax"]
   included_files = []
   schedule = "*/30 * * * *"
+
+[functions."sync-cama-tax-worker"]
+  included_files = []
+  background = true
 
 # Dense cron; the handler gates on Configure weekday + start time (default Mon
 # 08:00 ET). A once-a-week expression here gave the brief exactly one attempt and

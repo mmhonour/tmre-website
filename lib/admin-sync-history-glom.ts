@@ -38,6 +38,7 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   fomc: 'FOMC',
   cpi: 'CPI',
   digest: 'Market brief',
+  'cama-tax': 'CAMA tax',
 }
 
 /** Display label for the Bucket column / subgroup (adds sync type on lifecycle rows). */
