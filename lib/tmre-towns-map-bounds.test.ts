@@ -5,6 +5,7 @@ import {
   boundaryZipsForTown,
   mapBoundZipsForListing,
   mapBoundZipsForScope,
+  mapFrameZipsForListing,
 } from "./tmre-towns";
 
 describe("mapBoundZipsForScope", () => {
@@ -63,5 +64,16 @@ describe("mapBoundZipsForListing", () => {
       boundZips: ["06604"],
       highlightZip: "06604",
     });
+  });
+});
+
+describe("mapFrameZipsForListing", () => {
+  it("frames a Fairfield listing to its own zip, not the whole town", () => {
+    assert.deepEqual(mapFrameZipsForListing("Fairfield", "06825"), ["06825"]);
+    assert.deepEqual(mapFrameZipsForListing(null, "06824"), ["06824"]);
+  });
+
+  it("frames a one-zip town to that town zip", () => {
+    assert.deepEqual(mapFrameZipsForListing("Wilton", "06897"), ["06897"]);
   });
 });
