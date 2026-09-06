@@ -981,8 +981,14 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-cama-tax",
     detail:
-      "Thin CAMA tax-history trigger — enqueues cama-tax on the sync runner when Configure is due (never-finished is due immediately). No Netlify worker.",
+      "Thin CAMA tax-history trigger — enqueues cama-tax on the sync runner when Configure is due (never-finished is due immediately); worker only if stranded",
     schedule: "Every 30 min (monthly-gated)",
+  },
+  {
+    label: "sync-cama-tax-worker",
+    detail:
+      "Background CT CAMA → listing_tax_history rebuild (stranded-row rescue; stamps cama_tax_history_synced_at)",
+    schedule: "On invoke (background)",
   },
   {
     label: "sync-zip-boundaries",

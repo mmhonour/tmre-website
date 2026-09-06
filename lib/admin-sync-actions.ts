@@ -1380,7 +1380,7 @@ async function runAdminSyncActionImpl(
       // an Admin POST budget, so serverless hands it to the runner rather than
       // trying and timing out. Same poke-the-drain path as open-houses.
       if (shouldQueueOnServerless(options)) {
-        const { queued, via } = await queueSyncNowThroughQueue(
+        const { queued, via, queueNote } = await queueSyncNowThroughQueue(
           'cama-tax',
           async () => ({
             ok: false,
@@ -1390,6 +1390,49 @@ async function runAdminSyncActionImpl(
               'The sync runner is not reachable, so CAMA tax history cannot be refreshed right now.',
           }),
         )
+        try {
+          const { recordSyncRun } = await import('@/lib/db/listings-repo')
+          await recordSyncRun({
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            town: '(all)',
+            statusBucket: 'Queued/cama-tax',
+            listingsCount: 0,
+            ok: queued.ok,
+            error: queued.ok
+              ? `queued (${via}${queueNote ? ` · ${queueNote}` : ''})`
+              : queued.error ?? 'unknown',
+          })
+        } catch {
+          /* audit best-effort */
+        }
+        if (queued.ok) {
+          const { readSyncQueueSnapshot, clearSyncQueueForJob } =
+            await import('@/lib/sync-queue')
+          const snapshot = await readSyncQueueSnapshot(1)
+          if (snapshot.runnerStale) {
+            await clearSyncQueueForJob('cama-tax')
+            const { queueNetlifyCamaTaxSync, isNetlifyQueueRateLimited } =
+              await import('@/lib/netlify-sync-trigger')
+            const rescued = await queueNetlifyCamaTaxSync(startedAt, {
+              source: 'admin',
+            })
+            const limited = isNetlifyQueueRateLimited(rescued)
+            return {
+              ok: rescued.ok || limited,
+              action,
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              durationMs: Date.now() - t0,
+              backgroundQueued: true,
+              message: rescued.ok
+                ? 'CAMA tax history running on Netlify — runner is silent'
+                : limited
+                  ? 'CAMA tax history waiting — Netlify rate limited (HTTP 429), retry shortly'
+                  : `CAMA tax history rescue failed: ${rescued.error ?? 'unknown'}`,
+            }
+          }
+        }
         return {
           ok: queued.ok,
           action,

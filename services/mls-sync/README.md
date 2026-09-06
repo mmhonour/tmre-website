@@ -36,7 +36,7 @@ Endpoints (all writes need Bearer `SYNC_CRON_SECRET`):
 | `POST /drain` | Poke the drain now instead of waiting for the next poll |
 | `POST /run`, `/stats`, `/scores`, `/edge-scores`, `/deal-of-the-day`, `/property-addresses`, `/vision-addresses`, `/market-digest` | Legacy per-job aliases; they enqueue like `/enqueue` |
 
-Runner jobs on the queue: incremental, listing-scores, edge-scores, stats-cache, deal-of-the-day, property-addresses, vision-addresses, market-digest, open-houses, **cama-tax**. Drain claims **non-incremental jobs first** so a looping Incremental cannot starve stats / edge / CAMA. CAMA has a Netlify thin cron (`sync-cama-tax`) that only enqueues — there is no worker; never-finished is due immediately so a mid-month deploy does not wait until the 1st.
+Runner jobs on the queue: incremental, listing-scores, edge-scores, stats-cache, deal-of-the-day, property-addresses, vision-addresses, market-digest, open-houses, **cama-tax**. Drain claims **non-incremental jobs first** so a looping Incremental cannot starve stats / edge / CAMA. CAMA has a Netlify thin cron (`sync-cama-tax`) that enqueues, and `sync-cama-tax-worker` as stranded-row rescue when the runner is silent. Never-finished is due immediately so a mid-month deploy does not wait until the 1st.
 
 Stamps `last_incremental_sync` when a pull finishes, and
 `last_mls_sync_heartbeat` ~60s — including while a child is working, since an

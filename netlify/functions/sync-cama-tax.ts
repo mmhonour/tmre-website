@@ -1,22 +1,26 @@
 import type { Config } from '@netlify/functions'
 import { hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
+import {
+  isNetlifyQueueRateLimited,
+  queueNetlifyCamaTaxSync,
+} from '../../lib/netlify-sync-trigger'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
 import { shouldDeferScheduledJob } from '../../lib/sync-next-override'
 import { shouldSkipScheduledJobNotDue } from '../../lib/sync-schedule-config'
 import {
   thinCronError,
   thinCronHandOffToQueue,
+  thinCronResponse,
   thinCronSkipped,
 } from '../../lib/netlify-thin-cron'
 
 /**
- * Thin CAMA tax-history trigger (NO background).
+ * Thin CAMA tax-history trigger (NO background on this function).
  * Dense every-30m cron; Configure Frequency/Start (default monthly 03:30 ET)
- * gate the work. Never-finished is due immediately.
+ * gate new work. Never-finished is due immediately.
  *
- * There is no Netlify worker: a due slot goes on sync_queue for the Railway
- * runner. If that row is stranded this function says so and retries next tick
- * rather than starting a monthly job in a 26s slot.
+ * A due slot goes on sync_queue for the Railway runner. If that row is
+ * stranded and the runner is silent, this queues sync-cama-tax-worker.
  */
 export default async function handler() {
   try {
@@ -38,9 +42,18 @@ export default async function handler() {
       const handedOff = await thinCronHandOffToQueue('cama-tax')
       if (handedOff) return handedOff
     }
-    return thinCronSkipped(
-      'sync runner did not claim cama-tax — will retry next tick',
-    )
+    const queued = await queueNetlifyCamaTaxSync()
+    if (!queued.ok) {
+      if (isNetlifyQueueRateLimited(queued)) {
+        return thinCronSkipped(
+          'skipped — Netlify rate limited (HTTP 429), waiting to retry',
+        )
+      }
+      console.warn(
+        `[netlify/sync-cama-tax] worker queue failed: ${queued.error}`,
+      )
+    }
+    return thinCronResponse(queued)
   } catch (err) {
     return thinCronError('netlify/sync-cama-tax', err)
   }
