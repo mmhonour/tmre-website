@@ -152,6 +152,29 @@ export function mapBoundZipsForListing(
   return { boundZips, highlightZip }
 }
 
+/**
+ * Camera frame for a listing map. Multi-zip towns (Fairfield) use the home’s
+ * zip so the house sits in that ZCTA. One mappable zip = the town. The house
+ * is then centered at that zoom — a border lot shows half the zip / town.
+ */
+export function mapFrameZipsForListing(
+  townHint?: string | null,
+  postalCode?: string | null,
+): readonly string[] {
+  const { boundZips, highlightZip } = mapBoundZipsForListing(
+    townHint,
+    postalCode,
+  )
+  if (
+    boundZips.length > 1 &&
+    highlightZip &&
+    boundZips.includes(highlightZip)
+  ) {
+    return [highlightZip]
+  }
+  return boundZips
+}
+
 export function normalizeZip(postal: string | null | undefined): string | null {
   const zip = postal?.trim().slice(0, 5)
   return zip && /^\d{5}$/.test(zip) ? zip : null
