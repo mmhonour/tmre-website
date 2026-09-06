@@ -115,7 +115,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Railway mls-sync',
             source: 'services/mls-sync/job-runner.ts → drainSyncQueueOnce',
             detail:
-              'One job at a time. Non-incremental jobs go first, then highest priority, then oldest within a band — so a looping Incremental cannot starve stats. The rebuild runs in its own process with its own heap, held to Configure → Stats cache → Budget: over budget is a kill recorded as timeout, and a child that dies silently is recorded as crashed. Either way the row reaches a terminal state, so the next sweep is not blocked by a ghost.',
+              'Up to three different jobs at once (MLS_SYNC_MAX_CHILDREN). Incremental no longer occupies the only seat: stats can rebuild in a second child while a pull is in flight. Same job still cannot run twice. Non-incremental jobs go first when slots are full. Each child has its own heap and Configure → Stats cache → Budget; over budget is a timeout, a silent death is crashed. The next sweep is not blocked by a ghost.',
             status: 'live',
             statusLabel: 'Runs it',
           },

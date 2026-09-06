@@ -222,7 +222,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync (Lane 1)",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "A due pull is enqueued on sync_queue by whoever notices — the Railway sweep, the Netlify */30 cron, or the EventBridge ingress — and the Railway runner (MLS_SYNC_SERVICE=1) claims it, forks a child, and pulls RETS → Neon with postHooks:false under a kill budget, stamping End + last_mls_sync_heartbeat before queueing Netlify sideWorkOnly for warm. Netlify sync-listings only runs the pull itself when the row has sat unclaimed long enough to prove the runner is gone. See Syncs → Dashboard ownership lanes.",
+            "A due pull is enqueued on sync_queue by whoever notices — the Railway sweep, the Netlify */30 cron, or the EventBridge ingress — and the Railway runner (MLS_SYNC_SERVICE=1) claims it into one of up to three child slots (MLS_SYNC_MAX_CHILDREN), forks a child, and pulls RETS → Neon with postHooks:false under a kill budget. Stats / Edge / CAMA can occupy the other slots at the same time. Same job cannot run twice. Stamps End + last_mls_sync_heartbeat before queueing Netlify sideWorkOnly for warm. Netlify sync-listings only runs the pull itself when the row has sat unclaimed long enough to prove the runner is gone. See Syncs → Dashboard ownership lanes.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },

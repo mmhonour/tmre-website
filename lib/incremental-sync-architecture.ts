@@ -160,7 +160,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'railway',
         title: 'Railway mls-sync runner (Lane 1)',
         detail:
-          'Always-on Node (services/mls-sync). Claims a queue row, forks services/mls-sync/job-child.ts, and holds it to its deadline — SIGTERM, then SIGKILL after 15s. MLS_SYNC_SERVICE=1 → runIncrementalSyncListingsWork with postHooks:false. Idle heartbeat ~60s so Admin can tell process-up from pull-stale. Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, NEXT_PUBLIC_SITE_URL (warm handoff), optional MLS_SYNC_CHILD_MAX_OLD_SPACE_MB so an OOM kills the child instead of the service.',
+          'Always-on Node (services/mls-sync). Claims waiting queue rows into up to MLS_SYNC_MAX_CHILDREN (default 3) slots, forks services/mls-sync/job-child.ts per row, and holds each to its deadline — SIGTERM, then SIGKILL after 15s. Same job_id cannot occupy two slots. MLS_SYNC_SERVICE=1 → runIncrementalSyncListingsWork with postHooks:false. Idle heartbeat ~60s so Admin can tell process-up from pull-stale. Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, NEXT_PUBLIC_SITE_URL (warm handoff), optional MLS_SYNC_CHILD_MAX_OLD_SPACE_MB so an OOM kills the child instead of the service, optional MLS_SYNC_MAX_CHILDREN.',
       },
       {
         id: 'handoff',

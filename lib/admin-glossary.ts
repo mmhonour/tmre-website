@@ -463,7 +463,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Job runner (mls-sync)',
     category: 'sync-admin',
     definition:
-      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims the next sync_queue row with SELECT … FOR UPDATE SKIP LOCKED, forks a child process to do the work, heartbeats while it runs, and writes the outcome back. It also reaps rows whose running process stopped heartbeating (crashed pod, redeploy mid-job) and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded and running it itself.',
+      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims waiting sync_queue rows with SELECT … FOR UPDATE SKIP LOCKED, forks a child per row, heartbeats while it runs, and writes the outcome back. Up to MLS_SYNC_MAX_CHILDREN (default 3) different jobs run at once — Incremental can pull while stats rebuilds and CAMA fills tax history. The same job_id still cannot run twice (unique index). It also reaps rows whose running process stopped heartbeating and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded.',
   },
   {
     term: 'Job child (forked sync job)',
