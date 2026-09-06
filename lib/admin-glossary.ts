@@ -463,7 +463,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Job runner (mls-sync)',
     category: 'sync-admin',
     definition:
-      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims the next sync_queue row with SELECT … FOR UPDATE SKIP LOCKED, forks a child process to do the work, heartbeats while it runs, and writes the outcome back. It also reaps rows whose running process stopped heartbeating (crashed pod, redeploy mid-job) and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded and running it itself.',
+      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims waiting sync_queue rows with SELECT … FOR UPDATE SKIP LOCKED, forks a child per row, heartbeats while it runs, and writes the outcome back. Up to MLS_SYNC_MAX_CHILDREN (default 3) different jobs run at once — Incremental can pull while stats rebuilds and CAMA fills tax history. The same job_id still cannot run twice (unique index). It also reaps rows whose running process stopped heartbeating and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded.',
   },
   {
     term: 'Job child (forked sync job)',
@@ -607,7 +607,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: '*/30 fan-out',
     category: 'sync-admin',
     definition:
-      'Thirteen thin crons in netlify.toml all carry `schedule = "*/30 * * * *"`, so Netlify wakes them within the same second at :00 and :30 and each one POSTs its own *-worker background function. That is a burst of ~13 background invocations twice an hour before any catch-up or Admin click adds more, and it is the usage shape behind the 19 Aug 2026 outage: every worker hop came back HTTP 429 and no background function executed for over 24 hours, while the thin crons themselves stayed healthy at ~1s each. Two ways out: stagger the minute field (`5,35`, `10,40`, …) so the burst spreads, or move the job to a host that needs no invocation at all — Railway mls-sync now self-schedules the stats rebuild instead of waiting to be POSTed. See Thin cron, HTTP 429 (background invocation refused), Railway mls-sync.',
+      'Fourteen thin crons in netlify.toml all carry `schedule = "*/30 * * * *"`, so Netlify wakes them within the same second at :00 and :30 and each one POSTs its own *-worker background function. That is a burst of ~13 background invocations twice an hour before any catch-up or Admin click adds more, and it is the usage shape behind the 19 Aug 2026 outage: every worker hop came back HTTP 429 and no background function executed for over 24 hours, while the thin crons themselves stayed healthy at ~1s each. Two ways out: stagger the minute field (`5,35`, `10,40`, …) so the burst spreads, or move the job to a host that needs no invocation at all — Railway mls-sync now self-schedules the stats rebuild instead of waiting to be POSTed. See Thin cron, HTTP 429 (background invocation refused), Railway mls-sync.',
   },
   {
     term: 'HTTP 429 (background invocation refused)',

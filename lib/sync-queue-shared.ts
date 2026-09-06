@@ -36,6 +36,18 @@ export function isSyncQueueRunnerJob(
   return (SYNC_QUEUE_RUNNER_JOBS as readonly string[]).includes(jobId)
 }
 
+/**
+ * Claim order rank. Lower runs first.
+ *
+ * Incremental is the most frequent job and can sit at the front of the line
+ * forever while stats / edge / CAMA wait. Those slower jobs go first when
+ * both are queued (and when every slot is already full). Must stay in step
+ * with the CASE in claimNextSyncJob.
+ */
+export function syncQueueClaimYieldRank(jobId: string): number {
+  return jobId === 'incremental' ? 1 : 0
+}
+
 export const SYNC_QUEUE_STATES = ['queued', 'running', 'done', 'failed'] as const
 export type SyncQueueState = (typeof SYNC_QUEUE_STATES)[number]
 

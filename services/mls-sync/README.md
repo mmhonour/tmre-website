@@ -12,8 +12,10 @@ The process itself runs no job. It does two things:
 
 1. **Sweep** — notices a job's Configure slot has come round and puts a row on
    the `sync_queue` table in Neon.
-2. **Drain** — claims the next queued row, **forks a child process** to do the
-   work, and writes the outcome back.
+2. **Drain** — claims waiting rows into up to **three child slots** (different
+   jobs; `MLS_SYNC_MAX_CHILDREN`), **forks a child per row**, and writes each
+   outcome back. Incremental can pull while stats rebuilds. The same job cannot
+   run twice.
 
 Forking is the point. An out-of-memory kill takes the child, not the service; a
 job past its Budget can actually be killed (SIGTERM, then SIGKILL); and either
@@ -29,12 +31,12 @@ Endpoints (all writes need Bearer `SYNC_CRON_SECRET`):
 
 | Route | Does |
 | --- | --- |
-| `GET /health` | Runner state, current child, queue snapshot, Neon End/Start/heartbeat |
+| `GET /health` | Runner state, child slots, queue snapshot, Neon End/Start/heartbeat |
 | `POST /enqueue` | `{ "jobId": "incremental", … }` — put a row on the queue at manual priority |
 | `POST /drain` | Poke the drain now instead of waiting for the next poll |
 | `POST /run`, `/stats`, `/scores`, `/edge-scores`, `/deal-of-the-day`, `/property-addresses`, `/vision-addresses`, `/market-digest` | Legacy per-job aliases; they enqueue like `/enqueue` |
 
-Runner jobs on the queue: incremental, listing-scores, **edge-scores**, stats-cache, deal-of-the-day, property-addresses, vision-addresses, market-digest, open-houses, cama-tax. Edge scores used to hop to a Netlify background worker (HTTP 429 on that invoke); the runner is the pull now, with the worker only as stranded-row rescue.
+Runner jobs on the queue: incremental, listing-scores, edge-scores, stats-cache, deal-of-the-day, property-addresses, vision-addresses, market-digest, open-houses, **cama-tax**. Drain claims **non-incremental jobs first** so a looping Incremental cannot starve stats / edge / CAMA. CAMA has a Netlify thin cron (`sync-cama-tax`) that only enqueues — there is no worker; never-finished is due immediately so a mid-month deploy does not wait until the 1st.
 
 Stamps `last_incremental_sync` when a pull finishes, and
 `last_mls_sync_heartbeat` ~60s — including while a child is working, since an
@@ -73,6 +75,7 @@ Railpack mounts cache dirs; `npm ci` trying to wipe `node_modules/.cache` →
 | `SYNC_CRON_SECRET` | **Exact** same string as Netlify |
 | `MLS_SYNC_INTERVAL_MS` | Optional; default `1800000` (30m) — Incremental liveness backstop |
 | `MLS_SYNC_CHILD_MAX_OLD_SPACE_MB` | Optional; heap cap passed to each forked child so a runaway job hits its own ceiling before the container's |
+| `MLS_SYNC_MAX_CHILDREN` | Optional; how many different jobs run at once (default 3, min 1, max 4) |
 | `RESEND_API_KEY` | Needed for the Monday brief — the service says so at boot if it is missing, not at 08:00 Monday |
 
 ### 3. Public domain
