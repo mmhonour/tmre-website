@@ -40,6 +40,8 @@ import type { StatsListingRow } from "@/lib/stats-listing-rows";
 import PriceSpreadByTownDataTable from "./PriceSpreadByTownDataTable";
 import StatsChartNav from "./StatsChartNav";
 import StatsChartLazyMount from "./StatsChartLazyMount";
+import StatsTownDeck from "./StatsTownDeck";
+import { STATS_TOWN_ACCENT_CLASS } from "./stats-town-colors";
 import {
   scrollToStatsAnchor,
   STATS_SCROLL_MT,
@@ -142,25 +144,7 @@ function emptyTownRecord<T>(value: T): Record<Town, T> {
   };
 }
 
-const ACCENT: Record<Town, string> = {
-  Norwalk: "text-sky",
-  Westport: "text-gold",
-  Wilton: "text-coral",
-  Fairfield: "text-sage",
-  Weston: "text-indigo-400",
-  "New Canaan": "text-amber-400",
-  Ridgefield: "text-rose-400",
-};
-
-const BORDER: Record<Town, string> = {
-  Norwalk: "border-sky/30",
-  Westport: "border-gold/30",
-  Wilton: "border-coral/30",
-  Fairfield: "border-sage/30",
-  Weston: "border-indigo-400/30",
-  "New Canaan": "border-amber-400/30",
-  Ridgefield: "border-rose-400/30",
-};
+const ACCENT = STATS_TOWN_ACCENT_CLASS;
 
 const EMPTY: CityStats = {
   city: "",
@@ -879,11 +863,7 @@ export default function StatsClient() {
 
           {/* Same column split as the charts grid — jump sits on the charts’ right edge. */}
           <div
-            className={`mt-3.5 grid items-center ${
-              selectedCity === "All"
-                ? "lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-6"
-                : "lg:grid-cols-[minmax(0,1fr)_256px] lg:gap-6"
-            }`}
+            className="mt-3.5 grid items-center lg:grid-cols-[minmax(0,1fr)_288px] lg:gap-6"
           >
             <div className="flex justify-end">
               <StatsChartNav items={chartNavItems} />
@@ -896,9 +876,7 @@ export default function StatsClient() {
       <section className="bg-cream py-5 lg:py-7 stats-charts-section">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           <div
-            className={`lg:grid lg:gap-6 lg:items-start ${
-              selectedCity === "All" ? "lg:grid-cols-[1fr_272px]" : "lg:grid-cols-[1fr_256px]"
-            }`}
+            className="lg:grid lg:grid-cols-[1fr_288px] lg:items-start lg:gap-6"
           >
             <div className="space-y-7 min-w-0">
               <ActiveByMonthView
@@ -1287,123 +1265,20 @@ export default function StatsClient() {
               </div>
             </div>
 
-            <aside className="mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:shrink-0 space-y-4 stats-sidebar stats-print-screen-only">
-              {visibleTowns.map((city) => (
-                <CityCard
-                  key={city}
-                  city={city}
-                  data={stats[city]}
-                  topVintage={topVintageByTown[city]}
-                  loading={loadState === "loading"}
-                  vintageLoading={vintageLoadState === "loading"}
-                  onMedianClick={() => showMedianDetail(city)}
-                  kind={statsKind}
-                />
-              ))}
+            <aside className="stats-sidebar stats-print-screen-only mb-10 lg:mb-0 lg:sticky lg:top-24 lg:self-start lg:shrink-0">
+              <StatsTownDeck
+                stats={stats}
+                topVintageByTown={topVintageByTown}
+                loading={loadState === "loading"}
+                vintageLoading={vintageLoadState === "loading"}
+                kind={statsKind}
+                selectedCity={selectedCity}
+                onMedianClick={showMedianDetail}
+              />
             </aside>
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function formatTopVintage(v: TopVintage | null | undefined): string {
-  if (!v) return "—";
-  const pct = Math.round(v.share * 100);
-  return pct > 0 ? `${v.label} (${pct}%)` : v.label;
-}
-
-function CityCard({
-  city,
-  data: d,
-  topVintage,
-  loading,
-  vintageLoading,
-  onMedianClick,
-  kind,
-}: {
-  city: Town;
-  data: CityStats | null;
-  topVintage: TopVintage | null;
-  loading: boolean;
-  vintageLoading: boolean;
-  onMedianClick?: () => void;
-  kind: StatsKind;
-}) {
-  if (!d && !loading) {
-    return (
-      <div className={`rounded-2xl bg-white border ${BORDER[city]} p-5 lg:p-6`}>
-        <p className={`font-mono text-[10px] tracking-[0.2em] uppercase mb-2 ${ACCENT[city]}`}>
-          {city}, CT
-        </p>
-        <p className="font-mono text-[10px] text-coral/80 tracking-wide">Feed unavailable</p>
-      </div>
-    );
-  }
-  const safe = d ?? { ...EMPTY, city };
-  const isRental = kind === "rental";
-  const metrics = [
-    {
-      label: isRental ? "Active rentals" : "Active listings",
-      value: loading ? "…" : safe.activeCount.toLocaleString("en-US"),
-    },
-    {
-      label: isRental ? "Median closed rent" : "Median closed price",
-      value: loading ? "…" : fmt$(safe.medianPrice),
-      clickable: true,
-    },
-    {
-      label: "Most popular vintage",
-      value: vintageLoading ? "…" : formatTopVintage(topVintage),
-    },
-    {
-      label: "Avg DOM",
-      value:
-        loading ? "…" : safe.avgDaysOnMarket != null ? `${Math.round(safe.avgDaysOnMarket)}d` : "—",
-    },
-    ...(isRental
-      ? []
-      : [
-          {
-            label: "Avg $/sqft",
-            value:
-              loading ? "…" : safe.avgPricePerSqft != null ? `$${Math.round(safe.avgPricePerSqft)}` : "—",
-          },
-        ]),
-    { label: "Avg bedrooms", value: loading ? "…" : bedsRange(safe.avgBeds) },
-  ];
-  return (
-    <div
-      className={`rounded-2xl bg-white border ${BORDER[city]} p-5 lg:p-6 transition-all hover:-translate-y-1 hover:shadow-lg ${loading ? "animate-pulse" : ""}`}
-    >
-      <p className={`font-serif text-xl text-navy mb-1 ${ACCENT[city]}`}>{city}, CT</p>
-      <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-slate mb-4">
-        Market snapshot
-      </p>
-      <div className="space-y-3">
-        {metrics.map((m) => (
-          <div key={m.label} className="flex items-baseline justify-between gap-2">
-            <span className="font-mono text-[10px] tracking-[0.15em] uppercase text-slate">
-              {m.label}
-            </span>
-            {m.label === (isRental ? "Median closed rent" : "Median closed price") && onMedianClick && !loading ? (
-              <button
-                type="button"
-                onClick={onMedianClick}
-                className="font-mono tabular-nums text-navy text-sm font-medium hover:text-gold transition-colors underline decoration-charcoal/20 hover:decoration-gold underline-offset-2"
-                aria-label={`View ${city} median price listings`}
-              >
-                {m.value}
-              </button>
-            ) : (
-              <span className="font-mono tabular-nums text-navy text-sm font-medium">
-                {m.value}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

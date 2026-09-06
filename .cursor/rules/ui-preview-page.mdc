@@ -1,0 +1,28 @@
+---
+description: UI work always ships a noindex /preview page
+alwaysApply: true
+---
+
+# UI work gets a preview page
+
+When the user asks for a UI implementation or a visible UI change (layout,
+styling, map, cards, overlays, pin/popover, mobile chrome), add or update a
+**preview page** in the same change. Do not leave the only way to see it as
+“open production and find a listing.”
+
+## Where
+
+- Route: `/preview/<kebab-slug>` (e.g. `/preview/map-pins`)
+- Register it on `/preview` (the index)
+- `robots: { index: false, follow: false }`
+- Not in production nav
+
+## What the page must do
+
+- Exercise the **changed interaction**, not only a static screenshot
+- Use **fixture data** so it works without the listing database
+- Name what changed in a short line at the top
+- Put the preview URL in the PR body
+
+Reuse `/intelligence/board-preview` and `/test` only when the work already
+lives there. New UI work goes under `/preview`.
