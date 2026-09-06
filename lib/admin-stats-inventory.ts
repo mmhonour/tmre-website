@@ -777,7 +777,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows (town + street_name + vision_pid)',
     owner: 'lib/db/vision-streets-repo.ts',
     notes:
-      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills every official name that still has no houses (one Railway chunk). Street-scoped replace so a fault cannot empty another street. /streets/{town}/{street} lists them and joins vision_addresses.owner_name / last_sale_date (Field Card ingest). Click-through is /find/{town}/{pid}. Owners are not stored on this table.',
+      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills every official name that still has no houses (one Railway chunk). Street-scoped replace so a fault cannot empty another street. /streets/{town}/{street} lists them and joins vision_addresses.owner_name / last_sale_date (Field Card ingest). The house number opens /find/westport/{pid} (TMRE Vision parcel). The last paid sale sits right-aligned and opens deed history; the compiled owner (paid buyers plus later quitclaim grantees) does too. Quitclaim $0 / — rows stay in the history. Owners are not stored on this table.',
     live: { kind: 'postgres_table', table: 'vision_street_parcels' },
   },
   {

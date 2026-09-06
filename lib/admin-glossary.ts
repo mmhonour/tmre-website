@@ -287,7 +287,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision_street_parcels',
     category: 'sync-admin',
     definition:
-      'Neon table of house numbers per official street (db/migrations/0025_vision_street_parcels.sql). Source is Streets.aspx?Name=… — the same page the crawler already fetches to walk parcels (5 Locust Ln, 6 Locust Ln, vision_pid). Street-scoped replace after a successful parse; a fault cannot empty another street. Each Vision chunk runs fillMissingVisionStreetParcels until every official name has a house list (or a fetch fault); `vision_streets.parcels_synced_at` marks the Name= fetch so an empty street cannot loop. Admin `/streets/{town}/{street}` lists them and joins `vision_addresses.owner_name` / last sale (not stored here); Westport rows link to `/find/westport/{pid}`. Not a substitute for `vision_addresses` Field Cards.',
+      'Neon table of house numbers per official street (db/migrations/0025_vision_street_parcels.sql). Source is Streets.aspx?Name=… — the same page the crawler already fetches to walk parcels (5 Locust Ln, 6 Locust Ln, vision_pid). Street-scoped replace after a successful parse; a fault cannot empty another street. Each Vision chunk runs fillMissingVisionStreetParcels until every official name has a house list (or a fetch fault); `vision_streets.parcels_synced_at` marks the Name= fetch so an empty street cannot loop. Admin `/streets/{town}/{street}` lists them and joins `vision_addresses.owner_name` / last sale (not stored here); the house number opens `/find/westport/{pid}`, the last paid (non-quitclaim) sale sits right-aligned and opens deed history, and the compiled owner (paid buyers plus later quitclaim grantees) also opens that card. Quitclaim $0 / — rows stay in the history. Not a substitute for `vision_addresses` Field Cards.',
   },
   {
     term: 'Westport Vision GIS homepage',
@@ -300,6 +300,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'sync-admin',
     definition:
       'Ordered join from vision_addresses → listings, run at the end of every prod Vision GIS sync (`backfillVisionListingLinks` in lib/vision-listing-match.ts / vision-addresses-repo). Same function as `npm run match:vision-listings`. Steps: (1) strip trailing ZIP so Vision `…|westport` meets MLS `…|westport|06880`; (2) canonicalize street-type and compass tokens (`Avenue North` → `ave n`); (3) mid-name USPS words (`BRK`↔`brook`); (4) exact addressMatchKey; (5) optional trailing street type (`Hemlock Hill Road` = `HEMLOCK HILL`); (6) unique compact MBLU vs listing raw.ParcelNumber; (7) stamp only when exactly one Vision PID; (8) write that PID on every listing at the key (re-lists included). Near/Jaccard street similarity is diagnostic only (`npm run match:vision-abbrev`) and is not applied in prod.',
+  },
+  {
+    term: 'street-listings (sync)',
+    category: 'sync-admin',
+    definition:
+      'Railway queue job (`street-listings`) that walks `vision_street_parcels` with no `listings.vision_pid` / `vision_addresses.listing_id` and runs the same one-off RETS ingest as Find (`ingestFindListingIfMissing`): Neon street/MBLU match, then address search, then Closed `StatusChangeTimestamp` window around the Vision deed. Default weekly Wednesday 02:00 ET, 40 addresses per run, 30-minute budget. Leftover work older than 6h is due off the weekly slot so chunks fill between other runner jobs. A miss stamps `vision_street_parcels.listing_ingest_at` and is not retried for 14 days. Clicking a house number on `/streets/{town}/{street}` runs the same hop in-request; Admin sees live RETS phase text and the listing line hydrates if the page is still open. Stamps `street_listings_synced_at`. Thin cron: `sync-street-listings`. CLI: `npm run sync:street-listings`.',
   },
   {
     term: 'vision-addresses (sync)',

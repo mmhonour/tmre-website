@@ -87,6 +87,7 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'cpi-sync':
     case 'market-digest':
     case 'cama-tax':
+    case 'street-listings':
       return job
     case 'publish-snapshot':
       return null
@@ -111,6 +112,7 @@ const EXECUTION_ORDER: OverdueSyncJob[] = [
   'cpi-sync',
   'market-digest',
   'cama-tax',
+  'street-listings',
 ]
 
 const CHAINED_BY_FULL_RESYNC = new Set<OverdueSyncJob>([
@@ -197,6 +199,10 @@ export function buildOverdueSyncPlan(now = new Date()): OverdueSyncJob[] {
 
   if (isScheduledJobDue('cama-tax', now, schedule)) {
     overdue.add('cama-tax')
+  }
+
+  if (isScheduledJobDue('street-listings', now, schedule) && isRetsConfigured()) {
+    overdue.add('street-listings')
   }
 
   // Never catch the brief up from here. Every other lane writes to a database,

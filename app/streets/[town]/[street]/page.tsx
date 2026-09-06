@@ -7,14 +7,15 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
-import { VisionDeedHistoryPopout } from '@/components/VisionDeedHistoryPopout'
-import { westportParcelHref } from '@/lib/listing-url'
+import { StreetParcelMlsRow } from '@/components/StreetParcelMlsRow'
+import { loadStreetListingCards } from '@/lib/street-listing-ingest'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
   compareAddressLabels,
   resolveStreetName,
   resolveStreetTown,
   townToStreetSlug,
+  visionParcelFindHref,
 } from '@/lib/vision-streets-page'
 
 export const dynamic = 'force-dynamic'
@@ -35,17 +36,6 @@ function mergeKnownTowns(fromTable: string[]): string[] {
     out.push(town)
   }
   return out
-}
-
-function parcelHref(
-  town: string,
-  visionPid: string,
-  addressLabel: string,
-): string {
-  if (town.trim().toLowerCase() === 'westport') {
-    return westportParcelHref(visionPid)
-  }
-  return `/find?q=${encodeURIComponent(addressLabel)}`
 }
 
 export default async function StreetsStreetPage({
@@ -79,6 +69,7 @@ export default async function StreetsStreetPage({
   const parcels = (await listVisionStreetParcels(town, streetName)).sort((a, b) =>
     compareAddressLabels(a.addressLabel, b.addressLabel),
   )
+  const listings = await loadStreetListingCards(town, streetName)
   const townHref = `/streets/${townToStreetSlug(town)}`
 
   return (
@@ -102,8 +93,10 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Click a house or Bought for the owner-of-record
-            card — full name, mailing, and every deed.
+            street page.             House number opens the TMRE Vision parcel. The last paid sale
+            sits on the right — quitclaims stay in the history and add
+            names, but they are not that dollar amount. Owner opens the
+            same deed card.
           </p>
         </div>
       </section>
@@ -117,78 +110,35 @@ export default async function StreetsStreetPage({
               walking every Field Card. Admin → Syncs → Vision addresses.
             </p>
           ) : (
-            <ul className="divide-y divide-charcoal/10 max-w-3xl">
-              {parcels.map((row) => {
-                const owner = row.ownerName
-                const mailing = row.ownerMailingAddress
-                const sold = row.purchaseDate
-                return (
-                  <li
-                    id={`pid-${row.visionPid}`}
-                    key={`${row.visionPid}-${row.addressLabel}`}
-                    className="scroll-mt-28 py-2.5 target:bg-gold/10 target:-mx-3 target:px-3 target:rounded-xl"
-                  >
-                    <VisionDeedHistoryPopout
-                      label={row.addressLabel}
-                      addressLabel={row.addressLabel}
-                      ownerName={owner}
-                      mailingAddress={mailing}
-                      soldLabel={sold ? `Bought ${sold}` : null}
-                      rows={row.deedHistory}
-                      parcelHref={parcelHref(
-                        town,
-                        row.visionPid,
-                        row.addressLabel,
-                      )}
-                      triggerClassName="text-left text-sm text-charcoal/90 hover:text-navy"
-                    >
-                      {row.addressLabel}
-                    </VisionDeedHistoryPopout>
-                    <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
-                      {owner ?? 'Owner pending Field Card ingest'}
-                      {owner && sold ? (
-                        <>
-                          {' · '}
-                          <VisionDeedHistoryPopout
-                            label={`Bought ${sold}`}
-                            addressLabel={row.addressLabel}
-                            ownerName={owner}
-                            mailingAddress={mailing}
-                            soldLabel={`Bought ${sold}`}
-                            rows={row.deedHistory}
-                            parcelHref={parcelHref(
-                              town,
-                              row.visionPid,
-                              row.addressLabel,
-                            )}
-                          />
-                        </>
-                      ) : owner && row.deedHistory.length > 0 ? (
-                        <>
-                          {' · '}
-                          <VisionDeedHistoryPopout
-                            label="Deed history"
-                            addressLabel={row.addressLabel}
-                            ownerName={owner}
-                            mailingAddress={mailing}
-                            rows={row.deedHistory}
-                            parcelHref={parcelHref(
-                              town,
-                              row.visionPid,
-                              row.addressLabel,
-                            )}
-                          />
-                        </>
-                      ) : null}
-                    </p>
-                    {mailing ? (
-                      <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
-                        {mailing}
-                      </p>
-                    ) : null}
-                  </li>
-                )
-              })}
+            <ul className="divide-y divide-charcoal/10">
+              {parcels.map((row) => (
+                <StreetParcelMlsRow
+                  key={`${row.visionPid}-${row.addressLabel}`}
+                  town={town}
+                  visionPid={row.visionPid}
+                  addressLabel={row.addressLabel}
+                  ownerName={row.ownerName}
+                  mailingAddress={row.ownerMailingAddress}
+                  soldLabel={
+                    row.purchaseDate
+                      ? [
+                          `Bought ${row.purchaseDate}`,
+                          row.lastPaidPriceLabel,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : row.lastPaidPriceLabel
+                  }
+                  lastPaidPriceLabel={row.lastPaidPriceLabel}
+                  deedHistory={row.deedHistory}
+                  parcelHref={visionParcelFindHref(
+                    town,
+                    row.visionPid,
+                    row.addressLabel,
+                  )}
+                  listing={listings.get(row.visionPid) ?? null}
+                />
+              ))}
             </ul>
           )}
           <p className="mt-10">

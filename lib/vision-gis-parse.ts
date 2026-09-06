@@ -257,6 +257,7 @@ export function visionLastPaidSale(opts: {
   ownership?: readonly VisionOwnershipRow[]
 }): VisionPaidSale | null {
   const paid = (opts.ownership ?? [])
+    .filter((row) => !isVisionQuitclaim(row))
     .map((row) => ({
       date: row.date?.trim() || null,
       year: yearFromVisionDate(row.date),
@@ -346,6 +347,8 @@ export type VisionDeedDisplayRow = {
   priceLabel: string
   bookPage: string
   deedLabel: string
+  /** True when this row is a paid (non-quitclaim) sale with consideration. */
+  paid: boolean
 }
 
 /**
@@ -370,21 +373,64 @@ export function completeDanglingDeedOwner(
   return row
 }
 
+/**
+ * Last paid sale's buyers, plus every later quitclaim grantee.
+ * Four quitclaim adds are legitimate owners; the $ transaction still stands.
+ */
+export function compileVisionOwnerFromDeeds(
+  ownership: readonly VisionOwnershipRow[],
+  currentOwner?: string | null,
+): string | null {
+  const sorted = sortVisionOwnershipDesc(ownership)
+  const paidIdx = sorted.findIndex((row) => {
+    const price = parseVisionMoney(row.price)
+    return !isVisionQuitclaim(row) && price != null && price > 0
+  })
+
+  let compiled: string | null = null
+  const fold = (raw: string | null | undefined) => {
+    const next = completeDanglingDeedOwner(raw, currentOwner)
+    compiled = joinVisionOwnerNames(compiled, next === '—' ? null : next)
+  }
+
+  if (paidIdx >= 0) {
+    fold(sorted[paidIdx]?.owner)
+    for (let i = paidIdx - 1; i >= 0; i -= 1) {
+      fold(sorted[i]?.owner)
+    }
+  } else {
+    for (let i = sorted.length - 1; i >= 0; i -= 1) {
+      fold(sorted[i]?.owner)
+    }
+  }
+  return joinVisionOwnerNames(compiled, currentOwner)
+}
+
+export function visionDeedPriceLabel(row: VisionOwnershipRow): string {
+  const money = formatVisionMoney(row.price)
+  if (money) return money
+  if (isVisionQuitclaim(row)) return '$0'
+  return row.price?.trim() || '—'
+}
+
 export function visionDeedDisplayRows(
   rows: readonly VisionOwnershipRow[],
   currentOwner?: string | null,
 ): VisionDeedDisplayRow[] {
-  return sortVisionOwnershipDesc(rows).map((row) => ({
-    date: row.date?.trim() || '—',
-    owner: completeDanglingDeedOwner(row.owner, currentOwner),
-    priceLabel: isVisionQuitclaim(row)
-      ? '—'
-      : formatVisionMoney(row.price) ?? row.price ?? '—',
-    bookPage: row.bookPage?.trim() || '—',
-    deedLabel:
-      visionInstrumentLabel(row.instrument) ??
-      (isVisionQuitclaim(row) ? 'Quitclaim' : '—'),
-  }))
+  return sortVisionOwnershipDesc(rows).map((row) => {
+    const price = parseVisionMoney(row.price)
+    const paid = !isVisionQuitclaim(row) && price != null && price > 0
+    return {
+      date: row.date?.trim() || '—',
+      owner: completeDanglingDeedOwner(row.owner, currentOwner),
+      priceLabel: visionDeedPriceLabel(row),
+      bookPage: row.bookPage?.trim() || '—',
+      deedLabel:
+        visionInstrumentLabel(row.instrument) ??
+        (isVisionQuitclaim(row) ? 'Quitclaim' : '—'),
+      paid,
+    }
+  })
 }
 
 export function visionInstrumentLabel(

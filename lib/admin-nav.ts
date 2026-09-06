@@ -1010,6 +1010,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     schedule: "On invoke (background)",
   },
   {
+    label: "sync-street-listings",
+    detail:
+      "Thin street-listings trigger — enqueues street-listings on the sync runner when Configure is due (weekly Wed 2am ET) or leftover unlinked /streets addresses are older than 6h. No Netlify worker.",
+    schedule: "Every 30 min (weekly-gated + catch-up)",
+  },
+  {
     label: "sync-zip-boundaries",
     detail:
       "Thin monthly trigger — queues sync-zip-boundaries-worker (Census TIGERweb → zip_boundaries)",

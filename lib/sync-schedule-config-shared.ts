@@ -192,6 +192,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'cpi-sync',
       'market-digest',
       'cama-tax',
+      'street-listings',
     ],
     jobs: {
       'full-resync': {
@@ -264,6 +265,13 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         frequency: 'monthly',
         startTimeEt: '03:30',
       },
+      // Off Monday's Vision/address pile-up. Railway claims it between other
+      // jobs; leftover unlinked streets catch up every 6h.
+      'street-listings': {
+        frequency: 'weekly',
+        startTimeEt: '02:00',
+        weekdayEt: 3,
+      },
     },
   }
 }
@@ -325,7 +333,8 @@ function isSyncAllActionableJob(
     jobId === 'property-addresses' ||
     jobId === 'vision-addresses' ||
     jobId === 'zip-boundaries' ||
-    jobId === 'open-houses'
+    jobId === 'open-houses' ||
+    jobId === 'street-listings'
     // fomc-sync / cpi-sync / market-digest — not part of Sync all
   )
 }

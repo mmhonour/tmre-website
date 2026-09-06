@@ -23,4 +23,5 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'cpi-sync': 'cpi-sync',
   'market-digest': 'market-digest',
   'cama-tax': 'cama-tax',
+  'street-listings': 'street-listings',
 }

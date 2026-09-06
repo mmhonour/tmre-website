@@ -532,6 +532,8 @@ function lastFinishedForJob(
       return getSyncMeta('market_digest_last_sent_at')
     case 'cama-tax':
       return getSyncMeta('cama_tax_history_synced_at')
+    case 'street-listings':
+      return getSyncMeta('street_listings_synced_at')
     default:
       return null
   }
@@ -647,6 +649,10 @@ export function buildAdminSyncNextRuns(
     naturalFor('cama-tax'),
     SCHEDULED_SYNC_JOB_BY_ROW['cama-tax'],
   )
+  const nextStreetListingsIso = applySyncNextOverride(
+    naturalFor('street-listings'),
+    SCHEDULED_SYNC_JOB_BY_ROW['street-listings'],
+  )
 
   const nextIncrementalDate = nextIncrementalIso ? new Date(nextIncrementalIso) : null
   const nextFullResyncDate = nextFullResyncIso ? new Date(nextFullResyncIso) : null
@@ -669,6 +675,7 @@ export function buildAdminSyncNextRuns(
     'cpi-sync': nextCpiSyncIso,
     'market-digest': nextMarketDigestIso,
     'cama-tax': nextCamaTaxIso,
+    'street-listings': nextStreetListingsIso,
   }
 }
 

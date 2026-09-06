@@ -16,6 +16,11 @@ describe('SYNC_QUEUE_RUNNER_JOBS', () => {
     assert.equal(isSyncQueueRunnerJob('cama-tax'), true)
     assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('cama-tax'))
   })
+
+  it('claims street-listings so /streets RETS fill runs on the Railway queue', () => {
+    assert.equal(isSyncQueueRunnerJob('street-listings'), true)
+    assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('street-listings'))
+  })
 })
 
 describe('syncQueueClaimYieldRank', () => {

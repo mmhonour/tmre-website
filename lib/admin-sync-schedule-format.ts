@@ -15,6 +15,7 @@ export type AdminSyncPanelRowId =
   | 'cpi-sync'
   | 'market-digest'
   | 'cama-tax'
+  | 'street-listings'
 
 /** Wall clocks on Admin Sync (Start / End / Next / schedules). */
 export const ADMIN_SYNC_TZ = 'America/New_York'

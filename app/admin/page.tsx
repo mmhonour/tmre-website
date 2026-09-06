@@ -383,6 +383,7 @@ export default async function AdminPage() {
   const cpiLastSyncedAt = getSyncMeta("cpi_last_synced_at");
   const marketDigestLastSentAt = getSyncMeta("market_digest_last_sent_at");
   const camaTaxSyncedAt = getSyncMeta("cama_tax_history_synced_at");
+  const streetListingsSyncedAt = getSyncMeta("street_listings_synced_at");
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -628,6 +629,17 @@ export default async function AdminPage() {
       actionId: "cama-tax",
       nextRunAt: nextRuns["cama-tax"],
     },
+    {
+      id: "street-listings",
+      label: "Street listings (RETS)",
+      value: formatTimestamp(streetListingsSyncedAt),
+      finishedAt: streetListingsSyncedAt,
+      sortMs: timestampSortMs(streetListingsSyncedAt),
+      detail:
+        "Missing /streets addresses → last MLS listing from RETS (weekly Wed 2am ET + 6h catch-up). Clicking a street address also requests the same hop.",
+      actionId: "street-listings",
+      nextRunAt: nextRuns["street-listings"],
+    },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
@@ -653,6 +665,7 @@ export default async function AdminPage() {
     fomcLastSyncedAt,
     cpiLastSyncedAt,
     marketDigestLastSentAt,
+    streetListingsSyncedAt,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,

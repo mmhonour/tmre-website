@@ -69,6 +69,11 @@ export const ADMIN_SYNC_ACTIONS = {
     description:
       'CT Parcel & CAMA assessments × OPM mill rates → historical years in listing_tax_history. Fills the four year slots the MLS feed cannot; the current year stays MLS-reported. Norwalk skipped (per-district mill rates).',
   },
+  'street-listings': {
+    label: 'Street listings (RETS)',
+    description:
+      'Walk /streets Vision house numbers with no listings row, pull the last MLS listing from RETS (address + Closed window), stamp vision_pid. Fills towns the bulk Closed-since-2019 sync never stored. Clicking an address on Streets requests the same hop.',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -121,6 +126,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'cpi-sync': 11,
   'market-digest': 12,
   'cama-tax': 13,
+  'street-listings': 14,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

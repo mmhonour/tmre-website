@@ -4,12 +4,16 @@ import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
 import {
   countVisionQuitclaims,
+  compileVisionOwnerFromDeeds,
+  formatVisionMoney,
   isVisionQuitclaim,
   lastSaleAsOwnership,
   ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
+  sortVisionOwnershipDesc,
   visionDeedDisplayRows,
+  visionLastPaidSale,
   visionPurchaseDate,
   type VisionDeedDisplayRow,
   type VisionFieldCardField,
@@ -61,6 +65,10 @@ export async function ensureVisionStreetsTable(): Promise<void> {
     await query(
       `ALTER TABLE vision_streets
          ADD COLUMN IF NOT EXISTS parcels_synced_at timestamptz`,
+    )
+    await query(
+      `ALTER TABLE vision_street_parcels
+         ADD COLUMN IF NOT EXISTS listing_ingest_at timestamptz`,
     )
   })().catch((err) => {
     ensured = null
@@ -187,6 +195,8 @@ export type VisionStreetParcel = {
   lastSaleDate: string | null
   /** Last paid purchase date when Field Card / last sale price shows consideration. */
   purchaseDate: string | null
+  /** Last non-quitclaim consideration, formatted for the street list. */
+  lastPaidPriceLabel: string | null
   /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
   lastDeedIsQuitclaim: boolean
   quitclaimCount: number
@@ -343,7 +353,8 @@ export async function listVisionStreetParcels(
         row.synced_at instanceof Date
           ? row.synced_at.toISOString()
           : String(row.synced_at),
-      ownerName,
+      ownerName:
+        compileVisionOwnerFromDeeds(deeds, ownerName) ?? ownerName,
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,
@@ -352,10 +363,19 @@ export async function listVisionStreetParcels(
         lastSalePrice: paidPrice,
         ownership,
       }),
-      lastDeedIsQuitclaim: isVisionQuitclaim({
-        price: paidPrice ?? ownership[0]?.price,
-        instrument: ownership[0]?.instrument,
-      }),
+      lastPaidPriceLabel: formatVisionMoney(
+        visionLastPaidSale({
+          lastSaleDate: row.last_sale_date,
+          lastSalePrice: paidPrice,
+          ownership,
+        })?.price ?? null,
+      ),
+      lastDeedIsQuitclaim: (() => {
+        const newest = sortVisionOwnershipDesc(deeds)[0]
+        return newest
+          ? isVisionQuitclaim(newest)
+          : isVisionQuitclaim({ price: paidPrice })
+      })(),
       quitclaimCount: countVisionQuitclaims(ownership),
       deedHistory: visionDeedDisplayRows(deeds, ownerName),
     }
@@ -490,4 +510,115 @@ export async function countVisionStreetParcels(town?: string): Promise<number> {
         `SELECT count(*)::text AS n FROM vision_street_parcels`,
       )
   return Number(rows[0]?.n ?? 0)
+}
+
+export type StreetParcelMissingListing = {
+  town: string
+  streetName: string
+  visionPid: string
+  addressLabel: string
+  lastSaleDate: string | null
+  listingId: string | null
+  mlsId: string | null
+  mblu: string | null
+  streetNo: string | null
+  visionStreetName: string | null
+  addressFull: string | null
+  addressNorm: string | null
+  zip: string | null
+}
+
+const MISSING_LISTING_FROM = `
+       FROM vision_street_parcels p
+       LEFT JOIN vision_addresses v
+         ON v.town = p.town AND v.vision_pid = p.vision_pid
+       LEFT JOIN listings lpid
+         ON lpid.vision_pid = p.vision_pid
+       LEFT JOIN listings lid
+         ON v.listing_id IS NOT NULL AND v.listing_id <> '' AND lid.id = v.listing_id
+      WHERE lpid.id IS NULL
+        AND lid.id IS NULL`
+
+/** Street-house PIDs with no listings.vision_pid and no vision_addresses.listing_id. */
+export async function listStreetParcelsMissingListings(
+  limit: number,
+  retryAfterDays = 14,
+): Promise<StreetParcelMissingListing[]> {
+  await ensureVisionStreetsTable()
+  await ensureVisionAddressesTable()
+  const cap = Math.max(1, Math.min(Math.floor(limit), 200))
+  const days = Math.max(1, Math.floor(retryAfterDays))
+  const rows = await query<{
+    town: string
+    street_name: string
+    vision_pid: string
+    address_label: string
+    last_sale_date: string | null
+    listing_id: string | null
+    mls_id: string | null
+    mblu: string | null
+    street_no: string | null
+    v_street_name: string | null
+    address_full: string | null
+    address_norm: string | null
+    zip: string | null
+  }>(
+    `SELECT p.town, p.street_name, p.vision_pid, p.address_label,
+            v.last_sale_date, v.listing_id, v.mls_id, v.mblu, v.street_no,
+            v.street_name AS v_street_name, v.address_full, v.address_norm, v.zip
+       ${MISSING_LISTING_FROM}
+        AND (
+          p.listing_ingest_at IS NULL
+          OR p.listing_ingest_at < now() - ($2::int * interval '1 day')
+        )
+      ORDER BY p.town, p.street_name, p.address_label
+      LIMIT $1`,
+    [cap, days],
+  )
+  return rows.map((row) => ({
+    town: row.town,
+    streetName: row.street_name,
+    visionPid: row.vision_pid,
+    addressLabel: row.address_label,
+    lastSaleDate: row.last_sale_date?.trim() || null,
+    listingId: row.listing_id?.trim() || null,
+    mlsId: row.mls_id?.trim() || null,
+    mblu: row.mblu?.trim() || null,
+    streetNo: row.street_no?.trim() || null,
+    visionStreetName: row.v_street_name?.trim() || null,
+    addressFull: row.address_full?.trim() || null,
+    addressNorm: row.address_norm?.trim() || null,
+    zip: row.zip?.trim() || null,
+  }))
+}
+
+export async function countStreetParcelsMissingListings(
+  retryAfterDays = 14,
+): Promise<number> {
+  await ensureVisionStreetsTable()
+  await ensureVisionAddressesTable()
+  const days = Math.max(1, Math.floor(retryAfterDays))
+  const rows = await query<{ n: string }>(
+    `SELECT count(*)::text AS n
+       ${MISSING_LISTING_FROM}
+        AND (
+          p.listing_ingest_at IS NULL
+          OR p.listing_ingest_at < now() - ($1::int * interval '1 day')
+        )`,
+    [days],
+  )
+  return Number(rows[0]?.n ?? 0)
+}
+
+export async function stampStreetParcelListingIngest(
+  town: string,
+  visionPid: string,
+): Promise<void> {
+  await ensureVisionStreetsTable()
+  await query(
+    `UPDATE vision_street_parcels
+        SET listing_ingest_at = now()
+      WHERE town = $1 AND vision_pid = $2`,
+    [town, visionPid],
+  )
 }
