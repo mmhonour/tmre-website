@@ -1,48 +1,126 @@
 "use client";
 
+import { useEffect, useId, useRef, useState } from "react";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
+import { COASTAL_STRIP_LEGEND } from "@/lib/location-estimate-zip-grid-shared";
+import {
+  formatLocationPremiumBoost,
+  LOCATION_PREMIUM_WATER_TIERS,
+} from "@/lib/listing-location-premium";
 
-/**
- * Admin flip for dotted coastal-strip + town-center outlines on the
- * showcase and Intelligence maps.
- */
+/** On/off for corridor outlines, plus what Coast 1–4 means for What if. */
 export default function AdminLocationEstimateOverlayPanel() {
   const { enabled, setEnabled, busy } = useLocationEstimateOverlay();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-charcoal/[0.08] bg-white shadow-sm shadow-charcoal/[0.04]">
-      <div className="border-b border-charcoal/[0.08] bg-cream/40 px-5 py-4 sm:px-6">
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-          Location estimates · map outlines
-        </p>
-        <p className="mt-1 max-w-3xl text-sm text-charcoal/65">
-          When this is on, the showcase map and the Intelligence deal-board map
-          draw the estimator&apos;s geometry: town-center disks (¼-mile radius)
-          and coastal land strips (stacked ¼-mile bands along the shore, out to
-          about a mile). Only while the site is unlocked — visitors never see
-          it. Same control lives as a chip on those maps.
-        </p>
-      </div>
-      <div className="px-5 py-4 sm:px-6">
-        <label className="inline-flex cursor-pointer items-center gap-3">
-          <input
-            type="checkbox"
-            checked={enabled}
-            disabled={busy}
-            onChange={(e) => void setEnabled(e.target.checked)}
-            className="rounded border-charcoal/30"
-          />
-          <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
-            Show corridors and town centers
-          </span>
-          <span
-            className={`font-mono text-[9px] tracking-[0.12em] uppercase ${
-              enabled ? "text-sage" : "text-charcoal/40"
-            }`}
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <label className="inline-flex cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => void setEnabled(e.target.checked)}
+          className="rounded border-charcoal/30"
+        />
+        <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
+          Show corridors and town centers
+        </span>
+        <span
+          className={`font-mono text-[9px] tracking-[0.12em] uppercase ${
+            enabled ? "text-sage" : "text-charcoal/40"
+          }`}
+        >
+          {enabled ? "on" : "off"}
+        </span>
+      </label>
+      <div ref={rootRef} className="relative">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((v) => !v)}
+          className="font-mono text-[10px] uppercase tracking-[0.12em] text-navy underline decoration-navy/30 underline-offset-2 hover:decoration-navy"
+        >
+          What 1–4 do on What if
+        </button>
+        {open ? (
+          <div
+            id={panelId}
+            role="dialog"
+            aria-label="Coastal strips and What if"
+            className="absolute left-0 top-full z-30 mt-1.5 w-[min(22rem,calc(100vw-2.5rem))] rounded-md border border-charcoal/15 bg-white px-3 py-2.5 text-left shadow-[0_8px_24px_-12px_rgba(0,0,0,0.35)]"
           >
-            {enabled ? "on" : "off"}
-          </span>
-        </label>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
+              What if on listing / showcase
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-slate">
+              Painting a square does not change What if today. Those numbers
+              use distance to hardcoded water-access points, then weight comps
+              by how close that multiplier is to the subject.
+            </p>
+            <ul className="mt-2 space-y-1">
+              {LOCATION_PREMIUM_WATER_TIERS.map((tier) => (
+                <li
+                  key={tier.label}
+                  className="flex justify-between gap-3 font-mono text-[11px] text-navy"
+                >
+                  <span>≤ {tier.maxMiles} mi · {tier.label}</span>
+                  <span className="shrink-0 tabular-nums text-charcoal/60">
+                    {formatLocationPremiumBoost(tier.boost)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 font-mono text-[10px] leading-snug text-charcoal/45">
+              Village-center and golf stack on top; combined cap is +22%.
+            </p>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
+              Location estimates (listing / Insight)
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-slate">
+              Sold PPSF reads these painted strips and the town-center disks.
+              Same-strip solds along a ¼-mile stretch; 0.75^n is the inland
+              rule of thumb, not a price multiplier.
+            </p>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
+              Painted 1–4 (this map)
+            </p>
+            <ul className="mt-1 space-y-1">
+              {([0, 1, 2, 3] as const).map((strip) => {
+                const row = COASTAL_STRIP_LEGEND[strip];
+                return (
+                  <li key={row.mark} className="text-[12px] leading-snug text-slate">
+                    <span className="font-mono text-[11px] text-navy">
+                      {row.mark} {row.name}
+                    </span>
+                    <span className="text-charcoal/55"> — {row.blurb}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </div>
   );

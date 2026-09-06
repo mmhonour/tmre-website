@@ -137,6 +137,8 @@
     .stats-chart-print-frame[data-stats-chart-id="median-by-town"],
   body.is-stats-printing.stats-print-target-avg-dom
     .stats-chart-print-frame[data-stats-chart-id="avg-dom"],
+  body.is-stats-printing.stats-print-target-transact-to-list
+    .stats-chart-print-frame[data-stats-chart-id="transact-to-list"],
   body.is-stats-printing.stats-print-target-median-underlying
     .stats-chart-print-frame[data-stats-chart-id="median-underlying"] {
     display: block !important;

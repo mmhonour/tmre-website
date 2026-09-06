@@ -108,6 +108,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'cpi_last_synced_at'
     case 'market-digest':
       return 'market_digest_last_sent_at'
+    case 'cama-tax':
+      return 'cama_tax_history_synced_at'
     default: {
       const _exhaustive: never = jobId
       return _exhaustive

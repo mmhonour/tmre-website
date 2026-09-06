@@ -29,6 +29,8 @@ import {
 import { isClosedListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
+import { getLocationEstimateTownCentersFresh } from '@/lib/location-estimate-town-centers-config'
+import { getLocationEstimateZipGridFresh } from '@/lib/location-estimate-zip-grid-config'
 import { resolveListingTown, townForZip } from '@/lib/tmre-towns'
 
 /** Cover a town-center disk from the far edge, or one coastal strip + stretch. */
@@ -211,7 +213,14 @@ export async function cacheLocationEstimateForListing(
   const sales =
     fromPool.length > 0 ? fromPool : await salesFromBounds(subject, listing)
 
-  const estimate = computeLocationEstimate(subject, sales, null)
+  const [grid, centers] = await Promise.all([
+    getLocationEstimateZipGridFresh(),
+    getLocationEstimateTownCentersFresh(),
+  ])
+  const estimate = computeLocationEstimate(subject, sales, null, Date.now(), {
+    cells: grid.cells,
+    placements: centers.placements,
+  })
   await persistLocationEstimate(subject.id, estimate).catch((err) => {
     console.warn(
       '[location-estimates] persist failed',

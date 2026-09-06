@@ -278,6 +278,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Vision GIS internal parcel id — labeled PID on the Field Card / Parcel.aspx?pid=N (not MBLU). Stored as `vision_addresses.vision_pid` (PK with town) and mirrored onto every `listings.vision_pid` at that address when the Vision listing-match stack finds exactly one Vision PID (re-lists included; 2+ PIDs stay unmatched). See Vision listing match.',
   },
   {
+    term: 'vision_streets',
+    category: 'sync-admin',
+    definition:
+      'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Each Vision chunk starts by fetching any missing Streets.aspx?Letter= pages into this table (fillMissingVisionStreetIndex) — that does not move the parcel crawl cursor. Entering a letter during the parcel walk also replaces that letter. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. Admin-only page `/streets` (password gate, not in the public menu) reads this table. House numbers live in `vision_street_parcels`. `vision_addresses.street_name` is only streets whose Field Cards have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
+  },
+  {
+    term: 'vision_street_parcels',
+    category: 'sync-admin',
+    definition:
+      'Neon table of house numbers per official street (db/migrations/0025_vision_street_parcels.sql). Source is Streets.aspx?Name=… — the same page the crawler already fetches to walk parcels (5 Locust Ln, 6 Locust Ln, vision_pid). Street-scoped replace after a successful parse; a fault cannot empty another street. Each Vision chunk runs fillMissingVisionStreetParcels until every official name has a house list (or a fetch fault); `vision_streets.parcels_synced_at` marks the Name= fetch so an empty street cannot loop. Admin `/streets/{town}/{street}` lists them and joins `vision_addresses.owner_name` / last sale (not stored here); Westport rows link to `/find/westport/{pid}`. Not a substitute for `vision_addresses` Field Cards.',
+  },
+  {
     term: 'Westport Vision GIS homepage',
     category: 'sync-admin',
     definition:
@@ -293,7 +305,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision-addresses (sync)',
     category: 'sync-admin',
     definition:
-      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (Admin/Netlify, hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Syncs row + Netlify thin sync-vision-addresses → worker; CLI `npm run sync:vision-addresses`. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
+      'Scheduled VGSI GIS crawler (Westport first): Streets.aspx → Parcel.aspx Field Card parse → Neon `vision_addresses` typed columns + `field_card` jsonb (labeled pairs + searchText for Find) + optional R2 HTML pointer for reference. Each chunk first fills missing `vision_streets` letters and `vision_street_parcels` house lists for every town in `VISION_GIS_TOWNS` (add a town there — no Sync now). Then it ingests Field Cards for street-house PIDs that still lack `owner_name` (fillMissingStreetParcelOwners — same Parcel.aspx path, does not move the letter cursor). If letters, houses, or street-address owners are incomplete, the Railway sweep enqueues off the weekly slot (`visionGisNeedsCatchUp`). Remaining budget walks Field Cards for the current crawl town. After a town’s street alphabet completes, phase flips to incremental re-crawl comparing `content_fingerprint` (VGSI has no known modified-since feed). Default chunk is 40 parcels (hard cap 200). CLI loops 1000-parcel chunks until the town is complete (`VISION_SYNC_TARGET=neon`); `VISION_SYNC_ONCE=1` for a single chunk; letter-index only is `npm run sync:vision-streets`. While running, each parcel logs to the console and stamps `vision_addresses_live` (Admin Status shows current address). `scraped_at` is ISO-8601 UTC (Postgres `timestamptz` `+00`). Each successful chunk ends with Vision listing match (same stack as prod). Admin Sync now and the thin cron enqueue on `sync_queue`; the Railway runner claims and forks (Netlify `sync-vision-addresses-worker` only if the row is stranded). That hop is what returned HTTP 429 when Admin tried to queue the worker directly. Distinct from property-addresses (List With Me thin directory). Homepage: Westport Vision GIS homepage.',
   },
   {
     term: 'Brokerage name',
@@ -400,6 +412,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Primary listings database: Postgres hosted on Neon (DATABASE_URL). Shared by Netlify production and local next dev when DATABASE_URL points at Neon; a localhost DATABASE_URL is a separate non-prod store.',
   },
   {
+    term: 'Size & growth (Neon)',
+    category: 'sync-admin',
+    definition:
+      'Admin → NEON → Size & growth (and `npm run db:size`): on-demand report of table heap/toast/index bytes, MLS listed/closed increments, rows added by birth timestamp, and pg_stat_statements chatter. Explains whether a Neon bill is storage ($0.35/GB-month) or an always-awake compute. Does not write anything; Run report hits GET /api/admin/db-size.',
+  },
+  {
     term: 'SQLite',
     category: 'sync-admin',
     definition:
@@ -451,7 +469,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Job runner (mls-sync)',
     category: 'sync-admin',
     definition:
-      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims the next sync_queue row with SELECT … FOR UPDATE SKIP LOCKED, forks a child process to do the work, heartbeats while it runs, and writes the outcome back. It also reaps rows whose running process stopped heartbeating (crashed pod, redeploy mid-job) and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded and running it itself.',
+      'The loop inside the always-on Railway mls-sync service (services/mls-sync/job-runner.ts) that claims waiting sync_queue rows with SELECT … FOR UPDATE SKIP LOCKED, forks a child per row, heartbeats while it runs, and writes the outcome back. Up to MLS_SYNC_MAX_CHILDREN (default 3) different jobs run at once — Incremental can pull while stats rebuilds and CAMA fills tax history. The same job_id still cannot run twice (unique index). It also reaps rows whose running process stopped heartbeating and applies a cooldown so a job that keeps crashing does not spin. Its heartbeat is what Netlify checks before deciding a queued row is stranded.',
   },
   {
     term: 'Job child (forked sync job)',
@@ -595,7 +613,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: '*/30 fan-out',
     category: 'sync-admin',
     definition:
-      'Thirteen thin crons in netlify.toml all carry `schedule = "*/30 * * * *"`, so Netlify wakes them within the same second at :00 and :30 and each one POSTs its own *-worker background function. That is a burst of ~13 background invocations twice an hour before any catch-up or Admin click adds more, and it is the usage shape behind the 19 Aug 2026 outage: every worker hop came back HTTP 429 and no background function executed for over 24 hours, while the thin crons themselves stayed healthy at ~1s each. Two ways out: stagger the minute field (`5,35`, `10,40`, …) so the burst spreads, or move the job to a host that needs no invocation at all — Railway mls-sync now self-schedules the stats rebuild instead of waiting to be POSTed. See Thin cron, HTTP 429 (background invocation refused), Railway mls-sync.',
+      'Fourteen thin crons in netlify.toml all carry `schedule = "*/30 * * * *"`, so Netlify wakes them within the same second at :00 and :30 and each one POSTs its own *-worker background function. That is a burst of ~13 background invocations twice an hour before any catch-up or Admin click adds more, and it is the usage shape behind the 19 Aug 2026 outage: every worker hop came back HTTP 429 and no background function executed for over 24 hours, while the thin crons themselves stayed healthy at ~1s each. Two ways out: stagger the minute field (`5,35`, `10,40`, …) so the burst spreads, or move the job to a host that needs no invocation at all — Railway mls-sync now self-schedules the stats rebuild instead of waiting to be POSTed. See Thin cron, HTTP 429 (background invocation refused), Railway mls-sync.',
   },
   {
     term: 'HTTP 429 (background invocation refused)',
@@ -939,13 +957,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Location estimates',
     category: 'scoring',
     definition:
-      'Sold-derived PPSF for the two areas that typically trade above the town median: coastal areas and town centers. Town-center comps use a 1/4-mile radius around the village / zip center. Coastal comps use stacked 1/4-mile shore-parallel strips (each inland strip ~25% less valuable than the one in front, out to about 1 mile) along a 1/4-mile stretch — not a radius. Cached on listing_location_estimates; snapshots go to listing_location_estimate_snapshots for a later estimates time series. Overnight backfill writes slowly; listing pages only read. Admin → Data controls → Deal board can flip dotted corridor / town-center outlines on the showcase and Intelligence maps (unlocked only). Distinct from What-if location-premium weights. See PPSF, Location premium, What if.',
+      'Sold-derived PPSF for coastal areas and town centers — the two areas that typically trade above the town median. Town-center comps use the one Admin-placed disk per TMRE town (default ¼-mile; CT coverage can move/resize it). Coastal comps use the painted ¼-mile zip grid (1 Coast, 2 2nd strip, 3 3rd, 4 4th): solds in the same painted strip along a ¼-mile stretch, with a 0.75^n rule of thumb inland. Cached on listing_location_estimates; snapshots on listing_location_estimate_snapshots. Overnight backfill writes slowly; listing pages only read. Map outlines show the same painted grid + disks (unlocked only). Distinct from What if, which still uses listing-location-premium distance tiers to hardcoded water-access points and does not read this grid. See PPSF, Location premium, What if.',
   },
   {
     term: 'Location premium',
     category: 'scoring',
     definition:
-      'Hand-tuned proximity boosts (water, town/zip center, golf) used to weight What-if comps. Different from location estimates, which read coastal areas and town centers from historical solds. See Location estimates, What if.',
+      'Hand-tuned proximity boosts (water, town/zip center, golf) used to weight What-if comps. Different from location estimates, which read painted coastal strips and town-center disks from historical solds. See Location estimates, What if.',
   },
   {
     term: 'Score breakdown',
@@ -969,7 +987,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Edge scores',
     category: 'sync-admin',
     definition:
-      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Budget (job id `edge-scores`), own End stamp `last_listing_edge_scores`, and Netlify thin cron `sync-listing-edge-scores` → `sync-listing-edge-scores-worker`. Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score.',
+      'Sync Dashboard step 3b — rebuild of listing_edge_scores. Own Configure Frequency / Start / Pause / Budget (job id `edge-scores`), own End stamp `last_listing_edge_scores`. A due slot is enqueued on `sync_queue`; the Railway runner claims it. The Netlify thin cron `sync-listing-edge-scores` stands down after enqueue; `sync-listing-edge-scores-worker` is stranded-row rescue only (the function→function hop is HTTP 429). Uncoupled from Goldilocks (3a / `listing-scores` / `last_listing_scores`). Also runs as a full-resync finalize step. See Edge score, Thin cron, Goldilocks score, Railway mls-sync.',
   },
   {
     term: 'Superlatives',
@@ -1135,7 +1153,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Thin corpus (Find)',
     category: 'product',
     definition:
-      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is Westport Lookup: typeahead is vision_addresses (cadastral) plus Westport MLS streets that GIS has not ingested yet. Off-market parcels open /find/westport/{vision_pid} with the Vision field card on the page; on-market rows merge listing-wins + Vision gap-fill. If the parcel is not in listings, a one-off RETS pull (Vision MLS id/key, else one address search) upserts it permanently via persistListingByMlsId / persistListingRecord and stamps listings.vision_pid + vision_addresses.listing_id. A “Listing is available” banner shows at the top of the parcel page only on that ingest request. Typing an MLS# that is missing from listings does the same persist. Incomplete GIS fill no longer hides MLS addresses. Not the same as thin scheduling (Netlify cron alarm clocks).',
+      'When /find typeahead can only match a narrow searchable set — historically MLS rows in the listings table — so suggestions feel sparse even if the API is fast. /find is Westport Lookup: typeahead hits vision_addresses.lookup_text (one trigram index: owner, mailing, address, MBLU, PID) — Neon only, no VGSI scrape and no RETS on keystroke. MLS streets fill only when Vision returns nothing; typing an MLS# missing from listings still does a one-off persist. Off-market parcels open /find/westport/{vision_pid} with the Vision field card on the page; on-market rows merge listing-wins + Vision gap-fill. Parcel-page ingest (RETS / Field Card backfill) is not part of typeahead. Not the same as thin scheduling (Netlify cron alarm clocks).',
   },
   {
     term: 'Intelligence',
@@ -1199,7 +1217,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'CT coverage',
     category: 'product',
     definition:
-      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save (flag only — not RETS/public yet). Each town also has a Playbook link. County thumbnails use Census TIGER outlines. Public pages still use hardcoded TMRE_TOWNS until wired.',
+      'Admin → Data controls → CT coverage: Postgres ct_counties / ct_towns catalog of all CT municipalities. Checking Activate opens the canonical town-activation playbook side panel before Phase 0 can save. Public copy, town pills, Market Pulse, and the footer follow ct_towns.active (cached). RETS incremental still uses compile-time TMRE_TOWNS until Phase 3. Each town also has a Playbook link. The large map is the same street tiles and TIGER ZCTA rings as Intelligence / showcase; zoom a town to paint ¼-mile coastal squares or drag the town-center disk to move/resize it. County thumbnails use TIGER county outlines (same Census family, different layer).',
   },
   {
     term: 'Town activation playbook',

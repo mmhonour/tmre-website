@@ -1,6 +1,18 @@
 import { nearestPoint } from '@/lib/geo-distance'
 import { normalizeStreetAddress } from '@/lib/listing-history'
 import {
+  resolveTownCenter,
+  townCenterOwningAt,
+  type TownCenterPlacements,
+} from '@/lib/location-estimate-town-centers-shared'
+import {
+  cellKey,
+  isCoastalStripIndex,
+  lonLatToCell,
+  type CoastalStripIndex,
+  type ZipGridCells,
+} from '@/lib/location-estimate-zip-grid-shared'
+import {
   TOWN_CENTERS,
   WATER_ACCESS_POINTS,
   ZIP_CENTERS,
@@ -15,11 +27,12 @@ import { withinLookbackMonths } from '@/lib/listing-comparables-shared'
  *
  * Two places typically trade above the town median: coastal areas and
  * town centers. Geometry differs:
- *   - Town center: 1/4-mile radius disk around the village / zip center.
- *   - Coastal: shore-parallel land strips that step inland from the water.
- *     Each inland strip is treated as ~25% less valuable than the one in
- *     front of it, out to about 3/4–1 mile. Solds are matched in the same
- *     strip along a 1/4-mile coastal stretch — not a radius.
+ *   - Town center: Admin-placed disk per TMRE town (default 1/4-mile).
+ *   - Coastal: the painted ¼-mile zip grid (1 Coast … 4 4th strip).
+ *     Solds match the same painted strip along a 1/4-mile stretch.
+ *     0.75^n is the inland rule of thumb, not a PPSF multiplier.
+ *     Unpainted points fall back to shore-parallel strips from the
+ *     nearest water-access point.
  * Street corridors are an internal fallback only.
  * Listing-agnostic. Distinct from What-if location-premium weights.
  */
@@ -42,8 +55,13 @@ export const COASTAL_STRIP_VALUE_FACTOR = 0.75
 export const LOCATION_ESTIMATE_MIN_SOLDS = 3
 /** Same default look-back as comps — recent sales, not the 36-month reservoir. */
 export const LOCATION_ESTIMATE_LOOKBACK_MONTHS = COMPARABLES_DEFAULT_LOOKBACK_MONTHS
-/** Bumped when town-center radius + coastal strips replaced a single corridor. */
-export const LOCATION_ESTIMATE_ALGO_VERSION = 2
+/** Bumped when sold PPSF started reading the painted zip grid + town disks. */
+export const LOCATION_ESTIMATE_ALGO_VERSION = 3
+
+export type LocationEstimateContext = {
+  cells?: ZipGridCells
+  placements?: TownCenterPlacements
+}
 
 const MILES_PER_DEG_LAT = 69.172
 const COASTAL_STRIP_MAX_INDEX = Math.floor(
@@ -339,65 +357,126 @@ export type CoastalAxis = {
   water: GeoPoint
   inlandMiles: number
   stripIndex: number
+  /** True when the strip came from the painted zip grid, not WATER_ACCESS_POINTS. */
+  painted?: boolean
 }
 
 export type AmenityAxes = {
   coastal: CoastalAxis | null
-  townCenter: { center: GeoPoint; miles: number } | null
+  townCenter: { center: GeoPoint; miles: number; radiusMiles: number } | null
   street: AxisUnit | null
 }
 
+export function paintedCoastalStripAt(
+  lat: number,
+  lon: number,
+  cells: ZipGridCells | null | undefined,
+): CoastalStripIndex | null {
+  if (!cells) return null
+  const { i, j } = lonLatToCell(lat, lon)
+  const strip = cells[cellKey(i, j)]
+  return isCoastalStripIndex(strip) ? strip : null
+}
+
 /**
- * Axes for any lat/lon. Coastal = shore-parallel strips from the nearest
- * water point. Town center = village disk. Street is an internal fallback only.
+ * Axes for any lat/lon. Painted zip-grid strips and Admin town-center
+ * disks win when present. Unpainted points fall back to shore-parallel
+ * strips from the nearest water point and hardcoded village/zip centers.
  */
 export function locationAxesForSubject(
   subject: EstimateSubject,
   sales: readonly EstimateSale[],
+  ctx: LocationEstimateContext = {},
 ): AmenityAxes {
   const town = townForZip(subject.postalCode) ?? null
-  const coastalHit = nearestPoint(subject.latitude, subject.longitude, WATER_ACCESS_POINTS)
-  const centerPt = townCenterPoint(subject.postalCode, town)
+  const placements = ctx.placements ?? {}
 
   let coastal: AmenityAxes['coastal'] = null
-  if (coastalHit) {
-    const inland = localEastNorth(
+  const painted = paintedCoastalStripAt(
+    subject.latitude,
+    subject.longitude,
+    ctx.cells,
+  )
+  if (painted != null) {
+    coastal = {
+      axis: { east: 1, north: 0 },
+      towardWater: { east: 0, north: -1 },
+      water: { lat: subject.latitude, lon: subject.longitude },
+      inlandMiles:
+        painted * COASTAL_STRIP_WIDTH_MILES + COASTAL_STRIP_WIDTH_MILES / 2,
+      stripIndex: painted,
+      painted: true,
+    }
+  } else {
+    const coastalHit = nearestPoint(
       subject.latitude,
       subject.longitude,
-      coastalHit.point.lat,
-      coastalHit.point.lon,
+      WATER_ACCESS_POINTS,
     )
-    const towardWater = unitOffset(inland.east, inland.north)
-    const inlandMiles = inlandMilesFromWaterLine(
-      coastalHit.point.lat,
-      coastalHit.point.lon,
-      towardWater ?? { east: 0, north: 1 },
-      subject.latitude,
-      subject.longitude,
-    )
-    const strip = towardWater ? coastalStripIndex(inlandMiles) : null
-    if (towardWater && strip != null) {
-      coastal = {
-        axis: perpendicularAxis(towardWater),
-        towardWater,
-        water: coastalHit.point,
-        inlandMiles: Math.max(0, inlandMiles),
-        stripIndex: strip,
+    if (coastalHit) {
+      const inland = localEastNorth(
+        subject.latitude,
+        subject.longitude,
+        coastalHit.point.lat,
+        coastalHit.point.lon,
+      )
+      const towardWater = unitOffset(inland.east, inland.north)
+      const inlandMiles = inlandMilesFromWaterLine(
+        coastalHit.point.lat,
+        coastalHit.point.lon,
+        towardWater ?? { east: 0, north: 1 },
+        subject.latitude,
+        subject.longitude,
+      )
+      const strip = towardWater ? coastalStripIndex(inlandMiles) : null
+      if (towardWater && strip != null) {
+        coastal = {
+          axis: perpendicularAxis(towardWater),
+          towardWater,
+          water: coastalHit.point,
+          inlandMiles: Math.max(0, inlandMiles),
+          stripIndex: strip,
+        }
       }
     }
   }
 
   let townCenter: AmenityAxes['townCenter'] = null
-  if (centerPt) {
+  const owning = townCenterOwningAt(
+    subject.latitude,
+    subject.longitude,
+    placements,
+  )
+  if (owning) {
+    const pt = resolveTownCenter(owning, placements)
     const toCenter = localEastNorth(
       subject.latitude,
       subject.longitude,
-      centerPt.lat,
-      centerPt.lon,
+      pt.lat,
+      pt.lon,
     )
-    const miles = Math.hypot(toCenter.east, toCenter.north)
-    if (miles <= TOWN_CENTER_RADIUS_MILES) {
-      townCenter = { center: centerPt, miles }
+    townCenter = {
+      center: { lat: pt.lat, lon: pt.lon },
+      miles: Math.hypot(toCenter.east, toCenter.north),
+      radiusMiles: pt.radiusMiles,
+    }
+  } else {
+    const centerPt = townCenterPoint(subject.postalCode, town)
+    if (centerPt) {
+      const toCenter = localEastNorth(
+        subject.latitude,
+        subject.longitude,
+        centerPt.lat,
+        centerPt.lon,
+      )
+      const miles = Math.hypot(toCenter.east, toCenter.north)
+      if (miles <= TOWN_CENTER_RADIUS_MILES) {
+        townCenter = {
+          center: centerPt,
+          miles,
+          radiusMiles: TOWN_CENTER_RADIUS_MILES,
+        }
+      }
     }
   }
 
@@ -485,14 +564,35 @@ function salesOnCorridor(
   })
 }
 
+function inPaintedCoastalStretch(
+  subject: EstimateSubject,
+  sale: EstimateSale,
+  stripIndex: number,
+  cells: ZipGridCells,
+): boolean {
+  const saleStrip = paintedCoastalStripAt(sale.latitude, sale.longitude, cells)
+  if (saleStrip == null || saleStrip !== stripIndex) return false
+  const { east, north } = localEastNorth(
+    subject.latitude,
+    subject.longitude,
+    sale.latitude,
+    sale.longitude,
+  )
+  return Math.hypot(east, north) <= LOCATION_STRETCH_LENGTH_MILES
+}
+
 function salesOnCoastalStrip(
   subject: EstimateSubject,
   sales: readonly EstimateSale[],
   coastal: CoastalAxis,
   nowMs: number,
+  cells?: ZipGridCells,
 ): EstimateSale[] {
   return sales.filter((sale) => {
     if (!isEligibleSale(subject, sale, nowMs)) return false
+    if (coastal.painted && cells) {
+      return inPaintedCoastalStretch(subject, sale, coastal.stripIndex, cells)
+    }
     return inCoastalStrip(
       coastal.water,
       coastal.towardWater,
@@ -511,10 +611,17 @@ function salesInTownCenterRadius(
   sales: readonly EstimateSale[],
   center: GeoPoint,
   nowMs: number,
+  radiusMiles: number = TOWN_CENTER_RADIUS_MILES,
 ): EstimateSale[] {
   return sales.filter((sale) => {
     if (!isEligibleSale(subject, sale, nowMs)) return false
-    return inTownCenterRadius(center.lat, center.lon, sale.latitude, sale.longitude)
+    return inTownCenterRadius(
+      center.lat,
+      center.lon,
+      sale.latitude,
+      sale.longitude,
+      radiusMiles,
+    )
   })
 }
 
@@ -611,6 +718,7 @@ export function computeLocationEstimate(
   sales: readonly EstimateSale[],
   cityMedianPpsf: number | null,
   nowMs: number = Date.now(),
+  ctx: LocationEstimateContext = {},
 ): LocationEstimate {
   const listingPpsf = subject.pricePerSqft
   const empty = emptyLocationEstimate(listingPpsf, cityMedianPpsf)
@@ -621,13 +729,13 @@ export function computeLocationEstimate(
     return empty
   }
 
-  const axes = locationAxesForSubject(subject, sales)
+  const axes = locationAxesForSubject(subject, sales, ctx)
   const candidates: LocationEstimateCandidate[] = []
 
   if (axes.coastal) {
     const c = candidateFromSales(
       'coastal',
-      salesOnCoastalStrip(subject, sales, axes.coastal, nowMs),
+      salesOnCoastalStrip(subject, sales, axes.coastal, nowMs, ctx.cells),
       subject,
       cityMedianPpsf,
     )
@@ -636,7 +744,13 @@ export function computeLocationEstimate(
   if (axes.townCenter) {
     const c = candidateFromSales(
       'town_center',
-      salesInTownCenterRadius(subject, sales, axes.townCenter.center, nowMs),
+      salesInTownCenterRadius(
+        subject,
+        sales,
+        axes.townCenter.center,
+        nowMs,
+        axes.townCenter.radiusMiles,
+      ),
       subject,
       cityMedianPpsf,
     )

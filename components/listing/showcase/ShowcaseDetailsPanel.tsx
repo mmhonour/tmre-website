@@ -24,13 +24,22 @@ import { ListingComparablesPageContent } from "@/components/listing/ListingCompa
 import ListingHeader from "@/components/listing/ListingHeader";
 import { ListingIfPageContent } from "@/components/listing/ListingIfPanel";
 import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
-import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
+import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import ListingAdminAgentPanel from "@/components/listing/ListingAdminAgentPanel";
 import { extractListingAgentContact } from "@/lib/listing-agent-contact";
 import { LISTING_CRITERIA_SLOT_ID } from "@/components/listing/ListingCriteriaSideLayout";
 import { ListingBackLink } from "@/components/listing/ListingShell";
+import ListingLocationMap from "@/components/listing/ListingLocationMap";
+import ListingMapSidePanel from "@/components/listing/ListingMapSidePanel";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
+import type { ShowcaseHost } from "@/components/listing/showcase/showcase-host";
+import { listingShowcaseHostDefaults } from "@/components/listing/showcase/showcase-host";
+import {
+  listingPhotoObfuscationImgClass,
+  listingPhotoObfuscationSizeForThumb,
+  ListingPhotoObfuscationOverlay,
+} from "@/components/listing/ListingPhotoObfuscation";
 import ListingSubnav, {
   type ListingTab,
 } from "@/components/listing/ListingSubnav";
@@ -118,6 +127,7 @@ export default function ShowcaseDetailsPanel({
   city,
   addressHint,
   insight,
+  insightFacts = null,
   remarks,
   detailRows,
   isRental,
@@ -126,12 +136,14 @@ export default function ShowcaseDetailsPanel({
   vision = null,
   onSelectPhoto,
   score,
+  host: hostProp,
 }: {
   listing: ShowcaseListing;
   street: string;
   city: string;
   addressHint?: string | null;
   insight: string | null;
+  insightFacts?: string | null;
   remarks: string;
   detailRows: ShowcaseDetailRow[];
   isRental: boolean;
@@ -144,11 +156,48 @@ export default function ShowcaseDetailsPanel({
   onSelectPhoto: (index: number) => void;
   /** Score + median-band fields straight off the listing chrome API. */
   score: ListingScoreApiFields;
+  /** Listing supplies defaults; Spotlight overrides privacy, routes, Interest. */
+  host?: ShowcaseHost;
 }) {
+  const host = hostProp ?? {
+    ...listingShowcaseHostDefaults(),
+    headline: street,
+    locationLine: city,
+    photoAlt: street,
+    street,
+    city,
+    addressHint: addressHint ?? null,
+    townHint: city,
+    ifAddressHint: street || addressHint || null,
+    headerAddress: {
+      street,
+      full: street,
+      city,
+      state: listing.address.state,
+      postalCode: listing.address.postalCode,
+    },
+    adminAddress: null,
+    shareHref: listingShareHref(listing.mlsId),
+    interest: detailsPanelProps.isClosed
+      ? null
+      : { mlsId: listing.mlsId, address: street, city },
+    map: {
+      latitude: listing.latitude,
+      longitude: listing.longitude,
+      hidePin: false,
+      outlineTown: null,
+      defaultZoom: 15,
+      addressQuery: street,
+      postalCode: listing.address.postalCode,
+    },
+  };
   const router = useRouter();
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const [activeDeckCard, setActiveDeckCard] =
     useState<ListingDesktopDeckCardId | null>("remarks");
+  /** Card that was open before Map — restored when Map is Less. */
+  const priorDeckCardRef = useRef<ListingDesktopDeckCardId | null>("remarks");
+  const mapOpen = activeDeckCard === "map";
   const remarksExpand = useListingRemarksExpand();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -200,11 +249,13 @@ export default function ShowcaseDetailsPanel({
     };
   }, []);
   const subject =
-    listing.latitude != null && listing.longitude != null
+    !host.map.hidePin &&
+    listing.latitude != null &&
+    listing.longitude != null
       ? {
           key: listing.listingKey || listing.mlsId,
-          address: street,
-          city,
+          address: host.street,
+          city: host.city,
           price: primaryListingPrice(listing) ?? 0,
           score: goldilocksScore ?? 0,
           isRental,
@@ -216,6 +267,39 @@ export default function ShowcaseDetailsPanel({
           photoCount: listing.photoCount,
         }
       : null;
+
+  const rememberDeckBeforeMap = (
+    cur: ListingDesktopDeckCardId | null,
+  ): ListingDesktopDeckCardId | null => {
+    if (cur && cur !== "map") priorDeckCardRef.current = cur;
+    return cur;
+  };
+
+  const openMapDeck = () => {
+    setActiveTab("map");
+    setActiveDeckCard((cur) => {
+      rememberDeckBeforeMap(cur);
+      return "map";
+    });
+  };
+
+  const closeMapDeck = (
+    restore: ListingDesktopDeckCardId | null = priorDeckCardRef.current,
+  ) => {
+    setActiveDeckCard(restore ?? "remarks");
+  };
+
+  /** Overview card in the deck — independent of which strip tab is lit. */
+  const expandOverviewDeck = () => {
+    setActiveDeckCard("remarks");
+  };
+
+  /** Map tab: jump to the full-width page map. Deck Map card is a separate peek. */
+  const goToPageMap = () => {
+    setActiveTab("map");
+    expandOverviewDeck();
+    scrollToShowcaseSection("map");
+  };
 
   /**
    * Without this the subnav drops into hash-jump mode and every content tab
@@ -233,7 +317,16 @@ export default function ShowcaseDetailsPanel({
       // the property facts alongside the copy instead of duplicating it.
       // Desktop only: mobile has no deck and no room for a second column.
       setShowOverviewSection(tab === "overview");
-      if (tab === "overview") setActiveDeckCard("details");
+      if (tab === "overview") setActiveDeckCard("remarks");
+      if (tab === "map") {
+        goToPageMap();
+        return;
+      }
+      if (tab === "history") {
+        setActiveTab("history");
+        setActiveDeckCard((cur) => (cur === "history" ? null : "history"));
+        return;
+      }
     }
     const section = showcaseSectionForTab(tab);
     if (section) {
@@ -241,18 +334,88 @@ export default function ShowcaseDetailsPanel({
       scrollToShowcaseSection(section);
       return;
     }
-    router.push(listingSectionHref(listing.mlsId, tab, street, city));
+    if (host.routeBase === "spotlight") {
+      return;
+    }
+    router.push(listingSectionHref(listing.mlsId, tab, host.street, host.city));
   };
+
+  useEffect(() => {
+    const tab = host.initialTab;
+    if (tab && tab !== "overview" && tab !== "admin") {
+      handleTabSelect(tab);
+      return;
+    }
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    const section = (
+      Object.entries(SHOWCASE_SECTION_IDS) as [
+        keyof typeof SHOWCASE_SECTION_IDS,
+        string,
+      ][]
+    ).find(([, id]) => id === hash)?.[0];
+    if (section) scrollToShowcaseSection(section);
+    // Mount-only: deep links from /spotlight/photos etc.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Full-width Map at the bottom of the panel is the destination. Once it is
+  // on screen, Overview (remarks) re-expands and the deck Map overlay closes.
+  useEffect(() => {
+    if (!isDesktop) return;
+    const el = document.getElementById(SHOWCASE_SECTION_IDS.map);
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        expandOverviewDeck();
+      },
+      { threshold: 0.3 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isDesktop]);
+
+  const listingMap = (heightClass: string) => (
+    <div className={heightClass}>
+      {host.map.hidePin ? (
+        <ListingLocationMap
+          latitude={host.map.latitude}
+          longitude={host.map.longitude}
+          addressQuery={host.map.addressQuery}
+          hidePin
+          hideLabel
+          outlineTown={host.map.outlineTown}
+          defaultZoom={host.map.defaultZoom}
+          variant="hero"
+          className="h-full"
+        />
+      ) : (
+        <ShowcaseCompsMap
+          mlsId={listing.mlsId}
+          subject={subject}
+          townHint={host.townHint ?? host.city}
+          postalCode={host.map.postalCode}
+          fetchUrl={host.compsFetchUrl}
+          uagFetchUrl={host.uagFetchUrl}
+          hideSubject={host.map.hidePin}
+        />
+      )}
+    </div>
+  );
 
   /** Deck cards overlap by their header strip, as on production Overview. */
   const deckCard = (
     child: React.ReactNode,
     cardId: ListingDesktopDeckCardId,
+    fill = false,
   ) => (
     // `w-full` matters: without it the Details card sizes to its own content
     // and ends up a different width from Remarks and History.
     <div
-      className={`relative w-full min-w-0 shrink-0 transition-[box-shadow] duration-300 ${
+      className={`relative w-full min-w-0 transition-[box-shadow] duration-300 ${
+        fill ? "flex min-h-0 flex-1 flex-col" : "shrink-0"
+      } ${
         activeDeckCard === cardId
           ? "z-30 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.65)]"
           : "z-10"
@@ -265,7 +428,15 @@ export default function ShowcaseDetailsPanel({
   return (
     <ListingDesktopDeckProvider
       activeCard={activeDeckCard}
-      onActiveCardChange={setActiveDeckCard}
+      onActiveCardChange={(id) => {
+        setActiveDeckCard((cur) => {
+          if (id === "map") rememberDeckBeforeMap(cur);
+          if (id !== "map" && cur === "map" && id == null) {
+            return priorDeckCardRef.current ?? "remarks";
+          }
+          return id;
+        });
+      }}
     >
       <section className="showcase-details navy-gradient relative border-t border-white/10 px-4 py-12 sm:px-8 lg:px-12 lg:py-16">
         <div className="absolute inset-0 hero-grid opacity-20" aria-hidden />
@@ -281,14 +452,20 @@ export default function ShowcaseDetailsPanel({
           >
             <div className="mb-2 flex items-start justify-between gap-3">
               <ListingBackLink className="mb-0" />
-              <span className="shrink-0">
-                <DealBoardStatusBadge
-                  status={status}
-                  size="sm"
-                  surface="listing"
-                />
-              </span>
+              {host.hideStatusBadge ? null : (
+                <span className="shrink-0">
+                  <DealBoardStatusBadge
+                    status={status}
+                    size="sm"
+                    surface="listing"
+                  />
+                </span>
+              )}
             </div>
+
+            {host.propertyTabs ? (
+              <div className="mb-3">{host.propertyTabs}</div>
+            ) : null}
 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
               <div className="min-w-0 flex-1">
@@ -299,7 +476,7 @@ export default function ShowcaseDetailsPanel({
                   parts="meta"
                   mlsId={listing.mlsId}
                   status={listing.status}
-                  address={listing.address}
+                  address={host.headerAddress}
                   propertyType={listing.propertyType}
                   style={listing.style}
                   beds={listing.beds}
@@ -310,21 +487,23 @@ export default function ShowcaseDetailsPanel({
                   price={primaryListingPrice(listing)}
                   priceIsClosed={primaryListingPriceIsClosed(listing)}
                   bedBathSearchHref={intelligenceSearchHrefFromListing(listing)}
-                  shareHref={listingShareHref(listing.mlsId)}
+                  shareHref={host.shareHref ?? listingShareHref(listing.mlsId)}
+                  privacyMode={host.privacyMode}
+                  adminAddress={host.adminAddress}
                   compact
                   {...listingHeaderScoreProps({
                     goldilocksScore,
                     goldilocksBreakdown,
                     insight,
-                    title: street,
-                    subtitle: city,
+                    title: host.headline,
+                    subtitle: host.locationLine || host.city,
                     propertyType: listing.propertyType,
                   })}
                 />
               </div>
 
               {/* Production places Insight beside Property Details on desktop. */}
-              {insight ? (
+              {insight || insightFacts ? (
                 <aside
                   className="hidden min-w-0 lg:block lg:max-w-sm"
                   aria-label="Listing insight"
@@ -332,8 +511,9 @@ export default function ShowcaseDetailsPanel({
                   <p className="mb-1 font-mono text-[10px] tracking-[0.2em] uppercase text-gold lg:text-center">
                     Insight
                   </p>
-                  <ListingInsightCopy
-                    text={insight}
+                  <ShowcaseInsightBody
+                    insight={insight}
+                    facts={insightFacts ?? null}
                     className="text-left text-[11px] leading-snug text-white/70 break-words"
                   />
                 </aside>
@@ -349,13 +529,15 @@ export default function ShowcaseDetailsPanel({
               <ListingSubnav
                 mlsId={listing.mlsId}
                 active={activeTab}
-                addressHint={street || addressHint}
-                townHint={city}
+                addressHint={host.addressHint}
+                townHint={host.townHint ?? host.city}
+                routeBase={host.routeBase}
                 isRental={isRental}
                 embedded
                 compact
                 onTabSelect={handleTabSelect}
-                onMapToggle={() => scrollToShowcaseSection("map")}
+                mapVisible={activeTab === "map"}
+                onMapToggle={goToPageMap}
                 showAdminTab={siteUnlocked}
               adminVisible={activeDeckCard === "admin"}
               onAdminToggle={
@@ -381,9 +563,9 @@ export default function ShowcaseDetailsPanel({
 
           {/*
           Desktop splits into main content + a sticky dashboard, matching the
-          production Overview grid. Remarks / Details / History live in the
-          dashboard there; below `lg` they stay as stacked sections, since the
-          mobile layout is being reviewed separately.
+          production Overview grid. Remarks / Details / History / Map live in
+          the dashboard there; below `lg` they stay as stacked sections, since
+          the mobile layout is being reviewed separately.
         */}
           {/* Always-present anchor: the mobile remarks block below is display:
               none at `lg`, and you cannot scroll to a hidden element. */}
@@ -404,13 +586,10 @@ export default function ShowcaseDetailsPanel({
               </section>
 
               <Section id={SHOWCASE_SECTION_IDS.insight} title="Insight">
-                {insight ? (
-                  <ListingInsightCopy text={insight} />
-                ) : (
-                  <p className="text-sm text-white/50">
-                    No insight for this listing.
-                  </p>
-                )}
+                <ShowcaseInsightBody
+                  insight={insight}
+                  facts={insightFacts ?? null}
+                />
               </Section>
 
               <div className="lg:hidden">
@@ -452,7 +631,15 @@ export default function ShowcaseDetailsPanel({
                             src={listingPhotoProxyUrl(listing.mlsId, i)}
                             alt=""
                             priority={i < 10}
+                            imgClassName={listingPhotoObfuscationImgClass(
+                              host.obfuscatePhoto(i),
+                              "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+                              listingPhotoObfuscationSizeForThumb(i),
+                            )}
                           />
+                          {host.obfuscatePhoto(i) ? (
+                            <ListingPhotoObfuscationOverlay />
+                          ) : null}
                         </button>
                       ),
                     )}
@@ -476,15 +663,21 @@ export default function ShowcaseDetailsPanel({
                 {txTab === "uag" ? (
                   <ListingUagPageContent
                     mlsId={listing.mlsId}
-                    townHint={city}
+                    townHint={host.townHint ?? host.city}
                     suppressPageChrome
+                    fetchUrl={host.uagFetchUrl ?? undefined}
                   />
                 ) : (
                   <ListingComparablesPageContent
                     mlsId={listing.mlsId}
-                    townHint={city}
+                    townHint={host.townHint ?? host.city}
                     kind={txTab === "comparable-rentals" ? "rental" : "sale"}
                     suppressPageChrome
+                    fetchUrl={
+                      txTab === "comparable-rentals"
+                        ? host.rentalCompsFetchUrl ?? undefined
+                        : host.compsFetchUrl ?? undefined
+                    }
                   />
                 )}
               </Section>
@@ -498,9 +691,10 @@ export default function ShowcaseDetailsPanel({
               >
                 <ListingIfPageContent
                   mlsId={listing.mlsId}
-                  addressHint={street || addressHint}
-                  townHint={city}
+                  addressHint={host.ifAddressHint}
+                  townHint={host.townHint ?? host.city}
                   isRental={isRental}
+                  routeBase={host.routeBase}
                   suppressPageChrome
                 />
               </Section>
@@ -509,25 +703,17 @@ export default function ShowcaseDetailsPanel({
                 <Section id={SHOWCASE_SECTION_IDS.history} title="History">
                   <ListingHistoryPanel
                     mlsId={listing.mlsId}
-                    townHint={city}
+                    townHint={host.townHint ?? host.city}
                     variant="page"
                   />
                 </Section>
               </div>
 
               <Section id={SHOWCASE_SECTION_IDS.map} title="Map">
-                {/* `variant="hero"` fills its parent, so the height has to come
-                from here or the map collapses to nothing. */}
-                {/* Same deal-board engine as Intelligence: real pan / wheel zoom
-                and a pin per comparable, with the subject alongside them. */}
-                <div className="h-[20rem] w-full sm:h-[26rem]">
-                <ShowcaseCompsMap
-                  mlsId={listing.mlsId}
-                  subject={subject}
-                  townHint={city}
-                  postalCode={listing.address.postalCode}
-                />
-              </div>
+                {/* Full-width of the main panel, same slot it used to occupy
+                under What if. The right-hand deck Map card is a peek only. */}
+                {listingMap("h-[20rem] w-full sm:h-[26rem]")}
+              </Section>
 
               {/*
                 Public listing-agent attribution, served as a PNG so it reads
@@ -546,7 +732,6 @@ export default function ShowcaseDetailsPanel({
                   draggable={false}
                 />
               ) : null}
-            </Section>
             </div>
 
             <aside
@@ -555,16 +740,16 @@ export default function ShowcaseDetailsPanel({
             >
               {/* Capped to the space under the pinned chrome so a tall expanded
               card scrolls on the wheel instead of running off-screen. */}
-          <div className="showcase-hide-scrollbar sticky flex max-h-[calc(100dvh-var(--showcase-sticky-offset,12rem)-1.5rem)] flex-col gap-4 overflow-y-auto overscroll-contain lg:top-[var(--showcase-sticky-offset,12rem)]">
+          <div className="showcase-hide-scrollbar sticky flex h-[calc(100dvh-var(--showcase-sticky-offset,12rem)-1.5rem)] flex-col gap-4 overflow-y-auto overscroll-contain lg:top-[var(--showcase-sticky-offset,12rem)]">
                 {/* Anchors the column width above the deck, as on production. */}
-                {detailsPanelProps.isClosed ? null : (
+                {host.interest ? (
                   <ListingInterestButton
-                    mlsId={listing.mlsId}
-                    address={street}
-                    city={city}
+                    mlsId={host.interest.mlsId}
+                    address={host.interest.address}
+                    city={host.interest.city}
                   />
-                )}
-                <div className="flex min-w-0 flex-col">
+                ) : null}
+                <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                   {deckCard(
                     <ListingRemarksSidePanel
                       remarks={remarks || null}
@@ -585,10 +770,31 @@ export default function ShowcaseDetailsPanel({
                     {deckCard(
                       <ListingHistorySidePanel
                         mlsId={listing.mlsId}
-                        townHint={city}
+                        townHint={host.townHint ?? host.city}
                         frameClass={listingPanelCompactClass}
                       />,
                       "history",
+                    )}
+                  </div>
+                  <div
+                    className={
+                      mapOpen
+                        ? "absolute inset-0 z-40 flex min-h-0 flex-col"
+                        : "-mt-2 shrink-0"
+                    }
+                  >
+                    {deckCard(
+                      <ListingMapSidePanel
+                        frameClass={`${listingPanelCompactClass} h-full`}
+                        covering={mapOpen}
+                        onToggleCover={() =>
+                          mapOpen ? closeMapDeck() : openMapDeck()
+                        }
+                      >
+                        {listingMap("h-full min-h-0 w-full")}
+                      </ListingMapSidePanel>,
+                      "map",
+                      mapOpen,
                     )}
                   </div>
                   {siteUnlocked ? (

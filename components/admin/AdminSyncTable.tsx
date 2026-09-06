@@ -713,6 +713,7 @@ export type PanelStatus = {
   fomcLastSyncedAt?: string | null;
   cpiLastSyncedAt?: string | null;
   marketDigestLastSentAt?: string | null;
+  camaTaxHistorySyncedAt?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -1065,6 +1066,8 @@ function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
       };
     case "open-houses":
       return { started: null, finished: status.openHousesSyncedAt ?? null };
+    case "cama-tax":
+      return { started: null, finished: status.camaTaxHistorySyncedAt ?? null };
     case "fomc-sync":
       return { started: null, finished: status.fomcLastSyncedAt ?? null };
     case "cpi-sync":
@@ -1363,6 +1366,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
   "market-digest": "market-digest",
+  "cama-tax": "cama-tax",
 };
 
 function pauseJobForSyncAllAction(

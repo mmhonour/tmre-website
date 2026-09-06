@@ -29,6 +29,7 @@ import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminPostgresPanel from "@/components/admin/AdminPostgresPanel";
 import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
+import AdminDbSizePanel from "@/components/admin/AdminDbSizePanel";
 import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComparisonPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
@@ -380,6 +381,7 @@ export default async function AdminPage() {
   const fomcLastSyncedAt = getSyncMeta("fomc_last_synced_at");
   const cpiLastSyncedAt = getSyncMeta("cpi_last_synced_at");
   const marketDigestLastSentAt = getSyncMeta("market_digest_last_sent_at");
+  const camaTaxSyncedAt = getSyncMeta("cama_tax_history_synced_at");
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -608,6 +610,17 @@ export default async function AdminPage() {
         "Weekly Resend months-supply / inventory digest (Mon ~8am ET) — Configure on Syncs; content settings under Communications",
       actionId: "market-digest",
       nextRunAt: nextRuns["market-digest"],
+    },
+    {
+      id: "cama-tax",
+      label: "Property tax history (CAMA)",
+      value: formatTimestamp(camaTaxSyncedAt),
+      finishedAt: camaTaxSyncedAt,
+      sortMs: timestampSortMs(camaTaxSyncedAt),
+      detail:
+        "CT Parcel & CAMA assessments × OPM mill rates → historical years in listing_tax_history (monthly). Current year stays MLS-reported; Norwalk skipped (per-district rates)",
+      actionId: "cama-tax",
+      nextRunAt: nextRuns["cama-tax"],
     },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
@@ -844,6 +857,7 @@ export default async function AdminPage() {
           />
         </>
       }
+      size={<AdminDbSizePanel />}
       townCounts={townCountsPanel}
     />
   );

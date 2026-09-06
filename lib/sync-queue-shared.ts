@@ -20,17 +20,32 @@ import type { ScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'incremental',
   'listing-scores',
+  'edge-scores',
   'stats-cache',
   'deal-of-the-day',
   'property-addresses',
+  'vision-addresses',
   'market-digest',
   'open-houses',
+  'cama-tax',
 ]
 
 export function isSyncQueueRunnerJob(
   jobId: string,
 ): jobId is ScheduledSyncJobId {
   return (SYNC_QUEUE_RUNNER_JOBS as readonly string[]).includes(jobId)
+}
+
+/**
+ * Claim order rank. Lower runs first.
+ *
+ * Incremental is the most frequent job and can sit at the front of the line
+ * forever while stats / edge / CAMA wait. Those slower jobs go first when
+ * both are queued (and when every slot is already full). Must stay in step
+ * with the CASE in claimNextSyncJob.
+ */
+export function syncQueueClaimYieldRank(jobId: string): number {
+  return jobId === 'incremental' ? 1 : 0
 }
 
 export const SYNC_QUEUE_STATES = ['queued', 'running', 'done', 'failed'] as const
@@ -127,6 +142,9 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     'fomc-sync': 10,
     'cpi-sync': 10,
     'market-digest': 15,
+    // Six towns x four CAMA vintages, plus one listings read each. Bounded by
+    // data.ct.gov response time rather than by any local work.
+    'cama-tax': 30,
   }
 
 export const SYNC_JOB_BUDGET_MIN_MINUTES = 1

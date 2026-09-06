@@ -62,7 +62,7 @@ export type AdminSyncsPanelId =
   | "photo-ttl";
 
 /** Sub-panels under Admin → NEON Postgres. */
-export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
+export type AdminPostgresPanelId = "schema" | "inventory" | "size" | "town-counts";
 
 /**
  * Retained as the narrowed set of Web server panels that used to live under a
@@ -177,13 +177,13 @@ export const ADMIN_DATA_CONTROLS_PANELS: {
     id: "intel-deal-board",
     label: "Deal board",
     subtitle:
-      "Location-estimate map outlines plus read-only middle-tier rules",
+      "Location-estimate map outlines plus read-only middle-tier rules for the Intelligence deal board",
   },
   {
     id: "ct-coverage",
     label: "CT coverage",
     subtitle:
-      "Activate CT counties / towns for future site-wide coverage (not wired to pages yet)",
+      "Activate CT towns, plus the TIGER ZCTA map you paint for coastal corridors",
   },
   {
     id: "town-budget",
@@ -325,6 +325,12 @@ export const ADMIN_POSTGRES_PANELS: {
       "Table row comparison vs last full-resync snapshot, plus connected-store summaries",
   },
   {
+    id: "size",
+    label: "Size & growth",
+    subtitle:
+      "On-demand Neon size, table growth, and the queries that keep compute awake",
+  },
+  {
     id: "town-counts",
     label: "Listings by town",
     subtitle: "Active listing counts from the current Postgres inventory",
@@ -441,7 +447,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "postgres",
     label: "NEON",
     subtitle:
-      "Schema, database inventory, and active listings by town",
+      "Schema, database inventory, size & growth, and active listings by town",
   },
   {
     id: "r2",
@@ -520,6 +526,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Listings by town",
     tab: "postgres",
     panel: "town-counts",
+  },
+  {
+    id: "admin-db-size",
+    label: "Size & growth",
+    tab: "postgres",
+    panel: "size",
   },
   {
     id: "admin-db-tuning",
@@ -803,7 +815,13 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
   {
     label: "Find",
     href: "/find",
-    description: "Westport Vision GIS address lookup and parcel page",
+    description: "Westport assessor lookup — owner, address, mailing, MBLU, PID",
+  },
+  {
+    label: "Streets",
+    href: "/streets",
+    description:
+      "Admin-only A–Z assessor streets plus house numbers (vision_streets / vision_street_parcels). Password gate; not in the public menu.",
   },
   {
     label: "Westport Vision GIS",
@@ -919,12 +937,13 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-vision-addresses",
     detail:
-      "Thin Vision GIS trigger — queues sync-vision-addresses-worker (cadastral crawl)",
+      "Thin Vision GIS trigger — enqueues sync_queue for the Railway runner; worker only if stranded",
     schedule: "Weekly Mon ~1:30am ET",
   },
   {
     label: "sync-vision-addresses-worker",
-    detail: "Background vision_addresses crawl → field_card JSON + R2 HTML pointer",
+    detail:
+      "Background vision_addresses crawl → Field Cards + owner_name for street-address PIDs + R2 HTML pointer",
     schedule: "On invoke (background)",
   },
   {
@@ -941,12 +960,13 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-listing-edge-scores",
     detail:
-      "Thin Edge scores (3b) trigger — queues sync-listing-edge-scores-worker when Configure is due",
+      "Thin Edge scores (3b) trigger — enqueues edge-scores on the sync runner when Configure is due; worker hop is stranded-row rescue only",
     schedule: "Every 30 min (weekly-gated)",
   },
   {
     label: "sync-listing-edge-scores-worker",
-    detail: "Background comparable edge-score warm pass (always runs; stamps last_listing_edge_scores)",
+    detail:
+      "Background comparable edge-score rebuild (stranded-row rescue; stamps last_listing_edge_scores)",
     schedule: "On invoke (background)",
   },
   {
@@ -969,6 +989,18 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-deal-of-the-day-worker",
     detail: "Background Deal of the Day cache rebuild",
+    schedule: "On invoke (background)",
+  },
+  {
+    label: "sync-cama-tax",
+    detail:
+      "Thin CAMA tax-history trigger — enqueues cama-tax on the sync runner when Configure is due (never-finished is due immediately); worker only if stranded",
+    schedule: "Every 30 min (monthly-gated)",
+  },
+  {
+    label: "sync-cama-tax-worker",
+    detail:
+      "Background CT CAMA → listing_tax_history rebuild (stranded-row rescue; stamps cama_tax_history_synced_at)",
     schedule: "On invoke (background)",
   },
   {
@@ -1046,7 +1078,7 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       },
       {
         label: "GET /api/addresses/lookup",
-        detail: "Westport Vision GIS typeahead (Find)",
+        detail: "Westport assessor typeahead — address, owner, MBLU, PID (Find)",
         href: "/api/addresses/lookup?town=Westport&q=main",
       },
       { label: "GET /api/addresses/search", detail: "Property directory autocomplete", href: "/api/addresses/search?q=kings" },
@@ -1113,11 +1145,26 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         detail: "Jun/Jul vendor API cost rollup (Admin → Web server → API costs)",
         href: "/api/admin/stack-costs",
       },
+      {
+        label: "GET /api/admin/db-size",
+        detail: "On-demand Neon size, growth, and query chatter (Admin → NEON → Size & growth)",
+        href: "/api/admin/db-size",
+      },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
       {
         label: "GET/PATCH /api/admin/location-estimate-map-overlay",
         detail: "Show coastal-strip + town-center outlines on showcase and Intelligence maps",
         href: "/api/admin/location-estimate-map-overlay",
+      },
+      {
+        label: "GET/PATCH /api/admin/location-estimate-zip-grid",
+        detail: "Painted ¼-mile coastal-value cells (town-center radius overrides)",
+        href: "/api/admin/location-estimate-zip-grid",
+      },
+      {
+        label: "GET/PATCH /api/admin/location-estimate-town-centers",
+        detail: "Move or resize the one town-center disk per TMRE town",
+        href: "/api/admin/location-estimate-town-centers",
       },
       {
         label: "GET /api/admin/intelligence-descriptor-sizes",
@@ -1245,7 +1292,10 @@ export function isAdminPostgresPanelId(
   value: string | null | undefined,
 ): value is AdminPostgresPanelId {
   return (
-    value === "schema" || value === "inventory" || value === "town-counts"
+    value === "schema" ||
+    value === "inventory" ||
+    value === "size" ||
+    value === "town-counts"
   );
 }
 

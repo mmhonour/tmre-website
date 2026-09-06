@@ -18,11 +18,13 @@ import {
   locationEstimateExplains,
   localEastNorth,
   medianNumber,
+  paintedCoastalStripAt,
   perpendicularAxis,
   streetNameKey,
   type EstimateSale,
   type EstimateSubject,
 } from './listing-location-estimates'
+import { cellCenter, cellKey, lonLatToCell } from './location-estimate-zip-grid-shared'
 import { WATER_ACCESS_POINTS, ZIP_CENTERS } from './tmre-geo'
 
 /** Arbitrary origin — tests are about geometry, not a real listing. */
@@ -377,6 +379,88 @@ describe('computeLocationEstimate', () => {
     assert.ok(Math.abs((insight.coastalStrip?.relativeValue ?? 0) - 0.75) < 1e-9)
     assert.ok((insight.soldMedianPpsf ?? 0) < 1200)
     assert.ok((insight.soldMedianPpsf ?? 0) > 1000)
+  })
+})
+
+describe('painted coastal strips', () => {
+  it('scores solds in the painted strip and ignores a different painted band', () => {
+    const now = Date.now()
+    const subjectPt = { lat: 41.118, lon: -73.312 }
+    const { i, j } = lonLatToCell(subjectPt.lat, subjectPt.lon)
+    const same = cellCenter(i + 1, j)
+    const inland = cellCenter(i, j + 2)
+    const cells = {
+      [cellKey(i, j)]: 0 as const,
+      [cellKey(i + 1, j)]: 0 as const,
+      [cellKey(i, j + 2)]: 2 as const,
+    }
+    assert.equal(
+      paintedCoastalStripAt(subjectPt.lat, subjectPt.lon, cells),
+      0,
+    )
+
+    const subject: EstimateSubject = {
+      id: 'painted-sub',
+      latitude: subjectPt.lat,
+      longitude: subjectPt.lon,
+      street: '1 Coast Rd',
+      beds: 3,
+      baths: 2,
+      sqft: 1400,
+      pricePerSqft: 1500,
+    }
+    const sales: EstimateSale[] = [
+      {
+        id: 'same-1',
+        latitude: same.lat,
+        longitude: same.lon,
+        pricePerSqft: 1480,
+        closeDate: isoDaysAgo(20, now),
+        beds: 3,
+        baths: 2,
+        sqft: 1400,
+        street: '2 Coast Rd',
+      },
+      {
+        id: 'same-2',
+        latitude: same.lat + 0.0004,
+        longitude: same.lon,
+        pricePerSqft: 1510,
+        closeDate: isoDaysAgo(25, now),
+        beds: 3,
+        baths: 2,
+        sqft: 1380,
+        street: '3 Coast Rd',
+      },
+      {
+        id: 'same-3',
+        latitude: same.lat,
+        longitude: same.lon + 0.0004,
+        pricePerSqft: 1495,
+        closeDate: isoDaysAgo(30, now),
+        beds: 3,
+        baths: 2,
+        sqft: 1420,
+        street: '4 Coast Rd',
+      },
+      {
+        id: 'inland',
+        latitude: inland.lat,
+        longitude: inland.lon,
+        pricePerSqft: 900,
+        closeDate: isoDaysAgo(20, now),
+        beds: 3,
+        baths: 2,
+        sqft: 1400,
+        street: '9 Inland Rd',
+      },
+    ]
+
+    const insight = computeLocationEstimate(subject, sales, 800, now, { cells })
+    assert.equal(insight.kind, 'coastal')
+    assert.equal(insight.coastalStrip?.index, 0)
+    assert.ok((insight.soldMedianPpsf ?? 0) > 1400)
+    assert.ok((insight.soldMedianPpsf ?? 0) < 1600)
   })
 })
 

@@ -15,7 +15,7 @@ export function useLocationEstimateOverlay(): {
   busy: boolean;
 } {
   const unlocked = useSiteUnlocked();
-  const [enabled, setEnabledState] = useState(false);
+  const [enabled, setEnabledState] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -23,15 +23,16 @@ export function useLocationEstimateOverlay(): {
       setEnabledState(false);
       return;
     }
+    setEnabledState(true);
     let cancelled = false;
     const load = () => {
       void fetch("/api/admin/location-estimate-map-overlay")
-        .then((res) => (res.ok ? res.json() : { enabled: false }))
+        .then((res) => (res.ok ? res.json() : { enabled: true }))
         .then((data: { enabled?: unknown }) => {
-          if (!cancelled) setEnabledState(data.enabled === true);
+          if (!cancelled) setEnabledState(data.enabled !== false);
         })
         .catch(() => {
-          if (!cancelled) setEnabledState(false);
+          if (!cancelled) setEnabledState(true);
         });
     };
     load();

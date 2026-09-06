@@ -1,3 +1,4 @@
+import { TRANSACT_TO_LIST_LABEL } from '@/lib/market-pulse-defaults'
 import type { StatsKind } from './stats-towns'
 
 export function statsVolumeNoun(kind: StatsKind, plural = true): string {
@@ -68,8 +69,17 @@ export function statsClosePriceLabel(kind: StatsKind): string {
 
 export function statsListToAskTitle(kind: StatsKind): string {
   return kind === 'rental'
-    ? 'List to ask · rentals · by town'
-    : 'List to ask · by town'
+    ? `${TRANSACT_TO_LIST_LABEL} · rentals · by town`
+    : `${TRANSACT_TO_LIST_LABEL} · by town`
+}
+
+export function statsTransactToListListingsTitle(
+  kind: StatsKind,
+  town: string,
+): string {
+  return kind === 'rental'
+    ? `${TRANSACT_TO_LIST_LABEL} · ${town} leases`
+    : `${TRANSACT_TO_LIST_LABEL} · ${town} sales`
 }
 
 export function statsPriceSpreadTitle(kind: StatsKind): string {

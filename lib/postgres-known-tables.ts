@@ -25,6 +25,8 @@ export const POSTGRES_KNOWN_TABLES = [
   'open_houses',
   'town_property_addresses',
   'vision_addresses',
+  'vision_streets',
+  'vision_street_parcels',
   'zip_boundaries',
   'visitors',
   'content_views',

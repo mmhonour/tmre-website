@@ -21,19 +21,48 @@ import {
   type ListToAskRow,
 } from "./list-to-ask-data";
 import { statsListToAskTitle } from "./stats-labels";
-import type { StatsCity, StatsKind } from "./stats-towns";
+import type { StatsCity, StatsKind, Town } from "./stats-towns";
+import { STATS_TOWN_COLOR } from "./stats-town-colors";
 
-/** Closed over the first ask reads as the seller's end, under it as the buyer's. */
-const OVER_ASK = "#5ba08a";
-const UNDER_ASK = "#c45c4a";
+function TownAxisTick({
+  x,
+  y,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  const town = payload?.value as Town | undefined;
+  const fill =
+    town && STATS_TOWN_COLOR[town]
+      ? STATS_TOWN_COLOR[town]
+      : "rgba(255,255,255,0.35)";
+  return (
+    <text
+      x={x}
+      y={y}
+      dy={12}
+      textAnchor="middle"
+      fill={fill}
+      fontFamily="monospace"
+      fontSize={10}
+    >
+      {payload?.value}
+    </text>
+  );
+}
 
 export default function ListToAskByTownChart({
   kind,
   selectedCity = "All",
+  onTownData,
 }: {
   kind: StatsKind;
   /** Town in focus, dimmed against the rest when one is picked. */
   selectedCity?: StatsCity;
+  /** Opens the supporting by-town table. Pass a town to highlight that row. */
+  onTownData?: (town?: Town) => void;
 }) {
   // Held with the kind it was fetched for, so switching tabs reads as loading
   // without an extra setState on the way in.
@@ -54,7 +83,8 @@ export default function ListToAskByTownChart({
 
   const loading = loaded?.kind !== kind;
   const rows = loading ? [] : (loaded?.rows ?? []);
-  const chartReady = !loading && rows.length > 0;
+  /** Frame chrome (title + Show town data) once the fetch settles, even if empty. */
+  const chartReady = !loading;
   useStatsChartReady(chartReady);
 
   const noun = kind === "rental" ? "leases" : "sales";
@@ -100,11 +130,7 @@ export default function ListToAskByTownChart({
               <XAxis
                 type="category"
                 dataKey="town"
-                tick={{
-                  fontFamily: "monospace",
-                  fontSize: 10,
-                  fill: "rgba(255,255,255,0.35)",
-                }}
+                tick={<TownAxisTick />}
                 axisLine={false}
                 tickLine={false}
               />
@@ -155,14 +181,23 @@ export default function ListToAskByTownChart({
                   );
                 }}
               />
-              <Bar dataKey="vsAsk" radius={[4, 4, 4, 4]} maxBarSize={72}>
+              <Bar
+                dataKey="vsAsk"
+                radius={[4, 4, 4, 4]}
+                maxBarSize={72}
+                cursor={onTownData ? "pointer" : undefined}
+                onClick={(data) => {
+                  const town = (data.payload as ListToAskRow | undefined)?.town;
+                  if (town) onTownData?.(town);
+                }}
+              >
                 {rows.map((row) => {
                   const dimmed =
                     selectedCity !== "All" && selectedCity !== row.town;
                   return (
                     <Cell
                       key={row.town}
-                      fill={row.vsAsk >= 0 ? OVER_ASK : UNDER_ASK}
+                      fill={STATS_TOWN_COLOR[row.town]}
                       fillOpacity={dimmed ? 0.3 : 1}
                     />
                   );
@@ -174,11 +209,40 @@ export default function ListToAskByTownChart({
       </div>
 
       {chartReady ? (
-        <div className="bg-[#0a1020] px-6 py-3">
+        <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <p className="font-mono text-[9px] tracking-wide text-white/20">
             Total close prices ÷ total original asks since 2024 · sorted furthest
-            under ask → furthest over · above the line favours sellers
+            under ask → furthest over · bars use each town’s color · above the
+            line favours sellers
+            {onTownData ? " · click a town for its closings" : ""}
           </p>
+          {onTownData ? (
+            <div className="flex flex-wrap items-center gap-4">
+              {rows.map((row) => (
+                <button
+                  key={row.town}
+                  type="button"
+                  onClick={() => onTownData(row.town)}
+                  className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
+                  aria-label={`View ${row.town} closings against first ask`}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{
+                      backgroundColor: STATS_TOWN_COLOR[row.town],
+                      boxShadow: `0 0 6px ${STATS_TOWN_COLOR[row.town]}`,
+                    }}
+                  />
+                  <span
+                    className="font-mono text-[9px]"
+                    style={{ color: STATS_TOWN_COLOR[row.town] }}
+                  >
+                    {row.town}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

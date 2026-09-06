@@ -4,13 +4,13 @@
  * This process does two things and nothing else:
  *   1. Sweeps: notice a job's Configure slot has come round and put a row on
  *      `sync_queue`.
- *   2. Drain: claim the next queued row, fork a child to do the work under a
- *      kill budget, and write the outcome back.
+ *   2. Drain: claim waiting rows into up to MLS_SYNC_MAX_CHILDREN slots
+ *      (default 3, different jobs), fork a child per row under a kill budget,
+ *      and write each outcome back.
  *
- * No job runs in this heap. Holding two towns' inventory at once is what
- * OOM-killed this container, and an OOM took the in-memory queue with it — five
- * `pending*` variables that nobody could see and a restart silently emptied.
- * Now the waiting line is a table, and a job that blows up blows up alone.
+ * No job runs in this heap. Holding two towns' inventory in one process is
+ * what OOM-killed this container. Now the waiting line is a table, each job
+ * has its own child heap, and a job that blows up blows up alone.
  *
  * There is no per-job Scheduler radio any more either. The queue is the
  * handoff: Admin, the Netlify crons, EventBridge and these sweeps all enqueue,
@@ -21,7 +21,8 @@
  *   npm run start:mls-sync
  *
  * Env: DATABASE_URL, RETS_*, SYNC_CRON_SECRET, PORT,
- *      optional MLS_SYNC_INTERVAL_MS, MLS_SYNC_CHILD_MAX_OLD_SPACE_MB
+ *      optional MLS_SYNC_INTERVAL_MS, MLS_SYNC_CHILD_MAX_OLD_SPACE_MB,
+ *      optional MLS_SYNC_MAX_CHILDREN (default 3)
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -37,7 +38,7 @@ import {
   drainSyncQueueOnce,
   readRunnerState,
   startSyncQueueDrain,
-  stopCurrentChild,
+  stopAllChildren,
 } from './job-runner'
 
 if (existsSync('.env.local')) {
@@ -84,6 +85,12 @@ const SWEEPS: {
     label: 'goldilocks',
   },
   {
+    jobId: 'edge-scores',
+    everyMs: 5 * 60_000,
+    bootDelayMs: 3 * 60_000 + 30_000,
+    label: 'edge scores',
+  },
+  {
     jobId: 'deal-of-the-day',
     everyMs: 10 * 60_000,
     bootDelayMs: 4 * 60_000,
@@ -106,6 +113,18 @@ const SWEEPS: {
     everyMs: 10 * 60_000,
     bootDelayMs: 7 * 60_000,
     label: 'open houses',
+  },
+  {
+    jobId: 'vision-addresses',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 8 * 60_000,
+    label: 'vision addresses',
+  },
+  {
+    jobId: 'cama-tax',
+    everyMs: 30 * 60_000,
+    bootDelayMs: 9 * 60_000,
+    label: 'cama tax history',
   },
 ]
 
@@ -184,6 +203,13 @@ async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
   if (await isScheduledSyncJobPausedFresh(jobId)) return false
   if (shouldDeferScheduledJob(jobId)) return false
 
+  if (jobId === 'vision-addresses') {
+    const { visionGisNeedsCatchUp } = await import(
+      '../../lib/db/vision-streets-repo'
+    )
+    if (await visionGisNeedsCatchUp()) return true
+  }
+
   const config = await readSyncScheduleConfigFresh()
   const lastFinishedAt = await getSyncMeta(lastFinishedMetaKey(jobId))
   return isJobDueBySchedule(config.jobs[jobId], lastFinishedAt)
@@ -195,11 +221,17 @@ async function jobHasWork(jobId: ScheduledSyncJobId): Promise<boolean> {
     // Dirtiness decides whether there is work; the slot decides when we may do
     // it. The old hourly TTL recomputed all seven towns whether or not a number
     // had moved.
-    const { statsTownsDueForRebuild } = await import(
+    const { statsTownsDueForRebuild, STATS_TOWN_MAX_AGE_MS } = await import(
       '../../lib/stats-dirty-towns'
     )
     const { towns } = await statsTownsDueForRebuild()
-    return towns.length > 0
+    if (towns.length > 0) return true
+    // Per-town marks can be clean while last_stats_cache itself is stale
+    // (failed stamp, lock steal, 429 skip). Treat a missing/old End as work.
+    const { getSyncMeta } = await import('../../lib/db/sync-meta')
+    const last = await getSyncMeta('last_stats_cache')
+    const lastMs = last ? Date.parse(last) : Number.NaN
+    return !Number.isFinite(lastMs) || Date.now() - lastMs >= STATS_TOWN_MAX_AGE_MS
   }
   // market-digest needs no extra condition: jobIsDue already compares the last
   // send against the configured slot, which is the whole of its dedupe.
@@ -338,9 +370,12 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/run': 'incremental',
   '/stats': 'stats-cache',
   '/scores': 'listing-scores',
+  '/edge-scores': 'edge-scores',
   '/deal-of-the-day': 'deal-of-the-day',
   '/property-addresses': 'property-addresses',
+  '/vision-addresses': 'vision-addresses',
   '/market-digest': 'market-digest',
+  '/cama-tax': 'cama-tax',
 }
 
 async function handleRequest(
@@ -363,14 +398,17 @@ async function handleRequest(
       intervalMs: INTERVAL_MS,
       claims: SYNC_QUEUE_RUNNER_JOBS,
       childHeapCapMb: process.env.MLS_SYNC_CHILD_MAX_OLD_SPACE_MB ?? null,
+      maxChildren: runner.maxChildren,
       resendConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
       runner: {
-        busy: runner.current != null,
+        busy: runner.children.length > 0,
+        slots: `${runner.children.length}/${runner.maxChildren}`,
         currentJob: runner.current?.jobId ?? null,
         currentQueueId: runner.current?.id ?? null,
         deadlineAt: runner.current?.deadlineAt ?? null,
         childPid: runner.childPid,
         childStartedAt: runner.childStartedAt,
+        children: runner.children,
         lastOutcome: runner.lastOutcome,
       },
       queue: {
@@ -427,10 +465,12 @@ async function handleRequest(
     }
     await readJson(req)
     void drainSyncQueueOnce().catch(() => {})
+    const after = readRunnerState()
     sendJson(res, 202, {
       ok: true,
       accepted: true,
-      busy: readRunnerState().current != null,
+      busy: after.children.length >= after.maxChildren,
+      slots: `${after.children.length}/${after.maxChildren}`,
       message: 'drain poked',
     })
     return
@@ -518,8 +558,8 @@ server.listen(PORT, () => {
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    console.info(`[mls-sync] ${signal} — stopping current child`)
-    stopCurrentChild()
+    console.info(`[mls-sync] ${signal} — stopping ${readRunnerState().children.length} child(ren)`)
+    stopAllChildren()
     server.close(() => process.exit(0))
     setTimeout(() => process.exit(0), 10_000).unref()
   })

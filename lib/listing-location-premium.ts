@@ -26,6 +26,19 @@ export type LocationPremiumFactors = {
 
 const MAX_COMBINED_MULTIPLIER = 1.22
 
+/** Water distance → What-if multiplier. Same bands the listing / showcase use. */
+export const LOCATION_PREMIUM_WATER_TIERS = [
+  { maxMiles: 0.2, boost: 0.1, label: 'Waterfront or beach proximity' },
+  { maxMiles: 0.45, boost: 0.06, label: 'Short walk to water' },
+  { maxMiles: 0.85, boost: 0.03, label: 'Near Long Island Sound' },
+  { maxMiles: 1.4, boost: 0.015, label: 'Coastal neighborhood' },
+] as const
+
+export function formatLocationPremiumBoost(boost: number): string {
+  const pct = Math.round(boost * 1000) / 10
+  return `+${pct}%`
+}
+
 function tierBoost(
   miles: number | null,
   tiers: readonly { maxMiles: number; boost: number; label: string }[],
@@ -94,12 +107,7 @@ export function computeLocationPremium(
     if (golfMiles == null || d < golfMiles) golfMiles = d
   }
 
-  const water = tierBoost(waterMiles, [
-    { maxMiles: 0.2, boost: 0.1, label: 'Waterfront or beach proximity' },
-    { maxMiles: 0.45, boost: 0.06, label: 'Short walk to water' },
-    { maxMiles: 0.85, boost: 0.03, label: 'Near Long Island Sound' },
-    { maxMiles: 1.4, boost: 0.015, label: 'Coastal neighborhood' },
-  ])
+  const water = tierBoost(waterMiles, LOCATION_PREMIUM_WATER_TIERS)
 
   const centerBoost = tierBoost(townCenterMiles, [
     { maxMiles: 0.6, boost: 0.035, label: 'Central village location' },

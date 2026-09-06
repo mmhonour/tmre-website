@@ -61,6 +61,21 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     source: 'documented',
   },
   {
+    from: { table: 'vision_addresses', column: 'town' },
+    to: { table: 'vision_streets', column: 'town' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'vision_street_parcels', column: 'street_name' },
+    to: { table: 'vision_streets', column: 'street_name' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'vision_street_parcels', column: 'vision_pid' },
+    to: { table: 'vision_addresses', column: 'vision_pid' },
+    source: 'documented',
+  },
+  {
     from: { table: 'listings', column: 'id' },
     to: { table: 'listing_price_history', column: 'listing_id' },
     source: 'documented',
@@ -91,6 +106,9 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'parcel_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'field_card_r2_key', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'field_card', type: 'jsonb', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'owner_name', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'owner_mailing_address', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'lookup_text', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'content_fingerprint', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'scraped_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
     { name: 'updated_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
@@ -135,6 +153,22 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'labels', type: 'jsonb', notNull: true, primaryKey: false, defaultValue: "'[]'::jsonb" },
     { name: 'payload', type: 'jsonb', notNull: true, primaryKey: false, defaultValue: "'{}'::jsonb" },
     { name: 'computed_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  vision_streets: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'street_name', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'letter', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'source_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'parcels_synced_at', type: 'timestamp with time zone', notNull: false, primaryKey: false, defaultValue: null },
+  ],
+  vision_street_parcels: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'street_name', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'vision_pid', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'address_label', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'source_url', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'synced_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
   ],
 }
 

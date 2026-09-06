@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightComparablesClient from "./SpotlightComparablesClient";
+import SpotlightShowcaseClient from "../SpotlightShowcaseClient";
 
 export const metadata = {
   title: "Spotlight Comparables — TMRE",
@@ -9,7 +9,7 @@ export const metadata = {
 export default function SpotlightComparablesPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightComparablesClient />
+      <SpotlightShowcaseClient initialTab="comparables" />
     </Suspense>
   );
 }

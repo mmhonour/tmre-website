@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { StatsChartFrameProvider } from "./stats-chart-frame-context";
 import { printStatsChart, type StatsPrintMode } from "./stats-print";
 import { STATS_SCROLL_MT } from "./stats-scroll";
 
 type StatsChartPrintFrameProps = {
   chartId: string;
+  /** Older `#stats-chart-{id}` hashes that should still land on this frame. */
+  aliasChartIds?: readonly string[];
   title?: string;
   children: ReactNode;
   dataPanel?: ReactNode;
+  /** When set with `onDataOpenChange`, the data panel is controlled. */
+  dataOpen?: boolean;
+  onDataOpenChange?: (open: boolean) => void;
+  showDataLabel?: string;
+  hideDataLabel?: string;
   className?: string;
 };
 
@@ -95,17 +102,20 @@ function StatsPrintControls({
 
 export default function StatsChartPrintFrame({
   chartId,
+  aliasChartIds,
   title,
   children,
   dataPanel,
+  dataOpen: dataOpenProp,
+  onDataOpenChange,
+  showDataLabel = "Show data",
+  hideDataLabel = "Hide data",
   className = "",
 }: StatsChartPrintFrameProps) {
-  const [dataOpen, setDataOpen] = useState(false);
+  const [uncontrolledDataOpen, setUncontrolledDataOpen] = useState(false);
+  const dataOpen = onDataOpenChange ? (dataOpenProp ?? false) : uncontrolledDataOpen;
+  const setDataOpen = onDataOpenChange ?? setUncontrolledDataOpen;
   const [chartReady, setChartReady] = useState(false);
-
-  useEffect(() => {
-    setChartReady(false);
-  }, [children]);
 
   return (
     <div
@@ -115,6 +125,9 @@ export default function StatsChartPrintFrame({
       data-stats-chart-ready={chartReady ? "true" : "false"}
       data-stats-data-open={dataPanel && dataOpen ? "true" : undefined}
     >
+      {aliasChartIds?.map((alias) => (
+        <span key={alias} id={`stats-chart-${alias}`} hidden />
+      ))}
       {chartReady && title ? (
         <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-2 stats-print-screen-only">
           {title}
@@ -126,11 +139,11 @@ export default function StatsChartPrintFrame({
             {dataPanel ? (
               <button
                 type="button"
-                onClick={() => setDataOpen((open) => !open)}
+                onClick={() => setDataOpen(!dataOpen)}
                 aria-expanded={dataOpen}
                 className={overlayLinkClass}
               >
-                {dataOpen ? "Hide data" : "Show data"}
+                {dataOpen ? hideDataLabel : showDataLabel}
               </button>
             ) : null}
             <StatsPrintControls

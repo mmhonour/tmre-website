@@ -87,10 +87,9 @@ Defined in `lib/tmre-towns.ts`:
 | Fairfield | 06824, 06825, 06828, 06890 | Greenfield Hill (06828), Southport (06890) |
 | Ridgefield | 06877, 06879 | Branchville (06879) |
 
-### Subsets used in copy
+### Public town list
 
-- **Core four towns** (`TMRE_CORE_TOWNS`): Norwalk, Westport, Wilton, Fairfield — homepage Market Pulse cards and Intelligence page metadata.
-- **Properties subset** (`TMRE_PROPERTIES_TOWNS`): Norwalk, Westport, Fairfield — New Construction page metadata and weekly email CTA.
+Public copy, town pills, Market Pulse, and the footer list towns marked **Active** in Admin → Data controls → CT coverage (`getActiveCoverageTownsFresh`). Compile-time `TMRE_TOWNS` is the zip/MLS-code fallback. The old `TMRE_CORE_TOWNS` / `TMRE_PROPERTIES_TOWNS` subsets are deprecated.
 
 ### Zip boundaries & map context
 

@@ -1,6 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {
+  listingPhotoObfuscationImgClass,
+  ListingPhotoObfuscationOverlay,
+} from "@/components/listing/ListingPhotoObfuscation";
 
 /** Layers kept mounted either side of the active photo so crossfades never show a gap. */
 const WINDOW_RADIUS = 1;
@@ -15,6 +19,7 @@ function ShowcaseLayer({
   active,
   drift,
   driftDelayMs,
+  obfuscate = false,
   onFailed,
 }: {
   src: string;
@@ -22,6 +27,7 @@ function ShowcaseLayer({
   active: boolean;
   drift: boolean;
   driftDelayMs: number;
+  obfuscate?: boolean;
   onFailed: () => void;
 }) {
   // Keyed on `src` by the stage, so a new photo always remounts this layer.
@@ -30,28 +36,34 @@ function ShowcaseLayer({
   const retriedRef = useRef(false);
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={activeSrc}
-      alt={active ? alt : ""}
-      aria-hidden={!active}
-      className={`listing-showcase-layer ${drift ? "listing-showcase-layer--drift" : ""} ${
-        active && loaded ? "opacity-100" : "opacity-0"
-      }`}
-      style={{ animationDelay: `-${driftDelayMs}ms` }}
-      decoding="async"
-      loading="eager"
-      fetchPriority={active ? "high" : "low"}
-      onLoad={() => setLoaded(true)}
-      onError={() => {
-        if (!retriedRef.current && !activeSrc.includes("fetch=1")) {
-          retriedRef.current = true;
-          setActiveSrc(photoFetchRetryUrl(activeSrc));
-          return;
-        }
-        onFailed();
-      }}
-    />
+    <div className="absolute inset-0">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={activeSrc}
+        alt={active ? alt : ""}
+        aria-hidden={!active}
+        className={listingPhotoObfuscationImgClass(
+          obfuscate,
+          `listing-showcase-layer ${drift ? "listing-showcase-layer--drift" : ""} ${
+            active && loaded ? "opacity-100" : "opacity-0"
+          }`,
+        )}
+        style={{ animationDelay: `-${driftDelayMs}ms` }}
+        decoding="async"
+        loading="eager"
+        fetchPriority={active ? "high" : "low"}
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          if (!retriedRef.current && !activeSrc.includes("fetch=1")) {
+            retriedRef.current = true;
+            setActiveSrc(photoFetchRetryUrl(activeSrc));
+            return;
+          }
+          onFailed();
+        }}
+      />
+      {obfuscate && active ? <ListingPhotoObfuscationOverlay /> : null}
+    </div>
   );
 }
 
@@ -61,6 +73,7 @@ export default function ShowcasePhotoStage({
   altBase,
   drift = true,
   onPhotoFailed,
+  obfuscatePhoto,
 }: {
   photos: readonly string[];
   index: number;
@@ -69,6 +82,7 @@ export default function ShowcasePhotoStage({
   drift?: boolean;
   /** MLS photo counts overshoot reality — failed slots get dropped from rotation. */
   onPhotoFailed?: (photoIndex: number) => void;
+  obfuscatePhoto?: (photoIndex: number) => boolean;
 }) {
   const total = photos.length;
   if (total === 0) return null;
@@ -88,6 +102,7 @@ export default function ShowcasePhotoStage({
           active={photoIndex === index}
           drift={drift}
           driftDelayMs={(photoIndex % 4) * 3000}
+          obfuscate={obfuscatePhoto?.(photoIndex) ?? false}
           onFailed={() => onPhotoFailed?.(photoIndex)}
         />
       ))}

@@ -11,13 +11,24 @@ import {
   type ReactNode,
 } from "react";
 import { HouseIcon } from "@/components/icons";
-import { loadZipBoundariesForZips } from "@/components/ZipBoundaryPopover";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import {
+  loadTmreZipBoundaries,
+  loadZipBoundariesForZips,
+} from "@/components/ZipBoundaryPopover";
+import { ZIP_CENTERS } from "@/lib/tmre-geo";
+import {
+  boundaryZipsForAllTowns,
+  hasZctaBoundary,
+  townForZip,
+  townHasMultipleZips,
+} from "@/lib/tmre-towns";
 import { listingPhotoProxyUrl } from "@/lib/listing-url";
 import { DealBoardCardViewButton } from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
+import { useLocationEstimateTownCenters } from "@/components/intelligence/use-location-estimate-town-centers";
+import { useLocationEstimateZipGrid } from "@/components/intelligence/use-location-estimate-zip-grid";
 import { locationEstimateOverlayShapes } from "@/lib/location-estimate-map-shapes";
-
-const LOCATION_OVERLAY_SHAPES = locationEstimateOverlayShapes();
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -41,6 +52,15 @@ const FALLBACK_ZOOM = 11;
  */
 const FIT_PAD_BOUNDARY = 1;
 const FIT_PAD_PINS = 36;
+/**
+ * Street-level box around a pin. `fitBounds` needs a span; pinCount=1 then
+ * caps zoom at 15 so a house is readable without going to MAX_ZOOM.
+ */
+const STREET_FIT_PAD_DEG = 0.0015;
+/** Listing subject: wide enough for nearby comps and a local zip line. */
+const NEIGHBORHOOD_FIT_PAD_DEG = 0.0075;
+/** Drop comps farther than ~0.8 mi so one distant sold does not re-frame the town. */
+const NEIGHBORHOOD_COMP_MAX_DEG = 0.012;
 
 type FitInset = {
   top: number;
@@ -182,6 +202,72 @@ function boundsFromPins(
   return { minLat, maxLat, minLon, maxLon };
 }
 
+function streetBoundsForPin(lat: number, lon: number): GeoBounds {
+  return {
+    minLat: lat - STREET_FIT_PAD_DEG,
+    maxLat: lat + STREET_FIT_PAD_DEG,
+    minLon: lon - STREET_FIT_PAD_DEG,
+    maxLon: lon + STREET_FIT_PAD_DEG,
+  };
+}
+
+/** Zip/town zoom with the house under the visible center (not the ZCTA centroid). */
+function fitHouseInContext(
+  house: LonLat,
+  bounds: GeoBounds,
+  width: number,
+  height: number,
+  inset?: Partial<FitInset> | null,
+): { center: LonLat; zoom: number } {
+  const fitted = fitBounds(
+    bounds,
+    width,
+    height,
+    0,
+    FIT_PAD_BOUNDARY,
+    inset,
+  );
+  const box = normalizeFitInset(inset);
+  const pad = FIT_PAD_BOUNDARY;
+  const availW = Math.max(32, width - pad * 2 - box.left - box.right);
+  const availH = Math.max(32, height - pad * 2 - box.top - box.bottom);
+  const contentCx = box.left + pad + availW / 2;
+  const contentCy = box.top + pad + availH / 2;
+  return {
+    center: centerForAnchor(
+      house,
+      contentCx,
+      contentCy,
+      fitted.zoom,
+      { width, height },
+    ),
+    zoom: fitted.zoom,
+  };
+}
+
+function neighborhoodBoundsForSubject(
+  subject: { latitude: number; longitude: number },
+  neighbors: readonly { latitude: number; longitude: number }[],
+): GeoBounds {
+  let minLat = subject.latitude - NEIGHBORHOOD_FIT_PAD_DEG;
+  let maxLat = subject.latitude + NEIGHBORHOOD_FIT_PAD_DEG;
+  let minLon = subject.longitude - NEIGHBORHOOD_FIT_PAD_DEG;
+  let maxLon = subject.longitude + NEIGHBORHOOD_FIT_PAD_DEG;
+  for (const pin of neighbors) {
+    if (Math.abs(pin.latitude - subject.latitude) > NEIGHBORHOOD_COMP_MAX_DEG) {
+      continue;
+    }
+    if (Math.abs(pin.longitude - subject.longitude) > NEIGHBORHOOD_COMP_MAX_DEG) {
+      continue;
+    }
+    minLat = Math.min(minLat, pin.latitude);
+    maxLat = Math.max(maxLat, pin.latitude);
+    minLon = Math.min(minLon, pin.longitude);
+    maxLon = Math.max(maxLon, pin.longitude);
+  }
+  return { minLat, maxLat, minLon, maxLon };
+}
+
 function clampCenter(center: LonLat, bounds: GeoBounds | null): LonLat {
   if (!bounds) return center;
   return {
@@ -265,6 +351,24 @@ function fitBounds(
     { width, height },
   );
   return { center, zoom: fittedZoom };
+}
+
+function ringBBoxCenter(rings: Ring[]): LonLat | null {
+  if (rings.length === 0) return null;
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const ring of rings) {
+    for (const [lon, lat] of ring) {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+  }
+  if (!Number.isFinite(minLon)) return null;
+  return { lon: (minLon + maxLon) / 2, lat: (minLat + maxLat) / 2 };
 }
 
 function ringToPath(
@@ -412,6 +516,7 @@ export default function DealBoardMap({
   onExitToGrid,
   fitInset = ZERO_FIT_INSET,
   subjectKey = null,
+  fitZips,
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -446,9 +551,24 @@ export default function DealBoardMap({
    * a price pill. Unset on the deal board, where every pin is a peer.
    */
   subjectKey?: string | null;
+  /**
+   * ZCTAs that set the listing-map camera. Unset on the deal board (town /
+   * search area). When set with a subject pin, zoom is that zip or town and
+   * the house is centered — a border lot shows half the frame.
+   */
+  fitZips?: readonly string[];
 }) {
   const locationOverlay = useLocationEstimateOverlay();
+  const locationGrid = useLocationEstimateZipGrid();
+  const locationCenters = useLocationEstimateTownCenters();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Desktop page scroll must pass over the map. Wheel zoom only after a click
+   * on the canvas (same idea as Google Maps “click to zoom”).
+   */
+  const wheelArmedRef = useRef(false);
+  const [wheelArmed, setWheelArmed] = useState(false);
+  const [mapHovered, setMapHovered] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [center, setCenter] = useState<LonLat>(FALLBACK_CENTER);
   const [zoom, setZoom] = useState(FALLBACK_ZOOM);
@@ -484,7 +604,11 @@ export default function DealBoardMap({
   /** Area the last auto-fit was for, so paging within it keeps the viewport. */
   const fitAreaRef = useRef<string | null>(null);
   /** Touch: first tap opens the preview card, the card itself opens the listing. */
-  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(hover: none)").matches,
+  );
 
   /** Rings stay grouped by zip so one zip can be restyled on its own. */
   const [zipRings, setZipRings] = useState<ZipRings[]>([]);
@@ -503,7 +627,14 @@ export default function DealBoardMap({
       return;
     }
     let cancelled = false;
-    void loadZipBoundariesForZips(boundZips)
+    const allTowns = boundaryZipsForAllTowns();
+    // Listing pages pass one zip (06824). Use the same TMRE bundle Intelligence
+    // warms so a cold listing map does not miss rings and fall through to the
+    // downtown ZIP_CENTERS point.
+    void (boundZips.some((zip) => allTowns.includes(zip))
+      ? loadTmreZipBoundaries()
+      : loadZipBoundariesForZips(boundZips)
+    )
       .then((byZip) => {
         if (cancelled) return;
         const next: ZipRings[] = [];
@@ -511,10 +642,18 @@ export default function DealBoardMap({
           const found = byZip.get(zip);
           if (found) next.push({ zip, rings: found });
         }
-        setZipRings(next);
+        setZipRings((prev) => {
+          const needed = boundZips.filter(hasZctaBoundary);
+          const prevHits = prev.filter((entry) => boundZips.includes(entry.zip));
+          if (next.length < needed.length && prevHits.length > next.length) {
+            return prev;
+          }
+          return next;
+        });
       })
       .catch(() => {
-        if (!cancelled) setZipRings([]);
+        // Keep whatever rings we already have — a failed All Towns bundle
+        // must not wipe a town outline that was already on screen.
       });
     return () => {
       cancelled = true;
@@ -545,9 +684,48 @@ export default function DealBoardMap({
     () => zipRings.flatMap((entry) => entry.rings),
     [zipRings],
   );
-  const searchBounds = useMemo(() => boundsFromRings(rings), [rings]);
+  const searchBounds = useMemo(() => {
+    const fromRings = boundsFromRings(rings);
+    // ZIP_CENTERS are downtown points (Fairfield 06824 ≈ Granville / Post Rd /
+    // Mill Plain). A single centroid as min=max makes fitBounds think the town
+    // is one block, which is the street cluster the phone was landing on.
+    // Only pad an existing TIGER box when a sibling zip's rings are still late.
+    if (!fromRings) return null;
+    let minLat = fromRings.minLat;
+    let maxLat = fromRings.maxLat;
+    let minLon = fromRings.minLon;
+    let maxLon = fromRings.maxLon;
+    const loaded = new Set(zipRings.map((entry) => entry.zip));
+    for (const zip of boundZips) {
+      if (loaded.has(zip)) continue;
+      const center = ZIP_CENTERS[zip];
+      if (!center) continue;
+      if (center.lat < minLat) minLat = center.lat;
+      if (center.lat > maxLat) maxLat = center.lat;
+      if (center.lon < minLon) minLon = center.lon;
+      if (center.lon > maxLon) maxLon = center.lon;
+    }
+    return { minLat, maxLat, minLon, maxLon };
+  }, [boundZips, rings, zipRings]);
   const pinBounds = useMemo(() => boundsFromPins(placeable), [placeable]);
   const fitTarget = searchBounds ?? pinBounds;
+  const subjectListing = useMemo(
+    () =>
+      subjectKey
+        ? (placeable.find((listing) => listing.key === subjectKey) ?? null)
+        : null,
+    [placeable, subjectKey],
+  );
+  /** Listing page on a phone: start on the house, not the town AABB. */
+  const fitStreetOnPhone = coarsePointer && subjectListing != null;
+  const frameKey = (fitZips ?? []).join(",");
+  const frameBounds = useMemo(() => {
+    if (!fitZips?.length) return null;
+    const frameRings = zipRings
+      .filter((entry) => fitZips.includes(entry.zip))
+      .flatMap((entry) => entry.rings);
+    return boundsFromRings(frameRings);
+  }, [fitZips, zipRings]);
 
   // Gesture handlers run off refs so they never rebind mid-pinch.
   const centerRef = useRef(center);
@@ -571,6 +749,22 @@ export default function DealBoardMap({
     return () => mq.removeEventListener("change", sync);
   }, []);
 
+  // Warm pin thumbs when the map loads so a tap is not the first photo request.
+  useEffect(() => {
+    const toWarm = placeable
+      .filter((listing) => (listing.photoCount ?? 0) > 0)
+      .slice(0, 40);
+    for (const listing of toWarm) {
+      const img = new Image();
+      img.src = listingPhotoProxyUrl(
+        listing.key,
+        listing.primaryPhotoIndex != null && listing.primaryPhotoIndex >= 0
+          ? listing.primaryPhotoIndex
+          : 0,
+      );
+    }
+  }, [placeable]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -583,7 +777,7 @@ export default function DealBoardMap({
     return () => observer.disconnect();
   }, []);
 
-  const fit = useCallback(() => {
+  const fitOverview = useCallback(() => {
     if (size.width <= 0 || size.height <= 0) return;
     const next = fitBounds(
       fitTarget,
@@ -599,11 +793,82 @@ export default function DealBoardMap({
     setZoom(next.zoom);
   }, [fitInset, fitTarget, placeable.length, searchBounds, size.height, size.width]);
 
-  /** Back to the default overview for the selected town(s), pin cleared. */
+  const fitToStreet = useCallback(
+    (listing: DealBoardMapListing & { latitude: number; longitude: number }) => {
+      if (size.width <= 0 || size.height <= 0) return;
+      const next = fitBounds(
+        streetBoundsForPin(listing.latitude, listing.longitude),
+        size.width,
+        size.height,
+        1,
+        FIT_PAD_PINS,
+        ZERO_FIT_INSET,
+      );
+      setCenter(next.center);
+      setZoom(next.zoom);
+    },
+    [size.height, size.width],
+  );
+
+  const fitToNeighborhood = useCallback(
+    (listing: DealBoardMapListing & { latitude: number; longitude: number }) => {
+      if (size.width <= 0 || size.height <= 0) return;
+      const nearby = placeable.filter((pin) => pin.key !== listing.key);
+      const next = fitBounds(
+        neighborhoodBoundsForSubject(listing, nearby),
+        size.width,
+        size.height,
+        1,
+        FIT_PAD_PINS,
+        ZERO_FIT_INSET,
+      );
+      setCenter(next.center);
+      setZoom(next.zoom);
+    },
+    [placeable, size.height, size.width],
+  );
+
+  /** Listing maps: zip/town zoom, house centered. Intelligence stays town-wide. */
+  const fit = useCallback(() => {
+    if (subjectListing && frameBounds && size.width > 0 && size.height > 0) {
+      userMovedRef.current = false;
+      setViewAdjusted(false);
+      const next = fitHouseInContext(
+        { lat: subjectListing.latitude, lon: subjectListing.longitude },
+        frameBounds,
+        size.width,
+        size.height,
+        fitInset,
+      );
+      setCenter(next.center);
+      setZoom(next.zoom);
+      return;
+    }
+    if (fitZips?.length && !frameBounds) return;
+    if (fitStreetOnPhone && subjectListing) {
+      userMovedRef.current = false;
+      setViewAdjusted(false);
+      fitToNeighborhood(subjectListing);
+      return;
+    }
+    fitOverview();
+  }, [
+    fitInset,
+    fitOverview,
+    fitStreetOnPhone,
+    fitToNeighborhood,
+    fitZips,
+    frameBounds,
+    size.height,
+    size.width,
+    subjectListing,
+  ]);
+
+  /** Town / zip overview, even on a listing page that opened at street level. */
   const resetView = useCallback(() => {
-    fit();
+    fitOverview();
     onSelectRef.current?.(null);
-  }, [fit]);
+  }, [fitOverview]);
 
   const areaSignature = `${boundKey}:${rings.length}`;
 
@@ -618,7 +883,9 @@ export default function DealBoardMap({
       placeable[0]?.key ?? ""
     }:${placeable[placeable.length - 1]?.key ?? ""}:${Math.round(
       size.width,
-    )}x${Math.round(size.height)}:${Math.round(fitInset.top ?? 0)}/${Math.round(fitInset.bottom ?? 0)}`;
+    )}x${Math.round(size.height)}:${Math.round(fitInset.top ?? 0)}/${Math.round(
+      fitInset.bottom ?? 0,
+    )}:${subjectKey ?? ""}:${coarsePointer ? "c" : "f"}:${frameKey}`;
     if (fitSignatureRef.current === signature) return;
     const areaChanged = fitAreaRef.current !== areaSignature;
     fitSignatureRef.current = signature;
@@ -802,8 +1069,21 @@ export default function DealBoardMap({
   // Mouse and pen only. Touch runs through the native listeners below, which
   // own panning and pinching together — two systems both moving the viewport is
   // what made pinches jump and the panel strobe.
+  const armWheelZoom = () => {
+    if (wheelArmedRef.current) return;
+    wheelArmedRef.current = true;
+    setWheelArmed(true);
+  };
+
+  const disarmWheelZoom = () => {
+    if (!wheelArmedRef.current) return;
+    wheelArmedRef.current = false;
+    setWheelArmed(false);
+  };
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "touch") return;
+    armWheelZoom();
     dragRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -847,6 +1127,8 @@ export default function DealBoardMap({
     // pinch arrives as ctrl+wheel and gets the finer, continuous step.
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaY) < 1) return;
+      // Unarmed: do not preventDefault — the page (or parent) keeps scrolling.
+      if (!wheelArmedRef.current) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const step = e.ctrlKey
@@ -863,6 +1145,25 @@ export default function DealBoardMap({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoomAround]);
+
+  useEffect(() => {
+    if (!wheelArmed) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      const root = containerRef.current;
+      if (!root || root.contains(e.target as Node)) return;
+      disarmWheelZoom();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") disarmWheelZoom();
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [wheelArmed]);
 
   /**
    * Touch gestures, native because iOS Safari often never sends a second
@@ -1013,7 +1314,11 @@ export default function DealBoardMap({
     };
   }, [applyAnchoredView, panBy]);
 
-  const previewKey = hoverKey ?? activeKey ?? null;
+  // Touch browsers fire mouseenter and often never mouseleave. A stale
+  // hoverKey would keep the first card up while the new pin only lights price.
+  const previewKey = coarsePointer
+    ? (activeKey ?? null)
+    : (hoverKey ?? activeKey ?? null);
   const hovered = useMemo(
     () => placeable.find((l) => l.key === previewKey) ?? null,
     [placeable, previewKey],
@@ -1032,6 +1337,16 @@ export default function DealBoardMap({
     if (lastCenteredKeyRef.current === activeKey) return;
     const listing = placeable.find((l) => l.key === activeKey);
     if (!listing) return;
+    lastCenteredKeyRef.current = activeKey;
+
+    // Phone: a pin is "on screen" at town zoom as a speck. Always go street-level.
+    if (coarsePointer) {
+      userMovedRef.current = true;
+      setViewAdjusted(true);
+      fitToStreet(listing);
+      return;
+    }
+
     const cx = lonToWorldX(center.lon, zoom);
     const cy = latToWorldY(center.lat, zoom);
     const left = lonToWorldX(listing.longitude, zoom) - (cx - size.width / 2);
@@ -1042,7 +1357,6 @@ export default function DealBoardMap({
       left <= size.width - pad &&
       top >= pad &&
       top <= size.height - pad;
-    lastCenteredKeyRef.current = activeKey;
     if (onScreen) return;
     setCenter(
       clampCenter(
@@ -1054,12 +1368,31 @@ export default function DealBoardMap({
     activeKey,
     center.lat,
     center.lon,
+    coarsePointer,
+    fitToStreet,
     placeable,
     searchBounds,
     size.height,
     size.width,
     zoom,
   ]);
+
+  const zipLocaleLabels = useMemo(() => {
+    if (!viewport || zipRings.length < 2) return [];
+    return zipRings.flatMap((entry) => {
+      const town = townForZip(entry.zip);
+      if (!town || !townHasMultipleZips(town)) return [];
+      const center = ringBBoxCenter(entry.rings);
+      if (!center) return [];
+      return [
+        {
+          zip: entry.zip,
+          left: lonToWorldX(center.lon, zoom) - viewport.left,
+          top: latToWorldY(center.lat, zoom) - viewport.top,
+        },
+      ];
+    });
+  }, [viewport, zipRings, zoom]);
 
   const boundaryLayers = useMemo(() => {
     if (!viewport) return [];
@@ -1082,24 +1415,33 @@ export default function DealBoardMap({
       .filter(Boolean);
   }, [rings, viewport, zoom]);
 
+  const estimateOverlay = useMemo(
+    () =>
+      locationEstimateOverlayShapes(
+        locationGrid.cells,
+        locationCenters.placements,
+      ),
+    [locationCenters.placements, locationGrid.cells],
+  );
+
   const estimateOverlayPaths = useMemo(() => {
     if (!locationOverlay.enabled || !viewport) return [];
-    return LOCATION_OVERLAY_SHAPES.rings
+    return estimateOverlay.rings
       .map((layer) => ({
         ...layer,
         d: ringToPath(layer.ring, viewport, zoom),
       }))
       .filter((layer) => layer.d);
-  }, [locationOverlay.enabled, viewport, zoom]);
+  }, [estimateOverlay.rings, locationOverlay.enabled, viewport, zoom]);
 
   const estimateOverlayDots = useMemo(() => {
     if (!locationOverlay.enabled || !viewport) return [];
-    return LOCATION_OVERLAY_SHAPES.dots.map((dot) => ({
+    return estimateOverlay.dots.map((dot) => ({
       ...dot,
       left: lonToWorldX(dot.lon, zoom) - viewport.left,
       top: latToWorldY(dot.lat, zoom) - viewport.top,
     }));
-  }, [locationOverlay.enabled, viewport, zoom]);
+  }, [estimateOverlay.dots, locationOverlay.enabled, viewport, zoom]);
 
   return (
     <div className={`relative ${className}`}>
@@ -1113,6 +1455,8 @@ export default function DealBoardMap({
         onPointerMove={handlePointerMove}
         onPointerUp={endPointer}
         onPointerCancel={endPointer}
+        onMouseEnter={() => setMapHovered(true)}
+        onMouseLeave={() => setMapHovered(false)}
         role="application"
         aria-label="Map of filtered listings"
       >
@@ -1186,6 +1530,16 @@ export default function DealBoardMap({
           </svg>
         ) : null}
 
+        {zipLocaleLabels.map((label) => (
+          <span
+            key={`zip-locale-${label.zip}`}
+            className="pointer-events-none absolute z-[6] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm border border-navy/20 bg-white/90 px-1 py-px font-mono text-[9px] font-semibold tabular-nums tracking-wide text-navy shadow-sm"
+            style={{ left: label.left, top: label.top }}
+          >
+            {label.zip}
+          </span>
+        ))}
+
         {estimateOverlayPaths.length > 0 && size.width > 0 ? (
           <svg
             className="pointer-events-none absolute inset-0 z-[6] h-full w-full"
@@ -1196,17 +1550,21 @@ export default function DealBoardMap({
               <path
                 key={layer.id}
                 d={layer.d}
-                fill="none"
+                fill={
+                  layer.kind === "town_center"
+                    ? "rgba(74, 141, 183, 0.16)"
+                    : "rgba(232, 93, 58, 0.08)"
+                }
                 stroke={
                   layer.kind === "town_center"
-                    ? "rgba(74, 141, 183, 0.95)"
-                    : "rgba(232, 93, 58, 0.88)"
+                    ? "rgba(74, 141, 183, 1)"
+                    : "rgba(232, 93, 58, 0.95)"
                 }
-                strokeWidth={layer.kind === "town_center" ? 1.8 : 1.35}
-                strokeDasharray={layer.kind === "town_center" ? "6 5" : "3.5 3"}
+                strokeWidth={layer.kind === "town_center" ? 2.4 : 2}
+                strokeDasharray={layer.kind === "town_center" ? "7 5" : "4 3.5"}
                 opacity={
                   layer.kind === "coastal_strip"
-                    ? Math.max(0.4, 1 - (layer.stripIndex ?? 0) * 0.16)
+                    ? Math.max(0.55, 1 - (layer.stripIndex ?? 0) * 0.12)
                     : 1
                 }
               />
@@ -1217,10 +1575,14 @@ export default function DealBoardMap({
         {estimateOverlayDots.map((dot) => (
           <span
             key={dot.id}
-            className="pointer-events-none absolute z-[7] h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky shadow-[0_0_0_1px_rgba(255,255,255,0.75)]"
+            className="pointer-events-none absolute z-[7] flex -translate-x-1/2 -translate-y-full flex-col items-center"
             style={{ left: dot.left, top: dot.top }}
-            title={dot.label}
-          />
+          >
+            <span className="mb-0.5 whitespace-nowrap rounded-sm bg-navy/80 px-1 py-px font-mono text-[8px] uppercase tracking-[0.12em] text-white">
+              {dot.label}
+            </span>
+            <span className="h-1.5 w-1.5 rounded-full bg-sky shadow-[0_0_0_1px_rgba(255,255,255,0.75)]" />
+          </span>
         ))}
 
         {pins.map((pin) => {
@@ -1236,13 +1598,25 @@ export default function DealBoardMap({
             isSubject ? "z-30" : isActive ? "z-20 scale-125" : "z-10"
           }`;
           const pinStyle = { left: pin.left, top: pin.top };
+          const subjectPriceLabel = pinPriceLabel(
+            pin.listing.price,
+            pin.listing.isRental,
+          );
           const pill = isSubject ? (
             <span className="flex flex-col items-center">
               <span className="text-sky drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
                 <HouseIcon className="h-6 w-6" />
               </span>
-              <span className="mt-0.5 whitespace-nowrap rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy shadow-sm">
-                This home
+              <span className="mt-0.5 flex flex-col items-center rounded-full border border-sky/50 bg-white/95 px-1.5 py-0.5 shadow-sm">
+                <span className="font-mono text-[9px] uppercase leading-none tracking-[0.1em] text-navy">
+                  This home
+                </span>
+                {subjectPriceLabel !== "—" ? (
+                  <span className="mt-0.5 font-mono text-[10px] leading-none tabular-nums text-navy">
+                    {subjectPriceLabel}
+                    {pin.listing.isRental ? "/mo" : ""}
+                  </span>
+                ) : null}
               </span>
             </span>
           ) : (
@@ -1267,10 +1641,12 @@ export default function DealBoardMap({
           const hoverHandlers = {
             "data-map-preview-anchor": "",
             onMouseEnter: () => {
+              if (coarsePointer) return;
               setHoverKey(pin.listing.key);
               onSelect?.(pin.listing.key);
             },
             onMouseLeave: () => {
+              if (coarsePointer) return;
               setHoverKey(null);
               onSelect?.(null);
             },
@@ -1302,11 +1678,12 @@ export default function DealBoardMap({
               style={pinStyle}
               aria-label={label}
               {...hoverHandlers}
-              onClick={() =>
+              onClick={() => {
+                setHoverKey(null);
                 onSelect?.(
                   activeKey === pin.listing.key ? null : pin.listing.key,
-                )
-              }
+                );
+              }}
             >
               {pill}
             </button>
@@ -1315,13 +1692,13 @@ export default function DealBoardMap({
 
         {hovered && hoveredPin ? (
           <PreviewCard
+            key={previewKey}
             href={coarsePointer ? hrefFor?.(hovered) : undefined}
             left={hoveredPin.left}
             top={hoveredPin.top}
           >
             {hovered.photoCount != null && hovered.photoCount > 0 ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <ListingThumbImage
                 src={listingPhotoProxyUrl(
                   hovered.key,
                   hovered.primaryPhotoIndex != null &&
@@ -1330,7 +1707,9 @@ export default function DealBoardMap({
                     : 0,
                 )}
                 alt=""
-                className="h-20 w-full object-cover"
+                className="relative block h-20 w-full overflow-hidden"
+                imgClassName="absolute inset-0 h-full w-full object-cover"
+                placeholderClassName="absolute inset-0 animate-pulse bg-charcoal/[0.06]"
               />
             ) : (
               <div className="flex h-14 items-center justify-center bg-charcoal/[0.05] font-mono text-[9px] tracking-wide text-charcoal/40">
@@ -1370,7 +1749,7 @@ export default function DealBoardMap({
             onPointerDown={(e) => {
               if (e.pointerType === "mouse") e.stopPropagation();
             }}
-            className={`absolute left-2 top-2 z-30 rounded-md border px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] shadow-lg backdrop-blur-sm transition-colors ${
+            className={`absolute left-12 top-2 z-30 rounded-md border px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] shadow-lg backdrop-blur-sm transition-colors ${
               locationOverlay.enabled
                 ? "border-sky/40 bg-navy/90 text-sky"
                 : "border-white/15 bg-navy/85 text-white/80 hover:text-gold"
@@ -1378,6 +1757,15 @@ export default function DealBoardMap({
           >
             {locationOverlay.enabled ? "Hide corridors" : "Show corridors"}
           </button>
+        ) : null}
+
+        {mapHovered && !wheelArmed ? (
+          <div
+            className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-md border border-white/15 bg-navy/80 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/80 shadow-lg backdrop-blur-sm"
+            aria-hidden
+          >
+            Click to zoom
+          </div>
         ) : null}
 
         <MapControls

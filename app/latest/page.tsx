@@ -12,14 +12,17 @@ import {
 } from "@/lib/latest-listings";
 import { feedCoversAllTmreTowns } from "@/lib/latest-town-coverage";
 import { listingPhotoThumbUrls } from "@/lib/listing-url";
-import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Latest — TMRE",
-  description: `30 on 30 — the 30 most recently updated MLS listings across ${TMRE_TOWNS_LABEL}, refreshed every 30 minutes.`,
-};
+export async function generateMetadata() {
+  const townsLabel = await getActiveCoverageTownsLabel();
+  return {
+    title: "Latest — TMRE",
+    description: `30 on 30 — the 30 most recently updated MLS listings across ${townsLabel}, refreshed every 30 minutes.`,
+  };
+}
 
 function heroPhotoPreloadUrls(rows: LatestListingRow[], limit = 12): string[] {
   return rows.slice(0, limit).flatMap((row) => {

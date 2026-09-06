@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightComparablesClient from "../comparables/SpotlightComparablesClient";
+import SpotlightShowcaseClient from "../SpotlightShowcaseClient";
 
 export const metadata = {
   title: "Spotlight Under Agreement — TMRE",
@@ -9,7 +9,7 @@ export const metadata = {
 export default function SpotlightUagPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightComparablesClient mode="uag" />
+      <SpotlightShowcaseClient initialTab="uag" />
     </Suspense>
   );
 }

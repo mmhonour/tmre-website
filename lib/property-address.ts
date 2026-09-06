@@ -37,6 +37,22 @@ const STREET_SUFFIX: Record<string, string> = {
   tpke: 'tpke',
   extension: 'ext',
   ext: 'ext',
+  /**
+   * Assessor abbreviations that USPS does not use, so only the CAMA side of a
+   * match ever writes them. Ridgefield, Wilton and New Canaan all file `LA` for
+   * Lane — 14,287 street lines between them — which is why those towns matched
+   * worst before this: the street simply looked absent. Expanding the short
+   * form leaves the spelled-out word's own canonicalization untouched.
+   *
+   * `tr` is ambiguous (Trail here, Terrace in some towns). Getting it wrong
+   * only leaves a listing unmatched, since both sides run through this same
+   * map, so it cannot produce a false match.
+   */
+  la: 'ln',
+  cmns: 'commons',
+  pk: 'park',
+  hgwy: 'hwy',
+  tr: 'trl',
   north: 'n',
   n: 'n',
   south: 's',

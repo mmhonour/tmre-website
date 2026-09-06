@@ -12,7 +12,7 @@ Use the same short stamp format for times:
 Examples: `20Jul 15:54`, `03Jan 09:05`
 
 Rules for the stamp itself:
-- Use the current local time from the latest user/system timestamp when available; otherwise the best known clock for the session.
+- **Always use US Eastern time** (`America/New_York` — EST in winter, EDT in summer). Do not use UTC, cloud-agent VM time, or any other zone, even when system timestamps arrive in UTC.
 - Month is a 3-letter English abbreviation with no period (Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec).
 - Day is zero-padded to 2 digits; hour and minute are 24-hour `hh:nn`, zero-padded.
 - No seconds, no timezone suffix.

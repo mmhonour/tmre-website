@@ -649,8 +649,10 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'listing-derived',
     medium: 'postgres',
     location: 'listing_tax_history',
-    keyPattern: 'table rows by listing_id',
+    keyPattern: 'rows by parcel_number + tax_year_end',
     owner: 'lib/listing-property-tax-cache.ts',
+    notes:
+      'Two writers, distinguished by `source`. Incremental sync writes the current fiscal year from the MLS PropertyTax/TaxYear pair (source=mls); the monthly CAMA job fills earlier years from CT assessments × mill rates (source=cama) and never overwrites an MLS row.',
     live: { kind: 'postgres_table', table: 'listing_tax_history' },
   },
   {
@@ -740,6 +742,30 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows',
     owner: 'lib/db/listings-repo.ts',
     live: { kind: 'postgres_table', table: 'sync_runs' },
+  },
+  {
+    id: 'vision-streets',
+    name: 'Vision street index',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'vision_streets',
+    keyPattern: 'table rows (town + street_name)',
+    owner: 'lib/db/vision-streets-repo.ts',
+    notes:
+      'Official VGSI Streets.aspx letter index, persisted when the Vision crawler loads a letter. Letter-scoped replace so a cancelled street disappears on the next successful fetch of that letter, and a fault cannot empty the town.',
+    live: { kind: 'postgres_table', table: 'vision_streets' },
+  },
+  {
+    id: 'vision-street-parcels',
+    name: 'Vision street addresses',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'vision_street_parcels',
+    keyPattern: 'table rows (town + street_name + vision_pid)',
+    owner: 'lib/db/vision-streets-repo.ts',
+    notes:
+      'House numbers from VGSI Streets.aspx?Name= (5 Locust Ln, 6 Locust Ln). Written when the crawler loads a street page or when fillMissingVisionStreetParcels backfills every official name that still has no houses (one Railway chunk). Street-scoped replace so a fault cannot empty another street. /streets/{town}/{street} lists them and joins vision_addresses.owner_name / last_sale_date (Field Card ingest). Click-through is /find/{town}/{pid}. Owners are not stored on this table.',
+    live: { kind: 'postgres_table', table: 'vision_street_parcels' },
   },
   {
     id: 'open-houses',

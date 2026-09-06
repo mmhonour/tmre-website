@@ -105,7 +105,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             title: `Railway sweep every ${sweepMinutes} min → sync_queue`,
             host: 'Railway mls-sync',
             source: 'services/mls-sync/server.ts → sweepTick',
-            detail: `One small sync_meta read. It enqueues only when a town is dirty, never-built, or past the ${backstopHours}h backstop and the Configure slot has come round, and it enqueues nothing when the job is paused. Enqueueing rather than running means a rebuild asked for while an incremental pull is in flight waits its turn instead of being dropped.`,
+            detail: `One small sync_meta read. It enqueues when a town is dirty, never-built, or past the ${backstopHours}h backstop, or when last_stats_cache itself is missing/older than that backstop, and the Configure slot has come round. It enqueues nothing when the job is paused. Drain claims stats / edge / CAMA ahead of a waiting Incremental.`,
             status: 'live',
             statusLabel: 'Enqueues',
           },
@@ -115,7 +115,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Railway mls-sync',
             source: 'services/mls-sync/job-runner.ts → drainSyncQueueOnce',
             detail:
-              'One job at a time, highest priority first, oldest first within a band. The rebuild runs in its own process with its own heap, held to Configure → Stats cache → Budget: over budget is a kill recorded as timeout, and a child that dies silently is recorded as crashed. Either way the row reaches a terminal state, so the next sweep is not blocked by a ghost.',
+              'Up to three different jobs at once (MLS_SYNC_MAX_CHILDREN). Incremental no longer occupies the only seat: stats can rebuild in a second child while a pull is in flight. Same job still cannot run twice. Non-incremental jobs go first when slots are full. Each child has its own heap and Configure → Stats cache → Budget; over budget is a timeout, a silent death is crashed. The next sweep is not blocked by a ghost.',
             status: 'live',
             statusLabel: 'Runs it',
           },

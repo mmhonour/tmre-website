@@ -92,14 +92,19 @@ export function StatsChartDataBody({ children }: { children: ReactNode }) {
 export function StatsChartDataRow({
   children,
   stripe,
+  active,
+  id,
 }: {
   children: ReactNode;
   stripe?: boolean;
+  active?: boolean;
+  id?: string;
 }) {
   return (
     <tr
+      id={id}
       className={`border-b border-charcoal/[0.06] last:border-0 ${
-        stripe ? "bg-cream/30" : "hover:bg-gold/5"
+        active ? "bg-gold/15" : stripe ? "bg-cream/30" : "hover:bg-gold/5"
       }`}
     >
       {children}

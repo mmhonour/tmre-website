@@ -112,7 +112,7 @@ export function marketPulseTownAvgDomStatsHref(
   })
 }
 
-/** /stats deep link to the list-to-ask chart for a Market Pulse town row. */
+/** /stats deep link to the TRAN$ACT to LIST chart for a Market Pulse town row. */
 export function marketPulseTownListToAskStatsHref(
   cityLabel: string,
   categoryId: MarketPulseCategoryId,

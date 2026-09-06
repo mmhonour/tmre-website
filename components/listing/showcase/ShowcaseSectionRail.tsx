@@ -1,18 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
-import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import ListingSidebar from "@/components/listing/ListingSidebar";
 import {
   LISTING_RECENTLY_SOLD_PANEL_ID,
   LISTING_SALE_ON_MARKET_PANEL_ID,
 } from "@/components/listing/listing-section-ids";
+import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
+import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
-import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
+import type { ShowcaseMapPresentation } from "@/components/listing/showcase/showcase-host";
+import {
+  jumpToListingSection,
+  scrollToShowcaseSection,
+} from "@/components/listing/showcase/showcase-sections";
 import type { ShowcaseDetailRow } from "@/components/listing/showcase/showcase-types";
 import {
   fmtIfRentMoney,
@@ -21,8 +26,7 @@ import {
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
-type CardId = "details";
-type OverlayId = "insight" | "map" | "pulse" | "details";
+type CardId = "pulse" | "insight" | "details";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
@@ -106,20 +110,42 @@ function MapGlyph() {
   );
 }
 
+/**
+ * Same 20×20 slot as Map / Insight / Details so the button chrome matches.
+ * Gradients are unique per mount so two icon rows do not collide.
+ */
 function PulseGlyph() {
+  const uid = useId().replace(/:/g, "");
   return (
     <svg
       viewBox="0 0 24 24"
       className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
       aria-hidden
     >
-      <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="5.6" />
-      <circle cx="12" cy="12" r="9" className="opacity-45" />
+      <defs>
+        <radialGradient id={`${uid}-yin`} cx="12" cy="7.8" r="8.4" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#4A7C6F" />
+          <stop offset="1" stopColor="#C8A951" />
+        </radialGradient>
+        <radialGradient id={`${uid}-eyeGreen`}>
+          <stop offset="0" stopColor="#FF2A22" />
+          <stop offset="1" stopColor="#4A7C6F" />
+        </radialGradient>
+        <radialGradient id={`${uid}-eyeRed`}>
+          <stop offset="0" stopColor="#C8A951" />
+          <stop offset="0.48" stopColor="#FF2A22" />
+          <stop offset="1" stopColor="#FF2A22" />
+        </radialGradient>
+      </defs>
+      <g transform="rotate(-60 12 12)">
+        <circle cx="12" cy="12" r="8.4" fill={`url(#${uid}-yin)`} />
+        <path
+          d="M12 3.6 A8.4 8.4 0 0 0 12 20.4 A4.2 4.2 0 0 0 12 12 A4.2 4.2 0 0 1 12 3.6 Z"
+          fill="#FF2A22"
+        />
+        <circle cx="12" cy="7.8" r="2.17" fill={`url(#${uid}-eyeGreen)`} />
+        <circle cx="12" cy="16.2" r="2.7" fill={`url(#${uid}-eyeRed)`} />
+      </g>
     </svg>
   );
 }
@@ -170,18 +196,13 @@ function useIsDesktop(): boolean {
   return desktop;
 }
 
-function scrollToId(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-
 type CompsCounts = { active: number; sold: number; soldMonths: number };
 type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
- * Rail of flush rectangular tiles over the right of the photo. Insight, map,
- * pulse and details share one exclusive icon row; Comps and What if carry
- * their own figures and jump to the matching section.
+ * Rail of flush rectangular tiles over the right of the photo. Insight and
+ * Details expand in flow; Comps and What if carry their own figures and jump to
+ * the matching section; Map takes over the right column.
  *
  * Below `lg` the figures are hidden behind a pulsing chevron — first tap
  * reveals them, second tap navigates — so the rail stays narrow on a phone.
@@ -189,6 +210,7 @@ type IfAmounts = { sale: number | null; rent: number | null };
 export default function ShowcaseSectionRail({
   mlsId,
   insight,
+  insightFacts,
   detailRows,
   subject,
   townHint,
@@ -197,9 +219,14 @@ export default function ShowcaseSectionRail({
   onNext,
   onMapStateChange,
   onDetailsOnlyChange,
+  compsFetchUrl,
+  uagFetchUrl,
+  map,
 }: {
   mlsId: string;
   insight: string | null;
+  /** Showcase-only facts line, rendered under the shared insight. */
+  insightFacts?: string | null;
   detailRows: ShowcaseDetailRow[];
   subject: DealBoardMapListing | null;
   townHint?: string | null;
@@ -210,6 +237,10 @@ export default function ShowcaseSectionRail({
   onDetailsOnlyChange?: (on: boolean) => void;
   /** Lets the hero shift its price clear of the map column. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
+  compsFetchUrl?: string | null;
+  uagFetchUrl?: string | null;
+  /** Spotlight privacy: town-outline map instead of comps + pin. */
+  map?: ShowcaseMapPresentation | null;
 }) {
   const [openCard, setOpenCard] = useState<CardId | null>(null);
   /**
@@ -217,10 +248,14 @@ export default function ShowcaseSectionRail({
    * single exclusive toggle — opening one closes the others, and the icon
    * row travels with whichever panel is up.
    */
-  const [overlay, setOverlayState] = useState<OverlayId | null>(null);
+  const [overlay, setOverlayState] = useState<
+    "insight" | "map" | "pulse" | "details" | null
+  >(null);
   const [mapExpanded, setMapExpanded] = useState(false);
 
-  const setOverlay = (next: OverlayId | null) => {
+  const setOverlay = (
+    next: "insight" | "map" | "pulse" | "details" | null,
+  ) => {
     setOverlayState(next);
     onMapStateChange?.({
       open: next === "map",
@@ -230,7 +265,7 @@ export default function ShowcaseSectionRail({
       next === "insight" || next === "pulse" || next === "details",
     );
   };
-  const toggleOverlay = (id: OverlayId) =>
+  const toggleOverlay = (id: "insight" | "map" | "pulse" | "details") =>
     setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
@@ -249,7 +284,10 @@ export default function ShowcaseSectionRail({
       active?: unknown[];
       soldWithinLookbackCount?: number;
       soldLookbackMonths?: number;
-    }>(`/api/listings/${encodeURIComponent(mlsId)}/comparables`).then((d) => {
+    }>(
+      compsFetchUrl ??
+        `/api/listings/${encodeURIComponent(mlsId)}/comparables`,
+    ).then((d) => {
       if (cancelled || !d) return;
       setCounts({
         active: d.active?.length ?? 0,
@@ -267,7 +305,7 @@ export default function ShowcaseSectionRail({
     return () => {
       cancelled = true;
     };
-  }, [mlsId]);
+  }, [mlsId, compsFetchUrl]);
 
   const ifLabel = useMemo(() => {
     if (!amounts) return null;
@@ -410,15 +448,32 @@ export default function ShowcaseSectionRail({
     >
       <div className="flex shrink-0 justify-end">{iconRow}</div>
       <div className="min-h-0 flex-1">
-        <ShowcaseCompsMap
-          mlsId={mlsId}
-          subject={subject}
-          townHint={townHint}
-          postalCode={postalCode}
-          expanded={mapExpanded}
-          onToggleExpanded={() => setExpanded(!mapExpanded)}
-          onExit={() => setOverlay(null)}
-        />
+        {map?.hidePin ? (
+          <ListingLocationMap
+            latitude={map.latitude}
+            longitude={map.longitude}
+            addressQuery={map.addressQuery}
+            hidePin
+            hideLabel
+            outlineTown={map.outlineTown}
+            defaultZoom={map.defaultZoom}
+            variant="hero"
+            className="h-full"
+          />
+        ) : (
+          <ShowcaseCompsMap
+            mlsId={mlsId}
+            subject={subject}
+            townHint={townHint}
+            postalCode={postalCode}
+            expanded={mapExpanded}
+            onToggleExpanded={() => setExpanded(!mapExpanded)}
+            onExit={() => setOverlay(null)}
+            fetchUrl={compsFetchUrl}
+            uagFetchUrl={uagFetchUrl}
+            hideSubject={map?.hidePin ?? false}
+          />
+        )}
       </div>
     </div>
   ) : null;
@@ -462,12 +517,16 @@ export default function ShowcaseSectionRail({
             <CountChip
               label="On market"
               count={counts.active}
-              onClick={() => scrollToId(LISTING_SALE_ON_MARKET_PANEL_ID)}
+              onClick={() =>
+                jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
+              }
             />
             <CountChip
               label={`Sold ${counts.soldMonths} in mos`}
               count={counts.sold}
-              onClick={() => scrollToId(LISTING_RECENTLY_SOLD_PANEL_ID)}
+              onClick={() =>
+                jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
+              }
             />
           </span>
         </div>
@@ -508,20 +567,17 @@ export default function ShowcaseSectionRail({
             </button>
             <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
               {overlay === "details" ? (
+                /* The dashboard's own Details card, not a second summary —
+                   same component the deck below the photo renders. */
                 <ListingSidebar details={detailsPanelProps} />
               ) : overlay === "pulse" ? (
                 <div className="p-4">
                   <ShowcaseTownPulse city={townHint ?? ""} expanded />
                 </div>
-              ) : insight ? (
-                <div className="p-4">
-                  <ListingInsightCopy
-                    text={insight}
-                    className="text-sm leading-relaxed text-white/80"
-                  />
-                </div>
               ) : (
-                <p className="p-4 text-sm text-white/50">No insight for this listing.</p>
+                <div className="p-4">
+                  <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
+                </div>
               )}
             </div>
           </>
@@ -556,12 +612,7 @@ export default function ShowcaseSectionRail({
           </>
         )}
 
-        {overlay === "insight" ||
-        overlay === "pulse" ||
-        overlay === "details" ||
-        overlay === "map"
-          ? null
-          : iconRow}
+        {overlay ? null : iconRow}
       </div>
     </>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminLocationEstimateOverlayPanel from "@/components/admin/AdminLocationEstimateOverlayPanel";
 import CtCountyMiniMap from "@/components/admin/CtCountyMiniMap";
 import CtCoverageTownsMap from "@/components/admin/CtCoverageTownsMap";
 import AdminTownActivationPlaybookPanel, {
@@ -177,10 +178,15 @@ export default function AdminCtCoveragePanel() {
           All Connecticut counties and municipalities. Checking Activate opens
           the{" "}
           <span className="text-navy/80">canonical town-activation playbook</span>{" "}
-          first — Phase 0 only flips the Postgres flag today (not wired into
-          public pages or RETS yet). The large map matches Intelligence
-          &ldquo;All towns&rdquo; (ZCTA outlines): click a town to zoom in, All
-          towns or the same town again to zoom out.
+          first — Phase 0 flips the Postgres flag and the public town list
+          (copy, pills, Market Pulse). RETS incremental is still later. The large map is the same street tiles as
+          Intelligence and showcase (OSM via{" "}
+          <span className="font-mono text-[11px]">/api/map/tile</span>) with the
+          same TIGER ZCTA rings on top. County thumbnails are TIGER county
+          outlines — same Census family, different layer. Click a town to zoom
+          and paint ¼-mile coastal squares; click a painted square again to
+          erase it. Drag the town-center dot to relocate it, or drag the rim /
+          use + − to change its radius. That disk overrides any square it covers.
         </p>
         <p className="mt-2 font-mono text-[10px] tracking-wide text-charcoal/50">
           {loading
@@ -198,7 +204,8 @@ export default function AdminCtCoveragePanel() {
       </div>
 
       {!loading && counties.length > 0 ? (
-        <div className="border-b border-charcoal/[0.08] px-5 py-4 sm:px-6">
+        <div className="space-y-3 border-b border-charcoal/[0.08] px-5 py-4 sm:px-6">
+          <AdminLocationEstimateOverlayPanel />
           <CtCoverageTownsMap activeTownNames={activeTownNames} />
         </div>
       ) : null}

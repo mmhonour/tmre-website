@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
+import { getVisionStreetParcelByPid } from "@/lib/db/vision-streets-repo";
+import { visionStreetPageHref } from "@/lib/vision-streets-page";
 import {
+  VISION_SALES_HISTORY_ID,
   formatVisionFieldValue,
   formatVisionMoney,
+  isVisionQuitclaim,
+  visionInstrumentLabel,
   type VisionOwnershipRow,
 } from "@/lib/vision-gis-parse";
 
@@ -105,7 +111,7 @@ function SalesHistoryTable({ rows }: { rows: VisionOwnershipRow[] }) {
       <table className="w-full min-w-[32rem] text-left">
         <thead>
           <tr className="border-b border-charcoal/[0.1]">
-            {["Sale date", "Owner", "Price", "Book / page", "Instr."].map(
+            {["Date", "Owner", "Price", "Book / page", "Deed"].map(
               (h) => (
                 <th
                   key={h}
@@ -130,14 +136,16 @@ function SalesHistoryTable({ rows }: { rows: VisionOwnershipRow[] }) {
                 {row.owner || "—"}
               </td>
               <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
-                {formatVisionMoney(row.price) ?? row.price ?? "—"}
+                {isVisionQuitclaim(row)
+                  ? "—"
+                  : formatVisionMoney(row.price) ?? row.price ?? "—"}
               </td>
               <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
                 {row.bookPage || "—"}
               </td>
-              <td className="py-2 font-mono text-[13px] text-navy tabular-nums">
-                {[row.qualified, row.instrument].filter(Boolean).join("/") ||
-                  "—"}
+              <td className="py-2 font-mono text-[13px] text-navy">
+                {visionInstrumentLabel(row.instrument) ??
+                  (isVisionQuitclaim(row) ? "Quitclaim" : row.qualified || "—")}
               </td>
             </tr>
           ))}
@@ -155,6 +163,17 @@ export default async function WestportParcelPage({
   const { pid } = await params;
   const property = await mergeWestportProperty(pid.trim());
   if (!property) notFound();
+  const streetRow = await getVisionStreetParcelByPid(
+    property.town,
+    property.visionPid,
+  );
+  const streetHref = streetRow
+    ? visionStreetPageHref(
+        property.town,
+        streetRow.streetName,
+        property.visionPid,
+      )
+    : null;
 
   const onMarket = property.listing != null;
   const baths =
@@ -201,6 +220,17 @@ export default async function WestportParcelPage({
             <Link href="/find" className="hover:text-white transition-colors">
               Find · Westport
             </Link>
+            {streetHref ? (
+              <>
+                {" · "}
+                <Link
+                  href={streetHref}
+                  className="hover:text-white transition-colors"
+                >
+                  Streets · {streetRow?.streetName}
+                </Link>
+              </>
+            ) : null}
             {onMarket ? " · On market" : " · Off market"}
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl text-white leading-[1.08] max-w-3xl">
@@ -209,6 +239,59 @@ export default async function WestportParcelPage({
           <p className="mt-3 font-mono text-sm text-white/70">
             {property.addressFull}
           </p>
+          <div className="mt-6 max-w-xl rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-4">
+            <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
+              Owner of record
+            </p>
+            <p className="mt-1 font-serif text-xl sm:text-2xl text-white leading-snug">
+              {property.ownerDisplayName ?? "—"}
+            </p>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+                  Mailing address
+                </dt>
+                <dd className="mt-0.5 font-mono text-sm text-white/85 leading-relaxed">
+                  {property.ownerMailingAddress ?? "Pending Field Card"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+                  Last sold
+                </dt>
+                <dd className="mt-0.5 font-mono text-sm text-white/85 tabular-nums">
+                  {property.purchaseDate ? (
+                    <VisionDeedHistoryPopout
+                      label={[
+                        `Bought ${property.purchaseDate}`,
+                        property.lastSoldPrice != null
+                          ? formatVisionMoney(property.lastSoldPrice)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      addressLabel={property.street}
+                      ownerName={property.ownerDisplayName}
+                      mailingAddress={property.ownerMailingAddress}
+                      soldLabel={[
+                        `Bought ${property.purchaseDate}`,
+                        property.lastSoldPrice != null
+                          ? formatVisionMoney(property.lastSoldPrice)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      rows={property.deedHistory}
+                      parcelHref={westportParcelHref(property.visionPid)}
+                      tone="dark"
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </div>
           <p className="mt-4 font-mono text-2xl text-gold tabular-nums">
             {property.price.value != null
               ? fmtMoney(property.price.value)
@@ -296,20 +379,38 @@ export default async function WestportParcelPage({
                 format={(v) => formatVisionMoney(Number(v)) ?? "—"}
               />
               <FieldRow
-                label="Last sale"
+                label={
+                  property.lastSalePrice.value === 0 ? "Last quitclaim" : "Last sale"
+                }
                 field={property.lastSalePrice}
-                format={(v) => formatVisionMoney(Number(v)) ?? "—"}
+                format={(v) =>
+                  Number(v) === 0
+                    ? "No consideration"
+                    : formatVisionMoney(Number(v)) ?? "—"
+                }
               />
-              <FieldRow label="Sale date" field={property.lastSaleDate} />
+              <FieldRow
+                label={
+                  property.lastSalePrice.value === 0
+                    ? "Quitclaim date"
+                    : "Sale date"
+                }
+                field={property.lastSaleDate}
+              />
               <FieldRow label="Book / page" field={property.lastSaleBookPage} />
               <FieldRow label="Owner" field={property.ownerName} />
             </dl>
 
-            <h2 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2">
+            <h2
+              id={VISION_SALES_HISTORY_ID}
+              className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold mb-2 scroll-mt-24"
+            >
               Sales history
             </h2>
             <p className="mb-3 font-mono text-[10px] tracking-[0.06em] text-slate/50">
-              Vision Ownership History — each transfer, not just the current owner.
+              Vision Ownership History. Last sold is the last deed with
+              consideration. A $0 / instrument 29 row is a quitclaim — name(s)
+              on record without warranty — not a sale.
             </p>
             <div className="mb-10">
               <SalesHistoryTable rows={card.ownership} />
@@ -385,7 +486,12 @@ export default async function WestportParcelPage({
                         {sib.street}
                       </span>
                       <span className="font-mono text-[10px] text-slate/60">
-                        {[sib.mblu ? `MBLU ${sib.mblu}` : `PID ${sib.visionPid}`, sib.ownerName]
+                        {[
+                          sib.mblu
+                            ? `MBLU ${sib.mblu}`
+                            : `PID ${sib.visionPid}`,
+                          sib.ownerName,
+                        ]
                           .filter(Boolean)
                           .join(" · ")}
                       </span>

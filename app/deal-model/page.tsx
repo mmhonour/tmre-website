@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
 
 export const metadata = {
   title: "The Deal Model — TMRE",
@@ -30,7 +30,8 @@ const pillars = [
   },
 ];
 
-export default function DealModelPage() {
+export default async function DealModelPage() {
+  const townsLabel = await getActiveCoverageTownsLabel();
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
@@ -43,7 +44,7 @@ export default function DealModelPage() {
             The <span className="italic gold-shimmer">deal model.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-2xl leading-relaxed animate-fade-up-delay-1">
-            An abstract framework for ranking active listings in {TMRE_TOWNS_LABEL} — built to
+            An abstract framework for ranking active listings in {townsLabel} — built to
             answer one question: <em className="text-white/85 not-italic">where should you look first?</em>
           </p>
         </div>

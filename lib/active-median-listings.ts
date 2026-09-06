@@ -93,6 +93,7 @@ function mapAndFilter(
       address: l.address.street || l.address.full,
       price: l.price,
       closedPrice: null,
+      originalListPrice: null,
       listDate: l.listDate ?? null,
       dom: l.calculated.daysOnMarket,
       sqft: l.sqft,

@@ -222,7 +222,7 @@ export function describeStartupProcess(): {
           title: "Repeat modified-since sync (Lane 1)",
           timing: `every ${Math.round(latestIntervalMs / 60_000)} min`,
           detail:
-            "A due pull is enqueued on sync_queue by whoever notices — the Railway sweep, the Netlify */30 cron, or the EventBridge ingress — and the Railway runner (MLS_SYNC_SERVICE=1) claims it, forks a child, and pulls RETS → Neon with postHooks:false under a kill budget, stamping End + last_mls_sync_heartbeat before queueing Netlify sideWorkOnly for warm. Netlify sync-listings only runs the pull itself when the row has sat unclaimed long enough to prove the runner is gone. See Syncs → Dashboard ownership lanes.",
+            "A due pull is enqueued on sync_queue by whoever notices — the Railway sweep, the Netlify */30 cron, or the EventBridge ingress — and the Railway runner (MLS_SYNC_SERVICE=1) claims it into one of up to three child slots (MLS_SYNC_MAX_CHILDREN), forks a child, and pulls RETS → Neon with postHooks:false under a kill budget. Stats / Edge / CAMA can occupy the other slots at the same time. Same job cannot run twice. Stamps End + last_mls_sync_heartbeat before queueing Netlify sideWorkOnly for warm. Netlify sync-listings only runs the pull itself when the row has sat unclaimed long enough to prove the runner is gone. See Syncs → Dashboard ownership lanes.",
           status: latestSyncEnabled ? "active" : "skipped",
           statusLabel: latestSyncEnabled ? "Running" : "Disabled",
         },
@@ -340,7 +340,7 @@ export function describeStartupProcess(): {
           title: "Rebuild @ 2:00 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "rebuildAllListingEdgeScores(): zip benchmarks, layout, condition (remarks + cached finish-quality) into listing_edge_scores. Netlify */30 thin cron sync-listing-edge-scores + edge-scores Configure cadence, gated on last_listing_edge_scores (not Goldilocks End). Skips when Pause is checked on Edge scores (3b).",
+            "rebuildAllListingEdgeScores(): zip benchmarks, layout, condition (remarks + cached finish-quality) into listing_edge_scores. The Railway 5-min sweep and the Netlify thin */30 both enqueue on sync_queue at the configured wall-clock slot; the runner claims one row into a forked child under Configure → Edge scores → Budget. The Netlify worker is stranded-row rescue only — the function→function hop is refused with HTTP 429. Gated on last_listing_edge_scores (not Goldilocks End). Skips when Pause is checked on Edge scores (3b).",
           status: edgeScoreRebuildEnabled ? "scheduled" : "skipped",
           statusLabel: edgeScoreRebuildEnabled ? "Armed" : "Disabled",
         },
@@ -381,7 +381,7 @@ export function describeStartupProcess(): {
           title: "Chunked crawl @ 1:30 AM Monday America/New_York",
           timing: "weekly",
           detail:
-            "syncVisionAddresses(): Streets→Parcel Field Card parse → Neon vision_addresses.field_card JSON + R2 HTML pointer; full fill then fingerprint incremental; then backfillVisionListingLinks() (lib/vision-listing-match.ts: zip strip, street type/compass, name words, exact key, trailing street type, unique MBLU; 1 PID stamps every listing at that key). Same join: npm run match:vision-listings. Netlify thin sync-vision-addresses → worker. Skips when Pause is checked on Vision addresses (GIS).",
+            "syncVisionAddresses(): for every town in VISION_GIS_TOWNS, fillMissingVisionStreetIndex() then fillMissingVisionStreetParcels() (letter pages + house lists; does not move the Field Card cursor). Adding a town is enough — if any town is still missing letters, houses, or street-address owners (vision_street_parcels PID with no vision_addresses.owner_name), the Railway 10-min sweep (and the thin cron) enqueue without waiting for the weekly slot or Admin Sync now (visionGisNeedsCatchUp). Then Field Cards for those missing-owner PIDs, then the letter/street parcel walk for the current crawl town → Neon vision_addresses.field_card JSON + owner_name + R2 HTML pointer; full fill then fingerprint incremental; then backfillVisionListingLinks(). Pause still skips the job.",
           status: visionAddressSyncEnabled ? "scheduled" : "skipped",
           statusLabel: visionAddressSyncEnabled ? "Armed" : "Disabled",
         },
@@ -482,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Open houses and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA) and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -527,6 +527,24 @@ export function describeStartupProcess(): {
         timing: "1st of month ~10:00 UTC",
         detail:
           "syncAllTmreZipBoundaries() / Netlify sync-zip-boundaries. Skips when Pause is checked on Zip boundary maps (Database tab). Maps read GET /api/zip-boundaries.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
+
+  lanes.push({
+    id: "cama-tax",
+    title: "Property tax history (CT CAMA)",
+    subtitle:
+      "data.ct.gov assessments × OPM mill rates → historical listing_tax_history years",
+    steps: [
+      {
+        id: "cama-tax-monthly",
+        title: "Monthly CAMA → listing_tax_history",
+        timing: "30-min sweep → monthly ~03:30 ET (Configure)",
+        detail:
+            "syncCtCamaTaxHistory(). The Railway 30-min sweep and the Netlify thin */30 (sync-cama-tax) both enqueue on sync_queue at the configured monthly slot; never-finished is due immediately so a job that landed mid-month does not wait until the 1st. The runner claims one row into a forked child under Configure → Property tax history → Budget. If that row sits unclaimed and the runner heartbeat is stale, sync-cama-tax-worker runs the rebuild on Netlify. Admin Sync now does the same rescue immediately. Per town: one request per CAMA vintage (2025/2024/2023/2022) plus the OPM mill rate table, matched to listings by vision_pid where Vision runs and by normalised street address elsewhere, then assessment ÷ 1000 × mill rate per fiscal year. Only years before the current fiscal year are written — the MLS feed owns the current year and incremental sync rewrites it every half hour, so computed rows never contest it. Norwalk is skipped: it bills through six numbered taxing districts and the published town-proper rate is not applicable per parcel. Stamps cama_tax_history_synced_at.",
         status: "scheduled",
         statusLabel: "Cron",
       },

@@ -13,6 +13,10 @@ describe('isSyncHistorySkipMessage', () => {
       true,
     )
     assert.equal(
+      isSyncHistorySkipMessage('Edge scores queue failed — HTTP 429'),
+      true,
+    )
+    assert.equal(
       isSyncHistorySkipMessage(
         'skipped — Netlify rate limited (HTTP 429); not retrying this window',
       ),

@@ -14,23 +14,28 @@ import {
   getMarketPulseThemeFresh,
   marketPulseThemeCssVars,
 } from "@/lib/page-theme-config";
-import { TMRE_CORE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
+import { MARKET_PULSE_JOIN_BRIEF_ID } from "@/lib/market-pulse-defaults";
 
 export const dynamic = "force-dynamic";
 /** Commercial tab hits Neon for Active + recent Closed; keep under Netlify's SSR budget. */
 export const maxDuration = 26;
 
-export const metadata: Metadata = {
-  title: "Market Pulse",
-  description: `TMRE Market Pulse — live web preview of the Monday market brief for ${TMRE_CORE_TOWNS_LABEL}, CT: months supply, inventory, and Deal of the Week.`,
-  alternates: { canonical: "/market-pulse" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const townsLabel = await getActiveCoverageTownsLabel();
+  return {
+    title: "Market Pulse",
+    description: `TMRE Market Pulse — live web preview of the Monday market brief for ${townsLabel}, CT: months supply, inventory, and Deal of the Week.`,
+    alternates: { canonical: "/market-pulse" },
+  };
+}
 
 export default async function MarketPulsePage() {
-  const [snapshot, theme, digest] = await Promise.all([
+  const [snapshot, theme, digest, townsLabel] = await Promise.all([
     buildMarketDigestSnapshot(),
     getMarketPulseThemeFresh(),
     getMarketDigestConfigFresh(),
+    getActiveCoverageTownsLabel(),
   ]);
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -52,7 +57,7 @@ export default async function MarketPulsePage() {
     <>
       <MarketPulseHero
         etDate={etDate}
-        townsLabel={TMRE_CORE_TOWNS_LABEL}
+        townsLabel={townsLabel}
         lastEmailDate={lastEmailDate}
         nextEmailDate={nextEmailDate}
       />
@@ -67,7 +72,10 @@ export default async function MarketPulsePage() {
           </div>
         </section>
 
-        <section className="relative py-14 lg:py-20 overflow-hidden navy-gradient">
+        <section
+          id={MARKET_PULSE_JOIN_BRIEF_ID}
+          className="relative scroll-mt-24 py-14 lg:py-20 overflow-hidden navy-gradient"
+        >
           <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
           <div className="relative mx-auto max-w-3xl px-6 lg:px-10 text-center">
             <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-4">

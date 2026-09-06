@@ -11,9 +11,11 @@ import {
   addressMatchKeyLoose,
   compactMblu,
 } from '@/lib/vision-listing-match'
-import type {
-  VisionFieldCardJson,
-  VisionParcelParse,
+import {
+  ownerDisplayNameFromFields,
+  ownerMailingAddressFromFields,
+  type VisionFieldCardJson,
+  type VisionParcelParse,
 } from '@/lib/vision-gis-parse'
 
 let visionAddressesReady = false
@@ -41,6 +43,7 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             state                    text,
             zip                      text,
             owner_name               text,
+            owner_mailing_address    text,
             assessed_value           integer,
             appraisal_value          integer,
             building_count           integer,
@@ -100,6 +103,55 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             ADD COLUMN IF NOT EXISTS field_card jsonb
         `)
         await query(`
+          ALTER TABLE vision_addresses
+            ADD COLUMN IF NOT EXISTS owner_mailing_address text
+        `)
+        await query(`
+          UPDATE vision_addresses v
+             SET owner_mailing_address = sub.mailing
+            FROM (
+              SELECT v2.town, v2.vision_pid,
+                     NULLIF(
+                       btrim(string_agg(btrim(f->>'value'), ', ' ORDER BY f->>'label')),
+                       ''
+                     ) AS mailing
+                FROM vision_addresses v2
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  coalesce(v2.field_card->'fields', '[]'::jsonb)
+                ) f
+               WHERE (v2.owner_mailing_address IS NULL
+                      OR btrim(v2.owner_mailing_address) = '')
+                 AND f->>'label' ~* '^owner address'
+                 AND btrim(coalesce(f->>'value', '')) <> ''
+               GROUP BY v2.town, v2.vision_pid
+            ) sub
+           WHERE v.town = sub.town
+             AND v.vision_pid = sub.vision_pid
+             AND (v.owner_mailing_address IS NULL
+                  OR btrim(v.owner_mailing_address) = '')
+        `)
+        await query(`
+          UPDATE vision_addresses v
+             SET owner_name = btrim(
+               regexp_replace(btrim(v.owner_name), '\\s*(&|AND)\\s*$', '', 'i')
+               || ' & ' || sub.co
+             )
+            FROM (
+              SELECT v2.town, v2.vision_pid,
+                     NULLIF(btrim(f->>'value'), '') AS co
+                FROM vision_addresses v2
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  coalesce(v2.field_card->'fields', '[]'::jsonb)
+                ) f
+               WHERE f->>'label' ~* '^co-owner$'
+            ) sub
+           WHERE v.town = sub.town
+             AND v.vision_pid = sub.vision_pid
+             AND sub.co IS NOT NULL
+             AND v.owner_name ~* '(&|AND)\\s*$'
+             AND lower(v.owner_name) NOT LIKE '%' || lower(sub.co) || '%'
+        `)
+        await query(`
           CREATE INDEX IF NOT EXISTS idx_vision_addr_field_card_gin
             ON vision_addresses USING gin (field_card)
         `)
@@ -108,6 +160,36 @@ export async function ensureVisionAddressesTable(): Promise<void> {
             ON vision_addresses
             USING gin (to_tsvector('simple', coalesce(field_card->>'searchText', '')))
         `)
+        try {
+          await query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+          await query(`
+            ALTER TABLE vision_addresses
+              ADD COLUMN IF NOT EXISTS lookup_text text
+              GENERATED ALWAYS AS (
+                lower(
+                  trim(
+                    both FROM
+                      coalesce(vision_pid, '') || ' ' ||
+                      coalesce(account_number, '') || ' ' ||
+                      coalesce(mblu, '') || ' ' ||
+                      replace(replace(coalesce(mblu, ''), '/', ''), ' ', '') || ' ' ||
+                      coalesce(address_full, '') || ' ' ||
+                      coalesce(address_norm, '') || ' ' ||
+                      coalesce(street_no, '') || ' ' ||
+                      coalesce(street_name, '') || ' ' ||
+                      coalesce(owner_name, '') || ' ' ||
+                      coalesce(owner_mailing_address, '')
+                  )
+                )
+              ) STORED
+          `)
+          await query(`
+            CREATE INDEX IF NOT EXISTS idx_vision_addr_lookup_trgm
+              ON vision_addresses USING gin (lookup_text gin_trgm_ops)
+          `)
+        } catch (err) {
+          console.warn('[vision-addresses-repo] lookup_text trigram index skipped', err)
+        }
         visionAddressesReady = true
       } catch (err) {
         visionAddressesReady = false
@@ -151,16 +233,16 @@ export async function upsertVisionAddress(
     INSERT INTO vision_addresses (
       town, vision_pid, account_number, mblu, use_code, use_code_description,
       address_full, address_norm, street_no, street_name, city, state, zip,
-      owner_name, assessed_value, appraisal_value, building_count, year_built,
+      owner_name, owner_mailing_address, assessed_value, appraisal_value, building_count, year_built,
       living_area_sqft, beds, full_baths, half_baths, total_rooms, style, model,
       acres, zoning, last_sale_price, last_sale_date, last_sale_book_page,
       photo_url, parcel_url, field_card_r2_key, field_card_content_type,
       field_card_scraped_at, content_fingerprint, source_host, scraped_at, updated_at,
-      field_card
+      field_card, owner_mailing_address
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
       $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
-      $35,$36,$37,$38,$39,$40::jsonb
+      $35,$36,$37,$38,$39,$40::jsonb, $43
     )
     ON CONFLICT (town, vision_pid) DO UPDATE SET
       account_number = EXCLUDED.account_number,
@@ -175,6 +257,7 @@ export async function upsertVisionAddress(
       state = EXCLUDED.state,
       zip = COALESCE(EXCLUDED.zip, vision_addresses.zip),
       owner_name = EXCLUDED.owner_name,
+      owner_mailing_address = EXCLUDED.owner_mailing_address,
       assessed_value = EXCLUDED.assessed_value,
       appraisal_value = EXCLUDED.appraisal_value,
       building_count = EXCLUDED.building_count,
@@ -257,6 +340,7 @@ export async function upsertVisionAddress(
       JSON.stringify(parsed.fieldCard),
       opts.rewriteBlob,
       opts.changed,
+      parsed.ownerMailingAddress,
     ],
   )
 }
@@ -267,11 +351,20 @@ export async function persistVisionFieldCardJson(
   fieldCard: VisionFieldCardJson,
 ): Promise<void> {
   await ensureVisionAddressesTable()
+  const ownerName = ownerDisplayNameFromFields(fieldCard.fields)
   await execute(
     `UPDATE vision_addresses
-        SET field_card = $3::jsonb
+        SET field_card = $3::jsonb,
+            owner_mailing_address = COALESCE($4, owner_mailing_address),
+            owner_name = COALESCE($5, owner_name)
       WHERE town = $1 AND vision_pid = $2`,
-    [town, visionPid, JSON.stringify(fieldCard)],
+    [
+      town,
+      visionPid,
+      JSON.stringify(fieldCard),
+      ownerMailingAddressFromFields(fieldCard.fields),
+      ownerName,
+    ],
   )
 }
 
@@ -711,6 +804,7 @@ export type VisionAddressRecord = {
   state: string | null
   zip: string | null
   ownerName: string | null
+  ownerMailingAddress: string | null
   assessedValue: number | null
   appraisalValue: number | null
   yearBuilt: number | null
@@ -750,6 +844,7 @@ type VisionAddressSqlRow = {
   state: string | null
   zip: string | null
   owner_name: string | null
+  owner_mailing_address: string | null
   assessed_value: number | string | null
   appraisal_value: number | string | null
   year_built: number | string | null
@@ -814,6 +909,7 @@ function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
     state: row.state,
     zip: row.zip,
     ownerName: row.owner_name,
+    ownerMailingAddress: row.owner_mailing_address?.trim() || null,
     assessedValue: numOrNull(row.assessed_value),
     appraisalValue: numOrNull(row.appraisal_value),
     yearBuilt: numOrNull(row.year_built),
@@ -842,12 +938,24 @@ function mapVisionAddressRow(row: VisionAddressSqlRow): VisionAddressRecord {
 const VISION_SELECT = `
   town, vision_pid, account_number, mblu, use_code, use_code_description,
   address_full, address_norm, street_no, street_name, city, state, zip,
-  owner_name, assessed_value, appraisal_value, year_built, living_area_sqft,
+  owner_name, owner_mailing_address, assessed_value, appraisal_value, year_built, living_area_sqft,
   beds, full_baths, half_baths, style, acres, zoning,
   last_sale_price, last_sale_date, last_sale_book_page,
   building_count, total_rooms, model,
   photo_url, parcel_url, listing_id, mls_id,
   field_card, field_card_r2_key
+`
+
+/** Typeahead — skip field_card jsonb. */
+const VISION_LOOKUP_SELECT = `
+  town, vision_pid, account_number, mblu, use_code, use_code_description,
+  address_full, address_norm, street_no, street_name, city, state, zip,
+  owner_name, owner_mailing_address, assessed_value, appraisal_value, year_built, living_area_sqft,
+  beds, full_baths, half_baths, style, acres, zoning,
+  last_sale_price, last_sale_date, last_sale_book_page,
+  building_count, total_rooms, model,
+  photo_url, parcel_url, listing_id, mls_id,
+  NULL::jsonb AS field_card, field_card_r2_key
 `
 
 export async function getVisionAddress(
@@ -877,7 +985,11 @@ export async function listVisionAddressesByNorm(
   return rows.map(mapVisionAddressRow)
 }
 
-/** Prefix on address_norm; street-name / address_full contains as fallback. No RETS. */
+/** Prefix / token haystack search. No Field Card JSON, no RETS. */
+function likeSafe(raw: string): string {
+  return raw.toLowerCase().replace(/[%_]/g, '')
+}
+
 export async function searchVisionAddresses(opts: {
   town: string
   q: string
@@ -888,39 +1000,66 @@ export async function searchVisionAddresses(opts: {
   if (q.length < 2) return []
   const limit = Math.min(Math.max(opts.limit ?? 12, 1), 24)
   const street = normalizeStreetLine(q)
-  const prefix = `${street}%`
-  const containsPatterns = [
+  const escaped = likeSafe(q)
+  const tokens = escaped.split(/\s+/).filter((t) => t.length >= 2)
+  if (tokens.length === 0) return []
+  const tokenPatterns = tokens.map((t) => `%${t}%`)
+  const phrases = [
     ...new Set(
-      [q, street, ...streetSearchVariants(q)].map(
-        (v) => `%${v.toLowerCase().replace(/[%_]/g, '')}%`,
-      ),
+      [escaped, street, ...streetSearchVariants(q)]
+        .map((v) => likeSafe(v))
+        .filter((v) => v.length >= 2)
+        .map((v) => `%${v}%`),
     ),
   ]
-  const streetLine = `${q.replace(/[%_]/g, '')}%`
+  const prefix = `${street}%`
+  const ownerPrefix = `${escaped}%`
+  const pidExact = /^\d{2,}$/.test(q) ? q : null
 
-  const extraContains = containsPatterns
-    .map((_, i) => {
-      const p = `$${i + 5}`
-      return `(lower(coalesce(address_full, '')) LIKE ${p}
-        OR lower(coalesce(street_name, '')) LIKE ${p}
-        OR lower(coalesce(field_card->>'searchText', '')) LIKE ${p})`
-    })
-    .join(' OR ')
+  const args = [
+    opts.town,
+    pidExact,
+    tokenPatterns,
+    phrases,
+    prefix,
+    ownerPrefix,
+    limit,
+  ]
 
-  const rows = await query<VisionAddressSqlRow>(
-    `SELECT ${VISION_SELECT} FROM vision_addresses
+  const sql = (from: string) =>
+    `SELECT ${VISION_LOOKUP_SELECT} FROM vision_addresses
       WHERE town = $1
         AND (
-          address_norm LIKE $2
-          OR lower(trim(coalesce(street_no, '') || ' ' || coalesce(street_name, ''))) LIKE $3
-          OR ${extraContains}
+          ($2::text IS NOT NULL AND vision_pid = $2)
+          OR ${from} LIKE ALL($3::text[])
+          OR ${from} LIKE ANY($4::text[])
         )
       ORDER BY
-        CASE WHEN address_norm LIKE $2 THEN 0 ELSE 1 END,
+        CASE
+          WHEN $2::text IS NOT NULL AND vision_pid = $2 THEN 0
+          WHEN address_norm LIKE $5 THEN 1
+          WHEN lower(coalesce(owner_name, '')) LIKE $6 THEN 2
+          ELSE 3
+        END,
         address_full NULLS LAST,
         vision_pid
-      LIMIT $4`,
-    [opts.town, prefix, streetLine.toLowerCase(), limit, ...containsPatterns],
-  )
-  return rows.map(mapVisionAddressRow)
+      LIMIT $7`
+
+  try {
+    const rows = await query<VisionAddressSqlRow>(sql('lookup_text'), args)
+    return rows.map(mapVisionAddressRow)
+  } catch (err) {
+    console.warn('[vision-addresses-repo] lookup_text search failed; using columns', err)
+    const fallbackHaystack = `lower(
+      coalesce(vision_pid, '') || ' ' ||
+      coalesce(account_number, '') || ' ' ||
+      coalesce(mblu, '') || ' ' ||
+      coalesce(address_full, '') || ' ' ||
+      coalesce(street_name, '') || ' ' ||
+      coalesce(owner_name, '') || ' ' ||
+      coalesce(owner_mailing_address, '')
+    )`
+    const rows = await query<VisionAddressSqlRow>(sql(fallbackHaystack), args)
+    return rows.map(mapVisionAddressRow)
+  }
 }

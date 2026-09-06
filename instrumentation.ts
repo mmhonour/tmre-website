@@ -373,6 +373,7 @@ export async function register() {
     if (edgeScoreRebuildEnabled && allowListingsSync) {
       const { msUntilNextMonday2amEt } = await import('./lib/listing-edge-schedule')
       const { rebuildAllListingEdgeScores } = await import('./lib/listing-edge-score')
+      const { isSyncQueueRunnerJob } = await import('./lib/sync-queue-shared')
       let edgeScoreRebuildRunning = false
       const scheduleEdgeScoreRebuild = () => {
         const waitMs = msUntilNextMonday2amEt()
@@ -380,6 +381,15 @@ export async function register() {
           `[listing-edge-scores] next weekly rebuild in ${Math.round(waitMs / 60_000)} minutes (Mon 2am ET)`,
         )
         setTimeout(() => {
+          // Same stand-down as property-addresses: Edge is a sync-queue job now,
+          // so a Next.js process must not run a second copy in its own heap.
+          if (isSyncQueueRunnerJob('edge-scores')) {
+            console.info(
+              '[listing-edge-scores] weekly rebuild skipped — the sync runner owns edge-scores',
+            )
+            scheduleEdgeScoreRebuild()
+            return
+          }
           if (isScheduledSyncJobPaused('edge-scores')) {
             console.info(
               '[listing-edge-scores] weekly rebuild skipped — edge-scores paused by admin',

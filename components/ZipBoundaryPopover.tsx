@@ -11,8 +11,10 @@ import {
   TMRE_TOWNS,
   type TmreTown,
   townForZip,
+  townHasMultipleZips,
   zipsForTown,
 } from "@/lib/tmre-towns";
+import { ZIP_CENTERS } from "@/lib/tmre-geo";
 
 type Coord = [number, number];
 type Ring = Coord[];
@@ -34,6 +36,49 @@ export async function loadZipBoundariesForZips(
   return fetchBoundariesBatch(zips);
 }
 
+/** Load every mappable TMRE ZCTA via the dedicated bundle (All Towns overview). */
+export async function loadTmreZipBoundaries(): Promise<Map<string, Ring[]>> {
+  const all = boundaryZipsForAllTowns();
+  const out = new Map<string, Ring[]>();
+  const missing: string[] = [];
+  for (const zip of all) {
+    const hit = cache.get(zip);
+    if (hit?.length) out.set(zip, hit);
+    else missing.push(zip);
+  }
+  if (missing.length === 0) return out;
+
+  // Honor the API's no-store on an incomplete bundle. force-cache pinned a
+  // 06890-only Fairfield answer and Intelligence kept drawing one zip.
+  const res = await fetch(`/api/zip-boundaries?bundle=tmre`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    boundaries?: Record<string, Ring[]>;
+    error?: string;
+  };
+  if (data.error) throw new Error(data.error);
+
+  for (const [zip, rings] of Object.entries(data.boundaries ?? {})) {
+    if (Array.isArray(rings) && rings.length > 0) {
+      cache.set(zip, rings);
+      out.set(zip, rings);
+    }
+  }
+  const stillMissing = all.filter((zip) => !(out.get(zip)?.length));
+  if (stillMissing.length > 0) {
+    const extra = await fetchBoundariesBatch(stillMissing);
+    for (const [zip, rings] of extra) {
+      if (rings.length) {
+        cache.set(zip, rings);
+        out.set(zip, rings);
+      }
+    }
+  }
+  return out;
+}
+
 async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string, Ring[]>> {
   const out = new Map<string, Ring[]>();
   const missing: string[] = [];
@@ -47,7 +92,7 @@ async function fetchBoundariesBatch(zips: readonly string[]): Promise<Map<string
   if (missing.length === 0) return out;
 
   const res = await fetch(`/api/zip-boundaries?zips=${missing.join(",")}`, {
-    cache: "force-cache",
+    cache: missing.length > 1 ? "no-store" : "force-cache",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = (await res.json()) as {
@@ -88,22 +133,12 @@ export function prefetchTownBoundaries(town: TmreTown): void {
   ]);
 }
 
-/** Prefetch all TMRE town zips (Intelligence “All Towns” hover). */
+/** Prefetch all TMRE town zips (Intelligence “All Towns” hover / click). */
 export function prefetchAllTownBoundaries(): void {
   if (boundaryZipsForAllTowns().every((zip) => cache.has(zip))) return;
-  void fetch(`/api/zip-boundaries?bundle=tmre`, { cache: "force-cache" })
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        boundaries?: Record<string, Ring[]>;
-      };
-      for (const [zip, rings] of Object.entries(data.boundaries ?? {})) {
-        if (Array.isArray(rings) && rings.length > 0) cache.set(zip, rings);
-      }
-    })
-    .catch(() => {
-      prefetchZipBoundaries(boundaryZipsForAllTowns());
-    });
+  void loadTmreZipBoundaries().catch(() => {
+    prefetchZipBoundaries(boundaryZipsForAllTowns());
+  });
 }
 
 function ringBBoxCenter(rings: Ring[]): Coord | null {
@@ -129,6 +164,7 @@ function projectMultipleZips(
   w: number,
   h: number,
   pad = 12,
+  extraPoints: Coord[] = [],
 ): {
   layers: { zip: string; paths: string[]; role: "highlight" | "context" }[];
   highlightCx: number;
@@ -144,7 +180,7 @@ function projectMultipleZips(
   } | null;
 } {
   const allRings = zipBoundaries.flatMap((z) => z.rings);
-  if (allRings.length === 0) {
+  if (allRings.length === 0 && extraPoints.length === 0) {
     return {
       layers: [],
       highlightCx: w / 2,
@@ -164,6 +200,12 @@ function projectMultipleZips(
       if (lat < minLat) minLat = lat;
       if (lat > maxLat) maxLat = lat;
     }
+  }
+  for (const [lon, lat] of extraPoints) {
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
   }
 
   const scaleX = (w - pad * 2) / (maxLon - minLon || 1);
@@ -231,9 +273,17 @@ interface Props {
   highlightTown?: TmreTown;
   /** All TMRE town zips highlighted (gold) with town labels. */
   highlightAllTowns?: boolean;
+  /**
+   * When omitted the popover centres in the viewport — used on the phone
+   * when the town-pill row has not mounted yet.
+   */
   /** Other zips to show in grey behind the highlight (zip mode only). */
   contextZips?: readonly string[];
-  anchorEl: HTMLElement | null;
+  /**
+   * Pill / row to sit under. When omitted the popover centres in the
+   * viewport — the phone path when the town-pill row has not mounted yet.
+   */
+  anchorEl?: HTMLElement | null;
   /**
    * Open under this element (the filter row) when the viewport allows, so the
    * map never covers the pill or link that opened it.
@@ -289,10 +339,12 @@ export default function ZipBoundaryPopover({
     return contextZips.filter((z) => hasZctaBoundary(z) && !highlightZipSet.has(z));
   }, [highlightAllTowns, highlightTown, contextZips, highlightZipSet, zipFallbackTown]);
 
+  const includeNeighborContext = Boolean(onSelectTown);
+
   const loadKey = highlightAllTowns
     ? "all-towns"
     : highlightTown
-      ? `town:${highlightTown}`
+      ? `town:${highlightTown}:${includeNeighborContext ? "ctx" : "solo"}`
       : highlightZip
         ? `zip:${highlightZip}:${resolvedContextZips.join(",")}`
         : "";
@@ -325,28 +377,52 @@ export default function ZipBoundaryPopover({
   const [hoverTown, setHoverTown] = useState<TmreTown | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  const [box, setBox] = useState({ w: W, h: H });
   useEffect(() => {
-    if (!anchorEl) {
-      setPos(null);
-      return;
-    }
+    const sync = () => {
+      const coarse = window.matchMedia("(hover: none)").matches;
+      const w = coarse ? Math.min(window.innerWidth - 32, 260) : W;
+      const h = coarse ? 180 : H;
+      setBox({ w, h });
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
+
+  useEffect(() => {
     const update = () => {
-      const rect = anchorEl.getBoundingClientRect();
-      const popH = H + 48;
+      const popH = box.h + 48;
       const gap = 8;
-      // Preferred: clear of the pill row entirely, opening underneath the whole
-      // town/zip link list. Falls back to floating above the pill when the row
-      // sits too low for the map to fit below it.
+      const maxTop = Math.max(gap, window.innerHeight - popH - gap);
+      const left = Math.min(
+        Math.max(
+          gap,
+          anchorEl
+            ? anchorEl.getBoundingClientRect().left +
+                anchorEl.getBoundingClientRect().width / 2 -
+                box.w / 2
+            : (window.innerWidth - box.w) / 2,
+        ),
+        window.innerWidth - box.w - gap,
+      );
+      if (!anchorEl) {
+        // Pin under the intel chrome — never the middle of the listings.
+        setPos({
+          top: Math.min(72, maxTop),
+          left,
+          placeAbove: false,
+        });
+        return;
+      }
+      const rect = anchorEl.getBoundingClientRect();
       const belowTop = placeBelowEl
         ? placeBelowEl.getBoundingClientRect().bottom + gap
         : null;
-      const placeBelow =
-        belowTop != null && belowTop + popH + gap <= window.innerHeight;
-      const top = placeBelow ? belowTop! : Math.max(gap, rect.top - popH - gap);
-      const left = Math.min(
-        Math.max(gap, rect.left + rect.width / 2 - W / 2),
-        window.innerWidth - W - gap,
-      );
+      const placeBelow = belowTop != null && belowTop <= maxTop;
+      const top = placeBelow
+        ? belowTop!
+        : Math.min(Math.max(gap, rect.top - popH - gap), maxTop);
       setPos({ top, left, placeAbove: !placeBelow });
     };
     update();
@@ -356,7 +432,7 @@ export default function ZipBoundaryPopover({
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  }, [anchorEl, placeBelowEl]);
+  }, [anchorEl, placeBelowEl, box.h, box.w]);
 
   const onSettledRef = useRef(onSettled);
   useEffect(() => {
@@ -392,18 +468,24 @@ export default function ZipBoundaryPopover({
     }
 
     const bundled = boundaryBundleCache.get(loadKey);
-    if (bundled) {
+    const bundledComplete =
+      bundled != null &&
+      highlightZips.every((z) => (bundled.get(z)?.length ?? 0) > 0);
+    if (bundledComplete && bundled) {
       setBoundary({ status: "ready", byZip: bundled });
       return;
     }
 
-    const contextList = highlightAllTowns
-      ? []
-      : highlightTown
-        ? [...boundaryZipsForNeighborTowns(highlightTown)]
-        : zipFallbackTown
-          ? [...boundaryZipsForNeighborTowns(zipFallbackTown)]
-          : contextZips.filter((z) => hasZctaBoundary(z) && !highlightSet.has(z));
+    // Flash / tooltip (no town clicks) skips neighbors so a multi-zip town
+    // such as Fairfield frames to 06824+06825+06890 instead of one warm zip.
+    const contextList =
+      !includeNeighborContext || highlightAllTowns
+        ? []
+        : highlightTown
+          ? [...boundaryZipsForNeighborTowns(highlightTown)]
+          : zipFallbackTown
+            ? [...boundaryZipsForNeighborTowns(zipFallbackTown)]
+            : contextZips.filter((z) => hasZctaBoundary(z) && !highlightSet.has(z));
     const zipsToLoad = [
       ...highlightZips,
       ...contextList.filter((z) => !highlightSet.has(z)),
@@ -417,9 +499,12 @@ export default function ZipBoundaryPopover({
 
     const hasHighlight = (map: Map<string, Ring[]>) =>
       highlightZips.some((z) => (map.get(z)?.length ?? 0) > 0);
+    const hasAllHighlight = (map: Map<string, Ring[]>) =>
+      highlightZips.every((z) => (map.get(z)?.length ?? 0) > 0);
 
-    // Paint highlight immediately when any primary zip is already warm.
-    if (hasHighlight(byZip)) {
+    // Wait for every primary zip before painting. A single cached ring
+    // (Fairfield 06890) used to fill the popover and look like the whole town.
+    if (hasAllHighlight(byZip)) {
       setBoundary({ status: "ready", byZip: new Map(byZip) });
       if (byZip.size === zipsToLoad.length) {
         boundaryBundleCache.set(loadKey, new Map(byZip));
@@ -437,14 +522,18 @@ export default function ZipBoundaryPopover({
     const mergeZip = (zip: string, rings: Ring[]) => {
       if (cancelled || rings.length === 0) return;
       byZip.set(zip, rings);
-      setBoundary({ status: "ready", byZip: new Map(byZip) });
+      if (hasAllHighlight(byZip)) {
+        setBoundary({ status: "ready", byZip: new Map(byZip) });
+      }
     };
 
     void (async () => {
-      // Highlight first (one batched API call) so gold outlines paint before neighbors.
       if (highlightMissing.length > 0) {
         try {
-          const map = await fetchBoundariesBatch(highlightMissing);
+          const map =
+            highlightAllTowns || highlightZips.length > 1
+              ? await loadTmreZipBoundaries()
+              : await fetchBoundariesBatch(highlightMissing);
           for (const [zip, rings] of map) mergeZip(zip, rings);
         } catch {
           /* fall through — may still have partial cache */
@@ -455,6 +544,11 @@ export default function ZipBoundaryPopover({
       if (!hasHighlight(byZip)) {
         setBoundary({ status: "error" });
         return;
+      }
+      // Paint whatever highlight zips we have once the fetch has settled,
+      // even if a town is missing a ZCTA in the table.
+      if (!hasAllHighlight(byZip)) {
+        setBoundary({ status: "ready", byZip: new Map(byZip) });
       }
 
       if (contextMissing.length > 0) {
@@ -467,7 +561,9 @@ export default function ZipBoundaryPopover({
       }
 
       if (cancelled) return;
-      boundaryBundleCache.set(loadKey, new Map(byZip));
+      if (hasAllHighlight(byZip)) {
+        boundaryBundleCache.set(loadKey, new Map(byZip));
+      }
     })();
 
     return () => {
@@ -480,6 +576,7 @@ export default function ZipBoundaryPopover({
     highlightZip,
     zipFallbackTown,
     contextKey,
+    includeNeighborContext,
   ]);
 
   if (!pos || typeof document === "undefined") return null;
@@ -491,8 +588,24 @@ export default function ZipBoundaryPopover({
 
   const { layers, projection } =
     boundary.status === "ready"
-      ? projectMultipleZips(zipBoundaries, highlightZipSet, W, H)
+      ? projectMultipleZips(
+          zipBoundaries,
+          highlightZipSet,
+          box.w,
+          box.h,
+          12,
+          [...highlightZipSet]
+            .filter((zip) => !zipBoundaries.some((row) => row.zip === zip))
+            .flatMap((zip) => {
+              const center = ZIP_CENTERS[zip];
+              return center ? ([[center.lon, center.lat]] as Coord[]) : [];
+            }),
+        )
       : { layers: [], projection: null };
+
+  const labelZipsOnMap =
+    Boolean(highlightTown && townHasMultipleZips(highlightTown)) ||
+    Boolean(highlightAllTowns);
 
   const neighborLabels =
     (highlightTown || highlightAllTowns) &&
@@ -511,14 +624,17 @@ export default function ZipBoundaryPopover({
           .filter((entry): entry is { town: TmreTown; cx: number; cy: number } => entry != null)
       : [];
 
-  const zipLabels =
-    !isSingleZipHover &&
-    !highlightTown &&
-    !highlightAllTowns &&
+  const zipLabels: { zip: string; cx: number; cy: number }[] =
+    labelZipsOnMap &&
     boundary.status === "ready" &&
     projection
       ? zipBoundaries
-          .filter(({ zip }) => zip !== highlightZip)
+          .filter(({ zip }) => {
+            if (!highlightZipSet.has(zip)) return false;
+            if (highlightTown) return true;
+            const town = townForZip(zip);
+            return Boolean(town && townHasMultipleZips(town));
+          })
           .map(({ zip, rings }) => {
             const center = ringBBoxCenter(rings);
             if (!center) return null;
@@ -528,7 +644,46 @@ export default function ZipBoundaryPopover({
             return { zip, cx, cy };
           })
           .filter((entry): entry is { zip: string; cx: number; cy: number } => entry != null)
-      : [];
+      : !isSingleZipHover &&
+          !highlightTown &&
+          !highlightAllTowns &&
+          boundary.status === "ready" &&
+          projection
+        ? zipBoundaries
+            .filter(({ zip }) => zip !== highlightZip)
+            .map(({ zip, rings }) => {
+              const center = ringBBoxCenter(rings);
+              if (!center) return null;
+              const [lon, lat] = center;
+              const cx =
+                projection.offsetX + (lon - projection.minLon) * projection.scale;
+              const cy =
+                projection.offsetY + (projection.maxLat - lat) * projection.scale;
+              return { zip, cx, cy };
+            })
+            .filter(
+              (entry): entry is { zip: string; cx: number; cy: number } =>
+                entry != null,
+            )
+        : [];
+
+  if (labelZipsOnMap && projection) {
+    const seen = new Set(zipLabels.map((row) => row.zip));
+    for (const zip of highlightZipSet) {
+      if (seen.has(zip)) continue;
+      const center = ZIP_CENTERS[zip];
+      if (!center) continue;
+      zipLabels.push({
+        zip,
+        cx:
+          projection.offsetX +
+          (center.lon - projection.minLon) * projection.scale,
+        cy:
+          projection.offsetY +
+          (projection.maxLat - center.lat) * projection.scale,
+      });
+    }
+  }
 
   const contextLayers = layers.filter((l) => l.role === "context");
   const highlightLayers = layers.filter((l) => l.role === "highlight");
@@ -558,7 +713,7 @@ export default function ZipBoundaryPopover({
       style={{
         top: pos.top,
         left: pos.left,
-        width: W,
+        width: box.w,
         // Above sticky Latest/Intel filter chrome (z-10) and status pills.
         zIndex: 11000,
         transitionDuration: "220ms",
@@ -577,7 +732,7 @@ export default function ZipBoundaryPopover({
       } ${exiting ? "opacity-0" : "opacity-100"}`}
     >
       <div className="rounded-2xl bg-white border border-charcoal/10 shadow-2xl shadow-black/25 overflow-hidden">
-        <div className="relative bg-slate-50" style={{ height: H }}>
+        <div className="relative bg-slate-50" style={{ height: box.h }}>
           {badgeLabel ? (
             <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
               <span className="font-mono text-[10px] font-semibold tracking-[0.12em] uppercase text-navy/90 bg-white/90 backdrop-blur-sm rounded-md px-2 py-1 border border-charcoal/10 shadow-sm">
@@ -585,7 +740,10 @@ export default function ZipBoundaryPopover({
               </span>
             </div>
           ) : null}
-          {primaryZips.length > 0 && !isSingleZipHover && boundary.status === "ready" ? (
+          {primaryZips.length > 0 &&
+          !isSingleZipHover &&
+          !labelZipsOnMap &&
+          boundary.status === "ready" ? (
             <div className="absolute bottom-2 right-2.5 z-10 pointer-events-none text-right">
               <div className="inline-flex flex-col items-end gap-0.5 rounded-md border border-charcoal/10 bg-white/90 px-2 py-1.5 shadow-sm backdrop-blur-sm">
                 {primaryZips.map((zip) => (
@@ -613,15 +771,15 @@ export default function ZipBoundaryPopover({
           )}
           {boundary.status === "ready" && (
             <svg
-              viewBox={`0 0 ${W} ${H}`}
-              width={W}
-              height={H}
+              viewBox={`0 0 ${box.w} ${box.h}`}
+              width={box.w}
+              height={box.h}
               aria-hidden={interactive ? undefined : true}
             >
               <pattern id={patternId} width="14" height="14" patternUnits="userSpaceOnUse">
                 <circle cx="1" cy="1" r="0.6" fill="rgba(15,23,42,0.08)" />
               </pattern>
-              <rect width={W} height={H} fill={`url(#${patternId})`} />
+              <rect width={box.w} height={box.h} fill={`url(#${patternId})`} />
 
               {contextLayers.flatMap((layer) =>
                 layer.paths.map((d, i) => (
@@ -694,7 +852,7 @@ export default function ZipBoundaryPopover({
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontFamily="monospace"
-                  fontSize="6.5"
+                  fontSize={labelZipsOnMap ? "8" : "6.5"}
                   fontWeight="600"
                   fill="rgba(15,23,42,0.88)"
                   letterSpacing="0.3"

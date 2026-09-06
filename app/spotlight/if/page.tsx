@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import SpotlightIfClient from "./SpotlightIfClient";
+import SpotlightShowcaseClient from "../SpotlightShowcaseClient";
 
 export const metadata = {
   title: "Spotlight If — TMRE",
@@ -9,7 +9,7 @@ export const metadata = {
 export default function SpotlightIfPage() {
   return (
     <Suspense fallback={null}>
-      <SpotlightIfClient />
+      <SpotlightShowcaseClient initialTab="if" />
     </Suspense>
   );
 }

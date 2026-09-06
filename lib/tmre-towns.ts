@@ -110,6 +110,71 @@ export function boundaryZipsForAllTowns(): readonly string[] {
   return [...ALL_TMRE_ZIPS].filter(hasZctaBoundary)
 }
 
+/**
+ * ZCTAs that frame the Intelligence deal-board map.
+ * All Towns always uses the full TMRE overview — a leftover zip must not
+ * collapse that to a single ring. A zip only frames the map when it belongs
+ * to the selected town.
+ */
+export function mapBoundZipsForScope(
+  town: TmreTown | 'All',
+  zip?: string | null,
+): readonly string[] {
+  if (town === 'All') return boundaryZipsForAllTowns()
+  const zipNorm = normalizeZip(zip)
+  if (zipNorm && hasZctaBoundary(zipNorm) && TOWN_ZIPS[town].includes(zipNorm)) {
+    return [zipNorm]
+  }
+  return boundaryZipsForTown(town)
+}
+
+/**
+ * Listing / comps map: draw every mappable zip in the town (Fairfield is
+ * 06824+06825+06890). The listing zip is only the blue highlight — it must
+ * not hide the rest of the town or leave comps sitting “outside” one ring.
+ */
+export function mapBoundZipsForListing(
+  townHint?: string | null,
+  postalCode?: string | null,
+): { boundZips: readonly string[]; highlightZip: string | null } {
+  const zip = normalizeZip(postalCode)
+  const town =
+    (townHint && isTmreTown(townHint) ? townHint : null) ?? townForZip(zip)
+  const boundZips = town
+    ? boundaryZipsForTown(town)
+    : zip && hasZctaBoundary(zip)
+      ? [zip]
+      : []
+  const highlightZip =
+    zip && hasZctaBoundary(zip)
+      ? zip
+      : boundZips[0] ?? null
+  return { boundZips, highlightZip }
+}
+
+/**
+ * Camera frame for a listing map. Multi-zip towns (Fairfield) use the home’s
+ * zip so the house sits in that ZCTA. One mappable zip = the town. The house
+ * is then centered at that zoom — a border lot shows half the zip / town.
+ */
+export function mapFrameZipsForListing(
+  townHint?: string | null,
+  postalCode?: string | null,
+): readonly string[] {
+  const { boundZips, highlightZip } = mapBoundZipsForListing(
+    townHint,
+    postalCode,
+  )
+  if (
+    boundZips.length > 1 &&
+    highlightZip &&
+    boundZips.includes(highlightZip)
+  ) {
+    return [highlightZip]
+  }
+  return boundZips
+}
+
 export function normalizeZip(postal: string | null | undefined): string | null {
   const zip = postal?.trim().slice(0, 5)
   return zip && /^\d{5}$/.test(zip) ? zip : null
@@ -244,10 +309,12 @@ export function formatTownList(towns: readonly string[]): string {
 
 export const TMRE_TOWNS_LABEL = formatTownList(TMRE_TOWNS)
 
-/** Legacy four-town subset used on homepage, footer, and layout copy. */
+/** @deprecated Public copy uses Admin → CT coverage via getActiveCoverageTownsLabel. */
 export const TMRE_CORE_TOWNS = ['Norwalk', 'Westport', 'Wilton', 'Fairfield'] as const
+/** @deprecated Use getActiveCoverageTownsLabel() / useCoverageTowns(). */
 export const TMRE_CORE_TOWNS_LABEL = formatTownList(TMRE_CORE_TOWNS)
 
-/** Properties page metadata subset. */
+/** @deprecated Public copy uses Admin → CT coverage via getActiveCoverageTownsLabel. */
 export const TMRE_PROPERTIES_TOWNS = ['Norwalk', 'Westport', 'Fairfield'] as const
+/** @deprecated Use getActiveCoverageTownsLabel() / useCoverageTowns(). */
 export const TMRE_PROPERTIES_TOWNS_LABEL = formatTownList(TMRE_PROPERTIES_TOWNS)

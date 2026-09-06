@@ -2,14 +2,16 @@
  * Queue drain + forked job supervision for the always-on mls-sync service.
  *
  * Two jobs used to share this process's heap, which is what OOM-killed the
- * container: the loser of that race was a `pending*` variable that the crash
- * then erased. Now the parent does nothing but claim rows from `sync_queue`,
- * fork a child per row, hold a deadline over it, and write the outcome back.
+ * container. Now the parent claims rows from `sync_queue`, forks a child per
+ * row, holds a deadline over it, and writes the outcome back.
+ *
+ * Up to MLS_SYNC_MAX_CHILDREN (default 3) different jobs run at once. The same
+ * job_id still cannot run twice — that is a unique index on sync_queue. An
+ * Incremental pull can therefore overlap a stats rebuild and a CAMA fill.
  *
  * A child that blows its budget is killed and recorded as `timeout`. A child
  * that dies without reporting — OOM, container signal — is recorded as
- * `crashed`. Either way the row reaches a terminal state, so the next request
- * for that job is not blocked by a ghost.
+ * `crashed`. Either way the row reaches a terminal state.
  */
 
 import { fork, type ChildProcess } from 'node:child_process'
@@ -40,6 +42,24 @@ const QUEUE_HEARTBEAT_MS = 60_000
 /** Cadence for proving to Netlify that a queue-aware runner is on duty. */
 const DRAIN_HEARTBEAT_MS = 60_000
 
+export const MLS_SYNC_MAX_CHILDREN_DEFAULT = 3
+export const MLS_SYNC_MAX_CHILDREN_MIN = 1
+export const MLS_SYNC_MAX_CHILDREN_MAX = 4
+
+/** How many different jobs this process will supervise at once. */
+export function resolveMaxChildren(
+  raw: string | undefined | null = process.env.MLS_SYNC_MAX_CHILDREN,
+): number {
+  const text = (raw ?? '').trim()
+  if (!text) return MLS_SYNC_MAX_CHILDREN_DEFAULT
+  const n = Number(text)
+  if (!Number.isFinite(n)) return MLS_SYNC_MAX_CHILDREN_DEFAULT
+  return Math.min(
+    MLS_SYNC_MAX_CHILDREN_MAX,
+    Math.max(MLS_SYNC_MAX_CHILDREN_MIN, Math.round(n)),
+  )
+}
+
 /**
  * Optional heap cap for children. Setting this is what converts a container-wide
  * OOM kill into a single failed job: V8 aborts the child at the cap while the
@@ -50,33 +70,66 @@ function childHeapMb(): number | null {
   return Number.isFinite(raw) && raw >= 128 ? Math.floor(raw) : null
 }
 
+export type RunnerChild = {
+  jobId: string
+  queueId: number
+  pid: number | null
+  startedAt: string
+  deadlineAt: string | null
+}
+
+export type RunnerLastOutcome = {
+  jobId: string
+  outcome: string
+  ok: boolean
+  detail: string | null
+  finishedAt: string
+}
+
 export type RunnerState = {
-  /** The row a child is working on right now. */
+  children: RunnerChild[]
+  maxChildren: number
+  /** First live child — older /health clients still read one "current". */
   current: SyncQueueItem | null
   childPid: number | null
   childStartedAt: string | null
-  lastOutcome: {
-    jobId: string
-    outcome: string
-    ok: boolean
-    detail: string | null
-    finishedAt: string
-  } | null
+  lastOutcome: RunnerLastOutcome | null
 }
 
-const state: RunnerState = {
-  current: null,
-  childPid: null,
-  childStartedAt: null,
-  lastOutcome: null,
+type LiveChild = {
+  item: SyncQueueItem
+  pid: number | null
+  startedAt: string
 }
+
+const live = new Map<number, LiveChild>()
+let lastOutcome: RunnerLastOutcome | null = null
 
 export function readRunnerState(): RunnerState {
-  return { ...state }
+  const children: RunnerChild[] = [...live.values()].map((row) => ({
+    jobId: row.item.jobId,
+    queueId: row.item.id,
+    pid: row.pid,
+    startedAt: row.startedAt,
+    deadlineAt: row.item.deadlineAt,
+  }))
+  const first = [...live.values()][0] ?? null
+  return {
+    children,
+    maxChildren: resolveMaxChildren(),
+    current: first?.item ?? null,
+    childPid: first?.pid ?? null,
+    childStartedAt: first?.startedAt ?? null,
+    lastOutcome,
+  }
 }
 
 export function runnerIsBusy(): boolean {
-  return state.current != null
+  return live.size > 0
+}
+
+export function runnerSlotCount(): number {
+  return live.size
 }
 
 /** Stable id for `claimed_by`, so two deploys are distinguishable in Admin. */
@@ -103,7 +156,10 @@ type ChildOutcome = {
  * Never rejects: a supervision failure has to end as a recorded outcome, not an
  * unhandled rejection that leaves the row stuck at `running`.
  */
-function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
+function superviseChild(
+  item: SyncQueueItem,
+  onPid: (pid: number | null) => void,
+): Promise<ChildOutcome> {
   const spec: SyncJobChildSpec = {
     queueId: item.id,
     jobId: item.jobId as SyncJobChildSpec['jobId'],
@@ -158,8 +214,7 @@ function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
       return
     }
 
-    state.childPid = child.pid ?? null
-    state.childStartedAt = new Date().toISOString()
+    onPid(child.pid ?? null)
 
     let reported: { ok: boolean; message: string; detail?: string } | null = null
     let killedForDeadline = false
@@ -187,10 +242,6 @@ function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
         /* channel may already be gone */
       }
       child.kill('SIGTERM')
-      // SIGTERM is a request. A child wedged in a native RETS/XML call will not
-      // hear it, and the whole reason for the deadline is that we stop waiting.
-      // `child.killed` only says a signal was delivered, not that the process
-      // died, so the exit status is the thing to look at here.
       killTimer = setTimeout(() => {
         if (child.exitCode == null && child.signalCode == null) {
           console.error(
@@ -218,8 +269,7 @@ function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
     })
 
     child.on('exit', (code, signal) => {
-      state.childPid = null
-      state.childStartedAt = null
+      onPid(null)
 
       if (killedForDeadline) {
         finish({
@@ -248,8 +298,6 @@ function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
         return
       }
 
-      // No result message: the child died before it could say anything. On this
-      // box that has almost always meant the kernel OOM killer.
       finish({
         ok: false,
         outcome: 'crashed',
@@ -265,19 +313,26 @@ function superviseChild(item: SyncQueueItem): Promise<ChildOutcome> {
 }
 
 async function runClaimedItem(item: SyncQueueItem): Promise<void> {
-  const {
-    finishSyncQueueItem,
-    heartbeatSyncQueueItem,
-  } = await import('../../lib/sync-queue')
+  const startedAt = new Date().toISOString()
+  if (!live.has(item.id)) {
+    live.set(item.id, { item, pid: null, startedAt })
+  }
 
-  state.current = item
+  const { finishSyncQueueItem, heartbeatSyncQueueItem } = await import(
+    '../../lib/sync-queue'
+  )
+
   const budgetMinutes = item.deadlineAt
-    ? Math.round((Date.parse(item.deadlineAt) - Date.parse(item.claimedAt ?? item.requestedAt)) / 60_000)
+    ? Math.round(
+        (Date.parse(item.deadlineAt) -
+          Date.parse(item.claimedAt ?? item.requestedAt)) /
+          60_000,
+      )
     : null
   console.info(
     `[mls-sync] claimed ${item.jobId} (queue #${item.id}, ${item.trigger}${
       budgetMinutes ? `, ${budgetMinutes}m budget` : ''
-    })`,
+    } · ${live.size}/${resolveMaxChildren()} slots)`,
   )
 
   const beat = setInterval(() => {
@@ -287,7 +342,10 @@ async function runClaimedItem(item: SyncQueueItem): Promise<void> {
   }, QUEUE_HEARTBEAT_MS)
 
   try {
-    const outcome = await superviseChild(item)
+    const outcome = await superviseChild(item, (pid) => {
+      const row = live.get(item.id)
+      if (row) row.pid = pid
+    })
     await finishSyncQueueItem(item.id, {
       ok: outcome.ok,
       outcome: outcome.outcome,
@@ -295,7 +353,7 @@ async function runClaimedItem(item: SyncQueueItem): Promise<void> {
       exitCode: outcome.exitCode,
       signal: outcome.signal,
     })
-    state.lastOutcome = {
+    lastOutcome = {
       jobId: item.jobId,
       outcome: outcome.outcome,
       ok: outcome.ok,
@@ -306,8 +364,6 @@ async function runClaimedItem(item: SyncQueueItem): Promise<void> {
       `[mls-sync] ${item.jobId} → ${outcome.outcome}${outcome.detail ? ` — ${outcome.detail}` : ''}`,
     )
   } catch (err) {
-    // Recording the outcome failed, not the job. Say so rather than leaving the
-    // row at `running` for the reaper to guess about five minutes from now.
     console.error('[mls-sync] could not record queue outcome', err)
     await finishSyncQueueItem(item.id, {
       ok: false,
@@ -316,14 +372,10 @@ async function runClaimedItem(item: SyncQueueItem): Promise<void> {
     }).catch(() => {})
   } finally {
     clearInterval(beat)
-    state.current = null
+    live.delete(item.id)
   }
 }
 
-/**
- * Kill budgets straight from Configure, read fresh on every claim so raising a
- * budget in Admin applies to the next job without a redeploy.
- */
 async function readJobBudgets(): Promise<Partial<Record<ScheduledSyncJobId, number>>> {
   const out: Partial<Record<ScheduledSyncJobId, number>> = {}
   try {
@@ -349,12 +401,18 @@ async function readJobBudgets(): Promise<Partial<Record<ScheduledSyncJobId, numb
   return out
 }
 
-let draining = false
+let claiming = false
 
-/** One drain pass: claim at most one job and see it through. */
+/**
+ * Fill empty slots: claim waiting jobs and supervise them without waiting for
+ * the first child to finish. Same job_id cannot be claimed twice (queue index).
+ */
 export async function drainSyncQueueOnce(): Promise<boolean> {
-  if (draining || state.current) return false
-  draining = true
+  if (claiming) return false
+  const max = resolveMaxChildren()
+  if (live.size >= max) return false
+  claiming = true
+  let started = 0
   try {
     const { claimNextSyncJob, reapAbandonedSyncQueueItems } = await import(
       '../../lib/sync-queue'
@@ -362,21 +420,32 @@ export async function drainSyncQueueOnce(): Promise<boolean> {
 
     await reapAbandonedSyncQueueItems()
     const budgets = await readJobBudgets()
-    const item = await claimNextSyncJob({
-      runner: runnerId(),
-      jobIds: SYNC_QUEUE_RUNNER_JOBS,
-      budgetMsForJob: (jobId) =>
-        budgets[jobId as ScheduledSyncJobId] ?? 30 * 60_000,
-    })
-    if (!item) return false
-    await runClaimedItem(item)
-    return true
+    while (live.size < max) {
+      const item = await claimNextSyncJob({
+        runner: runnerId(),
+        jobIds: SYNC_QUEUE_RUNNER_JOBS,
+        budgetMsForJob: (jobId) =>
+          budgets[jobId as ScheduledSyncJobId] ?? 30 * 60_000,
+      })
+      if (!item) break
+      live.set(item.id, {
+        item,
+        pid: null,
+        startedAt: new Date().toISOString(),
+      })
+      started += 1
+      void runClaimedItem(item).catch((err) => {
+        console.warn(`[mls-sync] ${item.jobId} supervisor failed`, err)
+        live.delete(item.id)
+      })
+    }
+    return started > 0
   } finally {
-    draining = false
+    claiming = false
   }
 }
 
-/** Poll for work forever. One job at a time, whichever asked first. */
+/** Poll for work forever. Fills empty slots; does not wait on running children. */
 export function startSyncQueueDrain(): void {
   const tick = () => {
     void drainSyncQueueOnce().catch((err) => {
@@ -386,11 +455,6 @@ export function startSyncQueueDrain(): void {
   setTimeout(tick, 5_000)
   setInterval(tick, DRAIN_POLL_MS)
 
-  // Only reached from here, so only a build that drains can ever write it — the
-  // whole point of the key. It is on its own interval rather than inside the
-  // drain because the drain returns early while a child works, and a job that
-  // legitimately runs for forty minutes must not look like an absent runner and
-  // invite Netlify to start a second copy.
   const stampDrain = () => {
     void import('../../lib/sync-queue')
       .then(({ stampSyncQueueDrainHeartbeat }) => stampSyncQueueDrainHeartbeat())
@@ -400,20 +464,28 @@ export function startSyncQueueDrain(): void {
   setInterval(stampDrain, DRAIN_HEARTBEAT_MS)
 
   const heapMb = childHeapMb()
+  const max = resolveMaxChildren()
   console.info(
-    `[mls-sync] queue drain every ${DRAIN_POLL_MS / 1000}s · jobs: ${SYNC_QUEUE_RUNNER_JOBS.join(', ')}` +
+    `[mls-sync] queue drain every ${DRAIN_POLL_MS / 1000}s · ${max} slots · jobs: ${SYNC_QUEUE_RUNNER_JOBS.join(', ')}` +
       (heapMb
         ? ` · child heap cap ${heapMb}MB`
         : ' · no child heap cap (set MLS_SYNC_CHILD_MAX_OLD_SPACE_MB so an OOM kills the job, not this service)'),
   )
 }
 
-/** Kill the current child on shutdown so a deploy does not orphan a pull. */
-export function stopCurrentChild(): void {
-  if (state.childPid == null) return
-  try {
-    process.kill(state.childPid, 'SIGTERM')
-  } catch {
-    /* already gone */
+/** Kill every live child on shutdown so a deploy does not orphan a pull. */
+export function stopAllChildren(): void {
+  for (const row of live.values()) {
+    if (row.pid == null) continue
+    try {
+      process.kill(row.pid, 'SIGTERM')
+    } catch {
+      /* already gone */
+    }
   }
+}
+
+/** @deprecated Use stopAllChildren — kept so older callers still compile. */
+export function stopCurrentChild(): void {
+  stopAllChildren()
 }

@@ -85,10 +85,11 @@ import { monthsSupplyColorStyle } from "@/lib/months-supply-color";
 import ListingScoreBreakdownModal from "./ListingScoreBreakdownModal";
 import ListingHistoryModal from "./ListingHistoryModal";
 import ModalPortal, { MODAL_PANEL_CLASS } from "./ModalPortal";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
 import TownFilterPills from "./TownFilterPills";
 import ZipFilterPills from "./ZipFilterPills";
 import { useTabKitSegmentedStyle } from "@/hooks/useTabKitAssignments";
-import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown, boundaryZipsForAllTowns, boundaryZipsForTown, hasZctaBoundary } from "@/lib/tmre-towns";
+import { formatTownZipPlace, normalizeTownName, TMRE_TOWNS, listingZipMatchesTown, townHasMultipleZips, zipAreaNickname, type TmreTown, zipsForTown, mapBoundZipsForScope } from "@/lib/tmre-towns";
 import { TOWN_MARKET_TAGLINES } from "@/lib/intelligence-town-taglines";
 import { listingDetailHrefForListing } from "@/lib/listing-url";
 import { underContractStatusLabel } from "@/lib/listing-status";
@@ -499,7 +500,11 @@ function dualSliderThumbValues(
 }
 /** Keep slider descriptors enlarged this long after thumb release or descriptor click. */
 const DESCRIPTOR_ENLARGE_HOLD_MS = 10_000;
-/** Idle dismiss for filter peeks + Market Intelligence / triangle chrome. */
+/**
+ * Idle dismiss for peeked filter groups, “... more towns”, and Market
+ * Intelligence / triangle chrome. Other towns stay visible until this
+ * fires; they do not stay open indefinitely on the phone.
+ */
 const FILTER_PEEK_IDLE_MS = 30_000;
 type IntelSliderKind =
   | "price"
@@ -1718,6 +1723,7 @@ export default function IntelligenceClient({
   /** Admin-tuned idle filter descriptor sizes (mobile / desktop). */
   initialDescriptorSizes?: IntelligenceDescriptorSizes;
 } = {}) {
+  const { knownTowns } = useCoverageTowns();
   const siteUnlocked = useSiteUnlocked();
   const searchParams = useSearchParams();
   const [descriptorSizes, setDescriptorSizes] =
@@ -2027,14 +2033,30 @@ export default function IntelligenceClient({
   /** Desktop hover flash hold; touch uses the shorter touch constants below. */
   const TOWN_MAP_FLASH_MS = 1_000;
   const ZIP_MAP_FLASH_MS = 1_500;
-  const TOWN_MAP_FLASH_MS_TOUCH = 900;
-  const ZIP_MAP_FLASH_MS_TOUCH = 1_200;
+  /** After rings paint — long enough to read, then it must leave. */
+  const TOWN_MAP_FLASH_MS_TOUCH = 4_000;
+  const ZIP_MAP_FLASH_MS_TOUCH = 2_500;
+  const ALL_TOWNS_MAP_FLASH_MS = 2_000;
+  const ALL_TOWNS_MAP_FLASH_MS_TOUCH = 4_000;
   const MAP_FADE_MS = 220;
-  const [flashedTown, setFlashedTown] = useState<TmreTown | null>(null);
+  const [flashedTown, setFlashedTown] = useState<TmreTown | "All" | null>(null);
+  const townMapHoldCityRef = useRef<TmreTown | "All" | null>(null);
   const townFilterAnchorRef = useRef<HTMLDivElement>(null);
+  const [townFilterAnchorEl, setTownFilterAnchorEl] =
+    useState<HTMLDivElement | null>(null);
+  const bindTownFilterAnchor = (el: HTMLDivElement | null) => {
+    townFilterAnchorRef.current = el;
+    setTownFilterAnchorEl(el);
+  };
   const townMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [flashedZip, setFlashedZip] = useState<string | null>(null);
   const zipFilterAnchorRef = useRef<HTMLDivElement>(null);
+  const [zipFilterAnchorEl, setZipFilterAnchorEl] =
+    useState<HTMLDivElement | null>(null);
+  const bindZipFilterAnchor = (el: HTMLDivElement | null) => {
+    zipFilterAnchorRef.current = el;
+    setZipFilterAnchorEl(el);
+  };
   const zipMapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [boundaryMapExiting, setBoundaryMapExiting] = useState(false);
   const boundaryMapFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2113,23 +2135,40 @@ export default function IntelligenceClient({
     });
   };
 
+  const beginTownMapHold = (holdMs: number) => {
+    clearTownMapFlashTimer();
+    townMapFlashTimerRef.current = setTimeout(() => {
+      townMapFlashTimerRef.current = null;
+      townMapHoldCityRef.current = null;
+      fadeClearBoundaryMaps(() => setFlashedTown(null));
+    }, holdMs);
+  };
+
   const flashTownMapOnSelect = (city: TmreTown | "All") => {
     clearTownMapFlashTimer();
     clearZipMapFlashTimer();
     clearBoundaryMapFadeTimer();
     setBoundaryMapExiting(false);
     setFlashedZip(null);
-    if (city === "All") {
-      setFlashedTown(null);
-      return;
-    }
-    prefetchTownBoundaries(city);
+    townMapHoldCityRef.current = city;
+    if (city === "All") prefetchAllTownBoundaries();
+    else prefetchTownBoundaries(city);
     setFlashedTown(city);
-    const holdMs = prefersFineHover() ? TOWN_MAP_FLASH_MS : TOWN_MAP_FLASH_MS_TOUCH;
-    townMapFlashTimerRef.current = setTimeout(() => {
-      townMapFlashTimerRef.current = null;
-      fadeClearBoundaryMaps(() => setFlashedTown(null));
-    }, holdMs);
+    beginTownMapHold(prefersFineHover() ? 8_000 : 12_000);
+  };
+
+  /** Replace the fallback hold once rings have painted, then dismiss. */
+  const onTownMapSettled = () => {
+    if (townMapHoldCityRef.current == null) return;
+    const holdMs =
+      townMapHoldCityRef.current === "All"
+        ? prefersFineHover()
+          ? ALL_TOWNS_MAP_FLASH_MS
+          : ALL_TOWNS_MAP_FLASH_MS_TOUCH
+        : prefersFineHover()
+          ? TOWN_MAP_FLASH_MS
+          : TOWN_MAP_FLASH_MS_TOUCH;
+    beginTownMapHold(holdMs);
   };
 
   const flashZipMapOnSelect = (nextZip: string | null) => {
@@ -2138,9 +2177,11 @@ export default function IntelligenceClient({
     clearBoundaryMapFadeTimer();
     setBoundaryMapExiting(false);
     setFlashedTown(null);
+    townMapHoldCityRef.current = null;
     setHoveredTown(null);
     setHoveredTownEl(null);
     if (!nextZip) {
+      zipMapHoldZipRef.current = null;
       setFlashedZip(null);
       setHoveredZip(null);
       setHoveredZipEl(null);
@@ -2153,11 +2194,23 @@ export default function IntelligenceClient({
     setHoveredZip(null);
     setHoveredZipEl(null);
     setFlashedZip(nextZip);
-    const holdMs = prefersFineHover() ? ZIP_MAP_FLASH_MS : ZIP_MAP_FLASH_MS_TOUCH;
+    zipMapHoldZipRef.current = nextZip;
+    beginZipMapHold(prefersFineHover() ? 8_000 : 12_000);
+  };
+  const zipMapHoldZipRef = useRef<string | null>(null);
+  const beginZipMapHold = (holdMs: number) => {
+    clearZipMapFlashTimer();
     zipMapFlashTimerRef.current = setTimeout(() => {
       zipMapFlashTimerRef.current = null;
+      zipMapHoldZipRef.current = null;
       fadeClearBoundaryMaps(() => setFlashedZip(null));
     }, holdMs);
+  };
+  const onZipMapSettled = () => {
+    if (zipMapHoldZipRef.current == null) return;
+    beginZipMapHold(
+      prefersFineHover() ? ZIP_MAP_FLASH_MS : ZIP_MAP_FLASH_MS_TOUCH,
+    );
   };
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
   const [scoreBreakdownListing, setScoreBreakdownListing] = useState<DisplayListing | null>(null);
@@ -2208,12 +2261,10 @@ export default function IntelligenceClient({
     bottom: 0,
     left: 0,
   });
-  const mapBoundZips = useMemo(() => {
-    const zipNorm = zip?.trim() ?? "";
-    if (zipNorm && hasZctaBoundary(zipNorm)) return [zipNorm];
-    if (active === "All") return [...boundaryZipsForAllTowns()];
-    return [...boundaryZipsForTown(active)];
-  }, [active, zip]);
+  const mapBoundZips = useMemo(
+    () => [...mapBoundZipsForScope(active, zip)],
+    [active, zip],
+  );
 
   // Phone chrome sits on the map; fit the town to the leftover rectangle so
   // the outline touches the visible edge (regular + full screen).
@@ -2376,7 +2427,7 @@ export default function IntelligenceClient({
     MonthsSupplyCacheEntry[] | null
   >(null);
 
-  const orderedCities = usePersonalizedTowns(TMRE_TOWNS);
+  const orderedCities = usePersonalizedTowns(knownTowns);
 
   useEffect(() => {
     setExpandedSnapshotKeys(readExpandedSnapshotKeys());
@@ -2999,7 +3050,7 @@ export default function IntelligenceClient({
   }, [collapsedSlidersOpen, filtersExpanded, exposedSliders]);
 
   useEffect(() => {
-    if (active !== "All" && availableZips.length <= 1) setZip(null);
+    if (active === "All" || availableZips.length <= 1) setZip(null);
   }, [active, availableZips.length, setZip]);
 
   useEffect(() => {
@@ -3009,6 +3060,11 @@ export default function IntelligenceClient({
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+
+  // Phone: start with the other towns visible, then FILTER_PEEK_IDLE_MS hides them.
+  useEffect(() => {
+    if (isMobileViewport) setTownLinksExpanded(true);
+  }, [isMobileViewport]);
 
   useEffect(() => {
     setMobileZipConfirmed(false);
@@ -3966,7 +4022,12 @@ export default function IntelligenceClient({
    * Phone: the pill row is already a deliberate reveal, so "... more towns"
    * only costs a second tap to see the towns. Show the list outright there.
    */
-  const townLinksOpen = townLinksExpanded || isMobileViewport;
+  /**
+   * Phone used to force this open (`|| isMobileViewport`), which meant the
+   * other towns never collapsed after FILTER_PEEK_IDLE_MS. The list now
+   * opens on purpose (peek / All Towns / “… more towns”) and times out.
+   */
+  const townLinksOpen = townLinksExpanded;
   const inlineTownZip =
     showZipFilters && !townLinksOpen && !zipLinksExpanded;
 
@@ -4204,6 +4265,15 @@ export default function IntelligenceClient({
     filterPeekActivityEpoch,
     townNeedsMobileZipPick,
   ]);
+
+  /** Other towns / “… more towns” collapse after the same idle window. */
+  useEffect(() => {
+    if (!townLinksExpanded) return;
+    const id = window.setTimeout(() => {
+      setTownLinksExpanded(false);
+    }, FILTER_PEEK_IDLE_MS);
+    return () => window.clearTimeout(id);
+  }, [townLinksExpanded, filterPeekActivityEpoch]);
 
   function exposeSliderFilters(kind?: IntelSliderKind) {
     bumpFilterPeekActivity();
@@ -4844,6 +4914,17 @@ export default function IntelligenceClient({
     setSortDir("desc");
   };
 
+  /** Phone town/zip taps open the deal-board map instead of a floating card. */
+  const openBoardMapOnPhone = () => {
+    clearTownMapFlashTimer();
+    clearZipMapFlashTimer();
+    clearBoundaryMapFadeTimer();
+    setBoundaryMapExiting(false);
+    setFlashedTown(null);
+    setFlashedZip(null);
+    setMapOnPref("on");
+  };
+
   /** Town pill, town link, and boundary-map click all land here. */
   const applyTownFilter = (city: IntelCity) => {
     if (city !== active) resetSortToDefault();
@@ -4851,7 +4932,7 @@ export default function IntelligenceClient({
     setZip(null);
     setMobileZipConfirmed(false);
     setBoardStatusFilter("all");
-    setTownLinksExpanded(false);
+    setTownLinksExpanded(isMobileViewport && city === "All");
     setZipLinksExpanded(false);
     if (city === "All") {
       setExpandedSnapshotKeys(new Set());
@@ -4860,7 +4941,11 @@ export default function IntelligenceClient({
       setFilterChromeCollapsed(true);
       setFilterChromePeeks(townHasMultipleZips(city) ? ["towns"] : []);
     }
-    flashTownMapOnSelect(city);
+    if (prefersFineHover()) {
+      flashTownMapOnSelect(city);
+    } else {
+      openBoardMapOnPhone();
+    }
   };
 
   /** Clicking a town inside the boundary map filters to it. */
@@ -5759,7 +5844,7 @@ export default function IntelligenceClient({
                       >
                         {showMobileTownPills ? (
                           <div
-                            ref={townFilterAnchorRef}
+                            ref={bindTownFilterAnchor}
                             className={
                               inlineTownZip
                                 ? "min-w-0 shrink-0"
@@ -5820,7 +5905,10 @@ export default function IntelligenceClient({
                               appearance="zip"
                               layout="promoted"
                               townLinksExpanded={townLinksOpen}
-                              onTownLinksExpandedChange={setTownLinksExpanded}
+                              onTownLinksExpandedChange={(expanded) => {
+                                setTownLinksExpanded(expanded);
+                                if (expanded) bumpFilterPeekActivity();
+                              }}
                               size="compact"
                               className={
                                 inlineTownZip ? "min-w-0" : "w-full min-w-0"
@@ -5832,7 +5920,7 @@ export default function IntelligenceClient({
 
                         {showMobileZipPills && inlineTownZip ? (
                           <div
-                            ref={zipFilterAnchorRef}
+                            ref={bindZipFilterAnchor}
                             className="min-w-0 shrink-0"
                           >
                             <ZipFilterPills
@@ -5846,7 +5934,11 @@ export default function IntelligenceClient({
                                   setFilterChromeCollapsed(true);
                                   setFilterChromePeeks([]);
                                 }
-                                flashZipMapOnSelect(next);
+                                if (prefersFineHover()) {
+                                  flashZipMapOnSelect(next);
+                                } else {
+                                  openBoardMapOnPhone();
+                                }
                               }}
                               counts={zipCounts}
                               allCount={zipAllCount}
@@ -5891,7 +5983,7 @@ export default function IntelligenceClient({
                       showZipFilters &&
                       !inlineTownZip ? (
                         <div
-                          ref={zipFilterAnchorRef}
+                          ref={bindZipFilterAnchor}
                           className="self-start w-full min-w-0"
                         >
                           <ZipFilterPills
@@ -5905,7 +5997,11 @@ export default function IntelligenceClient({
                                 setFilterChromeCollapsed(true);
                                 setFilterChromePeeks([]);
                               }
-                              flashZipMapOnSelect(next);
+                              if (prefersFineHover()) {
+                                flashZipMapOnSelect(next);
+                              } else {
+                                openBoardMapOnPhone();
+                              }
                             }}
                             counts={zipCounts}
                             allCount={zipAllCount}
@@ -6468,9 +6564,8 @@ export default function IntelligenceClient({
                         ? "all towns"
                         : active
                   }
-                  // Desktop hover over a zip pill, or the flash a tap leaves
-                  // behind on touch, paints that zip's outline blue.
-                  highlightZip={hoveredZip ?? flashedZip}
+                  // Hover / tap flash, or the zip that is actually selected.
+                  highlightZip={hoveredZip ?? flashedZip ?? zip}
                   activeKey={mapActiveKey}
                   onSelect={(key) => setMapActiveKey(key)}
                   hrefFor={(l) =>
@@ -6880,15 +6975,13 @@ export default function IntelligenceClient({
           </p>
         </div>
       </ModalPortal>
-      {hoveredTown && hoveredTownEl ? (
+      {fineHoverPointer && hoveredTown && hoveredTownEl ? (
         hoveredTown === "All" ? (
           <ZipBoundaryPopover
             highlightAllTowns
             anchorEl={hoveredTownEl}
-            placeBelowEl={townFilterAnchorRef.current}
-            onSelectTown={
-              fineHoverPointer ? selectTownFromBoundaryMap : undefined
-            }
+            placeBelowEl={townFilterAnchorEl}
+            onSelectTown={selectTownFromBoundaryMap}
             onPointerStay={holdBoundaryMapOpen}
             onPointerAway={releaseBoundaryMap}
             exiting={boundaryMapExiting}
@@ -6897,42 +6990,53 @@ export default function IntelligenceClient({
           <ZipBoundaryPopover
             highlightTown={hoveredTown}
             anchorEl={hoveredTownEl}
-            placeBelowEl={townFilterAnchorRef.current}
-            onSelectTown={
-              fineHoverPointer ? selectTownFromBoundaryMap : undefined
-            }
+            placeBelowEl={townFilterAnchorEl}
+            onSelectTown={selectTownFromBoundaryMap}
             onPointerStay={holdBoundaryMapOpen}
             onPointerAway={releaseBoundaryMap}
             exiting={boundaryMapExiting}
           />
         )
-      ) : flashedTown && townFilterAnchorRef.current ? (
-        // Selection feedback only — stays click-through so it cannot swallow a
-        // click on the board while it fades.
-        <ZipBoundaryPopover
-          highlightTown={flashedTown}
-          anchorEl={townFilterAnchorRef.current}
-          placeBelowEl={townFilterAnchorRef.current}
-          exiting={boundaryMapExiting}
-        />
+      ) : fineHoverPointer && flashedTown && !showMap ? (
+        // Do not gate on the pill-row ref — that row remounts after a town
+        // tap. Hold starts after rings paint, then the card leaves.
+        flashedTown === "All" ? (
+          <ZipBoundaryPopover
+            highlightAllTowns
+            anchorEl={townFilterAnchorEl}
+            placeBelowEl={townFilterAnchorEl}
+            exiting={boundaryMapExiting}
+            onSettled={onTownMapSettled}
+          />
+        ) : (
+          <ZipBoundaryPopover
+            highlightTown={flashedTown}
+            anchorEl={townFilterAnchorEl}
+            placeBelowEl={townFilterAnchorEl}
+            exiting={boundaryMapExiting}
+            onSettled={onTownMapSettled}
+          />
+        )
       ) : null}
-      {/* With the board map open it carries the blue highlight itself, so the
-          floating mini-map would only compete with it. */}
-      {showMap ? null : hoveredZip && hoveredZipEl ? (
+      {/* Phone never mounts the floating card — outlines live on DealBoardMap.
+          Desktop hover still uses the popover; the board map carries highlight
+          itself when it is already open. */}
+      {showMap || !fineHoverPointer ? null : hoveredZip && hoveredZipEl ? (
         <ZipBoundaryPopover
           highlightZip={hoveredZip}
           contextZips={availableZips.filter((z) => z !== hoveredZip)}
           anchorEl={hoveredZipEl}
-          placeBelowEl={zipFilterAnchorRef.current}
+          placeBelowEl={zipFilterAnchorEl}
           exiting={boundaryMapExiting}
         />
-      ) : flashedZip && zipFilterAnchorRef.current ? (
+      ) : flashedZip ? (
         <ZipBoundaryPopover
           highlightZip={flashedZip}
           contextZips={availableZips.filter((z) => z !== flashedZip)}
-          anchorEl={zipFilterAnchorRef.current}
-          placeBelowEl={zipFilterAnchorRef.current}
+          anchorEl={zipFilterAnchorEl}
+          placeBelowEl={zipFilterAnchorEl}
           exiting={boundaryMapExiting}
+          onSettled={onZipMapSettled}
         />
       ) : null}
     </div>
