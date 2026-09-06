@@ -6,6 +6,8 @@ import {
   currentFiscalYearEnd,
   formatTaxYoyChange,
   pulseTaxCoverageIsReady,
+  pulseTaxYearEnds,
+  formatPulseTaxWindowLabel,
   taxYoyChangePct,
 } from './listing-property-tax'
 
@@ -82,6 +84,21 @@ describe('choosePulseTaxYearEnd', () => {
 
   it('does not skip back further than one year', () => {
     assert.equal(choosePulseTaxYearEnd(2027, 0, 0), 2027)
+  })
+})
+
+describe('pulseTaxYearEnds', () => {
+  it('walks the last five fiscal-year ends newest first', () => {
+    assert.deepEqual(pulseTaxYearEnds(2027), [2027, 2026, 2025, 2024, 2023])
+  })
+})
+
+describe('formatPulseTaxWindowLabel', () => {
+  it('spans the oldest July through the newest June', () => {
+    assert.equal(
+      formatPulseTaxWindowLabel([2027, 2026, 2025, 2024, 2023]),
+      'July 2022-June 2027',
+    )
   })
 })
 

@@ -1,27 +1,24 @@
 import 'server-only'
 
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
-import {
-  readPulseTaxYearCoverage,
-  readTownTaxAggregates,
-} from '@/lib/db/town-tax-aggregates-repo'
+import { readTownTaxAggregates } from '@/lib/db/town-tax-aggregates-repo'
 import type { ListingKind } from '@/lib/listing-kind'
 import type { ListingPropertyClass } from '@/lib/listing-property-class'
 import {
-  choosePulseTaxYearEnd,
   currentFiscalYearEnd,
-  formatTaxYearLabel,
+  formatPulseTaxWindowLabel,
   pulseTaxCoverageIsReady,
+  pulseTaxYearEnds,
 } from '@/lib/listing-property-tax'
 import type { MarketDigestTaxTownCount } from '@/lib/market-digest-types'
 import { meanMinusMedian } from '@/lib/market-pulse-price-delta'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 /**
- * Current-year property tax median / average / delta per town.
+ * Property tax median / average / delta per town.
  *
  * Same request-budget rule as closed-by-town: SQL at stats rebuild, page
- * and email only read. Listings missing the in-play fiscal year are out.
+ * and email only read. Pool is every listing × the last five fiscal years.
  */
 
 export type MarketPulseTaxScope = {
@@ -54,40 +51,28 @@ function cacheKey(scope: MarketPulseTaxScope): string {
   const slice = scope.commercialOnly
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
-  return `market-pulse-tax:${scope.kind}:${slice}:v1`
-}
-
-async function resolveInPlayTaxYearEnd(): Promise<number> {
-  const current = currentFiscalYearEnd()
-  const coverage = await readPulseTaxYearCoverage({
-    towns: TMRE_TOWNS,
-    yearEnds: [current, current - 1],
-  })
-  const countCurrent =
-    coverage.find((row) => row.taxYearEnd === current)?.listingCount ?? 0
-  const countPrior =
-    coverage.find((row) => row.taxYearEnd === current - 1)?.listingCount ?? 0
-  return choosePulseTaxYearEnd(current, countCurrent, countPrior)
+  return `market-pulse-tax:${scope.kind}:${slice}:v2`
 }
 
 async function compute(
   scope: MarketPulseTaxScope,
 ): Promise<MarketPulseTaxPayload> {
-  const fiscalYearEnd = await resolveInPlayTaxYearEnd()
-  const taxYearLabel = formatTaxYearLabel(fiscalYearEnd)
+  const taxYearEnds = pulseTaxYearEnds()
+  const fiscalYearEnd = taxYearEnds[0] ?? currentFiscalYearEnd()
+  const taxYearLabel = formatPulseTaxWindowLabel(taxYearEnds)
   const aggregates = await readTownTaxAggregates({
     towns: TMRE_TOWNS,
-    taxYearEnd: fiscalYearEnd,
+    taxYearEnds,
     kind: scope.kind,
     propertyClass: scope.propertyClass,
     commercialOnly: scope.commercialOnly,
   })
 
   const noun = scope.commercialOnly
-    ? 'active commercial listings'
+    ? 'commercial listings'
     : scope.kind === 'rental'
-      ? 'active rentals'
-      : 'active listings'
+      ? 'rentals'
+      : 'listings'
   const classLabel = scope.commercialOnly
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
@@ -104,15 +89,16 @@ async function compute(
       fiscalYearEnd,
       taxYearLabel,
       medianTaxCalc: {
-        summary: `${row.sampleSize.toLocaleString()} ${noun} in ${row.town} with ${taxYearLabel} tax.`,
+        summary: `${row.sampleSize.toLocaleString()} ${noun}-year tax amounts in ${row.town} (${taxYearLabel}).`,
         detail: [
-          `Median / mean of listing_tax_history (or MLS property_tax) for fiscal year ending ${fiscalYearEnd}.`,
-          `Listings without that year are excluded — not each listing's own latest year (${classLabel}).`,
+          `Median / mean of listing_tax_history (or MLS property_tax) for every listing, any status, across fiscal years ending ${taxYearEnds.join(', ')}.`,
+          `One listing with five years is five observations (${classLabel}). Not each listing's own latest year only.`,
         ],
         inputs: {
           city: row.town,
           sampleSize: row.sampleSize,
           fiscalYearEnd,
+          taxYearEnds: taxYearEnds.join(','),
           medianTax: row.medianTax,
           averageTax: row.averageTax,
           kind: scope.kind,
@@ -121,14 +107,15 @@ async function compute(
         },
       },
       averageTaxCalc: {
-        summary: `Mean ${taxYearLabel} tax across ${row.sampleSize.toLocaleString()} ${noun} in ${row.town}.`,
+        summary: `Mean ${taxYearLabel} tax across ${row.sampleSize.toLocaleString()} ${noun}-year amounts in ${row.town}.`,
         detail: [
-          `Same eligible pool as the median — Active listings with fiscal year ending ${fiscalYearEnd} only.`,
+          'Same eligible pool as the median — every listing, last five fiscal years.',
         ],
         inputs: {
           city: row.town,
           sampleSize: row.sampleSize,
           fiscalYearEnd,
+          taxYearEnds: taxYearEnds.join(','),
           averageTax: row.averageTax,
         },
       },
@@ -141,7 +128,7 @@ async function compute(
                   : '—'
               } ${delta.dollars >= 0 ? 'above' : 'below'} the median.`,
               detail: [
-                'Average minus median on the same current-year tax pool. Not a year-over-year change.',
+                'Average minus median on the same five-year listing tax pool. Not a year-over-year change.',
               ],
               inputs: {
                 city: row.town,
@@ -168,10 +155,11 @@ async function compute(
 }
 
 function emptyPayload(): MarketPulseTaxPayload {
-  const fiscalYearEnd = currentFiscalYearEnd()
+  const taxYearEnds = pulseTaxYearEnds()
+  const fiscalYearEnd = taxYearEnds[0] ?? currentFiscalYearEnd()
   return {
     fiscalYearEnd,
-    taxYearLabel: formatTaxYearLabel(fiscalYearEnd),
+    taxYearLabel: formatPulseTaxWindowLabel(taxYearEnds),
     rows: [],
     ready: false,
     generatedAt: new Date().toISOString(),

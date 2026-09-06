@@ -176,18 +176,38 @@ export function currentFiscalYearEnd(now = new Date()): number {
 }
 
 /**
- * Town-pulse "in play" fiscal year.
- *
- * Current FY (July 2026–June 2027 as of Sep 2026) wins once enough active
- * listings carry that year. Until MLS/CAMA populate it, fall back to the
- * prior FY. Listings missing the chosen year are excluded — never each
- * listing's own latest year.
- *
- * 50 was too thin: Westport alone is ~127 Active for-sale (Sep 2026), the
- * market ~1,021. The floor is one Westport book so a year is not "in play"
- * — and tax bars do not render — on a handful of early MLS TaxYear rolls.
+ * Market Pulse tax pool is every listing (any status) × every fiscal year in
+ * this lookback. CAMA already stores the four historical years; MLS owns the
+ * current year. Median / average / delta need that whole book — not Active
+ * current-year only.
+ */
+export const PULSE_TAX_LOOKBACK_YEARS = 5;
+
+/**
+ * Floor before tax bars render. With all statuses and five years the All-towns
+ * sample is thousands; 125 is only a sanity gate so an empty cache cannot
+ * flash a one-row median.
  */
 export const PULSE_TAX_YEAR_MIN_N = 125;
+
+export function pulseTaxYearEnds(
+  newestYearEnd = currentFiscalYearEnd(),
+  count = PULSE_TAX_LOOKBACK_YEARS,
+): number[] {
+  const n = Math.max(1, Math.floor(count));
+  return Array.from({ length: n }, (_, index) => newestYearEnd - index);
+}
+
+/** `July 2022-June 2027` for FY ends 2023…2027; single year uses formatTaxYearLabel. */
+export function formatPulseTaxWindowLabel(
+  yearEnds: readonly number[],
+): string {
+  if (yearEnds.length === 0) return formatTaxYearLabel(currentFiscalYearEnd());
+  const newest = Math.max(...yearEnds);
+  const oldest = Math.min(...yearEnds);
+  if (oldest === newest) return formatTaxYearLabel(newest);
+  return `July ${oldest - 1}-June ${newest}`;
+}
 
 export function pulseTaxCoverageIsReady(
   sampleSize: number | null | undefined,

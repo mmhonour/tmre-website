@@ -195,15 +195,15 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
   },
   {
     id: 'market-pulse-tax',
-    name: 'Market Pulse current-year tax',
+    name: 'Market Pulse five-year tax',
     category: 'market',
     medium: 'postgres',
     location: 'stats_cache',
     keyPattern:
-      'market-pulse-tax:{sale|rental}:{all|homes|condos|commercial}:v1',
+      'market-pulse-tax:{sale|rental}:{all|homes|condos|commercial}:v2',
     owner: 'lib/market-pulse-tax-cache.ts',
     notes:
-      'Median / average / delta tax per town for the in-play fiscal year (current FY when ≥125 Active listings carry it — about one Westport book — else prior). Bars stay off Market Pulse / email until that All-towns sample is reached. Written by rebuildStatsCache; the page and Monday email read only.',
+      'Median / average / delta tax per town from every listing (any status) × the last five fiscal years. Bars stay off Market Pulse / email until the All-towns listing-year sample reaches 125. Written by rebuildStatsCache; the page and Monday email read only.',
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-tax:' },
   },
   {

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { buildMarketPulseCombinedTownRows } from './market-pulse-combined-rows'
 
 describe('buildMarketPulseCombinedTownRows tax slice', () => {
-  it('joins cached current-year tax without deriving it from other rows', () => {
+  it('joins cached five-year tax without deriving it from other rows', () => {
     const rows = buildMarketPulseCombinedTownRows(
       [
         {

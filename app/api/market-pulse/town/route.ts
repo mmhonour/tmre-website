@@ -32,7 +32,7 @@ export type MarketPulseTownPayload = {
   kind: ListingKind
   propertyClass: ListingPropertyClass
   closedLookbackLabel: string
-  /** False until All-towns current-year tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
+  /** False until All-towns five-year listing-tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
   taxReady: boolean
   /** The requested town's combined metrics. */
   row: MarketPulseCombinedTownRow | null

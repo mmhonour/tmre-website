@@ -88,9 +88,9 @@ export type MarketDigestCategorySlice = {
   avgDomByTown: MarketDigestDomTownCount[]
   /** Median + average price per town (Market Pulse price bars). */
   priceByTown: MarketDigestPriceTownCount[]
-  /** Current-year tax median / average / delta per town. */
+  /** Five-year listing tax median / average / delta per town. */
   taxByTown: MarketDigestTaxTownCount[]
-  /** False until All-towns current-year tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
+  /** False until All-towns five-year listing-tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
   taxReady?: boolean
   /** Featured deal for this tab (DOTW for ALL; DOTD-aligned for other types). */
   deal: MarketDigestDealOfTheWeek | null
@@ -111,9 +111,9 @@ export type MarketDigestSnapshot = {
   avgDomByTown: MarketDigestDomTownCount[]
   /** ALL-sales median / average price per town (default Market Pulse tab). */
   priceByTown: MarketDigestPriceTownCount[]
-  /** ALL-sales current-year tax per town (default Market Pulse tab). */
+  /** ALL-sales five-year listing tax per town (default Market Pulse tab). */
   taxByTown: MarketDigestTaxTownCount[]
-  /** False until All-towns current-year tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
+  /** False until All-towns five-year listing-tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
   taxReady?: boolean
   /** Market Pulse tabs (ALL / SFR / Condo / Rentals / Commercial). */
   categories: MarketDigestCategorySlice[]

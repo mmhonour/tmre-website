@@ -6,11 +6,12 @@ import type { ListingKind } from '@/lib/listing-kind'
 import type { ListingPropertyClass } from '@/lib/listing-property-class'
 
 /**
- * Town-level current-year property tax aggregates for Market Pulse.
+ * Town-level property tax aggregates for Market Pulse.
  *
- * Pool: Active listings that have a tax amount for the chosen fiscal year
- * (listing_tax_history, else listings.property_tax when the year label
- * matches). A listing whose latest year is older is excluded.
+ * Pool: every listing (any status) × each fiscal year in the lookback that
+ * has an amount (listing_tax_history, else listings.property_tax when the
+ * MLS year label matches). One listing with five years contributes five
+ * observations — that is the sample median / average / delta need.
  */
 
 const COMMERCIAL = 'commercial|industrial|business'
@@ -54,7 +55,7 @@ const MLS_TAX_YEAR_END_SQL = `(
 
 const TAX_AMOUNT_SQL = `COALESCE(
   h.amount,
-  CASE WHEN ${MLS_TAX_YEAR_END_SQL} = $2::int THEN l.property_tax END
+  CASE WHEN ${MLS_TAX_YEAR_END_SQL} = y.tax_year_end THEN l.property_tax END
 )`
 
 export type TownTaxYearCoverage = {
@@ -71,13 +72,13 @@ export type TownTaxAggregateRow = {
 
 export type TownTaxAggregateScope = {
   towns: readonly string[]
-  taxYearEnd: number
+  taxYearEnds: readonly number[]
   kind: ListingKind
   propertyClass?: ListingPropertyClass
   commercialOnly?: boolean
 }
 
-/** How many Active listings have a tax amount for each candidate FY. */
+/** How many listings (any status) have a tax amount for each candidate FY. */
 export async function readPulseTaxYearCoverage(options: {
   towns: readonly string[]
   yearEnds: readonly number[]
@@ -87,21 +88,24 @@ export async function readPulseTaxYearCoverage(options: {
   if (towns.length === 0 || years.length === 0) return []
 
   const rows = await query<{ tax_year_end: number; listing_count: number }>(
-    `WITH eligible AS (
+    `WITH years AS (
+       SELECT unnest($2::int[]) AS tax_year_end
+     ),
+     eligible AS (
        SELECT DISTINCT
          l.id,
-         COALESCE(h.tax_year_end, ${MLS_TAX_YEAR_END_SQL}) AS tax_year_end
+         y.tax_year_end
          FROM listings l
+         CROSS JOIN years y
          LEFT JOIN listing_tax_history h
            ON h.parcel_number = ${PARCEL_SQL}
-          AND h.tax_year_end = ANY($2::int[])
+          AND h.tax_year_end = y.tax_year_end
           AND h.amount > 0
         WHERE l.town = ANY($1::text[])
-          AND l.status_bucket = 'Active'
           AND (
             (h.amount IS NOT NULL AND h.amount > 0)
             OR (
-              ${MLS_TAX_YEAR_END_SQL} = ANY($2::int[])
+              ${MLS_TAX_YEAR_END_SQL} = y.tax_year_end
               AND l.property_tax IS NOT NULL
               AND l.property_tax > 0
             )
@@ -109,7 +113,6 @@ export async function readPulseTaxYearCoverage(options: {
      )
      SELECT tax_year_end, count(*)::int AS listing_count
        FROM eligible
-      WHERE tax_year_end = ANY($2::int[])
       GROUP BY tax_year_end`,
     [towns, years],
   )
@@ -121,12 +124,13 @@ export async function readPulseTaxYearCoverage(options: {
   }))
 }
 
-/** Per-town + All-towns median/mean of current-year tax on Active listings. */
+/** Per-town + All-towns median/mean of last-5-year tax on every listing. */
 export async function readTownTaxAggregates(
   scope: TownTaxAggregateScope,
 ): Promise<TownTaxAggregateRow[]> {
   const towns = [...scope.towns]
-  if (towns.length === 0) return []
+  const taxYearEnds = [...scope.taxYearEnds]
+  if (towns.length === 0 || taxYearEnds.length === 0) return []
 
   const kindClause = listingKindClauseSql(scope.kind)
   const classClause = classClauseSql(scope.propertyClass, scope.commercialOnly)
@@ -137,20 +141,24 @@ export async function readTownTaxAggregates(
     median_tax: string | number | null
     average_tax: string | number | null
   }>(
-    `WITH eligible AS (
+    `WITH years AS (
+       SELECT unnest($2::int[]) AS tax_year_end
+     ),
+     eligible AS (
        SELECT
          l.town,
          ${TAX_AMOUNT_SQL} AS tax_amount
          FROM listings l
+         CROSS JOIN years y
          LEFT JOIN listing_tax_history h
            ON h.parcel_number = ${PARCEL_SQL}
-          AND h.tax_year_end = $2::int
+          AND h.tax_year_end = y.tax_year_end
+          AND h.amount > 0
         CROSS JOIN LATERAL (
           SELECT ${CLASS_HAY_SQL} AS hay,
                  ${LISTING_KIND_HAY_SQL} AS kind_hay
         ) fields
         WHERE l.town = ANY($1::text[])
-          AND l.status_bucket = 'Active'
           AND ${kindClause}
           AND ${classClause}
           AND ${TAX_AMOUNT_SQL} IS NOT NULL
@@ -168,7 +176,7 @@ export async function readTownTaxAggregates(
             percentile_cont(0.5) WITHIN GROUP (ORDER BY tax_amount),
             avg(tax_amount)
        FROM eligible`,
-    [towns, scope.taxYearEnd],
+    [towns, taxYearEnds],
   )
 
   return rows.map((row) => ({
