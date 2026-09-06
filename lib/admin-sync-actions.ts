@@ -1378,14 +1378,18 @@ async function runAdminSyncActionImpl(
     case 'cama-tax': {
       // Two dozen data.ct.gov requests and a listings read per town — well past
       // an Admin POST budget, so serverless hands it to the runner rather than
-      // trying and timing out.
+      // trying and timing out. Same poke-the-drain path as open-houses.
       if (shouldQueueOnServerless(options)) {
-        const { enqueueSyncJob } = await import('@/lib/sync-queue')
-        const queued = await enqueueSyncJob({
-          jobId: 'cama-tax',
-          trigger: 'admin',
-          ignoreCooldown: true,
-        })
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'cama-tax',
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so CAMA tax history cannot be refreshed right now.',
+          }),
+        )
         return {
           ok: queued.ok,
           action,
@@ -1394,10 +1398,8 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? queued.enqueued
-              ? 'CAMA tax history queued on the sync runner — End updates when it finishes'
-              : `CAMA tax history ${queued.reason ?? 'already queued'}`
-            : `CAMA tax history queue failed: ${queued.reason ?? 'unknown'}`,
+            ? `CAMA tax history queued (${via}) — End updates when it finishes`
+            : `CAMA tax history queue failed: ${queued.error ?? 'unknown'}`,
         }
       }
       const { syncCtCamaTaxHistory } = await import('@/lib/ct-cama-tax-sync')

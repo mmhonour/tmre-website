@@ -220,11 +220,17 @@ async function jobHasWork(jobId: ScheduledSyncJobId): Promise<boolean> {
     // Dirtiness decides whether there is work; the slot decides when we may do
     // it. The old hourly TTL recomputed all seven towns whether or not a number
     // had moved.
-    const { statsTownsDueForRebuild } = await import(
+    const { statsTownsDueForRebuild, STATS_TOWN_MAX_AGE_MS } = await import(
       '../../lib/stats-dirty-towns'
     )
     const { towns } = await statsTownsDueForRebuild()
-    return towns.length > 0
+    if (towns.length > 0) return true
+    // Per-town marks can be clean while last_stats_cache itself is stale
+    // (failed stamp, lock steal, 429 skip). Treat a missing/old End as work.
+    const { getSyncMeta } = await import('../../lib/db/sync-meta')
+    const last = await getSyncMeta('last_stats_cache')
+    const lastMs = last ? Date.parse(last) : Number.NaN
+    return !Number.isFinite(lastMs) || Date.now() - lastMs >= STATS_TOWN_MAX_AGE_MS
   }
   // market-digest needs no extra condition: jobIsDue already compares the last
   // send against the configured slot, which is the whole of its dedupe.
@@ -368,6 +374,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/property-addresses': 'property-addresses',
   '/vision-addresses': 'vision-addresses',
   '/market-digest': 'market-digest',
+  '/cama-tax': 'cama-tax',
 }
 
 async function handleRequest(
