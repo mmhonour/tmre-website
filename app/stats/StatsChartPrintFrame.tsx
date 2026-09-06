@@ -20,7 +20,7 @@ type StatsChartPrintFrameProps = {
   className?: string;
 };
 
-/** Flat link controls — sit just over the top edge of each graph. */
+/** Flat link controls — sit on the chart title row, with space above the graph. */
 const overlayLinkClass =
   "bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[10px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors disabled:opacity-35 disabled:pointer-events-none disabled:no-underline";
 
@@ -128,14 +128,16 @@ export default function StatsChartPrintFrame({
       {aliasChartIds?.map((alias) => (
         <span key={alias} id={`stats-chart-${alias}`} hidden />
       ))}
-      {chartReady && title ? (
-        <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-2 stats-print-screen-only">
-          {title}
-        </p>
-      ) : null}
-      <div className="relative">
-        {chartReady ? (
-          <div className="stats-print-screen-only absolute right-3 -top-2.5 z-20 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:right-4">
+      {chartReady ? (
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-1 stats-print-screen-only">
+          {title ? (
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate">
+              {title}
+            </p>
+          ) : (
+            <span />
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
             {dataPanel ? (
               <button
                 type="button"
@@ -152,7 +154,9 @@ export default function StatsChartPrintFrame({
               hasData={dataPanel != null}
             />
           </div>
-        ) : null}
+        </div>
+      ) : null}
+      <div className="relative">
         <StatsChartFrameProvider setChartReady={setChartReady}>
           <div data-stats-print-chart>{children}</div>
         </StatsChartFrameProvider>
