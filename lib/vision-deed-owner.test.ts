@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   compileVisionOwnerFromDeeds,
+  compileVisionOwnerParts,
   completeDanglingDeedOwner,
   formatVisionMoney,
   visionDeedDisplayRows,
@@ -168,5 +169,66 @@ describe('compileVisionOwnerFromDeeds', () => {
       name,
       'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE & ADDED COUSIN & ADDED AUNT',
     )
+  })
+})
+
+describe('compileVisionOwnerParts', () => {
+  const deeds = [
+    {
+      owner: 'ADDED COUSIN',
+      date: '04/01/2020',
+      price: '0',
+      bookPage: '4000/0001',
+      qualified: 'U',
+      instrument: '29',
+    },
+    {
+      owner: 'ADDED AUNT',
+      date: '06/01/2021',
+      price: '—',
+      bookPage: '4100/0002',
+      qualified: 'U',
+      instrument: '29',
+    },
+    {
+      owner: 'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE',
+      date: '09/28/2018',
+      price: '1575000',
+      bookPage: '3885/0087',
+      qualified: 'Q',
+      instrument: '00',
+    },
+  ] as const
+
+  it('puts later quitclaim grantees on their own lines after the warranty buyers', () => {
+    const parts = compileVisionOwnerParts(deeds)
+    assert.deepEqual(parts.displayLines, [
+      'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE',
+      'ADDED COUSIN',
+      'ADDED AUNT',
+    ])
+    assert.equal(
+      parts.displayName,
+      'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE & ADDED COUSIN & ADDED AUNT',
+    )
+  })
+
+  it('stays one line when there is no later quitclaim', () => {
+    const parts = compileVisionOwnerParts(
+      [
+        {
+          owner: 'SLOSSBERG MATTHEW &',
+          date: '09/28/2018',
+          price: '1575000',
+          bookPage: '3885/0087',
+          qualified: 'Q',
+          instrument: '00',
+        },
+      ],
+      'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE',
+    )
+    assert.deepEqual(parts.displayLines, [
+      'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE',
+    ])
   })
 })

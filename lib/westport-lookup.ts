@@ -27,7 +27,7 @@ import type { Listing } from '@/lib/rets'
 import {
   fieldCardFromTypedVision,
   lastSaleAsOwnership,
-  compileVisionOwnerFromDeeds,
+  compileVisionOwnerParts,
   ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
@@ -105,6 +105,11 @@ export type WestportMergedProperty = {
   ownerName: MergedField<string>
   /** Current owner (+ co-owner when the Field Card lists one). */
   ownerDisplayName: string | null
+  /**
+   * Warranty buyers first; later quitclaim grantees each on their own
+   * line when any exist after the last non-quitclaim deed.
+   */
+  ownerDisplayLines: string[]
   /** VGSI mailing address (often the same as the parcel, sometimes a PO box / out of town). */
   ownerMailingAddress: string | null
   /** Date of the last paid purchase (not a $0 quitclaim). */
@@ -575,9 +580,17 @@ export async function mergeWestportProperty(
     fieldCard.fields,
     vision.ownerName ?? listing?.ownerName,
   )
-  const ownerDisplayName =
-    compileVisionOwnerFromDeeds(fieldCard.ownership ?? [], cardOwner) ??
-    cardOwner
+  const compiledOwner = compileVisionOwnerParts(
+    fieldCard.ownership ?? [],
+    cardOwner,
+  )
+  const ownerDisplayName = compiledOwner.displayName ?? cardOwner
+  const ownerDisplayLines =
+    compiledOwner.displayLines.length > 0
+      ? compiledOwner.displayLines
+      : ownerDisplayName
+        ? [ownerDisplayName]
+        : []
 
   return {
     town: WESTPORT_LOOKUP_TOWN,
@@ -617,6 +630,7 @@ export async function mergeWestportProperty(
       ownerDisplayName ?? vision.ownerName,
     ),
     ownerDisplayName,
+    ownerDisplayLines,
     ownerMailingAddress:
       ownerMailingAddressFromFields(fieldCard.fields) ??
       vision.ownerMailingAddress,
