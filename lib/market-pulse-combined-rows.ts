@@ -3,6 +3,7 @@ import type {
   MarketDigestDomTownCount,
   MarketDigestPriceTownCount,
   MarketDigestSnapshot,
+  MarketDigestTaxTownCount,
 } from '@/lib/market-digest-types'
 import {
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
@@ -36,6 +37,16 @@ export type MarketPulseCombinedTownRow = {
   averagePriceCalc?: StatsValueCalc
   saleToAskCalc?: StatsValueCalc
   priceDeltaCalc?: StatsValueCalc
+  medianTax: number | null
+  averageTax: number | null
+  /** Average − median tax (dollars). */
+  taxDelta: number | null
+  taxDeltaPct: number | null
+  taxYearLabel?: string | null
+  taxSampleSize?: number | null
+  medianTaxCalc?: StatsValueCalc
+  averageTaxCalc?: StatsValueCalc
+  taxDeltaCalc?: StatsValueCalc
 }
 
 function cityKey(city: string): string {
@@ -68,15 +79,18 @@ export function buildMarketPulseCombinedTownRows(
   domRows: MarketDigestDomTownCount[],
   closedRows: MarketDigestClosedTownCount[],
   priceRows: MarketDigestPriceTownCount[],
+  taxRows: MarketDigestTaxTownCount[] = [],
 ): MarketPulseCombinedTownRow[] {
   const domBy = new Map(domRows.map((r) => [cityKey(r.city), r] as const))
   const closedBy = new Map(closedRows.map((r) => [cityKey(r.city), r] as const))
   const priceBy = new Map(priceRows.map((r) => [cityKey(r.city), r] as const))
+  const taxBy = new Map(taxRows.map((r) => [cityKey(r.city), r] as const))
   return inventory.map((row) => {
     const key = cityKey(row.city)
     const dom = domBy.get(key)
     const closed = closedBy.get(key)
     const price = priceBy.get(key)
+    const tax = taxBy.get(key)
     // Cached at rebuild. The subtraction stays only as a fallback for a row
     // written before the cache carried it, so a stale entry still shows a delta
     // rather than a blank.
@@ -84,6 +98,10 @@ export function buildMarketPulseCombinedTownRows(
       price?.priceDelta != null || price?.priceDeltaPct != null
         ? { dollars: price.priceDelta ?? null, pct: price.priceDeltaPct ?? null }
         : meanMinusMedian(price?.averagePrice, price?.medianPrice)
+    const taxDelta =
+      tax?.taxDelta != null || tax?.taxDeltaPct != null
+        ? { dollars: tax.taxDelta ?? null, pct: tax.taxDeltaPct ?? null }
+        : meanMinusMedian(tax?.averageTax, tax?.medianTax)
     return {
       city: row.city,
       activeCount: row.activeCount ?? null,
@@ -104,6 +122,15 @@ export function buildMarketPulseCombinedTownRows(
       averagePriceCalc: price?.averagePriceCalc,
       saleToAskCalc: price?.saleToAskCalc,
       priceDeltaCalc: price?.priceDeltaCalc,
+      medianTax: tax?.medianTax ?? null,
+      averageTax: tax?.averageTax ?? null,
+      taxDelta: taxDelta.dollars,
+      taxDeltaPct: taxDelta.pct,
+      taxYearLabel: tax?.taxYearLabel ?? null,
+      taxSampleSize: tax?.sampleSize ?? null,
+      medianTaxCalc: tax?.medianTaxCalc,
+      averageTaxCalc: tax?.averageTaxCalc,
+      taxDeltaCalc: tax?.taxDeltaCalc,
     }
   })
 }
@@ -117,6 +144,7 @@ export function defaultMarketPulseCombinedRows(
     snapshot.avgDomByTown ?? [],
     snapshot.closedTrailing ?? [],
     snapshot.priceByTown ?? [],
+    snapshot.taxByTown ?? [],
   )
   return sortRowsByBuyerFriendlyScore(
     built,

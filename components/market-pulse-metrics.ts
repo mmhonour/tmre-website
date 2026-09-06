@@ -64,6 +64,21 @@ export function marketPulseTownMetrics(
       valueKind: "int",
       calcOf: (r) => r.saleToAskCalc,
     },
+    medianTax: {
+      barClassName: METRIC_COLORS.medianTax,
+      valueKind: "money",
+      calcOf: (r) => r.medianTaxCalc,
+    },
+    taxDelta: {
+      barClassName: METRIC_COLORS.taxDelta,
+      valueKind: "money",
+      calcOf: (r) => r.taxDeltaCalc,
+    },
+    averageTax: {
+      barClassName: METRIC_COLORS.averageTax,
+      valueKind: "money",
+      calcOf: (r) => r.averageTaxCalc,
+    },
   };
 
   return marketPulseStackedMetrics(closedLookbackLabel, kind).map((m) => ({

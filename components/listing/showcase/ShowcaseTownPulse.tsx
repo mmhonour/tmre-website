@@ -34,6 +34,9 @@ const METRIC_MAX_KEY: Record<
   priceDelta: "priceDelta",
   averagePrice: "averagePrice",
   saleToAsk: "saleToAskDollars",
+  medianTax: "medianTax",
+  taxDelta: "taxDelta",
+  averageTax: "averageTax",
 };
 
 /**

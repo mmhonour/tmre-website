@@ -292,6 +292,7 @@ export default function MarketPulseContent({
         closedTrailing: closedRows ?? [],
         avgDomByTown: active.avgDomByTown ?? [],
         priceByTown: active.priceByTown ?? [],
+        taxByTown: active.taxByTown ?? [],
         dealOfTheWeek: active.deal ?? null,
       }
     : snapshot;

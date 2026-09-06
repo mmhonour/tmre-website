@@ -202,7 +202,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Neon Postgres',
             source: 'lib/db/stats-aggregates-repo.ts → readMarketStatsPools',
             detail:
-              'market-stats:All is the one payload that cannot be summed — a median needs the whole distribution, and means need their own denominators. One query returns every pool as a count plus its percentile_cont(0.5) / avg, and marketStatsFromPools() formats those into the same payload shape the per-town path produces. Reading every Active and Closed listing in the market to reduce them in Node is what exhausted V8\'s heap, and that cost grew with each town added.',
+              'market-stats:All is the one payload that cannot be summed — a median needs the whole distribution, and means need their own denominators. One query returns every pool as a count plus its percentile_cont(0.5) / avg, and marketStatsFromPools() formats those into the same payload shape the per-town path produces. Reading every Active and Closed listing in the market to reduce them in Node is what exhausted V8\'s heap, and that cost grew with each town added. Current-year tax (market-pulse-tax:*) is the same shape: SQL percentile_cont / avg over Active listings that have the in-play fiscal year, not a client rollup and not each listing\'s own latest year.',
             status: 'live',
             statusLabel: 'Live',
           },

@@ -170,10 +170,33 @@ export function formatTaxYoyChange(pct: number | null): string | null {
   return `${sign}${Math.abs(pct).toFixed(1)}%`;
 }
 
-/** Connecticut fiscal year ending year (July–June). */
-export function currentFiscalYearEnd(): number {
-  const now = new Date();
+/** Connecticut fiscal year ending year (July–June). Sep 2026 → 2027. */
+export function currentFiscalYearEnd(now = new Date()): number {
   return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+/**
+ * Town-pulse "in play" fiscal year.
+ *
+ * Current FY (July 2026–June 2027 as of Sep 2026) wins once enough active
+ * listings carry that year. Until MLS/CAMA populate it, fall back to the
+ * prior FY. Listings missing the chosen year are excluded — never each
+ * listing's own latest year.
+ */
+export const PULSE_TAX_YEAR_MIN_N = 50;
+
+export function choosePulseTaxYearEnd(
+  currentYearEnd: number,
+  countCurrent: number,
+  countPrior: number,
+  minN = PULSE_TAX_YEAR_MIN_N,
+): number {
+  const current = Math.max(0, countCurrent);
+  const prior = Math.max(0, countPrior);
+  if (current >= minN) return currentYearEnd;
+  if (current > 0 && current >= prior) return currentYearEnd;
+  if (prior > 0) return currentYearEnd - 1;
+  return currentYearEnd;
 }
 
 export function buildPropertyTaxHistorySlots(

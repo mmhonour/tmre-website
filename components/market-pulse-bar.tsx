@@ -28,6 +28,9 @@ export const METRIC_COLORS = {
   averagePrice: "bg-[var(--mp-average-bar,#8B6F4E)]",
   priceDelta: "bg-[var(--mp-delta-bar,#7A6A8A)]",
   saleToAsk: "bg-[var(--mp-sale-to-ask-bar,#4A7C8A)]",
+  medianTax: "bg-[var(--mp-median-tax-bar,#6B8B7A)]",
+  averageTax: "bg-[var(--mp-average-tax-bar,#7A8B6B)]",
+  taxDelta: "bg-[var(--mp-tax-delta-bar,#6A7A6B)]",
 } as const;
 
 export type MetricValueKind = "int" | "mos" | "dom" | "money";

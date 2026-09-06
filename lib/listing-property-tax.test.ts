@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   buildPropertyTaxHistorySlots,
+  choosePulseTaxYearEnd,
+  currentFiscalYearEnd,
   formatTaxYoyChange,
   taxYoyChangePct,
 } from './listing-property-tax'
@@ -63,5 +65,20 @@ describe('buildPropertyTaxHistorySlots', () => {
     assert.equal(slots[0]?.yoyChangePct, null)
     assert.equal(slots[1]?.amount, null)
     assert.equal(slots[1]?.yoyChangePct, null)
+  })
+})
+
+describe('choosePulseTaxYearEnd', () => {
+  it('keeps the current FY once enough listings have it (2026-27 in play)', () => {
+    assert.equal(choosePulseTaxYearEnd(2027, 80, 2000), 2027)
+    assert.equal(currentFiscalYearEnd(new Date('2026-09-06T12:00:00Z')), 2027)
+  })
+
+  it('falls back to the prior FY when current-year coverage is thin', () => {
+    assert.equal(choosePulseTaxYearEnd(2027, 12, 400), 2026)
+  })
+
+  it('does not skip back further than one year', () => {
+    assert.equal(choosePulseTaxYearEnd(2027, 0, 0), 2027)
   })
 })

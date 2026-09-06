@@ -32,10 +32,12 @@ import {
 import {
   formatSaleToAskPct,
   isMarketPulsePriceScaleMetric,
+  isMarketPulseTaxScaleMetric,
   marketPulseDeltaBarSpan,
   marketPulsePriceBarMax,
   marketPulsePricePct,
   marketPulseStackedMetrics,
+  marketPulseTaxBarMax,
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
 import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
@@ -282,6 +284,7 @@ function metricAside(
   row: MarketPulseCombinedTownRow,
 ): string | null {
   if (id === 'priceDelta') return formatPriceDeltaPct(row.priceDeltaPct)
+  if (id === 'taxDelta') return formatPriceDeltaPct(row.taxDeltaPct)
   if (id === 'saleToAsk') return formatSaleToAskPct(row.saleToAskPct)
   return null
 }
@@ -311,6 +314,7 @@ function stackedTownMetricsSection(
     ),
   )
   const priceMax = marketPulsePriceBarMax(rows)
+  const taxMax = marketPulseTaxBarMax(rows)
   const heatByCity = marketPulseHeatByCity(
     rows,
     (r) => ({
@@ -333,6 +337,8 @@ function stackedTownMetricsSection(
           const v = m.barValueOf(row)
           const max = isMarketPulsePriceScaleMetric(m.id)
             ? priceMax
+            : isMarketPulseTaxScaleMetric(m.id)
+              ? taxMax
             : (maxByMetric[i] ?? 0)
           const pct =
             max > 0 && v != null && Number.isFinite(v)
@@ -344,12 +350,18 @@ function stackedTownMetricsSection(
                   marketPulsePricePct(row.medianPrice, priceMax),
                   marketPulsePricePct(row.averagePrice, priceMax),
                 )
+              : m.id === 'taxDelta'
+                ? marketPulseDeltaBarSpan(
+                    marketPulsePricePct(row.medianTax, taxMax),
+                    marketPulsePricePct(row.averageTax, taxMax),
+                  )
               : { leftPct: 0, widthPct: pct }
           return metricBarRow(m.label, m.format(row), span.widthPct, {
             leftPct: span.leftPct,
             aside: metricAside(m.id, row),
             asideNegative:
-              m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0,
+              (m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0) ||
+              (m.id === 'taxDelta' && (row.taxDeltaPct ?? 0) < 0),
           })
         })
         .join('')

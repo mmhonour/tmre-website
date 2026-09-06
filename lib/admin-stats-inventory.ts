@@ -194,6 +194,19 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-closed:' },
   },
   {
+    id: 'market-pulse-tax',
+    name: 'Market Pulse current-year tax',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern:
+      'market-pulse-tax:{sale|rental}:{all|homes|condos|commercial}:v1',
+    owner: 'lib/market-pulse-tax-cache.ts',
+    notes:
+      'Median / average / delta tax per town for the in-play fiscal year (current FY when enough Active listings carry it, else prior). Only listings with that year are eligible. Written by rebuildStatsCache; the page and Monday email read only.',
+    live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-tax:' },
+  },
+  {
     id: 'nar-housing',
     name: 'NAR existing-home series (FRED)',
     category: 'market',

@@ -6,6 +6,7 @@ import {
   readRecentClosedListingsFromDb,
 } from '@/lib/db/listings-repo'
 import { readMarketPulseClosedCounts } from '@/lib/market-pulse-closed-cache'
+import { readMarketPulseTaxByTown } from '@/lib/market-pulse-tax-cache'
 import {
   readDealOfTheDayBundle,
   type DealOfTheDayResponse,
@@ -65,6 +66,7 @@ import type {
   MarketDigestDomTownCount,
   MarketDigestPriceTownCount,
   MarketDigestSnapshot,
+  MarketDigestTaxTownCount,
 } from '@/lib/market-digest-types'
 import { MARKET_DIGEST_CLOSED_TRAILING_MONTHS } from '@/lib/market-digest-types'
 import type { MarketPulseCategoryId } from '@/lib/market-pulse-shared'
@@ -217,6 +219,26 @@ async function avgDomByTownFromStats(
   } catch (err) {
     console.warn(
       '[market-digest] avg DOM by town failed',
+      err instanceof Error ? err.message : err,
+    )
+    return []
+  }
+}
+
+async function taxByTownFromCache(
+  kind: ListingKind,
+  propertyClass?: ListingPropertyClass,
+  commercialOnly?: boolean,
+): Promise<MarketDigestTaxTownCount[]> {
+  try {
+    const { payload } = await readMarketPulseTaxByTown(
+      { kind, propertyClass, commercialOnly },
+      { allowCompute: false },
+    )
+    return payload.rows
+  } catch (err) {
+    console.warn(
+      '[market-digest] tax by town failed',
       err instanceof Error ? err.message : err,
     )
     return []
@@ -408,7 +430,7 @@ async function buildCachedCategorySlice(
   spec: CachedCategorySpec,
   includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
-  const [closedTrailing, avgDomByTown, priceByTown, market, westport, ...townRows] =
+  const [closedTrailing, avgDomByTown, priceByTown, taxByTown, market, westport, ...townRows] =
     await Promise.all([
       includeClosedTrailing
         ? closedTrailingCounts({
@@ -418,6 +440,7 @@ async function buildCachedCategorySlice(
         : Promise.resolve<MarketDigestClosedTownCount[]>([]),
       avgDomByTownFromStats(spec.kind),
       priceByTownFromStats(spec.kind),
+      taxByTownFromCache(spec.kind, spec.propertyClass),
       readMonthsSupplyCached('All', spec.kind, spec.propertyClass),
       readMonthsSupplyCached('Westport', spec.kind, spec.propertyClass),
       ...(await digestCoverageTowns()).map((town) =>
@@ -438,6 +461,7 @@ async function buildCachedCategorySlice(
     closedTrailing,
     avgDomByTown,
     priceByTown,
+    taxByTown,
     deal: null,
   }
 }
@@ -458,6 +482,7 @@ function emptyCommercialCategorySlice(
     closedTrailing: [],
     avgDomByTown: [],
     priceByTown: [],
+    taxByTown: [],
     deal: null,
   }
 }
@@ -680,6 +705,7 @@ async function buildCommercialCategorySlice(
         : [],
       avgDomByTown,
       priceByTown,
+      taxByTown: await taxByTownFromCache('sale', undefined, true),
       deal,
     }
   } catch (err) {
@@ -748,6 +774,7 @@ export async function buildMarketDigestSnapshot(options?: {
     closedTrailing: allSlice?.closedTrailing ?? [],
     avgDomByTown: allSlice?.avgDomByTown ?? [],
     priceByTown: allSlice?.priceByTown ?? [],
+    taxByTown: allSlice?.taxByTown ?? [],
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({

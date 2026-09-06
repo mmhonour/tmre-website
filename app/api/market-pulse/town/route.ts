@@ -17,7 +17,9 @@ import type { MonthsSupplyPayload } from '@/lib/months-supply-cache'
 import type {
   MarketDigestDomTownCount,
   MarketDigestPriceTownCount,
+  MarketDigestTaxTownCount,
 } from '@/lib/market-digest-types'
+import { readMarketPulseTaxByTown } from '@/lib/market-pulse-tax-cache'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
@@ -52,6 +54,9 @@ export type MarketPulseTownPayload = {
     averagePrice: number
     priceDelta: number
     saleToAskDollars: number
+    medianTax: number
+    averageTax: number
+    taxDelta: number
   }
 }
 
@@ -102,7 +107,7 @@ export async function GET(req: Request) {
   const cities = ['All', ...TMRE_TOWNS]
 
   try {
-    const [inventory, marketRows, closed] = await Promise.all([
+    const [inventory, marketRows, closed, tax] = await Promise.all([
       Promise.all(
         cities.map((name) => readMonthsSupplyCached(name, kind, propertyClass)),
       ),
@@ -116,6 +121,10 @@ export async function GET(req: Request) {
       ),
       readMarketPulseClosedCounts(
         { kind, propertyClass, lookbackId },
+        { allowCompute: true },
+      ),
+      readMarketPulseTaxByTown(
+        { kind, propertyClass },
         { allowCompute: true },
       ),
     ])
@@ -142,11 +151,14 @@ export async function GET(req: Request) {
         averagePriceCalc: r.stats!.averagePriceCalc,
       }))
 
+    const taxRows: MarketDigestTaxTownCount[] = tax.payload.rows
+
     const combined = buildMarketPulseCombinedTownRows(
       inventoryRows,
       domRows,
       closed.payload.rows,
       priceRows,
+      taxRows,
     )
 
     const wanted = city.trim().toLowerCase()
@@ -173,6 +185,9 @@ export async function GET(req: Request) {
         averagePrice: maxOf(peers, (r) => r.averagePrice),
         priceDelta: maxOf(peers, (r) => r.priceDelta),
         saleToAskDollars: maxOf(peers, (r) => r.saleToAskDollars),
+        medianTax: maxOf(peers, (r) => r.medianTax),
+        averageTax: maxOf(peers, (r) => r.averageTax),
+        taxDelta: maxOf(peers, (r) => r.taxDelta),
       },
     }
 
