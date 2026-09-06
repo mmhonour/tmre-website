@@ -29,6 +29,7 @@ import AdminDataControlsPanel from "@/components/admin/AdminDataControlsPanel";
 import AdminPostgresPanel from "@/components/admin/AdminPostgresPanel";
 import AdminSyncsPanel from "@/components/admin/AdminSyncsPanel";
 import AdminDatabaseInventoryPanel from "@/components/admin/AdminDatabaseInventoryPanel";
+import AdminDbSizePanel from "@/components/admin/AdminDbSizePanel";
 import AdminInventoryComparisonPanel from "@/components/admin/AdminInventoryComparisonPanel";
 import AdminVintagesPanel from "@/components/admin/AdminVintagesPanel";
 import AdminIntelligenceDealBoardPanel from "@/components/admin/AdminIntelligenceDealBoardPanel";
@@ -856,6 +857,7 @@ export default async function AdminPage() {
           />
         </>
       }
+      size={<AdminDbSizePanel />}
       townCounts={townCountsPanel}
     />
   );

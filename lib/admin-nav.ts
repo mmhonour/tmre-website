@@ -62,7 +62,7 @@ export type AdminSyncsPanelId =
   | "photo-ttl";
 
 /** Sub-panels under Admin → NEON Postgres. */
-export type AdminPostgresPanelId = "schema" | "inventory" | "town-counts";
+export type AdminPostgresPanelId = "schema" | "inventory" | "size" | "town-counts";
 
 /**
  * Retained as the narrowed set of Web server panels that used to live under a
@@ -324,6 +324,12 @@ export const ADMIN_POSTGRES_PANELS: {
       "Table row comparison vs last full-resync snapshot, plus connected-store summaries",
   },
   {
+    id: "size",
+    label: "Size & growth",
+    subtitle:
+      "On-demand Neon size, table growth, and the queries that keep compute awake",
+  },
+  {
     id: "town-counts",
     label: "Listings by town",
     subtitle: "Active listing counts from the current Postgres inventory",
@@ -440,7 +446,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "postgres",
     label: "NEON",
     subtitle:
-      "Schema, database inventory, and active listings by town",
+      "Schema, database inventory, size & growth, and active listings by town",
   },
   {
     id: "r2",
@@ -519,6 +525,12 @@ export const ADMIN_SECTION_LINKS: AdminSectionLink[] = [
     label: "Listings by town",
     tab: "postgres",
     panel: "town-counts",
+  },
+  {
+    id: "admin-db-size",
+    label: "Size & growth",
+    tab: "postgres",
+    panel: "size",
   },
   {
     id: "admin-db-tuning",
@@ -1120,6 +1132,11 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
         detail: "Jun/Jul vendor API cost rollup (Admin → Web server → API costs)",
         href: "/api/admin/stack-costs",
       },
+      {
+        label: "GET /api/admin/db-size",
+        detail: "On-demand Neon size, growth, and query chatter (Admin → NEON → Size & growth)",
+        href: "/api/admin/db-size",
+      },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
       {
         label: "GET/PATCH /api/admin/location-estimate-map-overlay",
@@ -1262,7 +1279,10 @@ export function isAdminPostgresPanelId(
   value: string | null | undefined,
 ): value is AdminPostgresPanelId {
   return (
-    value === "schema" || value === "inventory" || value === "town-counts"
+    value === "schema" ||
+    value === "inventory" ||
+    value === "size" ||
+    value === "town-counts"
   );
 }
 
