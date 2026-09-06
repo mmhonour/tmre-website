@@ -10,7 +10,10 @@ import {
 } from '@/lib/property-address'
 import { getListingByMlsId, searchListings, type Listing } from '@/lib/rets'
 import type { VisionAddressRecord } from '@/lib/db/vision-addresses-repo'
-import { visionListingKeys } from '@/lib/vision-listing-match'
+import { compactMblu, visionListingKeys } from '@/lib/vision-listing-match'
+import { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
+
+export { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
 
 const WESTPORT = 'Westport'
 
@@ -92,13 +95,28 @@ function visionStreetLine(vision: VisionAddressRecord): string {
   )
 }
 
+const LISTING_STATUS_RANK_SQL = `CASE status_bucket
+          WHEN 'Active' THEN 0
+          WHEN 'Closed' THEN 1
+          WHEN 'Expired' THEN 2
+          ELSE 3
+        END`
+
 /**
  * Neon listings already at this Vision address (Ln↔Lane / Rd↔Road via
- * addressMatchKey). Same stack as backfillVisionListingLinks — Find used
- * to skip this and only RETS-search the Vision spelling (`*Locust*Ln*`),
- * which cannot match MLS `Locust Lane`.
+ * addressMatchKey), then unique MBLU / ParcelNumber. Same stack as
+ * backfillVisionListingLinks — Find used to skip this and only RETS-search
+ * the Vision spelling (`*Locust*Ln*`), which cannot match MLS `Locust Lane`.
  */
 export async function findListingInDbByVisionAddress(
+  vision: VisionAddressRecord,
+): Promise<Listing | null> {
+  const byStreet = await findListingInDbByStreet(vision)
+  if (byStreet) return byStreet
+  return findListingInDbByVisionMblu(vision)
+}
+
+async function findListingInDbByStreet(
   vision: VisionAddressRecord,
 ): Promise<Listing | null> {
   const street = visionStreetLine(vision)
@@ -120,12 +138,7 @@ export async function findListingInDbByVisionAddress(
       WHERE lower(town) = lower($1)
         AND address_street ILIKE $2
       ORDER BY
-        CASE status_bucket
-          WHEN 'Active' THEN 0
-          WHEN 'Closed' THEN 1
-          WHEN 'Expired' THEN 2
-          ELSE 3
-        END,
+        ${LISTING_STATUS_RANK_SQL},
         modification_timestamp DESC NULLS LAST
       LIMIT 40`,
     [WESTPORT, `${house} %`],
@@ -144,6 +157,30 @@ export async function findListingInDbByVisionAddress(
   return null
 }
 
+/** Compact MBLU ↔ listings.raw ParcelNumber (spaces/slashes stripped). */
+export async function findListingInDbByVisionMblu(
+  vision: VisionAddressRecord,
+): Promise<Listing | null> {
+  const mblu = compactMblu(vision.mblu)
+  if (!mblu) return null
+  const row = await query<{ id: string }>(
+    `SELECT id
+       FROM listings
+      WHERE lower(town) = lower($1)
+        AND NULLIF(btrim(raw->>'ParcelNumber'), '') IS NOT NULL
+        AND regexp_replace(upper(btrim(raw->>'ParcelNumber')), '[^A-Z0-9]', '', 'g')
+          = regexp_replace(upper($2), '[^A-Z0-9]', '', 'g')
+      ORDER BY
+        ${LISTING_STATUS_RANK_SQL},
+        modification_timestamp DESC NULLS LAST
+      LIMIT 1`,
+    [WESTPORT, mblu],
+  )
+  const id = row[0]?.id
+  if (!id) return null
+  return readListingByIdFromDb(id)
+}
+
 /** MLS UnparsedAddress uses Lane/Road — pick the longest spelling for one RETS hop. */
 function preferredRetsStreet(street: string): string {
   const variants = streetSearchVariants(street)
@@ -160,6 +197,41 @@ function listingMatchesStreetQuery(street: string, listingStreet: string): boole
   )
 }
 
+function listingStatusRank(status: string | null | undefined): number {
+  const key = (status ?? '').trim().toLowerCase()
+  if (key === 'active' || key === 'coming soon') return 0
+  if (key.includes('under contract')) return 1
+  if (key === 'closed' || key === 'sold') return 2
+  if (key === 'expired') return 3
+  return 4
+}
+
+function pickBestStreetMatch(
+  street: string,
+  hits: Listing[],
+): Listing | null {
+  const matched = hits.filter((row) =>
+    listingMatchesStreetQuery(
+      street,
+      row.address.street || row.address.full || '',
+    ),
+  )
+  if (matched.length === 0) return null
+  return [...matched].sort((a, b) => {
+    const rank = listingStatusRank(a.status) - listingStatusRank(b.status)
+    if (rank !== 0) return rank
+    const aAt = a.statusChangeTimestamp || a.modificationTimestamp || ''
+    const bAt = b.statusChangeTimestamp || b.modificationTimestamp || ''
+    return bAt.localeCompare(aAt)
+  })[0] ?? null
+}
+
+async function persistMatchedListing(match: Listing): Promise<Listing | null> {
+  const wrote = await persistListingRecord(match)
+  if (!wrote) return readListingByIdFromDb(listingRowId(match) || match.mlsId)
+  return readListingByIdFromDb(listingRowId(match) || match.mlsId)
+}
+
 async function persistByStreet(street: string): Promise<Listing | null> {
   const queryStreet = preferredRetsStreet(street)
   const hits = await withTimeout(
@@ -172,17 +244,38 @@ async function persistByStreet(street: string): Promise<Listing | null> {
     INGEST_TIMEOUT_MS,
   )
   if (!hits || hits.length === 0) return null
-  const match =
-    hits.find((row) =>
-      listingMatchesStreetQuery(
-        street,
-        row.address.street || row.address.full || '',
-      ),
-    ) ?? null
+  const match = pickBestStreetMatch(street, hits)
   if (!match) return null
-  const wrote = await persistListingRecord(match)
-  if (!wrote) return readListingByIdFromDb(listingRowId(match) || match.mlsId)
-  return readListingByIdFromDb(listingRowId(match) || match.mlsId)
+  return persistMatchedListing(match)
+}
+
+/**
+ * Address + Closed StatusChangeTimestamp window. Unscoped address search
+ * misses pre-2019 sales (they were never bulk-synced and SmartMLS will not
+ * return them without the date range).
+ */
+async function persistByStreetClosed(
+  street: string,
+  lastSaleDate: string | null | undefined,
+): Promise<Listing | null> {
+  const queryStreet = preferredRetsStreet(street)
+  const window = closedSearchWindowForSaleDate(lastSaleDate)
+  const hits = await withTimeout(
+    searchListings({
+      county: 'fairfield',
+      city: WESTPORT,
+      addressContains: queryStreet,
+      status: 'Closed',
+      closedAfter: window.closedAfter,
+      closedBefore: window.closedBefore,
+      limit: 24,
+    }),
+    INGEST_TIMEOUT_MS,
+  )
+  if (!hits || hits.length === 0) return null
+  const match = pickBestStreetMatch(street, hits)
+  if (!match) return null
+  return persistMatchedListing(match)
 }
 
 export function looksLikeStreetQuery(raw: string): boolean {
@@ -199,7 +292,10 @@ export async function ingestFindListingByStreetQuery(
   const street = raw.trim()
   if (!looksLikeStreetQuery(street)) return null
   try {
-    return await persistByStreet(street)
+    return (
+      (await persistByStreet(street)) ??
+      (await persistByStreetClosed(street, null))
+    )
   } catch (err) {
     console.warn('[find-listing-ingest] street query ingest failed', err)
     return null
@@ -208,8 +304,9 @@ export async function ingestFindListingByStreetQuery(
 
 /**
  * One-off Find ingest: if this Vision parcel has no listings row, pull it
- * from RETS (known MLS id/key first, else one address search) and upsert
- * permanently. Never throws — a Vision-only page is better than a 502.
+ * from RETS (known MLS id/key first, else address search, else Closed
+ * year-window around Vision's last deed) and upsert permanently. Never
+ * throws — a Vision-only page is better than a 502.
  */
 export async function ingestFindListingIfMissing(
   vision: VisionAddressRecord,
@@ -234,7 +331,9 @@ export async function ingestFindListingIfMissing(
 
     const street = visionStreetLine(vision)
     if (street.length >= 4) {
-      const listing = await persistByStreet(street)
+      const listing =
+        (await persistByStreet(street)) ??
+        (await persistByStreetClosed(street, vision.lastSaleDate))
       if (listing) {
         await stampVisionListingLink(vision, listing)
         return { listing, ingested: true }
