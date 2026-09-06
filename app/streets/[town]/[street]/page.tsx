@@ -102,9 +102,8 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Owner, mailing, and Bought (last paid deed). Click
-            the Bought date for every deed — sales and quitclaims — newest
-            first.
+            street page. Click a house or Bought for the owner-of-record
+            card — full name, mailing, and every deed.
           </p>
         </div>
       </section>
@@ -129,12 +128,22 @@ export default async function StreetsStreetPage({
                     key={`${row.visionPid}-${row.addressLabel}`}
                     className="scroll-mt-28 py-2.5 target:bg-gold/10 target:-mx-3 target:px-3 target:rounded-xl"
                   >
-                    <Link
-                      href={parcelHref(town, row.visionPid, row.addressLabel)}
-                      className="text-sm text-charcoal/90 hover:text-navy"
+                    <VisionDeedHistoryPopout
+                      label={row.addressLabel}
+                      addressLabel={row.addressLabel}
+                      ownerName={owner}
+                      mailingAddress={mailing}
+                      soldLabel={sold ? `Bought ${sold}` : null}
+                      rows={row.deedHistory}
+                      parcelHref={parcelHref(
+                        town,
+                        row.visionPid,
+                        row.addressLabel,
+                      )}
+                      triggerClassName="text-left text-sm text-charcoal/90 hover:text-navy"
                     >
                       {row.addressLabel}
-                    </Link>
+                    </VisionDeedHistoryPopout>
                     <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
                       {owner ?? 'Owner pending Field Card ingest'}
                       {owner && sold ? (
@@ -144,7 +153,14 @@ export default async function StreetsStreetPage({
                             label={`Bought ${sold}`}
                             addressLabel={row.addressLabel}
                             ownerName={owner}
+                            mailingAddress={mailing}
+                            soldLabel={`Bought ${sold}`}
                             rows={row.deedHistory}
+                            parcelHref={parcelHref(
+                              town,
+                              row.visionPid,
+                              row.addressLabel,
+                            )}
                           />
                         </>
                       ) : owner && row.deedHistory.length > 0 ? (
@@ -154,7 +170,13 @@ export default async function StreetsStreetPage({
                             label="Deed history"
                             addressLabel={row.addressLabel}
                             ownerName={owner}
+                            mailingAddress={mailing}
                             rows={row.deedHistory}
+                            parcelHref={parcelHref(
+                              town,
+                              row.visionPid,
+                              row.addressLabel,
+                            )}
                           />
                         </>
                       ) : null}

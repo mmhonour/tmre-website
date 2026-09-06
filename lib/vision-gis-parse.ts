@@ -348,12 +348,35 @@ export type VisionDeedDisplayRow = {
   deedLabel: string
 }
 
+/**
+ * VGSI ownership-history cells often stop at a dangling `&` even when
+ * `lblCoOwner` / current owner-of-record already has the rest. Complete
+ * that one line from the joined current name. Do not glue a prior deed
+ * (Malter, Hartmann, …) onto today’s owner.
+ */
+export function completeDanglingDeedOwner(
+  rowOwner: string | null | undefined,
+  currentOwner?: string | null,
+): string {
+  const row = (rowOwner ?? '').replace(/\s+/g, ' ').trim()
+  const current = (currentOwner ?? '').replace(/\s+/g, ' ').trim()
+  if (!row) return current || '—'
+  if (!current) return row
+  if (!/[&]\s*$/.test(row)) return row
+  const stem = row.replace(/\s*(&|AND)\s*$/i, '').trim()
+  if (stem && current.toLowerCase().startsWith(stem.toLowerCase())) {
+    return current
+  }
+  return row
+}
+
 export function visionDeedDisplayRows(
   rows: readonly VisionOwnershipRow[],
+  currentOwner?: string | null,
 ): VisionDeedDisplayRow[] {
   return sortVisionOwnershipDesc(rows).map((row) => ({
     date: row.date?.trim() || '—',
-    owner: row.owner?.trim() || '—',
+    owner: completeDanglingDeedOwner(row.owner, currentOwner),
     priceLabel: isVisionQuitclaim(row)
       ? '—'
       : formatVisionMoney(row.price) ?? row.price ?? '—',

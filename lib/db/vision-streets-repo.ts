@@ -312,6 +312,10 @@ export async function listVisionStreetParcels(
       value: f.value,
     }))
     const fromCard = ownerMailingAddressFromFields(fields)
+    const ownerName =
+      ownerDisplayNameFromFields(fields, row.owner_name) ||
+      row.owner_name?.trim() ||
+      null
     const ownership =
       card?.ownership && card.ownership.length > 0
         ? card.ownership
@@ -325,7 +329,7 @@ export async function listVisionStreetParcels(
       ownership.length > 0
         ? ownership
         : lastSaleAsOwnership({
-            ownerName: row.owner_name,
+            ownerName,
             lastSalePrice: paidPrice,
             lastSaleDate: row.last_sale_date,
           })
@@ -339,10 +343,7 @@ export async function listVisionStreetParcels(
         row.synced_at instanceof Date
           ? row.synced_at.toISOString()
           : String(row.synced_at),
-      ownerName:
-        ownerDisplayNameFromFields(fields, row.owner_name) ||
-        row.owner_name?.trim() ||
-        null,
+      ownerName,
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,
@@ -356,7 +357,7 @@ export async function listVisionStreetParcels(
         instrument: ownership[0]?.instrument,
       }),
       quitclaimCount: countVisionQuitclaims(ownership),
-      deedHistory: visionDeedDisplayRows(deeds),
+      deedHistory: visionDeedDisplayRows(deeds, ownerName),
     }
   })
 }

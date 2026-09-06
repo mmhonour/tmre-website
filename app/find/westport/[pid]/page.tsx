@@ -283,7 +283,17 @@ export default async function WestportParcelPage({
                         .join(" · ")}
                       addressLabel={property.street}
                       ownerName={property.ownerDisplayName}
+                      mailingAddress={property.ownerMailingAddress}
+                      soldLabel={[
+                        `Bought ${property.purchaseDate}`,
+                        property.lastSoldPrice != null
+                          ? formatVisionMoney(property.lastSoldPrice)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                       rows={property.deedHistory}
+                      parcelHref={westportParcelHref(property.visionPid)}
                       tone="dark"
                     />
                   ) : (
@@ -335,9 +345,17 @@ export default async function WestportParcelPage({
                 const here = row.visionPid === property.visionPid;
                 return (
                   <li key={`${row.visionPid}-${row.addressLabel}`}>
-                    <Link
-                      href={westportParcelHref(row.visionPid)}
-                      className={`flex items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 ${
+                    <VisionDeedHistoryPopout
+                      label={row.addressLabel}
+                      addressLabel={row.addressLabel}
+                      ownerName={row.ownerName}
+                      mailingAddress={row.ownerMailingAddress}
+                      soldLabel={
+                        row.purchaseDate ? `Bought ${row.purchaseDate}` : null
+                      }
+                      rows={row.deedHistory}
+                      parcelHref={westportParcelHref(row.visionPid)}
+                      triggerClassName={`flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left ${
                         here
                           ? "bg-gold/15 text-navy"
                           : "text-charcoal/80 hover:bg-cream hover:text-navy"
@@ -349,7 +367,7 @@ export default async function WestportParcelPage({
                       <span className="max-w-[55%] truncate font-mono text-[10px] text-charcoal/50">
                         {row.ownerName ?? "Pending"}
                       </span>
-                    </Link>
+                    </VisionDeedHistoryPopout>
                   </li>
                 );
               })}

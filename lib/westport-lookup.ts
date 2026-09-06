@@ -570,6 +570,10 @@ export async function mergeWestportProperty(
     : null
 
   const fieldCard = await resolveWestportFieldCard(vision)
+  const ownerDisplayName = ownerDisplayNameFromFields(
+    fieldCard.fields,
+    vision.ownerName ?? listing?.ownerName,
+  )
 
   return {
     town: WESTPORT_LOOKUP_TOWN,
@@ -606,15 +610,9 @@ export async function mergeWestportProperty(
     zoning: visionFill(null, vision.zoning),
     ownerName: visionFill(
       listing?.ownerName,
-      ownerDisplayNameFromFields(
-        fieldCard.fields,
-        vision.ownerName ?? listing?.ownerName,
-      ) ?? vision.ownerName,
+      ownerDisplayName ?? vision.ownerName,
     ),
-    ownerDisplayName: ownerDisplayNameFromFields(
-      fieldCard.fields,
-      vision.ownerName ?? listing?.ownerName,
-    ),
+    ownerDisplayName,
     ownerMailingAddress:
       ownerMailingAddressFromFields(fieldCard.fields) ??
       vision.ownerMailingAddress,
@@ -635,7 +633,7 @@ export async function mergeWestportProperty(
       ownership: fieldCard.ownership,
     }),
     quitclaimCount: countVisionQuitclaims(fieldCard.ownership),
-    deedHistory: visionDeedDisplayRows(fieldCard.ownership),
+    deedHistory: visionDeedDisplayRows(fieldCard.ownership, ownerDisplayName),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
     appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),
