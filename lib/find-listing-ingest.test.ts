@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { listingIngestTown } from './find-listing-ingest-shared'
 import { closedSearchWindowForSaleDate } from './find-listing-window'
+
+describe('listingIngestTown', () => {
+  it('prefers Vision town over city and does not hardcode Westport', () => {
+    assert.equal(listingIngestTown({ town: 'Norwalk', city: 'Westport' }), 'Norwalk')
+    assert.equal(listingIngestTown({ town: '', city: 'Wilton' }), 'Wilton')
+    assert.equal(listingIngestTown('Greenwich'), 'Greenwich')
+    assert.equal(listingIngestTown(null), 'Westport')
+  })
+})
 
 describe('closedSearchWindowForSaleDate', () => {
   it('windows a Vision last-deed date to the surrounding calendar years', () => {

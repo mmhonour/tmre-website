@@ -7,8 +7,9 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
-import { VisionDeedHistoryPopout } from '@/components/VisionDeedHistoryPopout'
+import { StreetParcelMlsRow } from '@/components/StreetParcelMlsRow'
 import { westportParcelHref } from '@/lib/listing-url'
+import { loadStreetListingCards } from '@/lib/street-listing-ingest'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
   compareAddressLabels,
@@ -79,6 +80,7 @@ export default async function StreetsStreetPage({
   const parcels = (await listVisionStreetParcels(town, streetName)).sort((a, b) =>
     compareAddressLabels(a.addressLabel, b.addressLabel),
   )
+  const listings = await loadStreetListingCards(town, streetName)
   const townHref = `/streets/${townToStreetSlug(town)}`
 
   return (
@@ -103,7 +105,8 @@ export default async function StreetsStreetPage({
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
             street page. Click a house or Bought for the owner-of-record
-            card — full name, mailing, and every deed.
+            card — full name, mailing, and every deed. A click also silently
+            asks RETS for a missing MLS listing so other towns fill in.
           </p>
         </div>
       </section>
@@ -118,77 +121,24 @@ export default async function StreetsStreetPage({
             </p>
           ) : (
             <ul className="divide-y divide-charcoal/10 max-w-3xl">
-              {parcels.map((row) => {
-                const owner = row.ownerName
-                const mailing = row.ownerMailingAddress
-                const sold = row.purchaseDate
-                return (
-                  <li
-                    id={`pid-${row.visionPid}`}
-                    key={`${row.visionPid}-${row.addressLabel}`}
-                    className="scroll-mt-28 py-2.5 target:bg-gold/10 target:-mx-3 target:px-3 target:rounded-xl"
-                  >
-                    <VisionDeedHistoryPopout
-                      label={row.addressLabel}
-                      addressLabel={row.addressLabel}
-                      ownerName={owner}
-                      mailingAddress={mailing}
-                      soldLabel={sold ? `Bought ${sold}` : null}
-                      rows={row.deedHistory}
-                      parcelHref={parcelHref(
-                        town,
-                        row.visionPid,
-                        row.addressLabel,
-                      )}
-                      triggerClassName="text-left text-sm text-charcoal/90 hover:text-navy"
-                    >
-                      {row.addressLabel}
-                    </VisionDeedHistoryPopout>
-                    <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
-                      {owner ?? 'Owner pending Field Card ingest'}
-                      {owner && sold ? (
-                        <>
-                          {' · '}
-                          <VisionDeedHistoryPopout
-                            label={`Bought ${sold}`}
-                            addressLabel={row.addressLabel}
-                            ownerName={owner}
-                            mailingAddress={mailing}
-                            soldLabel={`Bought ${sold}`}
-                            rows={row.deedHistory}
-                            parcelHref={parcelHref(
-                              town,
-                              row.visionPid,
-                              row.addressLabel,
-                            )}
-                          />
-                        </>
-                      ) : owner && row.deedHistory.length > 0 ? (
-                        <>
-                          {' · '}
-                          <VisionDeedHistoryPopout
-                            label="Deed history"
-                            addressLabel={row.addressLabel}
-                            ownerName={owner}
-                            mailingAddress={mailing}
-                            rows={row.deedHistory}
-                            parcelHref={parcelHref(
-                              town,
-                              row.visionPid,
-                              row.addressLabel,
-                            )}
-                          />
-                        </>
-                      ) : null}
-                    </p>
-                    {mailing ? (
-                      <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
-                        {mailing}
-                      </p>
-                    ) : null}
-                  </li>
-                )
-              })}
+              {parcels.map((row) => (
+                <StreetParcelMlsRow
+                  key={`${row.visionPid}-${row.addressLabel}`}
+                  town={town}
+                  visionPid={row.visionPid}
+                  addressLabel={row.addressLabel}
+                  ownerName={row.ownerName}
+                  mailingAddress={row.ownerMailingAddress}
+                  soldLabel={row.purchaseDate ? `Bought ${row.purchaseDate}` : null}
+                  deedHistory={row.deedHistory}
+                  parcelHref={parcelHref(
+                    town,
+                    row.visionPid,
+                    row.addressLabel,
+                  )}
+                  listing={listings.get(row.visionPid) ?? null}
+                />
+              ))}
             </ul>
           )}
           <p className="mt-10">

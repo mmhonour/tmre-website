@@ -120,6 +120,13 @@
   included_files = []
   background = true
 
+# Street listings RETS fill — no background worker. Thin cron enqueues on
+# sync_queue; the Railway runner owns the work. Dense */30; Configure weekly
+# Wed 02:00 ET (and 6h leftover catch-up) decides whether this wake does anything.
+[functions."sync-street-listings"]
+  included_files = []
+  schedule = "*/30 * * * *"
+
 # Dense cron; the handler gates on Configure weekday + start time (default Mon
 # 08:00 ET). A once-a-week expression here gave the brief exactly one attempt and
 # no retry, so a single queue 502 or Resend blip lost the whole week silently.

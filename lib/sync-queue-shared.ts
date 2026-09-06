@@ -28,6 +28,7 @@ export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'market-digest',
   'open-houses',
   'cama-tax',
+  'street-listings',
 ]
 
 export function isSyncQueueRunnerJob(
@@ -145,6 +146,9 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     // Six towns x four CAMA vintages, plus one listings read each. Bounded by
     // data.ct.gov response time rather than by any local work.
     'cama-tax': 30,
+    // ~40 RETS address+Closed hops (12s each) plus DB stamps. Weekly chunk
+    // plus 6h catch-up so leftover streets keep filling between other jobs.
+    'street-listings': 30,
   }
 
 export const SYNC_JOB_BUDGET_MIN_MINUTES = 1

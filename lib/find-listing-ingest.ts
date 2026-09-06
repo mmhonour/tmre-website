@@ -11,11 +11,11 @@ import {
 import { getListingByMlsId, searchListings, type Listing } from '@/lib/rets'
 import type { VisionAddressRecord } from '@/lib/db/vision-addresses-repo'
 import { compactMblu, visionListingKeys } from '@/lib/vision-listing-match'
+import { listingIngestTown } from '@/lib/find-listing-ingest-shared'
 import { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
 
+export { listingIngestTown } from '@/lib/find-listing-ingest-shared'
 export { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
-
-const WESTPORT = 'Westport'
 
 const INGEST_TIMEOUT_MS = 12_000
 
@@ -24,6 +24,20 @@ export type FindListingIngestResult = {
   /** True only when this request wrote a new/updated listings row from RETS. */
   ingested: boolean
 }
+
+export type FindListingIngestPhase =
+  | 'checking-db'
+  | 'rets-id'
+  | 'rets-address'
+  | 'rets-closed'
+  | 'found'
+  | 'none'
+  | 'error'
+
+export type FindListingIngestOnProgress = (update: {
+  phase: FindListingIngestPhase
+  message: string
+}) => void | Promise<void>
 
 function uniqueIds(...raw: (string | null | undefined)[]): string[] {
   const seen = new Set<string>()
@@ -57,6 +71,7 @@ export async function stampVisionListingLink(
 ): Promise<void> {
   const id = listingRowId(listing)
   if (!id) return
+  const town = listingIngestTown(vision)
   try {
     await execute(
       `UPDATE listings
@@ -70,7 +85,7 @@ export async function stampVisionListingLink(
           SET listing_id = $3, mls_id = COALESCE($4, mls_id)
         WHERE town = $1 AND vision_pid = $2`,
       [
-        WESTPORT,
+        town,
         vision.visionPid,
         id,
         listing.mlsId?.trim() || null,
@@ -119,11 +134,12 @@ export async function findListingInDbByVisionAddress(
 async function findListingInDbByStreet(
   vision: VisionAddressRecord,
 ): Promise<Listing | null> {
+  const town = listingIngestTown(vision)
   const street = visionStreetLine(vision)
   if (street.length < 4) return null
   const sourceNorm =
     vision.addressNorm ||
-    normalizePropertyAddress(WESTPORT, street, vision.zip ?? null)
+    normalizePropertyAddress(town, street, vision.zip ?? null)
   const want = visionListingKeys(sourceNorm)
   const house = (vision.streetNo || street.match(/^\d+[A-Za-z]?/)?.[0] || '').trim()
   if (!house) return null
@@ -141,14 +157,14 @@ async function findListingInDbByStreet(
         ${LISTING_STATUS_RANK_SQL},
         modification_timestamp DESC NULLS LAST
       LIMIT 40`,
-    [WESTPORT, `${house} %`],
+    [town, `${house} %`],
   )
 
   for (const row of rows) {
     const listingStreet = row.address_street?.trim()
     if (!listingStreet) continue
     const keys = visionListingKeys(
-      normalizePropertyAddress(WESTPORT, listingStreet, row.postal_code),
+      normalizePropertyAddress(town, listingStreet, row.postal_code),
     )
     if (keys.exact !== want.exact && keys.loose !== want.loose) continue
     const listing = await readListingByIdFromDb(row.id)
@@ -161,6 +177,7 @@ async function findListingInDbByStreet(
 export async function findListingInDbByVisionMblu(
   vision: VisionAddressRecord,
 ): Promise<Listing | null> {
+  const town = listingIngestTown(vision)
   const mblu = compactMblu(vision.mblu)
   if (!mblu) return null
   const row = await query<{ id: string }>(
@@ -174,7 +191,7 @@ export async function findListingInDbByVisionMblu(
         ${LISTING_STATUS_RANK_SQL},
         modification_timestamp DESC NULLS LAST
       LIMIT 1`,
-    [WESTPORT, mblu],
+    [town, mblu],
   )
   const id = row[0]?.id
   if (!id) return null
@@ -197,6 +214,12 @@ function listingMatchesStreetQuery(street: string, listingStreet: string): boole
   )
 }
 
+function listingMatchesIngestTown(town: string, listing: Listing): boolean {
+  const city = (listing.address.city || '').trim().toLowerCase()
+  const want = town.trim().toLowerCase()
+  return !want || !city || city === want
+}
+
 function listingStatusRank(status: string | null | undefined): number {
   const key = (status ?? '').trim().toLowerCase()
   if (key === 'active' || key === 'coming soon') return 0
@@ -209,13 +232,15 @@ function listingStatusRank(status: string | null | undefined): number {
 function pickBestStreetMatch(
   street: string,
   hits: Listing[],
+  town?: string,
 ): Listing | null {
-  const matched = hits.filter((row) =>
-    listingMatchesStreetQuery(
+  const matched = hits.filter((row) => {
+    if (town && !listingMatchesIngestTown(town, row)) return false
+    return listingMatchesStreetQuery(
       street,
       row.address.street || row.address.full || '',
-    ),
-  )
+    )
+  })
   if (matched.length === 0) return null
   return [...matched].sort((a, b) => {
     const rank = listingStatusRank(a.status) - listingStatusRank(b.status)
@@ -232,19 +257,22 @@ async function persistMatchedListing(match: Listing): Promise<Listing | null> {
   return readListingByIdFromDb(listingRowId(match) || match.mlsId)
 }
 
-async function persistByStreet(street: string): Promise<Listing | null> {
+async function persistByStreet(
+  street: string,
+  town: string,
+): Promise<Listing | null> {
   const queryStreet = preferredRetsStreet(street)
   const hits = await withTimeout(
     searchListings({
       county: 'fairfield',
-      city: WESTPORT,
+      city: town,
       addressContains: queryStreet,
       limit: 24,
     }),
     INGEST_TIMEOUT_MS,
   )
   if (!hits || hits.length === 0) return null
-  const match = pickBestStreetMatch(street, hits)
+  const match = pickBestStreetMatch(street, hits, town)
   if (!match) return null
   return persistMatchedListing(match)
 }
@@ -257,13 +285,14 @@ async function persistByStreet(street: string): Promise<Listing | null> {
 async function persistByStreetClosed(
   street: string,
   lastSaleDate: string | null | undefined,
+  town: string,
 ): Promise<Listing | null> {
   const queryStreet = preferredRetsStreet(street)
   const window = closedSearchWindowForSaleDate(lastSaleDate)
   const hits = await withTimeout(
     searchListings({
       county: 'fairfield',
-      city: WESTPORT,
+      city: town,
       addressContains: queryStreet,
       status: 'Closed',
       closedAfter: window.closedAfter,
@@ -273,7 +302,7 @@ async function persistByStreetClosed(
     INGEST_TIMEOUT_MS,
   )
   if (!hits || hits.length === 0) return null
-  const match = pickBestStreetMatch(street, hits)
+  const match = pickBestStreetMatch(street, hits, town)
   if (!match) return null
   return persistMatchedListing(match)
 }
@@ -288,13 +317,15 @@ export function looksLikeStreetQuery(raw: string): boolean {
  */
 export async function ingestFindListingByStreetQuery(
   raw: string,
+  town = 'Westport',
 ): Promise<Listing | null> {
   const street = raw.trim()
   if (!looksLikeStreetQuery(street)) return null
+  const city = listingIngestTown(town)
   try {
     return (
-      (await persistByStreet(street)) ??
-      (await persistByStreetClosed(street, null))
+      (await persistByStreet(street, city)) ??
+      (await persistByStreetClosed(street, null, city))
     )
   } catch (err) {
     console.warn('[find-listing-ingest] street query ingest failed', err)
@@ -311,38 +342,74 @@ export async function ingestFindListingByStreetQuery(
 export async function ingestFindListingIfMissing(
   vision: VisionAddressRecord,
   existing: Listing | null,
+  onProgress?: FindListingIngestOnProgress,
 ): Promise<FindListingIngestResult> {
   if (existing) return { listing: existing, ingested: false }
 
+  const report = async (
+    phase: FindListingIngestPhase,
+    message: string,
+  ): Promise<void> => {
+    try {
+      await onProgress?.({ phase, message })
+    } catch {
+      /* progress is best-effort */
+    }
+  }
+
   try {
+    await report('checking-db', 'Checking listings…')
     const already = await findListingInDbByVisionAddress(vision)
     if (already) {
       await stampVisionListingLink(vision, already)
+      await report('found', 'Already in listings')
       return { listing: already, ingested: false }
     }
 
     for (const id of uniqueIds(vision.listingId, vision.mlsId)) {
+      await report('rets-id', `Pulling ${id} from RETS…`)
       const listing = await persistByKnownId(id)
       if (listing) {
         await stampVisionListingLink(vision, listing)
+        await report('found', listing.status || 'Found in RETS')
         return { listing, ingested: true }
       }
     }
 
     const street = visionStreetLine(vision)
+    const town = listingIngestTown(vision)
     if (street.length >= 4) {
-      const listing =
-        (await persistByStreet(street)) ??
-        (await persistByStreetClosed(street, vision.lastSaleDate))
-      if (listing) {
-        await stampVisionListingLink(vision, listing)
-        return { listing, ingested: true }
+      await report('rets-address', `Searching RETS for ${street}…`)
+      const byAddress = await persistByStreet(street, town)
+      if (byAddress) {
+        await stampVisionListingLink(vision, byAddress)
+        await report('found', byAddress.status || 'Found in RETS')
+        return { listing: byAddress, ingested: true }
+      }
+
+      const window = closedSearchWindowForSaleDate(vision.lastSaleDate)
+      await report(
+        'rets-closed',
+        `Closed window ${window.closedAfter.slice(0, 4)}–${window.closedBefore.slice(0, 4)}…`,
+      )
+      const byClosed = await persistByStreetClosed(
+        street,
+        vision.lastSaleDate,
+        town,
+      )
+      if (byClosed) {
+        await stampVisionListingLink(vision, byClosed)
+        await report('found', byClosed.status || 'Found in RETS')
+        return { listing: byClosed, ingested: true }
       }
     }
   } catch (err) {
     console.warn('[find-listing-ingest] RETS one-off failed', err)
+    await report('error', 'RETS search failed')
+    return { listing: null, ingested: false }
   }
 
+  await report('none', 'No MLS listing in RETS')
   return { listing: null, ingested: false }
 }
 

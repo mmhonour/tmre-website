@@ -126,6 +126,12 @@ const SWEEPS: {
     bootDelayMs: 9 * 60_000,
     label: 'cama tax history',
   },
+  {
+    jobId: 'street-listings',
+    everyMs: 30 * 60_000,
+    bootDelayMs: 10 * 60_000,
+    label: 'street listings',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {
@@ -210,6 +216,13 @@ async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
     if (await visionGisNeedsCatchUp()) return true
   }
 
+  if (jobId === 'street-listings') {
+    const { streetListingsNeedCatchUp } = await import(
+      '../../lib/street-listings-sync'
+    )
+    if (await streetListingsNeedCatchUp()) return true
+  }
+
   const config = await readSyncScheduleConfigFresh()
   const lastFinishedAt = await getSyncMeta(lastFinishedMetaKey(jobId))
   return isJobDueBySchedule(config.jobs[jobId], lastFinishedAt)
@@ -217,6 +230,12 @@ async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
 
 /** Extra per-job conditions on top of the schedule grid. */
 async function jobHasWork(jobId: ScheduledSyncJobId): Promise<boolean> {
+  if (jobId === 'street-listings') {
+    const { streetListingsHaveWork } = await import(
+      '../../lib/street-listings-sync'
+    )
+    return streetListingsHaveWork()
+  }
   if (jobId === 'stats-cache') {
     // Dirtiness decides whether there is work; the slot decides when we may do
     // it. The old hourly TTL recomputed all seven towns whether or not a number
@@ -376,6 +395,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/vision-addresses': 'vision-addresses',
   '/market-digest': 'market-digest',
   '/cama-tax': 'cama-tax',
+  '/street-listings': 'street-listings',
 }
 
 async function handleRequest(

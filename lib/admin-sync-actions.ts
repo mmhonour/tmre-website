@@ -255,6 +255,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'cpi-sync': 'cpi',
   'market-digest': 'digest',
   'cama-tax': 'cama-tax',
+  'street-listings': 'street-listings',
 }
 
 /** Finalize-step → Sync History type (weekly full resync chain). */
@@ -1473,6 +1474,45 @@ async function runAdminSyncActionImpl(
         ]
           .filter(Boolean)
           .join(' · '),
+      }
+    }
+    case 'street-listings': {
+      if (shouldQueueOnServerless(options)) {
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'street-listings',
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so street listings cannot be pulled from RETS right now.',
+          }),
+        )
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? `Street listings queued (${via}) — End updates when the RETS chunk finishes`
+            : `Street listings queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { syncStreetListings } = await import('@/lib/street-listings-sync')
+      const result = await syncStreetListings()
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt: result.finishedAt,
+        durationMs: result.durationMs || Date.now() - t0,
+        recordsFetched: result.ingested + result.linked,
+        message: result.ok
+          ? `${result.attempted} checked · ${result.ingested} from RETS · ${result.remaining} left`
+          : `Street listings failed: ${result.error ?? 'unknown'}`,
+        detail: result.detail,
       }
     }
     case 'fomc-sync': {

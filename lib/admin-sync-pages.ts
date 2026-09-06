@@ -66,6 +66,7 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
   "market-digest": [{ label: "Market Pulse", href: "/market-pulse" }],
   // Tax history renders in the listing detail panel, not on a page of its own.
   "cama-tax": [{ label: "Properties", href: "/properties" }],
+  "street-listings": [{ label: "Streets", href: "/streets" }],
 };
 
 export function adminSyncImpactedPages(rowId: string): AdminSyncImpactedPage[] {
