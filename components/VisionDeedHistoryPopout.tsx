@@ -113,7 +113,7 @@ export function VisionDeedHistoryPopout({
             </div>
 
             <div className="overflow-y-auto px-5 py-4">
-              <p className="font-serif text-xl sm:text-2xl text-navy leading-snug whitespace-normal">
+              <p className="font-serif text-xl sm:text-2xl text-navy leading-snug whitespace-pre-line">
                 {ownerName ?? 'Owner pending Field Card'}
               </p>
               <dl className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -94,9 +94,9 @@ export default async function StreetsStreetPage({
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
             street page.             House number opens the TMRE Vision parcel. The last paid sale
-            sits on the right — quitclaims stay in the history and add
-            names, but they are not that dollar amount. Owner opens the
-            same deed card.
+            sits on the right with its date under the amount — quitclaims
+            stay in the history and add names on their own lines, but they
+            are not that dollar amount. Owner opens the same deed card.
           </p>
         </div>
       </section>
@@ -118,6 +118,7 @@ export default async function StreetsStreetPage({
                   visionPid={row.visionPid}
                   addressLabel={row.addressLabel}
                   ownerName={row.ownerName}
+                  ownerDisplayLines={row.ownerDisplayLines}
                   mailingAddress={row.ownerMailingAddress}
                   soldLabel={
                     row.purchaseDate
@@ -130,6 +131,7 @@ export default async function StreetsStreetPage({
                       : row.lastPaidPriceLabel
                   }
                   lastPaidPriceLabel={row.lastPaidPriceLabel}
+                  lastPaidSaleDate={row.purchaseDate}
                   deedHistory={row.deedHistory}
                   parcelHref={visionParcelFindHref(
                     town,

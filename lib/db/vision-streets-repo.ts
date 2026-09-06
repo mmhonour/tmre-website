@@ -4,7 +4,7 @@ import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
 import {
   countVisionQuitclaims,
-  compileVisionOwnerFromDeeds,
+  compileVisionOwnerParts,
   formatVisionMoney,
   isVisionQuitclaim,
   lastSaleAsOwnership,
@@ -190,6 +190,11 @@ export type VisionStreetParcel = {
   sourceUrl: string
   syncedAt: string
   ownerName: string | null
+  /**
+   * Warranty buyers first; later quitclaim grantees each on their own
+   * line when any exist after the last non-quitclaim deed.
+   */
+  ownerDisplayLines: string[]
   ownerMailingAddress: string | null
   /** VGSI most recent deed date (often a quitclaim, not a purchase). */
   lastSaleDate: string | null
@@ -343,6 +348,8 @@ export async function listVisionStreetParcels(
             lastSalePrice: paidPrice,
             lastSaleDate: row.last_sale_date,
           })
+    const compiledOwner = compileVisionOwnerParts(deeds, ownerName)
+    const compiledName = compiledOwner.displayName ?? ownerName
     return {
       town: row.town,
       streetName: row.street_name,
@@ -353,8 +360,13 @@ export async function listVisionStreetParcels(
         row.synced_at instanceof Date
           ? row.synced_at.toISOString()
           : String(row.synced_at),
-      ownerName:
-        compileVisionOwnerFromDeeds(deeds, ownerName) ?? ownerName,
+      ownerName: compiledName,
+      ownerDisplayLines:
+        compiledOwner.displayLines.length > 0
+          ? compiledOwner.displayLines
+          : compiledName
+            ? [compiledName]
+            : [],
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,

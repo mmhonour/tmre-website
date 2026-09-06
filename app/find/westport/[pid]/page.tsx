@@ -174,6 +174,13 @@ export default async function WestportParcelPage({
       )
     : null;
 
+  const ownerBlock =
+    (property.ownerDisplayLines.length > 0
+      ? property.ownerDisplayLines
+      : property.ownerDisplayName
+        ? [property.ownerDisplayName]
+        : []
+    ).join("\n") || "—";
   const onMarket = property.listing != null;
   const baths =
     property.beds.value != null && property.baths.value != null
@@ -242,8 +249,8 @@ export default async function WestportParcelPage({
             <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
               Owner of record
             </p>
-            <p className="mt-1 font-serif text-xl sm:text-2xl text-white leading-snug">
-              {property.ownerDisplayName ?? "—"}
+            <p className="mt-1 font-serif text-xl sm:text-2xl text-white leading-snug whitespace-pre-line">
+              {ownerBlock}
             </p>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
@@ -272,7 +279,9 @@ export default async function WestportParcelPage({
                         .filter(Boolean)
                         .join(" · ") || "Deed history"}
                       addressLabel={property.street}
-                      ownerName={property.ownerDisplayName}
+                      ownerName={
+                        ownerBlock === "—" ? property.ownerDisplayName : ownerBlock
+                      }
                       mailingAddress={property.ownerMailingAddress}
                       soldLabel={[
                         property.purchaseDate

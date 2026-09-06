@@ -373,37 +373,72 @@ export function completeDanglingDeedOwner(
   return row
 }
 
+export type VisionCompiledOwner = {
+  /** Joined with & — search, aria, single-line fallback. */
+  displayName: string | null
+  /**
+   * Warranty / last non-quitclaim buyers first. Each later quitclaim
+   * grantee is its own line so those entities read separately.
+   */
+  displayLines: string[]
+}
+
 /**
- * Last paid sale's buyers, plus every later quitclaim grantee.
+ * Last paid / warranty buyers, plus every later quitclaim grantee.
  * Four quitclaim adds are legitimate owners; the $ transaction still stands.
+ * Quitclaims after that deed become their own display lines.
  */
+export function compileVisionOwnerParts(
+  ownership: readonly VisionOwnershipRow[],
+  currentOwner?: string | null,
+): VisionCompiledOwner {
+  const sorted = sortVisionOwnershipDesc(ownership)
+  const anchorIdx = sorted.findIndex((row) => !isVisionQuitclaim(row))
+
+  const clean = (raw: string | null | undefined): string | null => {
+    const next = completeDanglingDeedOwner(raw, currentOwner)
+    return next === '—' || !next ? null : next
+  }
+
+  if (anchorIdx >= 0) {
+    const warranty = clean(sorted[anchorIdx]?.owner)
+    const quitclaimLines: string[] = []
+    for (let i = anchorIdx - 1; i >= 0; i -= 1) {
+      const name = clean(sorted[i]?.owner)
+      if (name) quitclaimLines.push(name)
+    }
+    if (quitclaimLines.length === 0) {
+      const displayName = joinVisionOwnerNames(warranty, currentOwner)
+      return {
+        displayName,
+        displayLines: displayName ? [displayName] : [],
+      }
+    }
+    const displayLines = [...(warranty ? [warranty] : []), ...quitclaimLines]
+    let displayName: string | null = null
+    for (const line of displayLines) {
+      displayName = joinVisionOwnerNames(displayName, line)
+    }
+    displayName = joinVisionOwnerNames(displayName, currentOwner)
+    return { displayName, displayLines }
+  }
+
+  let compiled: string | null = null
+  for (let i = sorted.length - 1; i >= 0; i -= 1) {
+    compiled = joinVisionOwnerNames(compiled, clean(sorted[i]?.owner))
+  }
+  const displayName = joinVisionOwnerNames(compiled, currentOwner)
+  return {
+    displayName,
+    displayLines: displayName ? [displayName] : [],
+  }
+}
+
 export function compileVisionOwnerFromDeeds(
   ownership: readonly VisionOwnershipRow[],
   currentOwner?: string | null,
 ): string | null {
-  const sorted = sortVisionOwnershipDesc(ownership)
-  const paidIdx = sorted.findIndex((row) => {
-    const price = parseVisionMoney(row.price)
-    return !isVisionQuitclaim(row) && price != null && price > 0
-  })
-
-  let compiled: string | null = null
-  const fold = (raw: string | null | undefined) => {
-    const next = completeDanglingDeedOwner(raw, currentOwner)
-    compiled = joinVisionOwnerNames(compiled, next === '—' ? null : next)
-  }
-
-  if (paidIdx >= 0) {
-    fold(sorted[paidIdx]?.owner)
-    for (let i = paidIdx - 1; i >= 0; i -= 1) {
-      fold(sorted[i]?.owner)
-    }
-  } else {
-    for (let i = sorted.length - 1; i >= 0; i -= 1) {
-      fold(sorted[i]?.owner)
-    }
-  }
-  return joinVisionOwnerNames(compiled, currentOwner)
+  return compileVisionOwnerParts(ownership, currentOwner).displayName
 }
 
 export function visionDeedPriceLabel(row: VisionOwnershipRow): string {

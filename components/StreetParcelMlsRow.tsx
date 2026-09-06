@@ -24,9 +24,11 @@ export function StreetParcelMlsRow({
   visionPid,
   addressLabel,
   ownerName,
+  ownerDisplayLines,
   mailingAddress,
   soldLabel,
   lastPaidPriceLabel,
+  lastPaidSaleDate,
   deedHistory,
   parcelHref,
   listing: initialListing,
@@ -35,9 +37,11 @@ export function StreetParcelMlsRow({
   visionPid: string
   addressLabel: string
   ownerName: string | null
+  ownerDisplayLines: string[]
   mailingAddress: string | null
   soldLabel: string | null
   lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
   deedHistory: VisionDeedHistoryRow[]
   parcelHref: string
   listing: StreetListingCard | null
@@ -83,65 +87,83 @@ export function StreetParcelMlsRow({
   }, [phase, poll])
 
   const owner = ownerName
+  const ownerLines =
+    ownerDisplayLines.length > 0
+      ? ownerDisplayLines
+      : owner
+        ? [owner]
+        : []
   const mailing = mailingAddress
   const sold = soldLabel
   const price = lastPaidPriceLabel
+  const paidDate = lastPaidSaleDate
   const ownerTriggerClass =
     'text-left font-mono text-[11px] tracking-[0.04em] text-charcoal/55 hover:text-navy underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy'
   const priceTriggerClass =
-    'shrink-0 text-right font-mono text-sm tabular-nums text-charcoal/90 hover:text-navy underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy'
+    'block text-right font-mono text-sm tabular-nums text-charcoal/90 hover:text-navy'
 
   return (
     <li
       id={`pid-${visionPid}`}
       className="scroll-mt-28 py-2.5 target:bg-gold/10 target:-mx-3 target:px-3 target:rounded-xl"
     >
-      <div className="flex items-baseline justify-between gap-4">
-        <Link
-          href={parcelHref}
-          className="min-w-0 text-sm text-charcoal/90 hover:text-navy underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy"
-          aria-label={`Open Vision parcel ${addressLabel}`}
-        >
-          {addressLabel}
-        </Link>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <Link
+            href={parcelHref}
+            className="text-sm text-charcoal/90 hover:text-navy underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy"
+            aria-label={`Open Vision parcel ${addressLabel}`}
+          >
+            {addressLabel}
+          </Link>
+          <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
+            {ownerLines.length > 0 ? (
+              <VisionDeedHistoryPopout
+                label={owner ?? ownerLines.join(' & ')}
+                addressLabel={addressLabel}
+                ownerName={ownerLines.join('\n')}
+                mailingAddress={mailing}
+                soldLabel={sold}
+                rows={deedHistory}
+                parcelHref={parcelHref}
+                triggerClassName={ownerTriggerClass}
+              >
+                <span className="block whitespace-pre-line">
+                  {ownerLines.join('\n')}
+                </span>
+              </VisionDeedHistoryPopout>
+            ) : (
+              'Owner pending Field Card ingest'
+            )}
+          </p>
+          {mailing ? (
+            <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
+              {mailing}
+            </p>
+          ) : null}
+        </div>
         {price ? (
           <VisionDeedHistoryPopout
             label={price}
             addressLabel={addressLabel}
-            ownerName={owner}
+            ownerName={ownerLines.join('\n') || owner}
             mailingAddress={mailing}
             soldLabel={sold}
             rows={deedHistory}
             parcelHref={parcelHref}
             triggerClassName={priceTriggerClass}
           >
-            {price}
+            <span className="block underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy">
+              {price}
+            </span>
+            {paidDate ? (
+              <span className="mt-0.5 block font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
+                {paidDate}
+              </span>
+            ) : null}
           </VisionDeedHistoryPopout>
         ) : null}
       </div>
-      <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
-        {owner ? (
-          <VisionDeedHistoryPopout
-            label={owner}
-            addressLabel={addressLabel}
-            ownerName={owner}
-            mailingAddress={mailing}
-            soldLabel={sold}
-            rows={deedHistory}
-            parcelHref={parcelHref}
-            triggerClassName={ownerTriggerClass}
-          >
-            {owner}
-          </VisionDeedHistoryPopout>
-        ) : (
-          'Owner pending Field Card ingest'
-        )}
-      </p>
-      {mailing ? (
-        <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/45">
-          {mailing}
-        </p>
-      ) : null}
       {listing ? (
         <p className="mt-1">
           <Link
