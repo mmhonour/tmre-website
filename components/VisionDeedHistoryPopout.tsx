@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useId, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export type VisionDeedHistoryRow = {
   date: string
@@ -35,8 +36,13 @@ export function VisionDeedHistoryPopout({
   children?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const titleId = useId()
   const canOpen = Boolean(ownerName || mailingAddress || rows.length > 0)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -66,20 +72,10 @@ export function VisionDeedHistoryPopout({
       ? 'underline underline-offset-2 decoration-gold/50 hover:text-white hover:decoration-gold'
       : 'underline underline-offset-2 decoration-charcoal/25 hover:text-navy hover:decoration-navy'
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={triggerClassName ?? defaultTrigger}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        {children ?? label}
-      </button>
-      {open ? (
+  const dialog =
+    open && mounted ? (
         <div
-          className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-6"
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6"
           role="presentation"
         >
           <button
@@ -189,7 +185,20 @@ export function VisionDeedHistoryPopout({
             ) : null}
           </div>
         </div>
-      ) : null}
+    ) : null
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={triggerClassName ?? defaultTrigger}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        {children ?? label}
+      </button>
+      {dialog ? createPortal(dialog, document.body) : null}
     </>
   )
 }
