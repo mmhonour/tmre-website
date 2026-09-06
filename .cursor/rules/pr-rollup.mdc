@@ -1,0 +1,26 @@
+---
+description: Ask before rolling multiple unmerged PRs into one
+alwaysApply: true
+---
+
+# PR rollup — ask, then only if they say yes
+
+When this repo has **two or more open, unmerged** agent PRs that are ready
+(draft or open, not abandoned), ask whether to roll them up. Example:
+
+> Would you like to roll up PRs 61, 62 into a new PR?
+
+## Do
+
+- List the PR numbers and one-line titles
+- Wait for an explicit yes (“roll them up”, “combine 61 and 62”)
+- If yes: one new branch from latest `main`, cherry-pick or merge those
+  branches, one new PR, say which sources landed
+
+## Do not
+
+- Do not roll up unless they said yes
+- Do not include superseded or already-merged PRs (e.g. an older plugin
+  upgrade that a later production PR already contains)
+- Do not treat this as a commit/push permission question — that is a
+  different rule
