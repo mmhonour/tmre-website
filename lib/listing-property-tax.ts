@@ -182,8 +182,19 @@ export function currentFiscalYearEnd(now = new Date()): number {
  * listings carry that year. Until MLS/CAMA populate it, fall back to the
  * prior FY. Listings missing the chosen year are excluded — never each
  * listing's own latest year.
+ *
+ * 50 was too thin: Westport alone is ~127 Active for-sale (Sep 2026), the
+ * market ~1,021. The floor is one Westport book so a year is not "in play"
+ * — and tax bars do not render — on a handful of early MLS TaxYear rolls.
  */
-export const PULSE_TAX_YEAR_MIN_N = 50;
+export const PULSE_TAX_YEAR_MIN_N = 125;
+
+export function pulseTaxCoverageIsReady(
+  sampleSize: number | null | undefined,
+  minN = PULSE_TAX_YEAR_MIN_N,
+): boolean {
+  return (sampleSize ?? 0) >= minN;
+}
 
 export function choosePulseTaxYearEnd(
   currentYearEnd: number,

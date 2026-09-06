@@ -15,6 +15,7 @@ type Row = MarketPulseCombinedTownRow;
 export function marketPulseTownMetrics(
   closedLookbackLabel: string,
   kind: ListingKind,
+  options?: { includeTax?: boolean },
 ) {
   const chrome: Record<
     MarketPulseStackedMetricId,
@@ -81,7 +82,7 @@ export function marketPulseTownMetrics(
     },
   };
 
-  return marketPulseStackedMetrics(closedLookbackLabel, kind).map((m) => ({
+  return marketPulseStackedMetrics(closedLookbackLabel, kind, options).map((m) => ({
     ...m,
     ...chrome[m.id],
     valueOf: m.barValueOf,

@@ -11,6 +11,7 @@ import {
   choosePulseTaxYearEnd,
   currentFiscalYearEnd,
   formatTaxYearLabel,
+  pulseTaxCoverageIsReady,
 } from '@/lib/listing-property-tax'
 import type { MarketDigestTaxTownCount } from '@/lib/market-digest-types'
 import { meanMinusMedian } from '@/lib/market-pulse-price-delta'
@@ -33,6 +34,11 @@ export type MarketPulseTaxPayload = {
   fiscalYearEnd: number
   taxYearLabel: string
   rows: MarketDigestTaxTownCount[]
+  /**
+   * True only when the All-towns sample meets PULSE_TAX_YEAR_MIN_N.
+   * Public readers hide the bars until this is true.
+   */
+  ready: boolean
   generatedAt: string
 }
 
@@ -148,10 +154,15 @@ async function compute(
     }
   })
 
+  const allSample =
+    rows.find((row) => row.city.trim().toLowerCase() === 'all')?.sampleSize ?? 0
+  const ready = pulseTaxCoverageIsReady(allSample)
+
   return {
     fiscalYearEnd,
     taxYearLabel,
     rows,
+    ready,
     generatedAt: new Date().toISOString(),
   }
 }
@@ -162,8 +173,17 @@ function emptyPayload(): MarketPulseTaxPayload {
     fiscalYearEnd,
     taxYearLabel: formatTaxYearLabel(fiscalYearEnd),
     rows: [],
+    ready: false,
     generatedAt: new Date().toISOString(),
   }
+}
+
+/** Page / email / town pulse: no rows until the All-towns sample is large enough. */
+export function publicMarketPulseTaxPayload(
+  payload: MarketPulseTaxPayload,
+): MarketPulseTaxPayload {
+  if (payload.ready) return payload
+  return { ...payload, ready: false, rows: [] }
 }
 
 async function computeAndCache(
@@ -194,7 +214,18 @@ export async function readMarketPulseTaxByTown(
     if (row?.payload) {
       const parsed = JSON.parse(row.payload) as MarketPulseTaxPayload
       if (Array.isArray(parsed.rows)) {
-        return { payload: parsed, cached: true }
+        return {
+          payload: publicMarketPulseTaxPayload({
+            ...parsed,
+            ready:
+              parsed.ready === true ||
+              pulseTaxCoverageIsReady(
+                parsed.rows.find((row) => row.city.trim().toLowerCase() === 'all')
+                  ?.sampleSize,
+              ),
+          }),
+          cached: true,
+        }
       }
     }
   } catch (err) {
@@ -209,7 +240,10 @@ export async function readMarketPulseTaxByTown(
   }
 
   try {
-    return { payload: await computeAndCache(scope), cached: false }
+    return {
+      payload: publicMarketPulseTaxPayload(await computeAndCache(scope)),
+      cached: false,
+    }
   } catch (err) {
     console.warn(
       '[market-pulse-tax] compute failed',

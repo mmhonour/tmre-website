@@ -42,11 +42,13 @@ export function marketPulseTownScale(
     kind?: ListingKind
     /** 24-month Closed ceiling, so a 7d window stays a slice of it. */
     closedBarMax?: number
+    includeTax?: boolean
   },
 ): MarketPulseTownScale {
   const metrics = marketPulseStackedMetrics(
     options.closedLookbackLabel,
     options.kind ?? 'sale',
+    { includeTax: options.includeTax },
   )
 
   const maxByMetric = {} as Record<MarketPulseStackedMetricId, number>

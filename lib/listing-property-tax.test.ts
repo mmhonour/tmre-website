@@ -5,6 +5,7 @@ import {
   choosePulseTaxYearEnd,
   currentFiscalYearEnd,
   formatTaxYoyChange,
+  pulseTaxCoverageIsReady,
   taxYoyChangePct,
 } from './listing-property-tax'
 
@@ -69,16 +70,26 @@ describe('buildPropertyTaxHistorySlots', () => {
 })
 
 describe('choosePulseTaxYearEnd', () => {
-  it('keeps the current FY once enough listings have it (2026-27 in play)', () => {
-    assert.equal(choosePulseTaxYearEnd(2027, 80, 2000), 2027)
+  it('keeps the current FY once a Westport-sized book has it (2026-27 in play)', () => {
+    assert.equal(choosePulseTaxYearEnd(2027, 125, 2000), 2027)
     assert.equal(currentFiscalYearEnd(new Date('2026-09-06T12:00:00Z')), 2027)
   })
 
   it('falls back to the prior FY when current-year coverage is thin', () => {
+    assert.equal(choosePulseTaxYearEnd(2027, 80, 2000), 2026)
     assert.equal(choosePulseTaxYearEnd(2027, 12, 400), 2026)
   })
 
   it('does not skip back further than one year', () => {
     assert.equal(choosePulseTaxYearEnd(2027, 0, 0), 2027)
+  })
+})
+
+describe('pulseTaxCoverageIsReady', () => {
+  it('hides tax bars until the All-towns sample reaches 125', () => {
+    assert.equal(pulseTaxCoverageIsReady(50), false)
+    assert.equal(pulseTaxCoverageIsReady(124), false)
+    assert.equal(pulseTaxCoverageIsReady(125), true)
+    assert.equal(pulseTaxCoverageIsReady(null), false)
   })
 })

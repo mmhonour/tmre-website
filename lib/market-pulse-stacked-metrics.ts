@@ -74,9 +74,10 @@ export function formatSaleToAskPct(n: number | null | undefined): string {
 export function marketPulseStackedMetrics(
   closedLookbackLabel: string,
   kind: ListingKind = 'sale',
+  options?: { includeTax?: boolean },
 ): MarketPulseStackedMetricDef[] {
   const leased = kind === 'rental'
-  return [
+  const defs: MarketPulseStackedMetricDef[] = [
     {
       id: 'inventory',
       label: 'Inventory',
@@ -154,6 +155,8 @@ export function marketPulseStackedMetrics(
       format: (r) => formatMarketPulseMoney(r.averageTax),
     },
   ]
+  if (options?.includeTax === true) return defs
+  return defs.filter((m) => !isMarketPulseTaxScaleMetric(m.id))
 }
 
 /** Shared dollar axis for Median tax / Tax delta / Average tax. */

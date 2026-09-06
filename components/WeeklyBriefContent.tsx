@@ -1261,6 +1261,7 @@ function CombinedMetricsChart({
   saleToAskTownHref,
   metricStatsHref,
   kind,
+  includeTax = false,
   lookbackRail,
 }: {
   title?: ReactNode;
@@ -1271,6 +1272,7 @@ function CombinedMetricsChart({
   /** Stats chart behind each bar, by metric and town. */
   metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
   kind: ListingKind;
+  includeTax?: boolean;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
   settle: MarketPulseSettleState;
@@ -1282,7 +1284,9 @@ function CombinedMetricsChart({
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
 }) {
-  const metrics = marketPulseTownMetrics(closedLookbackLabel, kind);
+  const metrics = marketPulseTownMetrics(closedLookbackLabel, kind, {
+    includeTax,
+  });
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
   useEffect(() => {
@@ -1615,7 +1619,10 @@ export default function WeeklyBriefContent({
     : (snapshot.market?.monthsSupply ?? null);
   const allTownsActive = snapshot.market?.activeCount ?? null;
 
-  const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind);
+  const includeTax = snapshot.taxReady === true;
+  const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind, {
+    includeTax,
+  });
 
   const combinedRows = useMemo(() => {
     const built = buildCombinedTownRows(
@@ -1649,8 +1656,9 @@ export default function WeeklyBriefContent({
         closedLookbackLabel,
         kind,
         closedBarMax,
+        includeTax,
       }),
-    [combinedRows, closedLookbackLabel, kind, closedBarMax],
+    [combinedRows, closedLookbackLabel, kind, closedBarMax, includeTax],
   );
 
   const compareRow = useMemo(() => {
@@ -1922,6 +1930,7 @@ export default function WeeklyBriefContent({
             saleToAskTownHref={saleToAskTownHref}
             metricStatsHref={metricStatsHref}
             kind={kind}
+            includeTax={includeTax}
             lookbackRail={
               onLookbackIdChange ? (
                 <ClosedLookbackSlider

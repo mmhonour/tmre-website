@@ -203,7 +203,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
       'market-pulse-tax:{sale|rental}:{all|homes|condos|commercial}:v1',
     owner: 'lib/market-pulse-tax-cache.ts',
     notes:
-      'Median / average / delta tax per town for the in-play fiscal year (current FY when enough Active listings carry it, else prior). Only listings with that year are eligible. Written by rebuildStatsCache; the page and Monday email read only.',
+      'Median / average / delta tax per town for the in-play fiscal year (current FY when ≥125 Active listings carry it — about one Westport book — else prior). Bars stay off Market Pulse / email until that All-towns sample is reached. Written by rebuildStatsCache; the page and Monday email read only.',
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-tax:' },
   },
   {

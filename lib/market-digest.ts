@@ -229,19 +229,19 @@ async function taxByTownFromCache(
   kind: ListingKind,
   propertyClass?: ListingPropertyClass,
   commercialOnly?: boolean,
-): Promise<MarketDigestTaxTownCount[]> {
+): Promise<{ rows: MarketDigestTaxTownCount[]; ready: boolean }> {
   try {
     const { payload } = await readMarketPulseTaxByTown(
       { kind, propertyClass, commercialOnly },
       { allowCompute: false },
     )
-    return payload.rows
+    return { rows: payload.rows, ready: payload.ready }
   } catch (err) {
     console.warn(
       '[market-digest] tax by town failed',
       err instanceof Error ? err.message : err,
     )
-    return []
+    return { rows: [], ready: false }
   }
 }
 
@@ -430,7 +430,7 @@ async function buildCachedCategorySlice(
   spec: CachedCategorySpec,
   includeClosedTrailing = false,
 ): Promise<MarketDigestCategorySlice> {
-  const [closedTrailing, avgDomByTown, priceByTown, taxByTown, market, westport, ...townRows] =
+  const [closedTrailing, avgDomByTown, priceByTown, tax, market, westport, ...townRows] =
     await Promise.all([
       includeClosedTrailing
         ? closedTrailingCounts({
@@ -461,7 +461,8 @@ async function buildCachedCategorySlice(
     closedTrailing,
     avgDomByTown,
     priceByTown,
-    taxByTown,
+    taxByTown: tax.rows,
+    taxReady: tax.ready,
     deal: null,
   }
 }
@@ -483,6 +484,7 @@ function emptyCommercialCategorySlice(
     avgDomByTown: [],
     priceByTown: [],
     taxByTown: [],
+    taxReady: false,
     deal: null,
   }
 }
@@ -692,6 +694,7 @@ async function buildCommercialCategorySlice(
         dealErr instanceof Error ? dealErr.message : dealErr,
       )
     }
+    const tax = await taxByTownFromCache('sale', undefined, true)
     return {
       id: 'commercial',
       label: 'Commercial',
@@ -705,7 +708,8 @@ async function buildCommercialCategorySlice(
         : [],
       avgDomByTown,
       priceByTown,
-      taxByTown: await taxByTownFromCache('sale', undefined, true),
+      taxByTown: tax.rows,
+      taxReady: tax.ready,
       deal,
     }
   } catch (err) {
@@ -775,6 +779,7 @@ export async function buildMarketDigestSnapshot(options?: {
     avgDomByTown: allSlice?.avgDomByTown ?? [],
     priceByTown: allSlice?.priceByTown ?? [],
     taxByTown: allSlice?.taxByTown ?? [],
+    taxReady: allSlice?.taxReady === true,
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
@@ -834,6 +839,8 @@ export function formatMarketDigestEmail(
 
   const stackedMetrics = marketPulseStackedMetrics(
     marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
+    'sale',
+    { includeTax: snapshot.taxReady === true },
   )
   const heatByCity = marketPulseHeatByCity(
     combined,

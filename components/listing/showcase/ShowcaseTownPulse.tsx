@@ -140,8 +140,11 @@ export default function ShowcaseTownPulse({
   const pending = !failed && data?.propertyClass !== propertyClass;
 
   const metrics = useMemo(
-    () => marketPulseStackedMetrics(data?.closedLookbackLabel ?? "12 mos"),
-    [data?.closedLookbackLabel],
+    () =>
+      marketPulseStackedMetrics(data?.closedLookbackLabel ?? "12 mos", "sale", {
+        includeTax: data?.taxReady === true,
+      }),
+    [data?.closedLookbackLabel, data?.taxReady],
   );
 
   if (pending && !data) {
