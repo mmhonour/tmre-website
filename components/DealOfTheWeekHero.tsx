@@ -6,7 +6,9 @@ import { useSearchParams } from "next/navigation";
 import GoldilocksScoreExplainModal, {
   type ScoreExplainTopic,
 } from "@/components/GoldilocksScoreExplainModal";
-import { TMRE_TOWNS, TMRE_TOWNS_LABEL } from "@/lib/tmre-towns";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
+import { coverageTownsLabel, FALLBACK_COVERAGE_TOWNS } from "@/lib/active-coverage-towns";
+import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
@@ -53,6 +55,7 @@ function scannedTownsLabel(options: {
   city: string | null;
   currentTown: string | null;
   scopeTowns?: readonly string[] | null;
+  fallbackTowns?: readonly string[] | null;
 }): string {
   if (options.isDay) {
     const town = options.city?.trim() || options.currentTown;
@@ -61,7 +64,7 @@ function scannedTownsLabel(options: {
   const towns =
     options.scopeTowns && options.scopeTowns.length > 0
       ? options.scopeTowns
-      : TMRE_TOWNS;
+      : options.fallbackTowns ?? TMRE_TOWNS;
   return formatScannedTowns(towns);
 }
 
@@ -132,7 +135,7 @@ const FALLBACK: ApiResponse = {
   qualifiedCount: 0,
   kind: "sale",
   insight:
-    `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, schools, and days on market. This week's pick is loading — refresh in a moment to see it.`,
+    `Our Goldilocks model scans active listings across ${coverageTownsLabel(FALLBACK_COVERAGE_TOWNS)} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, schools, and days on market. This week's pick is loading — refresh in a moment to see it.`,
   superlatives: ["Value", "Turnkey", "Fresh", "Layout"],
   score: {
     age: 88,
@@ -222,7 +225,8 @@ function DealDayTownListDesktop({
   /** When set, town clicks jump in-place (no navigation / flip). */
   onSelectTown?: (town: string) => void;
 }) {
-  const towns = usePersonalizedTowns(TMRE_TOWNS);
+  const { knownTowns } = useCoverageTowns();
+  const towns = usePersonalizedTowns(knownTowns);
   const activeKey = activeTown?.trim().toLowerCase() ?? null;
 
   return (
@@ -496,6 +500,7 @@ export default function DealOfTheWeekHero({
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
 }) {
+  const { townsLabel, knownTowns } = useCoverageTowns();
   const searchParams = useSearchParams();
   const city = searchParams.get("city");
   const listingParam = searchParams.get("listing");
@@ -710,6 +715,7 @@ export default function DealOfTheWeekHero({
     city,
     currentTown: carousel.currentTown,
     scopeTowns: data?.scope?.towns,
+    fallbackTowns: knownTowns,
   });
   const superlatives = showing
     ? resolveSuperlatives({
@@ -908,7 +914,7 @@ export default function DealOfTheWeekHero({
                   text={
                     showing?.insight ??
                     (loadingState
-                      ? `Our Goldilocks model scans active listings across ${TMRE_TOWNS_LABEL} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, schools, and days on market. This week's pick is loading.`
+                      ? `Our Goldilocks model scans active listings across ${townsLabel} each morning — weighting age, condition, finishes, price-per-sqft fit, layout, schools, and days on market. This week's pick is loading.`
                       : "No qualifying Active listing right now. Under Contract and Continue to Show homes are not featured.")
                   }
                   className={`${dealInsightCopyClass} animate-fade-up-delay-1`}

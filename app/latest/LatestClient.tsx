@@ -32,7 +32,6 @@ import {
   writeLatestViewState,
 } from "@/lib/latest-view-state";
 import {
-  TMRE_TOWNS_LABEL,
   isTmreTown,
   normalizeZip,
   townHasMultipleZips,
@@ -40,6 +39,7 @@ import {
 import { evaluateIncrementalHealth } from "@/lib/incremental-sync-health";
 import { latestExploreFeedUrl } from "@/lib/explore-tab-prefetch";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { useCoverageTowns } from "@/components/CoverageTownsProvider";
 
 type ApiResponse = {
   listings: LatestListingRow[];
@@ -249,6 +249,7 @@ export default function LatestClient({
   initialTownFeeds = {},
   initialTownStats = [],
 }: LatestClientProps) {
+  const { townsLabel } = useCoverageTowns();
   const [listings, setListings] = useState<LatestListingRow[]>(() =>
     ensureMinOneListingPerTmreTown(
       initialListings.filter(
@@ -945,7 +946,7 @@ export default function LatestClient({
           <p className="mt-2 text-sm leading-snug text-white/70">
             <span className="font-medium text-gold">30 on 30</span>
             {" · "}
-            {TMRE_TOWNS_LABEL}
+            {townsLabel}
             {" · live every "}
             {LATEST_REFRESH_MINUTES}m
           </p>
@@ -974,7 +975,7 @@ export default function LatestClient({
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/70 animate-fade-up-delay-1">
             <span className="font-medium text-gold">30 on 30</span> — the{" "}
-            {LATEST_LIMIT} most recently updated active listings across {TMRE_TOWNS_LABEL}
+            {LATEST_LIMIT} most recently updated active listings across {townsLabel}
             {" "}(last-24h MLS updates and new listings first), refreshed every{" "}
             {LATEST_REFRESH_MINUTES} minutes — live without reloading the page.
           </p>

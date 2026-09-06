@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       activeCount: activeTowns.length,
       townCount: counties.reduce((sum, c) => sum + c.townCount, 0),
       note:
-        'Activation is stored only — public pages still use hardcoded TMRE_TOWNS until a later wiring pass. listings.town can later join on ct_towns.name where active.',
+        'Public copy, town pills, Market Pulse, and the footer list follow these Active towns. RETS incremental still uses the compile-time TMRE_TOWNS set until Phase 3.',
     })
   } catch (err) {
     console.error('[/api/admin/ct-coverage] GET', err)
@@ -72,7 +72,7 @@ export async function PATCH(req: NextRequest) {
       ok: true,
       town,
       counties,
-      note: 'Saved — not yet wired into public pages or RETS pulls.',
+      note: 'Saved — public lists and copy update on the next page load. RETS pulls are unchanged.',
     })
   } catch (err) {
     console.error('[/api/admin/ct-coverage] PATCH', err)

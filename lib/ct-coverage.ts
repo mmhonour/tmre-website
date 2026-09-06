@@ -2,11 +2,18 @@ import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
 import {
+  coverageTownsLabel,
+  FALLBACK_COVERAGE_TOWNS,
+  knownCoverageTowns,
+  orderCoverageTowns,
+} from '@/lib/active-coverage-towns'
+import {
   CT_COUNTY_TOWN_SEED,
   CT_DEFAULT_ACTIVE_TOWNS,
   CT_DEFAULT_MLS_CITY_CODES,
   ctTownSlug,
 } from '@/lib/ct-coverage-seed'
+import type { TmreTown } from '@/lib/tmre-towns'
 
 export type CtCoverageTown = {
   id: string
@@ -239,6 +246,7 @@ export async function setCtTownActive(
     [id, active],
   )
   if (!row) return null
+  invalidateActiveCoverageTownsCache()
   return {
     id: row.id,
     name: row.name,
@@ -248,11 +256,51 @@ export async function setCtTownActive(
   }
 }
 
-/** Future helpers — not used by public pages yet. */
 export async function listActiveCtTownNames(): Promise<string[]> {
   await ensureCtCoverageSeeded()
   const rows = await query<{ name: string }>(
     `SELECT name FROM ct_towns WHERE active ORDER BY name ASC`,
   )
   return rows.map((r) => r.name)
+}
+
+let activeTownsCache: { names: string[]; at: number } | null = null
+const ACTIVE_TOWNS_TTL_MS = 30_000
+
+/** Drop the process cache after Admin toggles Activate. */
+export function invalidateActiveCoverageTownsCache(): void {
+  activeTownsCache = null
+}
+
+/**
+ * Towns marked Active in Admin → CT coverage, stable order.
+ * Falls back to the compile-time seven if Postgres is empty or unreachable.
+ */
+export async function getActiveCoverageTownsFresh(): Promise<string[]> {
+  if (
+    activeTownsCache &&
+    Date.now() - activeTownsCache.at < ACTIVE_TOWNS_TTL_MS
+  ) {
+    return activeTownsCache.names
+  }
+  try {
+    const names = await listActiveCtTownNames()
+    const resolved =
+      names.length > 0
+        ? orderCoverageTowns(names)
+        : [...FALLBACK_COVERAGE_TOWNS]
+    activeTownsCache = { names: resolved, at: Date.now() }
+    return resolved
+  } catch {
+    return activeTownsCache?.names ?? [...FALLBACK_COVERAGE_TOWNS]
+  }
+}
+
+/** Active towns that already have zip / MLS-code support (`TmreTown`). */
+export async function getActiveKnownCoverageTowns(): Promise<TmreTown[]> {
+  return knownCoverageTowns(await getActiveCoverageTownsFresh())
+}
+
+export async function getActiveCoverageTownsLabel(): Promise<string> {
+  return coverageTownsLabel(await getActiveCoverageTownsFresh())
 }
