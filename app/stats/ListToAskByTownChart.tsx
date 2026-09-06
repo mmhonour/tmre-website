@@ -24,9 +24,34 @@ import { statsListToAskTitle } from "./stats-labels";
 import type { StatsCity, StatsKind, Town } from "./stats-towns";
 import { STATS_TOWN_COLOR } from "./stats-town-colors";
 
-/** Closed over the first ask reads as the seller's end, under it as the buyer's. */
-const OVER_ASK = "#5ba08a";
-const UNDER_ASK = "#c45c4a";
+function TownAxisTick({
+  x,
+  y,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  const town = payload?.value as Town | undefined;
+  const fill =
+    town && STATS_TOWN_COLOR[town]
+      ? STATS_TOWN_COLOR[town]
+      : "rgba(255,255,255,0.35)";
+  return (
+    <text
+      x={x}
+      y={y}
+      dy={12}
+      textAnchor="middle"
+      fill={fill}
+      fontFamily="monospace"
+      fontSize={10}
+    >
+      {payload?.value}
+    </text>
+  );
+}
 
 export default function ListToAskByTownChart({
   kind,
@@ -105,11 +130,7 @@ export default function ListToAskByTownChart({
               <XAxis
                 type="category"
                 dataKey="town"
-                tick={{
-                  fontFamily: "monospace",
-                  fontSize: 10,
-                  fill: "rgba(255,255,255,0.35)",
-                }}
+                tick={<TownAxisTick />}
                 axisLine={false}
                 tickLine={false}
               />
@@ -176,7 +197,7 @@ export default function ListToAskByTownChart({
                   return (
                     <Cell
                       key={row.town}
-                      fill={row.vsAsk >= 0 ? OVER_ASK : UNDER_ASK}
+                      fill={STATS_TOWN_COLOR[row.town]}
                       fillOpacity={dimmed ? 0.3 : 1}
                     />
                   );
@@ -191,7 +212,8 @@ export default function ListToAskByTownChart({
         <div className="bg-[#0a1020] px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <p className="font-mono text-[9px] tracking-wide text-white/20">
             Total close prices ÷ total original asks since 2024 · sorted furthest
-            under ask → furthest over · above the line favours sellers
+            under ask → furthest over · bars use each town’s color · above the
+            line favours sellers
             {onTownData ? " · click a town for its closings" : ""}
           </p>
           {onTownData ? (
