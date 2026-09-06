@@ -8,6 +8,7 @@ import {
 import { readCachedComparables } from '@/lib/listing-comparables-cache'
 import {
   COMPARABLES_MATCH_LIMIT,
+  COMPARABLES_SOLD_SUPERSET_LIMIT,
   soldWithinLookback,
   type ComparablesResult,
 } from '@/lib/listing-comparables-shared'
@@ -118,12 +119,16 @@ function scenarioFromComparablesResult(
   },
 ): IfScenario {
   const lookbackMonths = match.defaultLookbackMonths
+  const painted = estimateContext.locationPremium.coastalStrip != null
   const sold = soldWithinLookback(
     comps.sold,
     lookbackMonths,
-    COMPARABLES_MATCH_LIMIT,
+    painted ? COMPARABLES_SOLD_SUPERSET_LIMIT : COMPARABLES_MATCH_LIMIT,
   )
-  const active = comps.active.slice(0, COMPARABLES_MATCH_LIMIT)
+  const active = comps.active.slice(
+    0,
+    painted ? COMPARABLES_SOLD_SUPERSET_LIMIT : COMPARABLES_MATCH_LIMIT,
+  )
   const params = buildIfMatchParams(
     kind,
     comps.criteria,
