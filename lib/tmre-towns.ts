@@ -128,6 +128,30 @@ export function mapBoundZipsForScope(
   return boundaryZipsForTown(town)
 }
 
+/**
+ * Listing / comps map: draw every mappable zip in the town (Fairfield is
+ * 06824+06825+06890). The listing zip is only the blue highlight — it must
+ * not hide the rest of the town or leave comps sitting “outside” one ring.
+ */
+export function mapBoundZipsForListing(
+  townHint?: string | null,
+  postalCode?: string | null,
+): { boundZips: readonly string[]; highlightZip: string | null } {
+  const zip = normalizeZip(postalCode)
+  const town =
+    (townHint && isTmreTown(townHint) ? townHint : null) ?? townForZip(zip)
+  const boundZips = town
+    ? boundaryZipsForTown(town)
+    : zip && hasZctaBoundary(zip)
+      ? [zip]
+      : []
+  const highlightZip =
+    zip && hasZctaBoundary(zip)
+      ? zip
+      : boundZips[0] ?? null
+  return { boundZips, highlightZip }
+}
+
 export function normalizeZip(postal: string | null | undefined): string | null {
   const zip = postal?.trim().slice(0, 5)
   return zip && /^\d{5}$/.test(zip) ? zip : null

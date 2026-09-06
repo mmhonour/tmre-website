@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   boundaryZipsForAllTowns,
   boundaryZipsForTown,
+  mapBoundZipsForListing,
   mapBoundZipsForScope,
 } from "./tmre-towns";
 
@@ -42,5 +43,25 @@ describe("mapBoundZipsForScope", () => {
       mapBoundZipsForScope("Fairfield", "06828"),
       boundaryZipsForTown("Fairfield"),
     );
+  });
+});
+
+describe("mapBoundZipsForListing", () => {
+  it("frames a Fairfield listing to every mappable town zip, highlight on its own", () => {
+    assert.deepEqual(mapBoundZipsForListing("Fairfield", "06825"), {
+      boundZips: ["06824", "06825", "06890"],
+      highlightZip: "06825",
+    });
+    assert.deepEqual(mapBoundZipsForListing(null, "06824"), {
+      boundZips: ["06824", "06825", "06890"],
+      highlightZip: "06824",
+    });
+  });
+
+  it("falls back to one mappable zip when the town is unknown", () => {
+    assert.deepEqual(mapBoundZipsForListing("Bridgeport", "06604"), {
+      boundZips: ["06604"],
+      highlightZip: "06604",
+    });
   });
 });
