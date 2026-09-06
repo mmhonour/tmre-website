@@ -5,6 +5,8 @@ import {
   choosePulseTaxYearEnd,
   currentFiscalYearEnd,
   formatTaxYoyChange,
+  isPlausibleTaxAmount,
+  propertyTaxFromRaw,
   pulseTaxCoverageIsReady,
   pulseTaxYearEnds,
   formatPulseTaxWindowLabel,
@@ -36,6 +38,46 @@ describe('formatTaxYoyChange', () => {
   })
 })
 
+describe('isPlausibleTaxAmount', () => {
+  it('keeps ordinary bills and $9,999', () => {
+    assert.equal(isPlausibleTaxAmount(10_414.17), true)
+    assert.equal(isPlausibleTaxAmount(9_999), true)
+    assert.equal(isPlausibleTaxAmount(1), true)
+  })
+
+  it('rejects all-nines Matrix placeholders with 5+ digits', () => {
+    assert.equal(isPlausibleTaxAmount(99_999), false)
+    assert.equal(isPlausibleTaxAmount(999_999), false)
+    assert.equal(isPlausibleTaxAmount(9_999_999), false)
+    assert.equal(isPlausibleTaxAmount(999_999.17), false)
+    assert.equal(isPlausibleTaxAmount(0), false)
+    assert.equal(isPlausibleTaxAmount(null), false)
+  })
+})
+
+describe('propertyTaxFromRaw', () => {
+  it('treats a $999,999 PropertyTax as missing', () => {
+    assert.deepEqual(
+      propertyTaxFromRaw({
+        PropertyTax: '999999',
+        TaxYear: 'July 2025-June 2026',
+      }),
+      { annualAmount: null, yearLabel: 'July 2025-June 2026' },
+    )
+  })
+
+  it('falls through to district tax when PropertyTax is a placeholder', () => {
+    assert.equal(
+      propertyTaxFromRaw({
+        PropertyTax: '999999',
+        TaxDistrictAmount: '10414.17',
+        TaxYear: 'July 2025-June 2026',
+      }).annualAmount,
+      10414.17,
+    )
+  })
+})
+
 describe('buildPropertyTaxHistorySlots', () => {
   it('attaches YoY percent from the prior fiscal year', () => {
     const slots = buildPropertyTaxHistorySlots(
@@ -57,6 +99,22 @@ describe('buildPropertyTaxHistorySlots', () => {
     assert.equal(slots[3]?.yoyChangePct, 1.9)
     assert.equal(slots[4]?.amount, 5800)
     assert.equal(slots[4]?.yoyChangePct, 1.8)
+  })
+
+  it('hides a $999,999 current year and does not invent a +9502% YoY', () => {
+    const slots = buildPropertyTaxHistorySlots(
+      2026,
+      [
+        { taxYearEnd: 2026, taxYearLabel: 'July 2025-June 2026', amount: 999_999 },
+        { taxYearEnd: 2025, taxYearLabel: 'July 2024-June 2025', amount: 10_414.17 },
+        { taxYearEnd: 2024, taxYearLabel: 'July 2023-June 2024', amount: 10_263.16 },
+      ],
+      5,
+    )
+    assert.equal(slots[0]?.amount, null)
+    assert.equal(slots[0]?.yoyChangePct, null)
+    assert.equal(slots[1]?.amount, 10_414.17)
+    assert.equal(slots[1]?.yoyChangePct, 1.5)
   })
 
   it('leaves YoY blank when the prior year has no amount', () => {

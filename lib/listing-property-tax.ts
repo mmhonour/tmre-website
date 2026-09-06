@@ -13,6 +13,26 @@ function parseTaxAmount(value: string | undefined): number | null {
 }
 
 /**
+ * Matrix / MLS placeholder tax bills are all-nines with 5+ digits
+ * ($99,999, $999,999, $9,999,999, …) — the 36 Maple Avenue South
+ * "July 2025-June 2026 $999,999 / +9502%" case. $9,999 (4 nines) can
+ * be a real small-lot bill and is kept. Assessment placeholders use a
+ * different rule in `isPlausibleAssessment`.
+ */
+export function isPlausibleTaxAmount(
+  value: number | null | undefined,
+): value is number {
+  if (value == null || !Number.isFinite(value) || value <= 0) return false;
+  return !/^9{5,}$/.test(String(Math.round(value)));
+}
+
+export function plausibleTaxAmount(
+  value: number | null | undefined,
+): number | null {
+  return isPlausibleTaxAmount(value) ? value : null;
+}
+
+/**
  * SmartMLS `AssessedValue` (town assessment) from a synced RETS raw record.
  * Rejects the Matrix TBD sentinel (nine 9s) used when assessment is not yet
  * available. Callers must pass Postgres-hydrated `raw` (or sync-time RETS
@@ -46,7 +66,8 @@ export function propertyTaxFromRaw(raw?: Record<string, string>): {
 
   const propertyTax = parseTaxAmount(raw.PropertyTax);
   const districtTax = parseTaxAmount(raw.TaxDistrictAmount);
-  const annualAmount = propertyTax ?? districtTax;
+  const annualAmount =
+    plausibleTaxAmount(propertyTax) ?? plausibleTaxAmount(districtTax);
   const yearLabel = raw.TaxYear?.trim() || null;
 
   return { annualAmount, yearLabel };
@@ -62,7 +83,8 @@ export function propertyTaxDbFields(listing: ListingWithPropertyTax): {
   property_tax_year: string | null;
 } {
   const fromRaw = propertyTaxFromRaw(listing.raw);
-  const property_tax = fromRaw.annualAmount ?? listing.propertyTax ?? null;
+  const property_tax =
+    fromRaw.annualAmount ?? plausibleTaxAmount(listing.propertyTax);
   const property_tax_year = fromRaw.yearLabel ?? listing.propertyTaxYear ?? null;
   return { property_tax, property_tax_year };
 }
@@ -242,12 +264,15 @@ export function buildPropertyTaxHistorySlots(
   return Array.from({ length: count }, (_, index) => {
     const taxYearEnd = anchor - index;
     const hit = byYear.get(taxYearEnd);
-    const amount = hit?.amount ?? null;
+    const amount = plausibleTaxAmount(hit?.amount ?? null);
+    const priorAmount = plausibleTaxAmount(
+      byYear.get(taxYearEnd - 1)?.amount ?? null,
+    );
     return {
       taxYearEnd,
       taxYearLabel: hit?.taxYearLabel ?? formatTaxYearLabel(taxYearEnd),
       amount,
-      yoyChangePct: taxYoyChangePct(amount, byYear.get(taxYearEnd - 1)?.amount),
+      yoyChangePct: taxYoyChangePct(amount, priorAmount),
     };
   });
 }

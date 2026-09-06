@@ -13,6 +13,7 @@ import { parseLotAcresFromRaw } from "@/lib/listing-lot-acres";
 import {
   formatPropertyTaxLabel,
   propertyTaxFromRaw,
+  plausibleTaxAmount,
   resolveAssessedValue,
 } from "@/lib/listing-property-tax";
 import { listingPhotosHref } from "@/lib/listing-url";
@@ -160,8 +161,9 @@ export function buildListingDetailsPanelProps(
       ? Math.round(priceForPpsf / listing.sqft)
       : null;
   const taxFromRaw = propertyTaxFromRaw(listing.raw);
-  const annualPropertyTax =
-    listing.propertyTax ?? taxFromRaw.annualAmount;
+  const annualPropertyTax = plausibleTaxAmount(
+    listing.propertyTax ?? taxFromRaw.annualAmount,
+  );
   const propertyTaxYear =
     listing.propertyTaxYear ?? taxFromRaw.yearLabel;
   // Postgres-hydrated listing only (sync wrote AssessedValue into data/raw).
@@ -210,6 +212,7 @@ export function buildListingDetailsPanelProps(
     lotAcres,
     assessedMarketValue,
     annualPropertyTax,
+    propertyTaxYear,
     propertyTaxLabel: formatPropertyTaxLabel(propertyTaxYear),
     photoCount: listing.photoCount ?? 0,
     photosHref,

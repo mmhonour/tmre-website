@@ -51,7 +51,7 @@ function cacheKey(scope: MarketPulseTaxScope): string {
   const slice = scope.commercialOnly
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
-  return `market-pulse-tax:${scope.kind}:${slice}:v2`
+  return `market-pulse-tax:${scope.kind}:${slice}:v3`
 }
 
 async function compute(

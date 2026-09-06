@@ -58,6 +58,18 @@ const TAX_AMOUNT_SQL = `COALESCE(
   CASE WHEN ${MLS_TAX_YEAR_END_SQL} = y.tax_year_end THEN l.property_tax END
 )`
 
+/** Drop Matrix TBD bills: 99999, 999999, 9999999, … — keep $9,999. */
+const TAX_AMOUNT_PLAUSIBLE_SQL = `(
+  ${TAX_AMOUNT_SQL} IS NOT NULL
+  AND ${TAX_AMOUNT_SQL} > 0
+  AND round(${TAX_AMOUNT_SQL})::text !~ '^9{5,}$'
+)`
+
+const HISTORY_AMOUNT_PLAUSIBLE_SQL = `(
+  h.amount > 0
+  AND round(h.amount)::text !~ '^9{5,}$'
+)`
+
 export type TownTaxYearCoverage = {
   taxYearEnd: number
   listingCount: number
@@ -100,16 +112,9 @@ export async function readPulseTaxYearCoverage(options: {
          LEFT JOIN listing_tax_history h
            ON h.parcel_number = ${PARCEL_SQL}
           AND h.tax_year_end = y.tax_year_end
-          AND h.amount > 0
+          AND ${HISTORY_AMOUNT_PLAUSIBLE_SQL}
         WHERE l.town = ANY($1::text[])
-          AND (
-            (h.amount IS NOT NULL AND h.amount > 0)
-            OR (
-              ${MLS_TAX_YEAR_END_SQL} = y.tax_year_end
-              AND l.property_tax IS NOT NULL
-              AND l.property_tax > 0
-            )
-          )
+          AND ${TAX_AMOUNT_PLAUSIBLE_SQL}
      )
      SELECT tax_year_end, count(*)::int AS listing_count
        FROM eligible
@@ -153,7 +158,7 @@ export async function readTownTaxAggregates(
          LEFT JOIN listing_tax_history h
            ON h.parcel_number = ${PARCEL_SQL}
           AND h.tax_year_end = y.tax_year_end
-          AND h.amount > 0
+          AND ${HISTORY_AMOUNT_PLAUSIBLE_SQL}
         CROSS JOIN LATERAL (
           SELECT ${CLASS_HAY_SQL} AS hay,
                  ${LISTING_KIND_HAY_SQL} AS kind_hay
@@ -161,8 +166,7 @@ export async function readTownTaxAggregates(
         WHERE l.town = ANY($1::text[])
           AND ${kindClause}
           AND ${classClause}
-          AND ${TAX_AMOUNT_SQL} IS NOT NULL
-          AND ${TAX_AMOUNT_SQL} > 0
+          AND ${TAX_AMOUNT_PLAUSIBLE_SQL}
      )
      SELECT town,
             count(*)::int AS sample_size,
