@@ -73,11 +73,11 @@ function waitForPort(host, port, timeoutMs = 20000) {
   })
 }
 
-function powershell(command) {
+function powershell(command, timeoutMs) {
   return execFileSync(
     'powershell',
     ['-NoProfile', '-NonInteractive', '-Command', command],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', timeout: timeoutMs },
   ).trim()
 }
 
@@ -89,6 +89,7 @@ function tryStartWindowsService() {
       "Get-Service postgresql* -ErrorAction SilentlyContinue | " +
         "Where-Object { $_.Status -ne 'Running' } | " +
         'Select-Object -First 1 -ExpandProperty Name',
+      10_000,
     )
   } catch {
     return false
@@ -97,7 +98,7 @@ function tryStartWindowsService() {
 
   log(`Starting Windows service "${name}"…`)
   try {
-    powershell(`Start-Service '${name}'`)
+    powershell(`Start-Service '${name}'`, 30_000)
     return true
   } catch {
     log(
@@ -109,20 +110,21 @@ function tryStartWindowsService() {
   }
 }
 
-function docker(args) {
-  return execFileSync('docker', args, { encoding: 'utf8' }).trim()
+// Every shell-out is time-boxed. On Windows the `docker` CLI blocks on the
+// daemon's named pipe when Docker Desktop is installed but not running, which
+// would otherwise stall `predev` — and therefore `npm run dev` — indefinitely.
+function docker(args, timeoutMs) {
+  return execFileSync('docker', args, { encoding: 'utf8', timeout: timeoutMs }).trim()
 }
 
 /** Try to start a Docker Postgres container. Returns true if attempted. */
 function tryStartDocker() {
   let out
   try {
-    out = docker([
-      'ps',
-      '-a',
-      '--format',
-      '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}',
-    ])
+    out = docker(
+      ['ps', '-a', '--format', '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}'],
+      10_000,
+    )
   } catch {
     return false
   }
@@ -142,8 +144,8 @@ function tryStartDocker() {
   if (!/^Up\b/.test(container.status)) {
     log(`Starting Docker container "${container.name}"…`)
     try {
-      docker(['start', container.id])
-      docker(['update', '--restart', 'unless-stopped', container.id])
+      docker(['start', container.id], 30_000)
+      docker(['update', '--restart', 'unless-stopped', container.id], 10_000)
     } catch (err) {
       log(`Could not start "${container.name}": ${err?.message ?? err}.`)
     }
