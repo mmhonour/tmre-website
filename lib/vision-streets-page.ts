@@ -31,6 +31,24 @@ export function visionStreetPageHref(
   return pid ? `${path}#pid-${encodeURIComponent(pid)}` : path
 }
 
+/**
+ * TMRE Vision / VGSI parcel page — the reverse of `visionStreetPageHref`.
+ * Westport has `/find/westport/{pid}`. Other towns fall back to Find search
+ * until they get their own parcel route.
+ */
+export function visionParcelFindHref(
+  town: string,
+  visionPid: string,
+  addressLabel?: string,
+): string {
+  const pid = visionPid.trim()
+  if (town.trim().toLowerCase() === 'westport' && pid) {
+    return `/find/westport/${encodeURIComponent(pid)}`
+  }
+  const q = addressLabel?.trim()
+  return q ? `/find?q=${encodeURIComponent(q)}` : '/find'
+}
+
 export function resolveStreetName(
   slug: string,
   knownStreets: readonly string[],

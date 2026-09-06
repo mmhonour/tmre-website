@@ -8,7 +8,6 @@ import {
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
 import { StreetParcelMlsRow } from '@/components/StreetParcelMlsRow'
-import { westportParcelHref } from '@/lib/listing-url'
 import { loadStreetListingCards } from '@/lib/street-listing-ingest'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
@@ -16,6 +15,7 @@ import {
   resolveStreetName,
   resolveStreetTown,
   townToStreetSlug,
+  visionParcelFindHref,
 } from '@/lib/vision-streets-page'
 
 export const dynamic = 'force-dynamic'
@@ -36,17 +36,6 @@ function mergeKnownTowns(fromTable: string[]): string[] {
     out.push(town)
   }
   return out
-}
-
-function parcelHref(
-  town: string,
-  visionPid: string,
-  addressLabel: string,
-): string {
-  if (town.trim().toLowerCase() === 'westport') {
-    return westportParcelHref(visionPid)
-  }
-  return `/find?q=${encodeURIComponent(addressLabel)}`
 }
 
 export default async function StreetsStreetPage({
@@ -104,9 +93,9 @@ export default async function StreetsStreetPage({
           <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
             {parcels.length.toLocaleString()}{' '}
             {parcels.length === 1 ? 'address' : 'addresses'} from the Vision
-            street page. Click a house or Bought for the owner-of-record
-            card — full name, mailing, and every deed. A click also silently
-            asks RETS for a missing MLS listing so other towns fill in.
+            street page. Click a house number for the TMRE Vision parcel.
+            Click the owner or Bought for owner-of-record history — full
+            name, mailing, and every deed.
           </p>
         </div>
       </section>
@@ -131,7 +120,7 @@ export default async function StreetsStreetPage({
                   mailingAddress={row.ownerMailingAddress}
                   soldLabel={row.purchaseDate ? `Bought ${row.purchaseDate}` : null}
                   deedHistory={row.deedHistory}
-                  parcelHref={parcelHref(
+                  parcelHref={visionParcelFindHref(
                     town,
                     row.visionPid,
                     row.addressLabel,

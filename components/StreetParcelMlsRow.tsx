@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { VisionDeedHistoryPopout, type VisionDeedHistoryRow } from '@/components/VisionDeedHistoryPopout'
 import {
   formatStreetListingLine,
@@ -45,22 +45,17 @@ export function StreetParcelMlsRow({
     initialListing ? 'found' : null,
   )
   const [message, setMessage] = useState<string | null>(null)
-  const inflight = useRef(false)
 
   const applyPayload = useCallback((payload: IngestPayload) => {
     if (payload.listing) {
       setListing(payload.listing)
       setPhase('found')
       setMessage(payload.message ?? payload.listing.status)
-      inflight.current = false
       return
     }
     if (payload.phase) {
       setPhase(payload.phase)
       setMessage(payload.message ?? null)
-      if (!STREET_LISTING_INGEST_IN_FLIGHT.has(payload.phase)) {
-        inflight.current = false
-      }
     }
   }, [])
 
@@ -85,58 +80,41 @@ export function StreetParcelMlsRow({
     return () => window.clearInterval(timer)
   }, [phase, poll])
 
-  const startIngest = useCallback(() => {
-    if (listing || inflight.current) return
-    inflight.current = true
-    setPhase('queued')
-    setMessage('Searching RETS…')
-    void (async () => {
-      try {
-        const res = await fetch('/api/streets/ingest-listing', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ town, visionPid }),
-        })
-        if (!res.ok) {
-          setPhase('error')
-          setMessage('RETS search failed')
-          inflight.current = false
-          return
-        }
-        applyPayload((await res.json()) as IngestPayload)
-      } catch {
-        setPhase('error')
-        setMessage('RETS search failed')
-        inflight.current = false
-      }
-    })()
-  }, [applyPayload, listing, town, visionPid])
-
   const owner = ownerName
   const mailing = mailingAddress
   const sold = soldLabel
+  const ownerTriggerClass =
+    'text-left font-mono text-[11px] tracking-[0.04em] text-charcoal/55 hover:text-navy underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy'
 
   return (
     <li
       id={`pid-${visionPid}`}
       className="scroll-mt-28 py-2.5 target:bg-gold/10 target:-mx-3 target:px-3 target:rounded-xl"
     >
-      <div onClickCapture={startIngest}>
-        <VisionDeedHistoryPopout
-          label={addressLabel}
-          addressLabel={addressLabel}
-          ownerName={owner}
-          mailingAddress={mailing}
-          soldLabel={sold}
-          rows={deedHistory}
-          parcelHref={parcelHref}
-          triggerClassName="text-left text-sm text-charcoal/90 hover:text-navy"
-        >
-          {addressLabel}
-        </VisionDeedHistoryPopout>
-      </div>
+      <Link
+        href={parcelHref}
+        className="text-sm text-charcoal/90 hover:text-navy underline underline-offset-2 decoration-charcoal/25 hover:decoration-navy"
+        aria-label={`Open Vision parcel ${addressLabel}`}
+      >
+        {addressLabel}
+      </Link>
       <p className="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
-        {owner ?? 'Owner pending Field Card ingest'}
+        {owner ? (
+          <VisionDeedHistoryPopout
+            label={owner}
+            addressLabel={addressLabel}
+            ownerName={owner}
+            mailingAddress={mailing}
+            soldLabel={sold}
+            rows={deedHistory}
+            parcelHref={parcelHref}
+            triggerClassName={ownerTriggerClass}
+          >
+            {owner}
+          </VisionDeedHistoryPopout>
+        ) : (
+          'Owner pending Field Card ingest'
+        )}
         {owner && sold ? (
           <>
             {' · '}
