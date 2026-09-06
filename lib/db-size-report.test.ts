@@ -10,6 +10,8 @@ import {
   quoteIdent,
   storageMonthlyUsd,
   GB,
+  rollupGrowthRows,
+  rollupTableSizes,
 } from './db-size-report-shared'
 
 describe('quoteIdent', () => {
@@ -107,5 +109,52 @@ describe('decorateTableSize', () => {
     })
     assert.equal(row.totalLabel, '2.0 KB')
     assert.equal(row.heapLabel, '1.0 KB')
+  })
+})
+
+describe('table and growth rollups', () => {
+  it('sums size columns and formats labels', () => {
+    const rollup = rollupTableSizes([
+      decorateTableSize({
+        table: 'a',
+        rows: 10,
+        total: 2048,
+        heap: 1024,
+        toast: 512,
+        indexes: 512,
+      }),
+      decorateTableSize({
+        table: 'b',
+        rows: 5,
+        total: 1024,
+        heap: 512,
+        toast: 256,
+        indexes: 256,
+      }),
+    ])
+    assert.equal(rollup.rows, 15)
+    assert.equal(rollup.total, 3072)
+    assert.equal(rollup.rowsLabel, '15')
+    assert.equal(rollup.totalLabel, '3.0 KB')
+  })
+
+  it('sums growth columns', () => {
+    const row = decorateGrowthRow({
+      table: 'listings',
+      column: 'list_date',
+      total: 100,
+      nulls: 0,
+      d1: 2,
+      d7: 10,
+      d30: 30,
+      oldest: null,
+      newest: null,
+      tableBytes: 10_000,
+    })
+    const rollup = rollupGrowthRows([row, row])
+    assert.equal(rollup.d1, 4)
+    assert.equal(rollup.d30, 60)
+    assert.equal(rollup.perDay, 2)
+    assert.equal(rollup.bytesPerDay, 200)
   })
 })

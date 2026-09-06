@@ -1,17 +1,75 @@
 "use client";
 
-import { useState } from "react";
-import type { DbSizeReport } from "@/lib/db-size-report-shared";
+import { useMemo, useState } from "react";
+import type {
+  DbSizeGrowthRow,
+  DbSizeReport,
+  DbSizeTable,
+} from "@/lib/db-size-report-shared";
 import { formatUsd } from "@/lib/db-size-report-shared";
 
 const TH =
   "px-3 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/50 border-b border-r border-charcoal/[0.08] whitespace-nowrap";
 const TD =
   "px-3 py-2.5 font-mono text-[11px] text-navy border-b border-r border-charcoal/[0.06] tabular-nums";
+const TF =
+  "px-3 py-2.5 font-mono text-[11px] font-semibold text-navy border-t-2 border-charcoal/20 border-r border-charcoal/[0.06] tabular-nums bg-cream/70";
 
 function formatCount(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return Math.round(n).toLocaleString("en-US");
+}
+
+type SortDir = "asc" | "desc";
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  align,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  align?: "left" | "right";
+  onClick: () => void;
+}) {
+  return (
+    <th className={`${TH} ${align === "right" ? "text-right" : ""}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`inline-flex items-center gap-1 hover:text-navy ${
+          active ? "text-navy" : ""
+        } ${align === "right" ? "ml-auto" : ""}`}
+      >
+        {label}
+        <span className="tabular-nums text-[8px] opacity-70">
+          {active ? (dir === "desc" ? "↓" : "↑") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function compareValues(
+  a: string | number | null | undefined,
+  b: string | number | null | undefined,
+  dir: SortDir,
+): number {
+  const empty = dir === "asc" ? 1 : -1;
+  if (a == null && b == null) return 0;
+  if (a == null) return empty;
+  if (b == null) return -empty;
+  if (typeof a === "number" && typeof b === "number") {
+    return dir === "asc" ? a - b : b - a;
+  }
+  const cmp = String(a).localeCompare(String(b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  return dir === "asc" ? cmp : -cmp;
 }
 
 export default function AdminDbSizePanel() {
@@ -83,7 +141,108 @@ export default function AdminDbSizePanel() {
   );
 }
 
+type SizeSortKey = "table" | "rows" | "total" | "heap" | "toast" | "indexes";
+type GrowthSortKey =
+  | "table"
+  | "column"
+  | "d1"
+  | "d7"
+  | "d30"
+  | "perDay"
+  | "bytesPerDay";
+type ChatterSortKey = "calls" | "callsPerDay" | "everyLabel" | "query";
+
 function ReportBody({ report }: { report: DbSizeReport }) {
+  const [sizeSort, setSizeSort] = useState<{ key: SizeSortKey; dir: SortDir }>({
+    key: "total",
+    dir: "desc",
+  });
+  const [growthSort, setGrowthSort] = useState<{
+    key: GrowthSortKey;
+    dir: SortDir;
+  }>({
+    key: "bytesPerDay",
+    dir: "desc",
+  });
+  const [chatterSort, setChatterSort] = useState<{
+    key: ChatterSortKey;
+    dir: SortDir;
+  }>({
+    key: "calls",
+    dir: "desc",
+  });
+
+  const tables = useMemo(() => {
+    const rows = [...report.tables];
+    rows.sort((a, b) =>
+      compareValues(sizeValue(a, sizeSort.key), sizeValue(b, sizeSort.key), sizeSort.dir),
+    );
+    return rows;
+  }, [report.tables, sizeSort]);
+
+  const growth = useMemo(() => {
+    const rows = [...report.growth];
+    rows.sort((a, b) =>
+      compareValues(
+        growthValue(a, growthSort.key),
+        growthValue(b, growthSort.key),
+        growthSort.dir,
+      ),
+    );
+    return rows;
+  }, [report.growth, growthSort]);
+
+  const chatterRows = useMemo(() => {
+    const rows = [...(report.chatter?.rows ?? [])];
+    rows.sort((a, b) =>
+      compareValues(
+        chatterSort.key === "calls"
+          ? a.calls
+          : chatterSort.key === "callsPerDay"
+            ? a.callsPerDay
+            : chatterSort.key === "everyLabel"
+              ? a.everyLabel
+              : a.query,
+        chatterSort.key === "calls"
+          ? b.calls
+          : chatterSort.key === "callsPerDay"
+            ? b.callsPerDay
+            : chatterSort.key === "everyLabel"
+              ? b.everyLabel
+              : b.query,
+        chatterSort.dir,
+      ),
+    );
+    return rows;
+  }, [report.chatter?.rows, chatterSort]);
+
+  function cycleSize(key: SizeSortKey) {
+    setSizeSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: key === "table" ? "asc" : "desc" },
+    );
+  }
+
+  function cycleGrowth(key: GrowthSortKey) {
+    setGrowthSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: key === "table" || key === "column" ? "asc" : "desc" },
+    );
+  }
+
+  function cycleChatter(key: ChatterSortKey) {
+    setChatterSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: key === "query" || key === "everyLabel" ? "asc" : "desc" },
+    );
+  }
+
+  const tableRollup = report.tableRollup;
+  const growthRollup = report.growthRollup;
+
   return (
     <div className="space-y-8 px-5 py-5 sm:px-6">
       <p className="text-sm text-charcoal/70">
@@ -97,20 +256,58 @@ function ReportBody({ report }: { report: DbSizeReport }) {
         <h3 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
           Size by table
         </h3>
-        <div className="mt-3 overflow-x-auto">
+        <p className="mt-1 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+          Click headers to sort · footer is the sum of every row
+        </p>
+        <div className="mt-3 max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08]">
           <table className="border-collapse text-left w-max min-w-full">
-            <thead>
+            <thead className="sticky top-0 z-[1] bg-cream/95">
               <tr>
-                <th className={TH}>Table</th>
-                <th className={`${TH} text-right`}>Rows</th>
-                <th className={`${TH} text-right`}>Total</th>
-                <th className={`${TH} text-right`}>Heap</th>
-                <th className={`${TH} text-right`}>Toast</th>
-                <th className={`${TH} text-right`}>Indexes</th>
+                <SortHeader
+                  label="Table"
+                  active={sizeSort.key === "table"}
+                  dir={sizeSort.dir}
+                  onClick={() => cycleSize("table")}
+                />
+                <SortHeader
+                  label="Rows"
+                  align="right"
+                  active={sizeSort.key === "rows"}
+                  dir={sizeSort.dir}
+                  onClick={() => cycleSize("rows")}
+                />
+                <SortHeader
+                  label="Total"
+                  align="right"
+                  active={sizeSort.key === "total"}
+                  dir={sizeSort.dir}
+                  onClick={() => cycleSize("total")}
+                />
+                <SortHeader
+                  label="Heap"
+                  align="right"
+                  active={sizeSort.key === "heap"}
+                  dir={sizeSort.dir}
+                  onClick={() => cycleSize("heap")}
+                />
+                <SortHeader
+                  label="Toast"
+                  align="right"
+                  active={sizeSort.key === "toast"}
+                  dir={sizeSort.dir}
+                  onClick={() => cycleSize("toast")}
+                />
+                <SortHeader
+                  label="Indexes"
+                  align="right"
+                  active={sizeSort.key === "indexes"}
+                  dir={sizeSort.dir}
+                  onClick={() => cycleSize("indexes")}
+                />
               </tr>
             </thead>
             <tbody>
-              {report.tables.map((row) => (
+              {tables.map((row) => (
                 <tr key={row.table}>
                   <td className={TD}>{row.table}</td>
                   <td className={`${TD} text-right`}>{formatCount(row.rows)}</td>
@@ -121,6 +318,16 @@ function ReportBody({ report }: { report: DbSizeReport }) {
                 </tr>
               ))}
             </tbody>
+            <tfoot className="sticky bottom-0">
+              <tr>
+                <td className={TF}>Sum</td>
+                <td className={`${TF} text-right`}>{tableRollup.rowsLabel}</td>
+                <td className={`${TF} text-right`}>{tableRollup.totalLabel}</td>
+                <td className={`${TF} text-right`}>{tableRollup.heapLabel}</td>
+                <td className={`${TF} text-right`}>{tableRollup.toastLabel}</td>
+                <td className={`${TF} text-right`}>{tableRollup.indexLabel}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -171,21 +378,64 @@ function ReportBody({ report }: { report: DbSizeReport }) {
           </p>
         ) : (
           <>
-            <div className="mt-3 overflow-x-auto">
+            <p className="mt-1 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+              Click headers to sort · footer is the sum of every row
+            </p>
+            <div className="mt-3 max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08]">
               <table className="border-collapse text-left w-max min-w-full">
-                <thead>
+                <thead className="sticky top-0 z-[1] bg-cream/95">
                   <tr>
-                    <th className={TH}>Table</th>
-                    <th className={TH}>Column</th>
-                    <th className={`${TH} text-right`}>24h</th>
-                    <th className={`${TH} text-right`}>7d</th>
-                    <th className={`${TH} text-right`}>30d</th>
-                    <th className={`${TH} text-right`}>Per day</th>
-                    <th className={`${TH} text-right`}>Bytes/day</th>
+                    <SortHeader
+                      label="Table"
+                      active={growthSort.key === "table"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("table")}
+                    />
+                    <SortHeader
+                      label="Column"
+                      active={growthSort.key === "column"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("column")}
+                    />
+                    <SortHeader
+                      label="24h"
+                      align="right"
+                      active={growthSort.key === "d1"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("d1")}
+                    />
+                    <SortHeader
+                      label="7d"
+                      align="right"
+                      active={growthSort.key === "d7"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("d7")}
+                    />
+                    <SortHeader
+                      label="30d"
+                      align="right"
+                      active={growthSort.key === "d30"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("d30")}
+                    />
+                    <SortHeader
+                      label="Per day"
+                      align="right"
+                      active={growthSort.key === "perDay"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("perDay")}
+                    />
+                    <SortHeader
+                      label="Bytes/day"
+                      align="right"
+                      active={growthSort.key === "bytesPerDay"}
+                      dir={growthSort.dir}
+                      onClick={() => cycleGrowth("bytesPerDay")}
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {report.growth.map((row) => (
+                  {growth.map((row) => (
                     <tr key={`${row.table}.${row.column}`}>
                       <td className={TD}>{row.table}</td>
                       <td className={TD}>{row.column}</td>
@@ -199,6 +449,21 @@ function ReportBody({ report }: { report: DbSizeReport }) {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="sticky bottom-0">
+                  <tr>
+                    <td className={TF}>Sum</td>
+                    <td className={TF} />
+                    <td className={`${TF} text-right`}>{growthRollup.d1Label}</td>
+                    <td className={`${TF} text-right`}>{growthRollup.d7Label}</td>
+                    <td className={`${TF} text-right`}>{growthRollup.d30Label}</td>
+                    <td className={`${TF} text-right`}>
+                      {growthRollup.perDayLabel}
+                    </td>
+                    <td className={`${TF} text-right`}>
+                      {growthRollup.bytesPerDayLabel}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
             <p className="mt-3 text-sm text-charcoal/70">
@@ -246,18 +511,41 @@ function ReportBody({ report }: { report: DbSizeReport }) {
                 Window is under an hour, so per-day rates are withheld.
               </p>
             ) : null}
-            <div className="overflow-x-auto">
+            <div className="max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08]">
               <table className="border-collapse text-left w-max min-w-full">
-                <thead>
+                <thead className="sticky top-0 z-[1] bg-cream/95">
                   <tr>
-                    <th className={`${TH} text-right`}>Calls</th>
-                    <th className={`${TH} text-right`}>Calls/day</th>
-                    <th className={`${TH} text-right`}>Every</th>
-                    <th className={TH}>Query</th>
+                    <SortHeader
+                      label="Calls"
+                      align="right"
+                      active={chatterSort.key === "calls"}
+                      dir={chatterSort.dir}
+                      onClick={() => cycleChatter("calls")}
+                    />
+                    <SortHeader
+                      label="Calls/day"
+                      align="right"
+                      active={chatterSort.key === "callsPerDay"}
+                      dir={chatterSort.dir}
+                      onClick={() => cycleChatter("callsPerDay")}
+                    />
+                    <SortHeader
+                      label="Every"
+                      align="right"
+                      active={chatterSort.key === "everyLabel"}
+                      dir={chatterSort.dir}
+                      onClick={() => cycleChatter("everyLabel")}
+                    />
+                    <SortHeader
+                      label="Query"
+                      active={chatterSort.key === "query"}
+                      dir={chatterSort.dir}
+                      onClick={() => cycleChatter("query")}
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {report.chatter.rows.map((row, idx) => (
+                  {chatterRows.map((row, idx) => (
                     <tr key={`${row.query}-${idx}`}>
                       <td className={`${TD} text-right`}>
                         {formatCount(row.calls)}
@@ -290,4 +578,16 @@ function ReportBody({ report }: { report: DbSizeReport }) {
       </section>
     </div>
   );
+}
+
+function sizeValue(row: DbSizeTable, key: SizeSortKey): string | number {
+  if (key === "table") return row.table;
+  return row[key];
+}
+
+function growthValue(
+  row: DbSizeGrowthRow,
+  key: GrowthSortKey,
+): string | number {
+  return row[key];
 }
