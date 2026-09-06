@@ -294,6 +294,8 @@ export default function MarketPulseContent({
         priceByTown: active.priceByTown ?? [],
         taxByTown: active.taxByTown ?? [],
         taxReady: active.taxReady === true,
+        taxYearLabel: active.taxYearLabel ?? null,
+        taxYearKind: active.taxYearKind ?? null,
         dealOfTheWeek: active.deal ?? null,
       }
     : snapshot;

@@ -198,19 +198,71 @@ export function currentFiscalYearEnd(now = new Date()): number {
 }
 
 /**
- * Market Pulse tax pool is every listing (any status) × every fiscal year in
- * this lookback. CAMA already stores the four historical years; MLS owns the
- * current year. Median / average / delta need that whole book — not Active
- * current-year only.
+ * Coverage lookback when measuring how much of the book has each FY.
+ * Pulse median / average / delta use one chosen year, not this whole window.
  */
 export const PULSE_TAX_LOOKBACK_YEARS = 5;
 
 /**
- * Floor before tax bars render. With all statuses and five years the All-towns
- * sample is thousands; 125 is only a sanity gate so an empty cache cannot
- * flash a one-row median.
+ * Share of the Pulse listing book that must have a plausible tax amount
+ * for a fiscal year before that year is in play. A handful of new MLS
+ * current-year bills must not flip the town comparison.
+ */
+export const PULSE_TAX_YEAR_QUORUM = 0.8;
+
+/**
+ * Sanity floor so an empty book cannot flash a one-row median even if
+ * the 80% ratio is vacuously true on a tiny universe.
  */
 export const PULSE_TAX_YEAR_MIN_N = 125;
+
+export type PulseTaxYearKind = "current" | "prior";
+
+export type PulseTaxYearDecision = {
+  yearEnd: number;
+  kind: PulseTaxYearKind;
+  ready: boolean;
+  listingUniverse: number;
+  countCurrent: number;
+  countPrior: number;
+  pctCurrent: number;
+  pctPrior: number;
+  quorumPct: number;
+  camaHasRun: boolean;
+};
+
+export function pulseTaxCoveragePct(
+  have: number,
+  universe: number,
+): number {
+  if (universe <= 0) return 0;
+  return Math.max(0, have) / universe;
+}
+
+export function pulseTaxYearHasQuorum(
+  have: number,
+  universe: number,
+  quorum = PULSE_TAX_YEAR_QUORUM,
+): boolean {
+  return (
+    universe > 0 &&
+    have >= PULSE_TAX_YEAR_MIN_N &&
+    have / universe >= quorum
+  );
+}
+
+export function formatPulseTaxCoveragePct(pct: number): string {
+  if (!Number.isFinite(pct)) return "0%";
+  return `${Math.round(pct * 100)}%`;
+}
+
+/** `July 2025-June 2026 · prior` — the year Pulse is comparing. */
+export function formatPulseTaxComparedLabel(
+  yearEnd: number,
+  kind: PulseTaxYearKind,
+): string {
+  return `${formatTaxYearLabel(yearEnd)} · ${kind}`;
+}
 
 export function pulseTaxYearEnds(
   newestYearEnd = currentFiscalYearEnd(),
@@ -238,18 +290,59 @@ export function pulseTaxCoverageIsReady(
   return (sampleSize ?? 0) >= minN;
 }
 
+/**
+ * Pick current FY only at the 80% tipping point. Otherwise stay on prior.
+ * Bars stay off until CAMA has run once and the chosen year has quorum.
+ */
+export function decidePulseTaxYear(input: {
+  currentYearEnd: number;
+  listingUniverse: number;
+  countCurrent: number;
+  countPrior: number;
+  camaHasRun: boolean;
+  quorum?: number;
+}): PulseTaxYearDecision {
+  const quorum = input.quorum ?? PULSE_TAX_YEAR_QUORUM;
+  const universe = Math.max(0, input.listingUniverse);
+  const countCurrent = Math.max(0, input.countCurrent);
+  const countPrior = Math.max(0, input.countPrior);
+  const currentReady = pulseTaxYearHasQuorum(countCurrent, universe, quorum);
+  const priorReady = pulseTaxYearHasQuorum(countPrior, universe, quorum);
+
+  const useCurrent = currentReady;
+  const yearEnd = useCurrent
+    ? input.currentYearEnd
+    : input.currentYearEnd - 1;
+  const kind: PulseTaxYearKind = useCurrent ? "current" : "prior";
+  const yearReady = useCurrent ? currentReady : priorReady;
+
+  return {
+    yearEnd,
+    kind,
+    ready: input.camaHasRun && yearReady,
+    listingUniverse: universe,
+    countCurrent,
+    countPrior,
+    pctCurrent: pulseTaxCoveragePct(countCurrent, universe),
+    pctPrior: pulseTaxCoveragePct(countPrior, universe),
+    quorumPct: quorum,
+    camaHasRun: input.camaHasRun,
+  };
+}
+
 export function choosePulseTaxYearEnd(
   currentYearEnd: number,
   countCurrent: number,
   countPrior: number,
-  minN = PULSE_TAX_YEAR_MIN_N,
+  listingUniverse = Math.max(countCurrent, countPrior),
 ): number {
-  const current = Math.max(0, countCurrent);
-  const prior = Math.max(0, countPrior);
-  if (current >= minN) return currentYearEnd;
-  if (current > 0 && current >= prior) return currentYearEnd;
-  if (prior > 0) return currentYearEnd - 1;
-  return currentYearEnd;
+  return decidePulseTaxYear({
+    currentYearEnd,
+    listingUniverse,
+    countCurrent,
+    countPrior,
+    camaHasRun: true,
+  }).yearEnd;
 }
 
 export function buildPropertyTaxHistorySlots(

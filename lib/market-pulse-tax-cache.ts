@@ -1,14 +1,20 @@
 import 'server-only'
 
 import { readStatsCacheRow, writeStatsCacheRow } from '@/lib/db/stats-cache-repo'
-import { readTownTaxAggregates } from '@/lib/db/town-tax-aggregates-repo'
+import { getSyncMeta } from '@/lib/db/sync-meta'
+import {
+  readPulseTaxListingUniverse,
+  readPulseTaxYearCoverage,
+  readTownTaxAggregates,
+} from '@/lib/db/town-tax-aggregates-repo'
 import type { ListingKind } from '@/lib/listing-kind'
 import type { ListingPropertyClass } from '@/lib/listing-property-class'
 import {
   currentFiscalYearEnd,
-  formatPulseTaxWindowLabel,
-  pulseTaxCoverageIsReady,
-  pulseTaxYearEnds,
+  decidePulseTaxYear,
+  formatPulseTaxComparedLabel,
+  type PulseTaxYearDecision,
+  type PulseTaxYearKind,
 } from '@/lib/listing-property-tax'
 import type { MarketDigestTaxTownCount } from '@/lib/market-digest-types'
 import { meanMinusMedian } from '@/lib/market-pulse-price-delta'
@@ -18,7 +24,9 @@ import { TMRE_TOWNS } from '@/lib/tmre-towns'
  * Property tax median / average / delta per town.
  *
  * Same request-budget rule as closed-by-town: SQL at stats rebuild, page
- * and email only read. Pool is every listing × the last five fiscal years.
+ * and email only read. One fiscal year — current once 80% of the book has
+ * it, otherwise prior. Bars stay off until CAMA has run and that year
+ * has quorum.
  */
 
 export type MarketPulseTaxScope = {
@@ -27,13 +35,21 @@ export type MarketPulseTaxScope = {
   commercialOnly?: boolean
 }
 
+export type MarketPulseTaxCoverage = PulseTaxYearDecision & {
+  currentYearEnd: number
+  priorYearEnd: number
+  camaSyncedAt: string | null
+}
+
 export type MarketPulseTaxPayload = {
   fiscalYearEnd: number
   taxYearLabel: string
+  yearKind: PulseTaxYearKind
+  coverage: MarketPulseTaxCoverage
   rows: MarketDigestTaxTownCount[]
   /**
-   * True only when the All-towns sample meets PULSE_TAX_YEAR_MIN_N.
-   * Public readers hide the bars until this is true.
+   * True only when CAMA has finished once and the chosen FY has 80%
+   * coverage. Public readers hide the bars until this is true.
    */
   ready: boolean
   generatedAt: string
@@ -51,22 +67,82 @@ function cacheKey(scope: MarketPulseTaxScope): string {
   const slice = scope.commercialOnly
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
-  return `market-pulse-tax:${scope.kind}:${slice}:v3`
+  return `market-pulse-tax:${scope.kind}:${slice}:v4`
+}
+
+async function measureCoverage(
+  scope: MarketPulseTaxScope,
+): Promise<MarketPulseTaxCoverage> {
+  const currentYearEnd = currentFiscalYearEnd()
+  const priorYearEnd = currentYearEnd - 1
+  const [listingUniverse, yearCounts, camaSyncedAt] = await Promise.all([
+    readPulseTaxListingUniverse({
+      towns: TMRE_TOWNS,
+      kind: scope.kind,
+      propertyClass: scope.propertyClass,
+      commercialOnly: scope.commercialOnly,
+    }),
+    readPulseTaxYearCoverage({
+      towns: TMRE_TOWNS,
+      yearEnds: [currentYearEnd, priorYearEnd],
+      kind: scope.kind,
+      propertyClass: scope.propertyClass,
+      commercialOnly: scope.commercialOnly,
+    }),
+    getSyncMeta('cama_tax_history_synced_at'),
+  ])
+  const countCurrent =
+    yearCounts.find((row) => row.taxYearEnd === currentYearEnd)?.listingCount ??
+    0
+  const countPrior =
+    yearCounts.find((row) => row.taxYearEnd === priorYearEnd)?.listingCount ?? 0
+  const decision = decidePulseTaxYear({
+    currentYearEnd,
+    listingUniverse,
+    countCurrent,
+    countPrior,
+    camaHasRun: Boolean(camaSyncedAt?.trim()),
+  })
+  return {
+    ...decision,
+    currentYearEnd,
+    priorYearEnd,
+    camaSyncedAt: camaSyncedAt?.trim() || null,
+  }
+}
+
+function emptyCoverage(): MarketPulseTaxCoverage {
+  const currentYearEnd = currentFiscalYearEnd()
+  const decision = decidePulseTaxYear({
+    currentYearEnd,
+    listingUniverse: 0,
+    countCurrent: 0,
+    countPrior: 0,
+    camaHasRun: false,
+  })
+  return {
+    ...decision,
+    currentYearEnd,
+    priorYearEnd: currentYearEnd - 1,
+    camaSyncedAt: null,
+  }
 }
 
 async function compute(
   scope: MarketPulseTaxScope,
 ): Promise<MarketPulseTaxPayload> {
-  const taxYearEnds = pulseTaxYearEnds()
-  const fiscalYearEnd = taxYearEnds[0] ?? currentFiscalYearEnd()
-  const taxYearLabel = formatPulseTaxWindowLabel(taxYearEnds)
-  const aggregates = await readTownTaxAggregates({
-    towns: TMRE_TOWNS,
-    taxYearEnds,
-    kind: scope.kind,
-    propertyClass: scope.propertyClass,
-    commercialOnly: scope.commercialOnly,
-  })
+  const coverage = await measureCoverage(scope)
+  const fiscalYearEnd = coverage.yearEnd
+  const taxYearLabel = formatPulseTaxComparedLabel(fiscalYearEnd, coverage.kind)
+  const aggregates = coverage.ready
+    ? await readTownTaxAggregates({
+        towns: TMRE_TOWNS,
+        taxYearEnds: [fiscalYearEnd],
+        kind: scope.kind,
+        propertyClass: scope.propertyClass,
+        commercialOnly: scope.commercialOnly,
+      })
+    : []
 
   const noun = scope.commercialOnly
     ? 'commercial listings'
@@ -76,6 +152,7 @@ async function compute(
   const classLabel = scope.commercialOnly
     ? 'commercial'
     : (scope.propertyClass ?? 'all')
+  const yearWord = coverage.kind === 'current' ? 'current' : 'prior'
 
   const rows: MarketDigestTaxTownCount[] = aggregates.map((row) => {
     const delta = meanMinusMedian(row.averageTax, row.medianTax)
@@ -89,16 +166,19 @@ async function compute(
       fiscalYearEnd,
       taxYearLabel,
       medianTaxCalc: {
-        summary: `${row.sampleSize.toLocaleString()} ${noun}-year tax amounts in ${row.town} (${taxYearLabel}).`,
+        summary: `${row.sampleSize.toLocaleString()} ${noun} in ${row.town} with ${taxYearLabel} tax.`,
         detail: [
-          `Median / mean of listing_tax_history (or MLS property_tax) for every listing, any status, across fiscal years ending ${taxYearEnds.join(', ')}.`,
-          `One listing with five years is five observations (${classLabel}). Not each listing's own latest year only.`,
+          `Median / mean of listing_tax_history (or MLS property_tax) for every listing, any status, for the ${yearWord} fiscal year (${classLabel}).`,
+          'Current year is used only after 80% of the listing book has that bill. CAMA fills prior years.',
         ],
         inputs: {
           city: row.town,
           sampleSize: row.sampleSize,
           fiscalYearEnd,
-          taxYearEnds: taxYearEnds.join(','),
+          yearKind: coverage.kind,
+          pctCurrent: coverage.pctCurrent,
+          pctPrior: coverage.pctPrior,
+          listingUniverse: coverage.listingUniverse,
           medianTax: row.medianTax,
           averageTax: row.averageTax,
           kind: scope.kind,
@@ -107,15 +187,15 @@ async function compute(
         },
       },
       averageTaxCalc: {
-        summary: `Mean ${taxYearLabel} tax across ${row.sampleSize.toLocaleString()} ${noun}-year amounts in ${row.town}.`,
+        summary: `Mean ${taxYearLabel} tax across ${row.sampleSize.toLocaleString()} ${noun} in ${row.town}.`,
         detail: [
-          'Same eligible pool as the median — every listing, last five fiscal years.',
+          'Same eligible pool as the median — one fiscal year, every listing in scope.',
         ],
         inputs: {
           city: row.town,
           sampleSize: row.sampleSize,
           fiscalYearEnd,
-          taxYearEnds: taxYearEnds.join(','),
+          yearKind: coverage.kind,
           averageTax: row.averageTax,
         },
       },
@@ -128,45 +208,45 @@ async function compute(
                   : '—'
               } ${delta.dollars >= 0 ? 'above' : 'below'} the median.`,
               detail: [
-                'Average minus median on the same five-year listing tax pool. Not a year-over-year change.',
+                'Average minus median on the same single-year listing tax pool. Not a year-over-year change.',
               ],
               inputs: {
                 city: row.town,
                 taxDelta: delta.dollars,
                 taxDeltaPct: delta.pct,
                 fiscalYearEnd,
+                yearKind: coverage.kind,
               },
             }
           : undefined,
     }
   })
 
-  const allSample =
-    rows.find((row) => row.city.trim().toLowerCase() === 'all')?.sampleSize ?? 0
-  const ready = pulseTaxCoverageIsReady(allSample)
-
   return {
     fiscalYearEnd,
     taxYearLabel,
+    yearKind: coverage.kind,
+    coverage,
     rows,
-    ready,
+    ready: coverage.ready,
     generatedAt: new Date().toISOString(),
   }
 }
 
 function emptyPayload(): MarketPulseTaxPayload {
-  const taxYearEnds = pulseTaxYearEnds()
-  const fiscalYearEnd = taxYearEnds[0] ?? currentFiscalYearEnd()
+  const coverage = emptyCoverage()
   return {
-    fiscalYearEnd,
-    taxYearLabel: formatPulseTaxWindowLabel(taxYearEnds),
+    fiscalYearEnd: coverage.yearEnd,
+    taxYearLabel: formatPulseTaxComparedLabel(coverage.yearEnd, coverage.kind),
+    yearKind: coverage.kind,
+    coverage,
     rows: [],
     ready: false,
     generatedAt: new Date().toISOString(),
   }
 }
 
-/** Page / email / town pulse: no rows until the All-towns sample is large enough. */
+/** Page / email / town pulse: no rows until CAMA quorum is cached. */
 export function publicMarketPulseTaxPayload(
   payload: MarketPulseTaxPayload,
 ): MarketPulseTaxPayload {
@@ -205,12 +285,15 @@ export async function readMarketPulseTaxByTown(
         return {
           payload: publicMarketPulseTaxPayload({
             ...parsed,
-            ready:
-              parsed.ready === true ||
-              pulseTaxCoverageIsReady(
-                parsed.rows.find((row) => row.city.trim().toLowerCase() === 'all')
-                  ?.sampleSize,
+            ready: parsed.ready === true,
+            yearKind: parsed.yearKind ?? 'prior',
+            taxYearLabel:
+              parsed.taxYearLabel ??
+              formatPulseTaxComparedLabel(
+                parsed.fiscalYearEnd,
+                parsed.yearKind ?? 'prior',
               ),
+            coverage: parsed.coverage ?? emptyCoverage(),
           }),
           cached: true,
         }
@@ -248,7 +331,7 @@ export async function rebuildMarketPulseTaxCache(): Promise<{
   for (const scope of MARKET_PULSE_TAX_SCOPES) {
     try {
       const payload = await computeAndCache(scope)
-      if (payload.rows.length > 0) written += 1
+      if (payload.rows.length > 0 || payload.ready) written += 1
     } catch (err) {
       console.warn(
         `[market-pulse-tax] rebuild failed for ${cacheKey(scope)}`,
@@ -257,4 +340,32 @@ export async function rebuildMarketPulseTaxCache(): Promise<{
     }
   }
   return { written }
+}
+
+export type PulseTaxQuorumAdmin = {
+  live: MarketPulseTaxCoverage
+  cached: {
+    ready: boolean
+    yearKind: PulseTaxYearKind
+    taxYearLabel: string
+    generatedAt: string | null
+  }
+}
+
+/** Live CAMA/MLS coverage vs what the last stats rebuild published. */
+export async function readPulseTaxQuorumAdmin(): Promise<PulseTaxQuorumAdmin> {
+  const scope: MarketPulseTaxScope = { kind: 'sale', propertyClass: 'all' }
+  const [live, cached] = await Promise.all([
+    measureCoverage(scope),
+    readMarketPulseTaxByTown(scope, { allowCompute: false }),
+  ])
+  return {
+    live,
+    cached: {
+      ready: cached.payload.ready,
+      yearKind: cached.payload.yearKind,
+      taxYearLabel: cached.payload.taxYearLabel,
+      generatedAt: cached.cached ? cached.payload.generatedAt : null,
+    },
+  }
 }

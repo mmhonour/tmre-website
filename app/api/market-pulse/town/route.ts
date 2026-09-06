@@ -32,8 +32,9 @@ export type MarketPulseTownPayload = {
   kind: ListingKind
   propertyClass: ListingPropertyClass
   closedLookbackLabel: string
-  /** False until All-towns five-year listing-tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
+  /** False until CAMA has run and the chosen FY has 80% coverage. */
   taxReady: boolean
+  taxYearLabel: string | null
   /** The requested town's combined metrics. */
   row: MarketPulseCombinedTownRow | null
   /** All-towns row, for context alongside the subject. */
@@ -175,6 +176,7 @@ export async function GET(req: Request) {
       propertyClass,
       closedLookbackLabel: closed.payload.lookbackLabel,
       taxReady: tax.payload.ready,
+      taxYearLabel: tax.payload.ready ? tax.payload.taxYearLabel : null,
       row,
       allRow,
       buyerFriendly: row ? buyerFriendlyScore(row, peers) : null,

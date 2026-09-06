@@ -78,6 +78,7 @@ import {
   DEFAULT_CONTACT_NOTIFY_EMAIL,
 } from "@/lib/contact-notify-config";
 import { getMarketDigestConfigFresh } from "@/lib/market-digest-config";
+import { readPulseTaxQuorumAdmin } from "@/lib/market-pulse-tax-cache";
 import { getDeployNotifyConfigFresh } from "@/lib/deploy-notify-config";
 import { listSavedSearchAlertsForAdmin } from "@/lib/saved-search-alerts";
 import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
@@ -443,6 +444,11 @@ export default async function AdminPage() {
   const listingsDbEmpty = stats.total === 0;
   const startupProcess = describeStartupProcess();
   const statsCacheArchitecture = describeStatsCacheArchitecture();
+  const pulseTaxQuorum = await safe(
+    "pulse-tax-quorum",
+    () => readPulseTaxQuorumAdmin(),
+    null,
+  );
 
   const rows: StatusRow[] = [
     {
@@ -993,6 +999,7 @@ export default async function AdminPage() {
           startupLanes={startupProcess.lanes}
           startupContext={startupProcess.context}
           statsCacheArchitecture={statsCacheArchitecture}
+          pulseTaxQuorum={pulseTaxQuorum}
           pausedJobs={scheduledSyncPausedJobs}
           zipInventory={zipInventory}
           zipLastSyncAt={zipBoundariesSyncedAt}

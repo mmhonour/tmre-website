@@ -88,10 +88,13 @@ export type MarketDigestCategorySlice = {
   avgDomByTown: MarketDigestDomTownCount[]
   /** Median + average price per town (Market Pulse price bars). */
   priceByTown: MarketDigestPriceTownCount[]
-  /** Five-year listing tax median / average / delta per town. */
+  /** Chosen-year listing tax median / average / delta per town. */
   taxByTown: MarketDigestTaxTownCount[]
-  /** False until All-towns five-year listing-tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
+  /** False until CAMA has run and the chosen FY has 80% coverage. */
   taxReady?: boolean
+  /** `July 2025-June 2026 · prior` — set when taxReady. */
+  taxYearLabel?: string | null
+  taxYearKind?: 'current' | 'prior' | null
   /** Featured deal for this tab (DOTW for ALL; DOTD-aligned for other types). */
   deal: MarketDigestDealOfTheWeek | null
 }
@@ -111,10 +114,12 @@ export type MarketDigestSnapshot = {
   avgDomByTown: MarketDigestDomTownCount[]
   /** ALL-sales median / average price per town (default Market Pulse tab). */
   priceByTown: MarketDigestPriceTownCount[]
-  /** ALL-sales five-year listing tax per town (default Market Pulse tab). */
+  /** ALL-sales chosen-year listing tax per town (default Market Pulse tab). */
   taxByTown: MarketDigestTaxTownCount[]
-  /** False until All-towns five-year listing-tax sample ≥ PULSE_TAX_YEAR_MIN_N. */
+  /** False until CAMA has run and the chosen FY has 80% coverage. */
   taxReady?: boolean
+  taxYearLabel?: string | null
+  taxYearKind?: 'current' | 'prior' | null
   /** Market Pulse tabs (ALL / SFR / Condo / Rentals / Commercial). */
   categories: MarketDigestCategorySlice[]
   dealOfTheWeek: MarketDigestDealOfTheWeek | null

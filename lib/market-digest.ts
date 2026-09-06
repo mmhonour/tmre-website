@@ -229,19 +229,29 @@ async function taxByTownFromCache(
   kind: ListingKind,
   propertyClass?: ListingPropertyClass,
   commercialOnly?: boolean,
-): Promise<{ rows: MarketDigestTaxTownCount[]; ready: boolean }> {
+): Promise<{
+  rows: MarketDigestTaxTownCount[]
+  ready: boolean
+  taxYearLabel: string | null
+  yearKind: 'current' | 'prior' | null
+}> {
   try {
     const { payload } = await readMarketPulseTaxByTown(
       { kind, propertyClass, commercialOnly },
       { allowCompute: false },
     )
-    return { rows: payload.rows, ready: payload.ready }
+    return {
+      rows: payload.rows,
+      ready: payload.ready,
+      taxYearLabel: payload.ready ? payload.taxYearLabel : null,
+      yearKind: payload.ready ? payload.yearKind : null,
+    }
   } catch (err) {
     console.warn(
       '[market-digest] tax by town failed',
       err instanceof Error ? err.message : err,
     )
-    return { rows: [], ready: false }
+    return { rows: [], ready: false, taxYearLabel: null, yearKind: null }
   }
 }
 
@@ -463,6 +473,8 @@ async function buildCachedCategorySlice(
     priceByTown,
     taxByTown: tax.rows,
     taxReady: tax.ready,
+    taxYearLabel: tax.taxYearLabel,
+    taxYearKind: tax.yearKind,
     deal: null,
   }
 }
@@ -485,6 +497,8 @@ function emptyCommercialCategorySlice(
     priceByTown: [],
     taxByTown: [],
     taxReady: false,
+    taxYearLabel: null,
+    taxYearKind: null,
     deal: null,
   }
 }
@@ -710,6 +724,8 @@ async function buildCommercialCategorySlice(
       priceByTown,
       taxByTown: tax.rows,
       taxReady: tax.ready,
+      taxYearLabel: tax.taxYearLabel,
+      taxYearKind: tax.yearKind,
       deal,
     }
   } catch (err) {
@@ -780,6 +796,8 @@ export async function buildMarketDigestSnapshot(options?: {
     priceByTown: allSlice?.priceByTown ?? [],
     taxByTown: allSlice?.taxByTown ?? [],
     taxReady: allSlice?.taxReady === true,
+    taxYearLabel: allSlice?.taxYearLabel ?? null,
+    taxYearKind: allSlice?.taxYearKind ?? null,
     categories: categoriesWithDeals,
     dealOfTheWeek,
     socialProfiles: social.profiles.map((p) => ({
@@ -840,7 +858,10 @@ export function formatMarketDigestEmail(
   const stackedMetrics = marketPulseStackedMetrics(
     marketPulseLookbackChartLabel(DEFAULT_MARKET_PULSE_LOOKBACK_ID),
     'sale',
-    { includeTax: snapshot.taxReady === true },
+    {
+      includeTax: snapshot.taxReady === true,
+      taxYearLabel: snapshot.taxYearLabel,
+    },
   )
   const heatByCity = marketPulseHeatByCity(
     combined,

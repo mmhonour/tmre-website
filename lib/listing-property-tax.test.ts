@@ -4,11 +4,15 @@ import {
   buildPropertyTaxHistorySlots,
   choosePulseTaxYearEnd,
   currentFiscalYearEnd,
+  decidePulseTaxYear,
+  formatPulseTaxComparedLabel,
+  formatPulseTaxCoveragePct,
   formatTaxYoyChange,
   isPlausibleTaxAmount,
   propertyTaxFromRaw,
   pulseTaxCoverageIsReady,
   pulseTaxYearEnds,
+  pulseTaxYearHasQuorum,
   formatPulseTaxWindowLabel,
   taxYoyChangePct,
 } from './listing-property-tax'
@@ -129,19 +133,52 @@ describe('buildPropertyTaxHistorySlots', () => {
   })
 })
 
-describe('choosePulseTaxYearEnd', () => {
-  it('keeps the current FY once a Westport-sized book has it (2026-27 in play)', () => {
-    assert.equal(choosePulseTaxYearEnd(2027, 125, 2000), 2027)
+describe('decidePulseTaxYear', () => {
+  it('stays on prior until 80% of the book has the current FY', () => {
+    const thin = decidePulseTaxYear({
+      currentYearEnd: 2027,
+      listingUniverse: 2000,
+      countCurrent: 125,
+      countPrior: 1800,
+      camaHasRun: true,
+    })
+    assert.equal(thin.yearEnd, 2026)
+    assert.equal(thin.kind, 'prior')
+    assert.equal(thin.ready, true)
+    assert.equal(choosePulseTaxYearEnd(2027, 125, 1800, 2000), 2026)
     assert.equal(currentFiscalYearEnd(new Date('2026-09-06T12:00:00Z')), 2027)
   })
 
-  it('falls back to the prior FY when current-year coverage is thin', () => {
-    assert.equal(choosePulseTaxYearEnd(2027, 80, 2000), 2026)
-    assert.equal(choosePulseTaxYearEnd(2027, 12, 400), 2026)
+  it('flips to current only at the 80% tipping point', () => {
+    const tipped = decidePulseTaxYear({
+      currentYearEnd: 2027,
+      listingUniverse: 2000,
+      countCurrent: 1600,
+      countPrior: 1800,
+      camaHasRun: true,
+    })
+    assert.equal(tipped.yearEnd, 2027)
+    assert.equal(tipped.kind, 'current')
+    assert.equal(tipped.ready, true)
+    assert.equal(formatPulseTaxComparedLabel(2027, 'current'), 'July 2026-June 2027 · current')
+    assert.equal(formatPulseTaxCoveragePct(tipped.pctCurrent), '80%')
+  })
+
+  it('keeps bars off until CAMA has run even when prior has quorum', () => {
+    const waiting = decidePulseTaxYear({
+      currentYearEnd: 2027,
+      listingUniverse: 2000,
+      countCurrent: 10,
+      countPrior: 1700,
+      camaHasRun: false,
+    })
+    assert.equal(waiting.kind, 'prior')
+    assert.equal(waiting.ready, false)
+    assert.equal(pulseTaxYearHasQuorum(1700, 2000), true)
   })
 
   it('does not skip back further than one year', () => {
-    assert.equal(choosePulseTaxYearEnd(2027, 0, 0), 2027)
+    assert.equal(choosePulseTaxYearEnd(2027, 0, 0, 0), 2026)
   })
 })
 

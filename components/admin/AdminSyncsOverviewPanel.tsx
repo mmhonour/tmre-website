@@ -2,10 +2,12 @@ import AdminCronHealthPanel from "@/components/admin/AdminCronHealthPanel";
 import AdminNumberedPanel from "@/components/admin/AdminNumberedPanel";
 import AdminStartupDiagram from "@/components/admin/AdminStartupDiagram";
 import AdminStatsCacheDiagram from "@/components/admin/AdminStatsCacheDiagram";
+import AdminPulseTaxQuorumPanel from "@/components/admin/AdminPulseTaxQuorumPanel";
 import AdminVisionGisSourcesPanel from "@/components/admin/AdminVisionGisSourcesPanel";
 import AdminZipBoundariesSyncPanel from "@/components/admin/AdminZipBoundariesSyncPanel";
 import { ADMIN_NETLIFY_FUNCTIONS, adminSectionHref } from "@/lib/admin-nav";
 import type { StartupFlowLane } from "@/lib/startup-process";
+import type { PulseTaxQuorumAdmin } from "@/lib/market-pulse-tax-cache";
 import type { StatsCacheArchitecture } from "@/lib/stats-cache-architecture";
 import type { ScheduledSyncPausedJobs } from "@/lib/scheduled-sync-jobs-shared";
 import { SCHEDULED_SYNC_JOB_IDS } from "@/lib/scheduled-sync-jobs-shared";
@@ -56,6 +58,7 @@ export default function AdminSyncsOverviewPanel({
   zipLastSyncStartedAt,
   zipNextRunAt,
   lastIncrementalCronTick,
+  pulseTaxQuorum,
 }: {
   startupLanes: StartupFlowLane[];
   startupContext: {
@@ -65,6 +68,7 @@ export default function AdminSyncsOverviewPanel({
     nodeEnv: string;
   };
   statsCacheArchitecture: StatsCacheArchitecture;
+  pulseTaxQuorum: PulseTaxQuorumAdmin | null;
   pausedJobs: ScheduledSyncPausedJobs;
   zipInventory: ZipInventory;
   zipLastSyncAt: string | null;
@@ -116,6 +120,17 @@ export default function AdminSyncsOverviewPanel({
 
       <AdminNumberedPanel
         number={3}
+        id="admin-pulse-tax-quorum"
+        title="Market Pulse tax year"
+        subtitle="80% tipping point — current vs prior — after CAMA, then a stats-cache rebuild"
+        paused={pausedJobs["cama-tax"] || pausedJobs["stats-cache"]}
+        pauseLabel="CAMA or stats cache paused on Syncs → Configure"
+      >
+        <AdminPulseTaxQuorumPanel snapshot={pulseTaxQuorum} />
+      </AdminNumberedPanel>
+
+      <AdminNumberedPanel
+        number={4}
         id="admin-netlify"
         title="Netlify scheduled functions"
         subtitle="Thin scheduled triggers queue background workers — pause flags come from Syncs → Configure"
@@ -160,7 +175,7 @@ export default function AdminSyncsOverviewPanel({
       </AdminNumberedPanel>
 
       <AdminNumberedPanel
-        number={4}
+        number={5}
         id="admin-zip-boundaries"
         title="Census TIGERweb zip boundaries"
         subtitle="Monthly ZCTA GeoJSON → Postgres for Intelligence / Latest map popovers"
@@ -175,7 +190,7 @@ export default function AdminSyncsOverviewPanel({
       </AdminNumberedPanel>
 
       <AdminNumberedPanel
-        number={5}
+        number={6}
         id="admin-vision-gis"
         title="Westport Vision GIS"
         subtitle="VGSI cadastral homepage used by the vision-addresses crawl and Find"

@@ -1127,13 +1127,18 @@ function UnstackedTaxPanel({
   if (rows.length === 0 || taxMetrics.length === 0) return null;
   if (!rows.some((r) => r.medianTax != null || r.averageTax != null)) return null;
 
+  const medianTaxLabel =
+    taxMetrics.find((m) => m.id === "medianTax")?.label ?? "Median tax";
+  const averageTaxLabel =
+    taxMetrics.find((m) => m.id === "averageTax")?.label ?? "Average tax";
+
   return (
     <section className={PANEL_SURFACE}>
       <div className="flex items-center justify-between gap-2">
         <PriceSortLabel
           id="medianTax"
           name="median tax"
-          label="Median tax"
+          label={medianTaxLabel}
           sort={sort}
           onSort={setSort}
         />
@@ -1147,7 +1152,7 @@ function UnstackedTaxPanel({
         <PriceSortLabel
           id="averageTax"
           name="average tax"
-          label="Average tax"
+          label={averageTaxLabel}
           sort={sort}
           onSort={setSort}
         />
@@ -1262,6 +1267,7 @@ function CombinedMetricsChart({
   metricStatsHref,
   kind,
   includeTax = false,
+  taxYearLabel = null,
   lookbackRail,
 }: {
   title?: ReactNode;
@@ -1273,6 +1279,7 @@ function CombinedMetricsChart({
   metricStatsHref?: (metricId: string, cityLabel: string) => string | null;
   kind: ListingKind;
   includeTax?: boolean;
+  taxYearLabel?: string | null;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
   settle: MarketPulseSettleState;
@@ -1286,6 +1293,7 @@ function CombinedMetricsChart({
 }) {
   const metrics = marketPulseTownMetrics(closedLookbackLabel, kind, {
     includeTax,
+    taxYearLabel,
   });
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
 
@@ -1620,8 +1628,10 @@ export default function WeeklyBriefContent({
   const allTownsActive = snapshot.market?.activeCount ?? null;
 
   const includeTax = snapshot.taxReady === true;
+  const taxYearLabel = snapshot.taxYearLabel ?? null;
   const unstackedMetrics = marketPulseTownMetrics(closedLookbackLabel, kind, {
     includeTax,
+    taxYearLabel,
   });
 
   const combinedRows = useMemo(() => {
@@ -1657,8 +1667,9 @@ export default function WeeklyBriefContent({
         kind,
         closedBarMax,
         includeTax,
+        taxYearLabel,
       }),
-    [combinedRows, closedLookbackLabel, kind, closedBarMax, includeTax],
+    [combinedRows, closedLookbackLabel, kind, closedBarMax, includeTax, taxYearLabel],
   );
 
   const compareRow = useMemo(() => {
@@ -1931,6 +1942,7 @@ export default function WeeklyBriefContent({
             metricStatsHref={metricStatsHref}
             kind={kind}
             includeTax={includeTax}
+            taxYearLabel={taxYearLabel}
             lookbackRail={
               onLookbackIdChange ? (
                 <ClosedLookbackSlider

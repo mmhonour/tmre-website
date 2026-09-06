@@ -74,9 +74,12 @@ export function formatSaleToAskPct(n: number | null | undefined): string {
 export function marketPulseStackedMetrics(
   closedLookbackLabel: string,
   kind: ListingKind = 'sale',
-  options?: { includeTax?: boolean },
+  options?: { includeTax?: boolean; taxYearLabel?: string | null },
 ): MarketPulseStackedMetricDef[] {
   const leased = kind === 'rental'
+  const taxYear = options?.taxYearLabel?.trim() || null
+  const medianTaxLabel = taxYear ? `Median tax · ${taxYear}` : 'Median tax'
+  const averageTaxLabel = taxYear ? `Average tax · ${taxYear}` : 'Average tax'
   const defs: MarketPulseStackedMetricDef[] = [
     {
       id: 'inventory',
@@ -137,7 +140,7 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'medianTax',
-      label: 'Median tax',
+      label: medianTaxLabel,
       barValueOf: (r) => r.medianTax,
       format: (r) => formatMarketPulseMoney(r.medianTax),
     },
@@ -150,7 +153,7 @@ export function marketPulseStackedMetrics(
     },
     {
       id: 'averageTax',
-      label: 'Average tax',
+      label: averageTaxLabel,
       barValueOf: (r) => r.averageTax,
       format: (r) => formatMarketPulseMoney(r.averageTax),
     },

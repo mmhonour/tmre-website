@@ -292,12 +292,14 @@ function metricAside(
 function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
   includeTax = false,
+  taxYearLabel?: string | null,
 ): string {
   const lookbackLabel = marketPulseLookbackChartLabel(
     DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   )
   const metrics = marketPulseStackedMetrics(lookbackLabel, 'sale', {
     includeTax,
+    taxYearLabel,
   })
 
   if (rows.length === 0) {
@@ -603,7 +605,11 @@ export function formatMarketDigestHtml(
           <tr>
             <td style="padding:8px 22px 0 22px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${stackedTownMetricsSection(combinedRows, snapshot.taxReady === true)}
+                ${stackedTownMetricsSection(
+                  combinedRows,
+                  snapshot.taxReady === true,
+                  snapshot.taxYearLabel,
+                )}
                 ${dealSection}
                 <tr><td style="padding:0 0 10px 0;">
                   <p style="margin:0 0 6px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:${NAVY};">How Seller / Buyer Friendly is scored</p>

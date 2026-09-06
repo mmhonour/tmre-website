@@ -143,8 +143,9 @@ export default function ShowcaseTownPulse({
     () =>
       marketPulseStackedMetrics(data?.closedLookbackLabel ?? "12 mos", "sale", {
         includeTax: data?.taxReady === true,
+        taxYearLabel: data?.taxYearLabel,
       }),
-    [data?.closedLookbackLabel, data?.taxReady],
+    [data?.closedLookbackLabel, data?.taxReady, data?.taxYearLabel],
   );
 
   if (pending && !data) {
