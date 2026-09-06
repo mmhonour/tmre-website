@@ -114,8 +114,10 @@ export type DbSizeReport = {
   storageMonthlyUsd: number
   storageMonthlyLabel: string
   tables: DbSizeTable[]
+  tableRollup: DbSizeTableRollup
   listings: DbSizeListings | null
   growth: DbSizeGrowthRow[]
+  growthRollup: DbSizeGrowthRollup
   growthBytesPerDay: number
   growthBytesPerDayLabel: string
   growthBytesPerMonthLabel: string
@@ -130,6 +132,79 @@ export type DbSizeReport = {
     alwaysOn: DbSizeAlwaysOnCost[]
   } | null
   chatterUnavailable: boolean
+}
+
+export type DbSizeTableRollup = {
+  rows: number
+  total: number
+  heap: number
+  toast: number
+  indexes: number
+  rowsLabel: string
+  totalLabel: string
+  heapLabel: string
+  toastLabel: string
+  indexLabel: string
+}
+
+export type DbSizeGrowthRollup = {
+  d1: number
+  d7: number
+  d30: number
+  perDay: number
+  bytesPerDay: number
+  d1Label: string
+  d7Label: string
+  d30Label: string
+  perDayLabel: string
+  bytesPerDayLabel: string
+}
+
+function formatCountLabel(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  return Math.round(n).toLocaleString('en-US')
+}
+
+export function rollupTableSizes(tables: readonly DbSizeTable[]): DbSizeTableRollup {
+  const rows = tables.reduce((sum, row) => sum + row.rows, 0)
+  const total = tables.reduce((sum, row) => sum + row.total, 0)
+  const heap = tables.reduce((sum, row) => sum + row.heap, 0)
+  const toast = tables.reduce((sum, row) => sum + row.toast, 0)
+  const indexes = tables.reduce((sum, row) => sum + row.indexes, 0)
+  return {
+    rows,
+    total,
+    heap,
+    toast,
+    indexes,
+    rowsLabel: formatCountLabel(rows),
+    totalLabel: formatBytes(total),
+    heapLabel: formatBytes(heap),
+    toastLabel: formatBytes(toast),
+    indexLabel: formatBytes(indexes),
+  }
+}
+
+export function rollupGrowthRows(
+  growth: readonly DbSizeGrowthRow[],
+): DbSizeGrowthRollup {
+  const d1 = growth.reduce((sum, row) => sum + row.d1, 0)
+  const d7 = growth.reduce((sum, row) => sum + row.d7, 0)
+  const d30 = growth.reduce((sum, row) => sum + row.d30, 0)
+  const perDay = growth.reduce((sum, row) => sum + row.perDay, 0)
+  const bytesPerDay = growth.reduce((sum, row) => sum + row.bytesPerDay, 0)
+  return {
+    d1,
+    d7,
+    d30,
+    perDay,
+    bytesPerDay,
+    d1Label: formatCountLabel(d1),
+    d7Label: formatCountLabel(d7),
+    d30Label: formatCountLabel(d30),
+    perDayLabel: formatCountLabel(perDay),
+    bytesPerDayLabel: formatBytes(bytesPerDay),
+  }
 }
 
 export function decorateTableSize(input: {
