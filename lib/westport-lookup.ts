@@ -27,6 +27,7 @@ import type { Listing } from '@/lib/rets'
 import {
   fieldCardFromTypedVision,
   lastSaleAsOwnership,
+  compileVisionOwnerFromDeeds,
   ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
@@ -570,10 +571,13 @@ export async function mergeWestportProperty(
     : null
 
   const fieldCard = await resolveWestportFieldCard(vision)
-  const ownerDisplayName = ownerDisplayNameFromFields(
+  const cardOwner = ownerDisplayNameFromFields(
     fieldCard.fields,
     vision.ownerName ?? listing?.ownerName,
   )
+  const ownerDisplayName =
+    compileVisionOwnerFromDeeds(fieldCard.ownership ?? [], cardOwner) ??
+    cardOwner
 
   return {
     town: WESTPORT_LOOKUP_TOWN,

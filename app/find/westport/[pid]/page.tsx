@@ -136,9 +136,8 @@ function SalesHistoryTable({ rows }: { rows: VisionOwnershipRow[] }) {
                 {row.owner || "—"}
               </td>
               <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
-                {isVisionQuitclaim(row)
-                  ? "—"
-                  : formatVisionMoney(row.price) ?? row.price ?? "—"}
+                {formatVisionMoney(row.price) ??
+                  (isVisionQuitclaim(row) ? "$0" : row.price || "—")}
               </td>
               <td className="py-2 pr-3 font-mono text-[13px] text-navy tabular-nums whitespace-nowrap">
                 {row.bookPage || "—"}
@@ -260,21 +259,25 @@ export default async function WestportParcelPage({
                   Last sold
                 </dt>
                 <dd className="mt-0.5 font-mono text-sm text-white/85 tabular-nums">
-                  {property.purchaseDate ? (
+                  {property.deedHistory.length > 0 || property.purchaseDate ? (
                     <VisionDeedHistoryPopout
                       label={[
-                        `Bought ${property.purchaseDate}`,
+                        property.purchaseDate
+                          ? `Bought ${property.purchaseDate}`
+                          : null,
                         property.lastSoldPrice != null
                           ? formatVisionMoney(property.lastSoldPrice)
                           : null,
                       ]
                         .filter(Boolean)
-                        .join(" · ")}
+                        .join(" · ") || "Deed history"}
                       addressLabel={property.street}
                       ownerName={property.ownerDisplayName}
                       mailingAddress={property.ownerMailingAddress}
                       soldLabel={[
-                        `Bought ${property.purchaseDate}`,
+                        property.purchaseDate
+                          ? `Bought ${property.purchaseDate}`
+                          : null,
                         property.lastSoldPrice != null
                           ? formatVisionMoney(property.lastSoldPrice)
                           : null,

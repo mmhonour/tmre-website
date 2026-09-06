@@ -10,6 +10,7 @@ export type VisionDeedHistoryRow = {
   priceLabel: string
   bookPage: string
   deedLabel: string
+  paid?: boolean
 }
 
 export function VisionDeedHistoryPopout({
@@ -62,7 +63,7 @@ export function VisionDeedHistoryPopout({
     return <span className={triggerClassName}>{children ?? label}</span>
   }
 
-  const paid = rows.find((row) => row.priceLabel && row.priceLabel !== '—')
+  const paid = rows.find((row) => row.paid)
   const lastSold =
     soldLabel ??
     (paid ? [paid.date, paid.priceLabel].filter(Boolean).join(' · ') : '—')

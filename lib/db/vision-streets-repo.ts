@@ -4,12 +4,16 @@ import { query, withTransaction } from '@/lib/db/postgres'
 import { ensureVisionAddressesTable } from '@/lib/db/vision-addresses-repo'
 import {
   countVisionQuitclaims,
+  compileVisionOwnerFromDeeds,
+  formatVisionMoney,
   isVisionQuitclaim,
   lastSaleAsOwnership,
   ownerDisplayNameFromFields,
   ownerMailingAddressFromFields,
   ownershipFromFieldCardFields,
+  sortVisionOwnershipDesc,
   visionDeedDisplayRows,
+  visionLastPaidSale,
   visionPurchaseDate,
   type VisionDeedDisplayRow,
   type VisionFieldCardField,
@@ -191,6 +195,8 @@ export type VisionStreetParcel = {
   lastSaleDate: string | null
   /** Last paid purchase date when Field Card / last sale price shows consideration. */
   purchaseDate: string | null
+  /** Last non-quitclaim consideration, formatted for the street list. */
+  lastPaidPriceLabel: string | null
   /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
   lastDeedIsQuitclaim: boolean
   quitclaimCount: number
@@ -347,7 +353,8 @@ export async function listVisionStreetParcels(
         row.synced_at instanceof Date
           ? row.synced_at.toISOString()
           : String(row.synced_at),
-      ownerName,
+      ownerName:
+        compileVisionOwnerFromDeeds(deeds, ownerName) ?? ownerName,
       ownerMailingAddress:
         row.owner_mailing_address?.trim() || fromCard,
       lastSaleDate: row.last_sale_date?.trim() || null,
@@ -356,10 +363,19 @@ export async function listVisionStreetParcels(
         lastSalePrice: paidPrice,
         ownership,
       }),
-      lastDeedIsQuitclaim: isVisionQuitclaim({
-        price: paidPrice ?? ownership[0]?.price,
-        instrument: ownership[0]?.instrument,
-      }),
+      lastPaidPriceLabel: formatVisionMoney(
+        visionLastPaidSale({
+          lastSaleDate: row.last_sale_date,
+          lastSalePrice: paidPrice,
+          ownership,
+        })?.price ?? null,
+      ),
+      lastDeedIsQuitclaim: (() => {
+        const newest = sortVisionOwnershipDesc(deeds)[0]
+        return newest
+          ? isVisionQuitclaim(newest)
+          : isVisionQuitclaim({ price: paidPrice })
+      })(),
       quitclaimCount: countVisionQuitclaims(ownership),
       deedHistory: visionDeedDisplayRows(deeds, ownerName),
     }
