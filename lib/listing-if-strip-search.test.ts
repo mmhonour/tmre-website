@@ -78,10 +78,10 @@ describe('coastal strip search', () => {
     assert.equal(usesCoastalStripWhatIf(null, true), false)
   })
 
-  it('walks outward from the subject strip and never seaward', () => {
-    assert.deepEqual(stripSearchRings(0), [0, 1, 2, 3, 'town'])
-    assert.deepEqual(stripSearchRings(1), [1, 2, 3, 'town'])
-    assert.deepEqual(stripSearchRings(3), [3, 'town'])
+  it('walks inland from the next strip and never seaward', () => {
+    assert.deepEqual(stripSearchRings(0), [1, 2, 3, 'town'])
+    assert.deepEqual(stripSearchRings(1), [2, 3, 'town'])
+    assert.deepEqual(stripSearchRings(3), ['town'])
   })
 
   it('boosts only inland rings from a Coast subject', () => {
@@ -100,7 +100,7 @@ describe('coastal strip search', () => {
     assert.equal(inlandStripBoostPct(1, 0), 0)
   })
 
-  it('stops at the first ring with three sold or UAG comps', () => {
+  it('stops at the first inland ring with three sold or UAG comps', () => {
     const selected = selectStripSearchPool({
       subjectStrip: 1,
       subject,
@@ -117,37 +117,84 @@ describe('coastal strip search', () => {
       underAgreement: [soldComp({ mlsId: 's2-uag', ppsf: 1120, strip: 1 })],
     })
     assert.ok(selected)
-    assert.equal(selected.ring, 1)
+    assert.equal(selected.ring, 2)
     assert.equal(selected.comps.length, 3)
-    assert.ok(selected.comps.every((comp) => comp.coastalStrip === 1))
-    assert.ok(selected.comps.every((comp) => (comp.stripBoostPct ?? 0) === 0))
+    assert.ok(selected.comps.every((comp) => comp.coastalStrip === 2))
+    assert.ok(
+      selected.comps.every(
+        (comp) => comp.stripBoostPct === IF_STRIP_BOOST_ONE_STEP,
+      ),
+    )
     assert.ok(selected.comps.every((comp) => !comp.mlsId.startsWith('coast')))
+    assert.ok(selected.comps.every((comp) => !comp.mlsId.startsWith('s2')))
   })
 
-  it('keeps a short subject-strip ring and fills from the next inland ring', () => {
+  it('keeps a short next-inland ring and fills further inland if needed', () => {
     const selected = selectStripSearchPool({
       subjectStrip: 1,
       subject,
       sold: [
         soldComp({ mlsId: 's2-only', ppsf: 1100, strip: 1 }),
-        soldComp({ mlsId: 's3-a', ppsf: 800, strip: 2 }),
-        soldComp({ mlsId: 's3-b', ppsf: 820, strip: 2 }),
-        soldComp({ mlsId: 's3-c', ppsf: 840, strip: 2 }),
+        soldComp({ mlsId: 's3-only', ppsf: 800, strip: 2 }),
+        soldComp({ mlsId: 's4-a', ppsf: 700, strip: 3 }),
+        soldComp({ mlsId: 's4-b', ppsf: 710, strip: 3 }),
+        soldComp({ mlsId: 's4-c', ppsf: 720, strip: 3 }),
         soldComp({ mlsId: 'coast', ppsf: 1500, strip: 0 }),
       ],
     })
     assert.ok(selected)
-    assert.equal(selected.ring, 1)
+    assert.equal(selected.ring, 2)
     assert.equal(selected.comps.length, 3)
-    assert.ok(selected.comps.some((comp) => comp.mlsId === 's2-only'))
+    assert.ok(selected.comps.some((comp) => comp.mlsId === 's3-only'))
+    assert.ok(!selected.comps.some((comp) => comp.mlsId === 's2-only'))
     assert.equal(
-      selected.comps.find((comp) => comp.mlsId === 's2-only')?.stripBoostPct,
-      0,
+      selected.comps.find((comp) => comp.mlsId === 's3-only')?.stripBoostPct,
+      IF_STRIP_BOOST_ONE_STEP,
     )
     assert.ok(
       selected.comps
-        .filter((comp) => comp.mlsId.startsWith('s3-'))
-        .every((comp) => comp.stripBoostPct === IF_STRIP_BOOST_ONE_STEP),
+        .filter((comp) => comp.mlsId.startsWith('s4-'))
+        .every((comp) => comp.stripBoostPct === IF_STRIP_BOOST_TWO_STEPS),
+    )
+  })
+
+  it('skips a full same-strip dump so 2nd-strip 772 starts with 4th + town', () => {
+    const selected = selectStripSearchPool({
+      subjectStrip: 1,
+      subject: { ...subject, conditionGrade: 'good', sqft: 1040 },
+      sold: [
+        soldComp({ mlsId: '839', ppsf: 961, strip: 1, sqft: 1040, conditionGrade: 'good' }),
+        soldComp({ mlsId: '71', ppsf: 410, strip: 1, sqft: 1040, conditionGrade: 'good' }),
+        soldComp({ mlsId: '231', ppsf: 1676, strip: 1, sqft: 1040, conditionGrade: 'good' }),
+        soldComp({
+          mlsId: '915',
+          ppsf: 900,
+          strip: 3,
+          sqft: 1239,
+          conditionGrade: 'excellent',
+        }),
+        soldComp({
+          mlsId: '877',
+          ppsf: 964,
+          strip: 3,
+          sqft: 1297,
+          conditionGrade: 'excellent',
+        }),
+        soldComp({
+          mlsId: '510',
+          ppsf: 664,
+          strip: null,
+          sqft: 1174,
+          beds: 2,
+          baths: 1,
+          conditionGrade: 'good',
+        }),
+      ],
+    })
+    assert.ok(selected)
+    assert.deepEqual(
+      selected.comps.map((comp) => comp.mlsId).sort(),
+      ['510', '877', '915'],
     )
   })
 
@@ -233,7 +280,7 @@ describe('coastal strip search', () => {
     assert.deepEqual(kept.map((c) => c.mlsId), ['877-sold'])
 
     const selected = selectStripSearchPool({
-      subjectStrip: 3,
+      subjectStrip: 1,
       subject: { ...subject, sqft: 1297 },
       sold: [
         sold,

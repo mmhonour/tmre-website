@@ -4,6 +4,7 @@ import {
   computeAndPersistComparables,
   readCachedComparables,
 } from '@/lib/listing-comparables-cache'
+import { overlayCoastalStripSaleComps } from '@/lib/listing-if-compute'
 import {
   findComparablesRanked,
   subjectComparablesCriteria,
@@ -158,8 +159,11 @@ export async function resolveComparablesForSubject(
   const match = await getPricingMatchingConfigFresh()
 
   if (options.pool === 'wide') {
+    const wide = await resolveWideComparablesPool(subject, kind, match)
     return withSoldCounts(
-      await resolveWideComparablesPool(subject, kind, match),
+      kind === 'sale'
+        ? await withCoastalStripSaleComps(subject, wide)
+        : wide,
       match,
     )
   }
@@ -167,15 +171,18 @@ export async function resolveComparablesForSubject(
   const cached = await readCachedComparables(subject, kind)
   if (cached) {
     const withScores = await attachStoredEdgeScores(cached)
+    const payload: ComparablesPayloadBase = {
+      mlsId: subject.mlsId,
+      kind,
+      ...withScores,
+      defaultLookbackMonths:
+        withScores.defaultLookbackMonths ?? match.defaultLookbackMonths,
+      matchConfig: match,
+    }
     return withSoldCounts(
-      {
-        mlsId: subject.mlsId,
-        kind,
-        ...withScores,
-        defaultLookbackMonths:
-          withScores.defaultLookbackMonths ?? match.defaultLookbackMonths,
-        matchConfig: match,
-      },
+      kind === 'sale'
+        ? await withCoastalStripSaleComps(subject, payload)
+        : payload,
       match,
     )
   }
@@ -189,14 +196,24 @@ export async function resolveComparablesForSubject(
   )
 
   const withScores = await attachStoredEdgeScores(result)
-
+  const payload: ComparablesPayloadBase = {
+    mlsId: subject.mlsId,
+    kind,
+    ...withScores,
+    matchConfig: match,
+  }
   return withSoldCounts(
-    {
-      mlsId: subject.mlsId,
-      kind,
-      ...withScores,
-      matchConfig: match,
-    },
+    kind === 'sale'
+      ? await withCoastalStripSaleComps(subject, payload)
+      : payload,
     match,
   )
+}
+
+async function withCoastalStripSaleComps(
+  subject: Listing,
+  payload: ComparablesPayloadBase,
+): Promise<ComparablesPayloadBase> {
+  const overlaid = await overlayCoastalStripSaleComps(subject, payload)
+  return { ...payload, sold: overlaid.sold, active: overlaid.active }
 }

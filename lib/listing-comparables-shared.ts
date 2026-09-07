@@ -43,6 +43,8 @@ export type ComparableListing = {
   stripBoostPct?: number
   /** Exact vs similar beds/baths/sqft/condition vs the subject. */
   matchFit?: 'exact' | 'similar'
+  /** True when this row is one of the coastal What-if start-set of 3. */
+  stripSearchPick?: boolean
   /** Goldilocks composite (0–100), same model as Intelligence. */
   goldilocksScore?: number | null
   /** Weekly metadata edge score (0–100), comparable across listings. */

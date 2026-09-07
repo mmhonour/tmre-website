@@ -70,11 +70,18 @@ function validPpsf(value: number | null | undefined): value is number {
   return value != null && value > 0 && Number.isFinite(value)
 }
 
+/**
+ * Walk inland from the subject. The subject's own strip is skipped — other
+ * houses painted the same number can sit anywhere along the coast, which is
+ * not a short ring. 2nd-strip 772 therefore starts at 3rd → 4th → town
+ * (915, 877, then 510), even when 2nd already has three distant sales.
+ * Never look seaward.
+ */
 export function stripSearchRings(
   subjectStrip: CoastalStripIndex,
 ): StripSearchRing[] {
   const rings: StripSearchRing[] = []
-  for (let strip = subjectStrip; strip <= 3; strip += 1) {
+  for (let strip = subjectStrip + 1; strip <= 3; strip += 1) {
     rings.push(strip as CoastalStripIndex)
   }
   rings.push('town')
@@ -261,6 +268,7 @@ function stampSelectedComp(
     ...comp,
     stripBoostPct: boostPct,
     matchFit: stripMatchFit(comp, subject),
+    stripSearchPick: true,
   }
 }
 
@@ -313,9 +321,10 @@ function toSelection(
 }
 
 /**
- * Walk outward from the subject strip and pick 3 sold/UAG comps to start.
+ * Walk inland from the next strip and pick 3 sold/UAG comps to start.
  * Keep a short ring and fill from the next inland ring — do not dump the
- * whole town pool. Never look seaward. Each comp keeps its own inland boost.
+ * whole town pool or the subject's own strip. Never look seaward. Each
+ * comp keeps its own inland boost versus the subject strip.
  */
 export function selectStripSearchPool(args: {
   subjectStrip: CoastalStripIndex

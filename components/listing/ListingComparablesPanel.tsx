@@ -45,6 +45,7 @@ import ListingCriteriaSideLayout, {
 } from "@/components/listing/ListingCriteriaSideLayout";
 import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
 import { townForZip, TOWN_ZIPS } from "@/lib/tmre-towns";
+import { coastalStripLabel } from "@/lib/location-estimate-zip-grid-shared";
 
 /**
  * Mobile Sold / On the market — classic folder tabs:
@@ -223,7 +224,7 @@ function compareCompPrice(
   return sign * (pa - pb);
 }
 
-function sortSoldComparables(
+function sortSoldByKey(
   comps: ComparableListing[],
   sortKey: SoldSortKey,
   dir: SortDir,
@@ -244,6 +245,16 @@ function sortSoldComparables(
     (a, b) =>
       sign * (parseCloseDateMs(a.closeDate) - parseCloseDateMs(b.closeDate)),
   );
+}
+
+function sortSoldComparables(
+  comps: ComparableListing[],
+  sortKey: SoldSortKey,
+  dir: SortDir,
+): ComparableListing[] {
+  const picks = comps.filter((comp) => comp.stripSearchPick);
+  const rest = comps.filter((comp) => !comp.stripSearchPick);
+  return [...picks, ...sortSoldByKey(rest, sortKey, dir)];
 }
 
 function sortActiveComparables(
@@ -573,11 +584,24 @@ function CompRow({
       : "Sold"
     : "Listed";
 
+  const stripLabel =
+    comp.coastalStrip != null
+      ? coastalStripLabel(comp.coastalStrip)
+      : comp.stripSearchPick
+        ? "Rest of town"
+        : null;
+  const boostLabel =
+    comp.stripBoostPct != null && comp.stripBoostPct > 0
+      ? `+${Math.round(comp.stripBoostPct * 100)}%`
+      : null;
   const restMetaParts = [
     fmtSqft(comp.sqft),
     fmtAcres(comp.lotAcres),
     fmtYearBuilt(comp.yearBuilt),
     isRental ? null : fmtCompPricePerSqft(comp.pricePerSqft),
+    stripLabel,
+    boostLabel,
+    comp.matchFit ?? null,
   ];
 
   const thumbBorderClass = isModal
@@ -1176,16 +1200,20 @@ export default function ListingComparablesPanel({
   const sold = useMemo(() => {
     const rows = pool?.sold ?? [];
     if (!criteria || !sessionMatch) return rows;
-    return rows.filter((row) =>
-      comparableListingMatchesSession(row, criteria, sessionMatch),
+    return rows.filter(
+      (row) =>
+        row.stripSearchPick ||
+        comparableListingMatchesSession(row, criteria, sessionMatch),
     );
   }, [pool?.sold, criteria, sessionMatch]);
 
   const active = useMemo(() => {
     const rows = pool?.active ?? [];
     if (!criteria || !sessionMatch) return rows;
-    return rows.filter((row) =>
-      comparableListingMatchesSession(row, criteria, sessionMatch),
+    return rows.filter(
+      (row) =>
+        row.stripSearchPick ||
+        comparableListingMatchesSession(row, criteria, sessionMatch),
     );
   }, [pool?.active, criteria, sessionMatch]);
 
@@ -1248,15 +1276,24 @@ export default function ListingComparablesPanel({
 
   const soldCap = Math.min(sortedSold.length, listCap);
   const activeCap = Math.min(sortedActive.length, listCap);
-  const visibleSold = sortedSold.slice(
-    0,
-    criteriaExpanded
-      ? sortedSold.length
-      : Math.min(effectiveSoldVisible, soldCap),
-  );
+  const stripPickSold = sortedSold.filter((comp) => comp.stripSearchPick);
+  const restSold = sortedSold.filter((comp) => !comp.stripSearchPick);
+  const visibleSold = [
+    ...stripPickSold,
+    ...restSold.slice(
+      0,
+      criteriaExpanded
+        ? restSold.length
+        : Math.max(0, Math.min(effectiveSoldVisible, soldCap) - stripPickSold.length),
+    ),
+  ];
   // Regardless of the chosen sort, group the visible sold/rented comps by close
   // year (newest first) so older years are clearly separated by a divider.
-  const soldGroups = useMemo(() => groupSoldByYear(visibleSold), [visibleSold]);
+  // Coastal What-if picks stay in their own block above the year groups.
+  const soldGroups = useMemo(
+    () => groupSoldByYear(visibleSold.filter((comp) => !comp.stripSearchPick)),
+    [visibleSold],
+  );
   const visibleActive = sortedActive.slice(
     0,
     criteriaExpanded
@@ -1830,6 +1867,34 @@ export default function ListingComparablesPanel({
           {sortedSold.length > 0 ? (
             <>
               <div className="space-y-3">
+                {stripPickSold.length > 0 ? (
+                  <div>
+                    <p
+                      className={`mb-3 border-y py-2 text-center font-mono text-[10px] font-bold tracking-[0.16em] uppercase tabular-nums ${
+                        isModal
+                          ? "border-charcoal/15 text-charcoal"
+                          : "border-white/15 text-white"
+                      }`}
+                    >
+                      What-if
+                    </p>
+                    <ul className="space-y-3">
+                      {stripPickSold.map((comp) => (
+                        <CompRow
+                          key={`strip-${comp.mlsId}`}
+                          comp={comp}
+                          town={town}
+                          variant={variant}
+                          showCloseDate
+                          isRental={isRental}
+                          scoreColorClass={soldScoreColors.get(comp.mlsId) ?? null}
+                          subjectBeds={criteria?.beds ?? null}
+                          subjectBaths={criteria?.baths ?? null}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 {soldGroups.map((group) => (
                   <div key={group.year ?? "earlier"}>
                     <p

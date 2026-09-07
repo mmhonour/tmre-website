@@ -68,7 +68,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 19
+export const IF_ESTIMATES_ALGO_VERSION = 20
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -236,6 +236,74 @@ function paintedSaleScenario(
     selected?.sold.length ?? 0,
     selected?.underAgreement.length ?? 0,
   )
+}
+
+/**
+ * Pin the coastal What-if start-set of 3 at the top of Comps sold (and any
+ * UAG picks on active). Vintage-ranked rows stay below. No-op when the
+ * subject is unpainted or inside a town-center disk.
+ */
+export async function overlayCoastalStripSaleComps(
+  subject: Listing,
+  result: ComparablesResult,
+): Promise<ComparablesResult> {
+  const match = await getPricingMatchingConfigFresh()
+  const [cells, townCenters] = await Promise.all([
+    loadWhatIfLocationCells(),
+    loadTownCenterPlacements(),
+  ])
+  const inTownCenter = listingInTownCenter(subject, townCenters)
+  const locationPremium = locationPremiumForListing(
+    subject,
+    cells,
+    inTownCenter,
+  )
+  const subjectStrip = locationPremium.coastalStrip
+  if (
+    subjectStrip == null ||
+    !usesCoastalStripWhatIf(subjectStrip, inTownCenter)
+  ) {
+    return result
+  }
+
+  const { soldPool, activePool } = await compPoolsForListing(subject)
+  const lookbackMonths = match.defaultLookbackMonths
+  const { sold, underAgreement } = buildStripSearchCandidates(
+    soldPool,
+    activePool,
+    lookbackMonths,
+    cells,
+  )
+  const selected = selectStripSearchPool({
+    subjectStrip,
+    subject: {
+      beds: subject.beds,
+      baths: subject.baths,
+      sqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+      conditionGrade: resolveListingCondition(subject),
+      mlsId: subject.mlsId,
+      listingKey: subject.listingKey,
+    },
+    sold,
+    underAgreement,
+    match,
+    lookbackMonths,
+    townCenterPlacements: townCenters,
+  })
+  if (!selected || selected.comps.length === 0) return result
+
+  const pickedIds = new Set(selected.comps.map((comp) => comp.mlsId))
+  return {
+    ...result,
+    sold: [
+      ...selected.sold,
+      ...result.sold.filter((comp) => !pickedIds.has(comp.mlsId)),
+    ],
+    active: [
+      ...selected.underAgreement,
+      ...result.active.filter((comp) => !pickedIds.has(comp.mlsId)),
+    ],
+  }
 }
 
 function applyGridToComparables(
