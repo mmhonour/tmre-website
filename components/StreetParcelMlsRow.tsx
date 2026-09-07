@@ -27,6 +27,7 @@ export function StreetParcelMlsRow({
   ownerDisplayLines,
   mailingAddress,
   mailingDisplayLines,
+  mailingLetterLines,
   soldLabel,
   lastPaidPriceLabel,
   lastPaidSaleDate,
@@ -41,6 +42,7 @@ export function StreetParcelMlsRow({
   ownerDisplayLines: string[]
   mailingAddress: string | null
   mailingDisplayLines: string[]
+  mailingLetterLines: string[]
   soldLabel: string | null
   lastPaidPriceLabel: string | null
   lastPaidSaleDate: string | null
@@ -138,16 +140,20 @@ export function StreetParcelMlsRow({
               'Owner pending Field Card ingest'
             )}
           </p>
-          {mailingDisplayLines.length > 0 ? (
+          {mailingLetterLines.length > 0 ? (
             <div className="mt-1 font-mono text-[11px] text-charcoal/45">
-              <p className="tracking-[0.08em] uppercase text-charcoal/40">
-                {mailingDisplayLines[0]}
-              </p>
-              {mailingDisplayLines.length > 1 ? (
-                <p className="mt-0.5 whitespace-pre-line tracking-[0.04em]">
-                  {mailingDisplayLines.slice(1).join('\n')}
+              {mailingDisplayLines.length > 0 ? (
+                <p className="tracking-[0.08em] uppercase text-charcoal/40">
+                  Mailing Address
                 </p>
               ) : null}
+              <p
+                className={`whitespace-pre-line tracking-[0.04em]${
+                  mailingDisplayLines.length > 0 ? ' mt-0.5' : ''
+                }`}
+              >
+                {mailingLetterLines.join('\n')}
+              </p>
             </div>
           ) : null}
         </div>

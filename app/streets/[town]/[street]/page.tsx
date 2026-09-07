@@ -125,6 +125,7 @@ export default async function StreetsStreetPage({
                       : row.ownerMailingAddress
                   }
                   mailingDisplayLines={row.mailingDisplayLines}
+                  mailingLetterLines={row.mailingLetterLines}
                   soldLabel={
                     row.purchaseDate
                       ? [
