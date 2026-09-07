@@ -302,6 +302,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Ordered join from vision_addresses → listings, run at the end of every prod Vision GIS sync (`backfillVisionListingLinks` in lib/vision-listing-match.ts / vision-addresses-repo). Same function as `npm run match:vision-listings`. Steps: (1) strip trailing ZIP so Vision `…|westport` meets MLS `…|westport|06880`; (2) canonicalize street-type and compass tokens (`Avenue North` → `ave n`); (3) mid-name USPS words (`BRK`↔`brook`); (4) exact addressMatchKey; (5) optional trailing street type (`Hemlock Hill Road` = `HEMLOCK HILL`); (6) unique compact MBLU vs listing raw.ParcelNumber; (7) stamp only when exactly one Vision PID; (8) write that PID on every listing at the key (re-lists included). Near/Jaccard street similarity is diagnostic only (`npm run match:vision-abbrev`) and is not applied in prod.',
   },
   {
+    term: 'db-size (sync)',
+    category: 'sync-admin',
+    definition:
+      'Railway queue job (`db-size`) that runs the Neon size & growth report and writes one snapshot (`db_size_report` + `last_db_size`) for Admin → NEON → Size & growth. Default daily 06:00 ET, 15-minute budget. Thin cron: `sync-db-size`. Admin Sync now enqueues the runner; Run again on the page is the ad-hoc POST and overwrites the same slot. Not part of Sync all. CLI: `npm run db:size` (does not persist unless you hit the Admin path).',
+  },
+  {
     term: 'street-listings (sync)',
     category: 'sync-admin',
     definition:
@@ -421,7 +427,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Size & growth (Neon)',
     category: 'sync-admin',
     definition:
-      'Admin → NEON → Size & growth (and `npm run db:size`): on-demand report of table heap/toast/index bytes, MLS listed/closed increments, rows added by birth timestamp, and pg_stat_statements chatter. Explains whether a Neon bill is storage ($0.35/GB-month) or an always-awake compute. Does not write anything; Run report hits GET /api/admin/db-size.',
+      'Admin → NEON → Size & growth (and `npm run db:size`): table heap/toast/index bytes, MLS listed/closed increments by town (+/−), rows added by birth timestamp, and pg_stat_statements chatter. The `db-size` sync job writes one `sync_meta` snapshot (`db_size_report` + `last_db_size`) at 6:00 AM ET; the page GET reads that slot. Run again is POST ad-hoc and overwrites the same keys. Hover/click a table name for what it stores. Not part of Sync all.',
   },
   {
     term: 'SQLite',

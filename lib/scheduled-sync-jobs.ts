@@ -24,4 +24,5 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'market-digest': 'market-digest',
   'cama-tax': 'cama-tax',
   'street-listings': 'street-listings',
+  'db-size': 'db-size',
 }

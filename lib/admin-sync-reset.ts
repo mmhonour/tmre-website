@@ -88,6 +88,7 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
   'full-resync': ['last_full_sync', 'last_full_sync_started'],
   'cama-tax': ['cama_tax_history_synced_at'],
   'street-listings': ['street_listings_synced_at'],
+  'db-size': ['last_db_size', 'db_size_report'],
 }
 
 /** Global refresh lock sources that belong to this job. */

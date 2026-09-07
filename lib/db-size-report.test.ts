@@ -5,14 +5,18 @@ import {
   alwaysOnMonthlyUsd,
   decorateChatterRow,
   decorateGrowthRow,
+  decorateListingsTown,
   decorateTableSize,
+  formatSignedCount,
   LAUNCH_CU_HOUR_USD,
   quoteIdent,
   storageMonthlyUsd,
   GB,
   rollupGrowthRows,
+  rollupListingsByTown,
   rollupTableSizes,
 } from './db-size-report-shared'
+import { tablePurposeFor } from './db-size-table-glossary'
 
 describe('quoteIdent', () => {
   it('quotes a plain table name', () => {
@@ -109,6 +113,69 @@ describe('decorateTableSize', () => {
     })
     assert.equal(row.totalLabel, '2.0 KB')
     assert.equal(row.heapLabel, '1.0 KB')
+    assert.match(row.purpose, /MLS inventory/)
+  })
+})
+
+describe('listings by town', () => {
+  it('signs listed as + and closed as −, then nets them', () => {
+    const row = decorateListingsTown({
+      town: 'Westport',
+      active: 10,
+      closed: 80,
+      listed1d: 3,
+      listed7d: 8,
+      listed30d: 20,
+      closed1d: 1,
+      closed7d: 4,
+      closed30d: 15,
+    })
+    assert.equal(row.net1d, 2)
+    assert.equal(row.net7d, 4)
+    assert.equal(row.net30d, 5)
+    assert.equal(formatSignedCount(row.listed1d), '+3')
+    assert.equal(formatSignedCount(-row.closed1d), '−1')
+  })
+
+  it('rolls town increments on the server', () => {
+    const a = decorateListingsTown({
+      town: 'Westport',
+      active: 10,
+      closed: 80,
+      listed1d: 3,
+      listed7d: 8,
+      listed30d: 20,
+      closed1d: 1,
+      closed7d: 4,
+      closed30d: 15,
+    })
+    const b = decorateListingsTown({
+      town: 'Darien',
+      active: 4,
+      closed: 20,
+      listed1d: 1,
+      listed7d: 2,
+      listed30d: 5,
+      closed1d: 2,
+      closed7d: 3,
+      closed30d: 6,
+    })
+    const rollup = rollupListingsByTown([a, b])
+    assert.equal(rollup.towns, 2)
+    assert.equal(rollup.listed1d, 4)
+    assert.equal(rollup.closed1d, 3)
+    assert.equal(rollup.net1d, 1)
+    assert.equal(rollup.listed1dLabel, '+4')
+    assert.equal(rollup.closed1dLabel, '−3')
+    assert.equal(rollup.net1dLabel, '+1')
+  })
+})
+
+describe('tablePurposeFor', () => {
+  it('explains known tables and falls back for extras', () => {
+    assert.match(tablePurposeFor('listings'), /MLS inventory/)
+    assert.match(tablePurposeFor('sync_meta'), /Key\/value/)
+    assert.match(tablePurposeFor('mystery_table'), /Undocumented/)
   })
 })
 

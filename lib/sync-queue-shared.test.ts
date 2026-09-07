@@ -21,6 +21,11 @@ describe('SYNC_QUEUE_RUNNER_JOBS', () => {
     assert.equal(isSyncQueueRunnerJob('street-listings'), true)
     assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('street-listings'))
   })
+
+  it('claims db-size so the daily 6am snapshot is not a Netlify in-process scan', () => {
+    assert.equal(isSyncQueueRunnerJob('db-size'), true)
+    assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('db-size'))
+  })
 })
 
 describe('syncQueueClaimYieldRank', () => {

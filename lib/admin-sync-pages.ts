@@ -67,6 +67,7 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
   // Tax history renders in the listing detail panel, not on a page of its own.
   "cama-tax": [{ label: "Properties", href: "/properties" }],
   "street-listings": [{ label: "Streets", href: "/streets" }],
+  "db-size": [{ label: "Size & growth", href: "/admin?tab=postgres&panel=size" }],
 };
 
 export function adminSyncImpactedPages(rowId: string): AdminSyncImpactedPage[] {

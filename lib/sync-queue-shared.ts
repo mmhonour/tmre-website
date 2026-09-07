@@ -29,6 +29,7 @@ export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'open-houses',
   'cama-tax',
   'street-listings',
+  'db-size',
 ]
 
 export function isSyncQueueRunnerJob(
@@ -149,6 +150,9 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     // ~40 RETS address+Closed hops (12s each) plus DB stamps. Weekly chunk
     // plus 6h catch-up so leftover streets keep filling between other jobs.
     'street-listings': 30,
+    // Growth scans the largest tables; 15 minutes is well above a typical run
+    // and keeps a wedged child from looking like a silent hang.
+    'db-size': 15,
   }
 
 export const SYNC_JOB_BUDGET_MIN_MINUTES = 1

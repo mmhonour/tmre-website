@@ -328,7 +328,7 @@ export const ADMIN_POSTGRES_PANELS: {
     id: "size",
     label: "Size & growth",
     subtitle:
-      "On-demand Neon size, table growth, and the queries that keep compute awake",
+      "Daily 6:00 AM ET Neon size, table growth, listings +/- by town, and the queries that keep compute awake",
   },
   {
     id: "town-counts",
@@ -1016,6 +1016,12 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     schedule: "Every 30 min (weekly-gated + catch-up)",
   },
   {
+    label: "sync-db-size",
+    detail:
+      "Thin db-size trigger — enqueues db-size on the sync runner when Configure is due (daily 6:00 AM ET). Writes the Admin Size & growth snapshot. No Netlify worker.",
+    schedule: "Every 30 min (daily-gated)",
+  },
+  {
     label: "sync-zip-boundaries",
     detail:
       "Thin monthly trigger — queues sync-zip-boundaries-worker (Census TIGERweb → zip_boundaries)",
@@ -1159,8 +1165,14 @@ export const ADMIN_API_ROUTE_GROUPS: { title: string; routes: AdminServerEntry[]
       },
       {
         label: "GET /api/admin/db-size",
-        detail: "On-demand Neon size, growth, and query chatter (Admin → NEON → Size & growth)",
+        detail:
+          "Latest Size & growth snapshot (daily 6:00 AM ET or last Run again). Does not recompute.",
         href: "/api/admin/db-size",
+      },
+      {
+        label: "POST /api/admin/db-size",
+        detail:
+          "Ad-hoc Size & growth recompute; overwrites the same snapshot the 6am job writes",
       },
       { label: "GET /api/admin/goldilocks-config", detail: "Goldilocks weights + characteristics", href: "/api/admin/goldilocks-config" },
       {

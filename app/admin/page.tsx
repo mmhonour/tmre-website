@@ -384,6 +384,7 @@ export default async function AdminPage() {
   const marketDigestLastSentAt = getSyncMeta("market_digest_last_sent_at");
   const camaTaxSyncedAt = getSyncMeta("cama_tax_history_synced_at");
   const streetListingsSyncedAt = getSyncMeta("street_listings_synced_at");
+  const lastDbSize = getSyncMeta("last_db_size");
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -640,6 +641,17 @@ export default async function AdminPage() {
       actionId: "street-listings",
       nextRunAt: nextRuns["street-listings"],
     },
+    {
+      id: "db-size",
+      label: "Size & growth",
+      value: formatTimestamp(lastDbSize),
+      finishedAt: lastDbSize,
+      sortMs: timestampSortMs(lastDbSize),
+      detail:
+        "Daily 6:00 AM ET Neon size, growth, and listings +/- by town → Admin → NEON → Size & growth. Run again on that page is ad-hoc.",
+      actionId: "db-size",
+      nextRunAt: nextRuns["db-size"],
+    },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
@@ -666,6 +678,7 @@ export default async function AdminPage() {
     cpiLastSyncedAt,
     marketDigestLastSentAt,
     streetListingsSyncedAt,
+    lastDbSize,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,

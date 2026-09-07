@@ -256,6 +256,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'market-digest': 'digest',
   'cama-tax': 'cama-tax',
   'street-listings': 'street-listings',
+  'db-size': 'db-size',
 }
 
 /** Finalize-step → Sync History type (weekly full resync chain). */
@@ -1718,6 +1719,48 @@ async function runAdminSyncActionImpl(
         detail: result.subject
           ? `week ${result.weekKey ?? '—'} · ${result.subject}`
           : result.reason,
+      }
+    }
+    case 'db-size': {
+      if (shouldQueueOnServerless(options)) {
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'db-size',
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so the size report cannot run right now.',
+          }),
+        )
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? `Size & growth queued (${via}) — the Admin page updates when it finishes`
+            : `Size & growth queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { loadDbSizeReport, persistDbSizeReport } = await import(
+        '@/lib/db-size-report'
+      )
+      const report = await loadDbSizeReport({ trigger: 'schedule' })
+      await persistDbSizeReport(report)
+      const finishedAt = report.fetchedAt
+      return {
+        ok: true,
+        action,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - t0,
+        message: `${report.totalLabel} · ${report.listingsByTown.length} towns · ${report.tables.length} tables`,
+        detail: report.listings
+          ? `+${report.listings.listed1d} listed / −${report.listings.closed1d} closed (24h)`
+          : undefined,
       }
     }
     default: {

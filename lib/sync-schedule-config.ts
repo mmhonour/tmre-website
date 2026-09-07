@@ -112,6 +112,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'cama_tax_history_synced_at'
     case 'street-listings':
       return 'street_listings_synced_at'
+    case 'db-size':
+      return 'last_db_size'
     default: {
       const _exhaustive: never = jobId
       return _exhaustive
