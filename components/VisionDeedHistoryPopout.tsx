@@ -121,7 +121,7 @@ export function VisionDeedHistoryPopout({
                   <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate/55">
                     Mailing address
                   </dt>
-                  <dd className="mt-0.5 font-mono text-sm text-navy leading-relaxed whitespace-normal">
+                  <dd className="mt-0.5 font-mono text-sm text-navy leading-relaxed whitespace-pre-line">
                     {mailingAddress ?? 'Pending Field Card'}
                   </dd>
                 </div>

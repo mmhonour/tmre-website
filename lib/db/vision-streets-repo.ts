@@ -19,6 +19,7 @@ import {
   type VisionFieldCardField,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
+import { formatVisionMailingAddress } from '@/lib/vision-mailing-address'
 import {
   VISION_GIS_TOWNS,
   missingVisionStreetLetters,
@@ -196,6 +197,13 @@ export type VisionStreetParcel = {
    */
   ownerDisplayLines: string[]
   ownerMailingAddress: string | null
+  /**
+   * Offsite mailing as letter lines, headed `Mailing Address`.
+   * Empty when mailing is the residence (or missing).
+   */
+  mailingDisplayLines: string[]
+  /** Name / street / city-state lines for the owner card. */
+  mailingLetterLines: string[]
   /** VGSI most recent deed date (often a quitclaim, not a purchase). */
   lastSaleDate: string | null
   /** Last paid purchase date when Field Card / last sale price shows consideration. */
@@ -350,6 +358,13 @@ export async function listVisionStreetParcels(
           })
     const compiledOwner = compileVisionOwnerParts(deeds, ownerName)
     const compiledName = compiledOwner.displayName ?? ownerName
+    const mailingRaw = row.owner_mailing_address?.trim() || fromCard
+    const mailing = formatVisionMailingAddress({
+      mailing: mailingRaw,
+      residenceStreet: row.address_label,
+      town: row.town,
+      ownerName: compiledName,
+    })
     return {
       town: row.town,
       streetName: row.street_name,
@@ -367,8 +382,9 @@ export async function listVisionStreetParcels(
           : compiledName
             ? [compiledName]
             : [],
-      ownerMailingAddress:
-        row.owner_mailing_address?.trim() || fromCard,
+      ownerMailingAddress: mailingRaw,
+      mailingDisplayLines: mailing.labeledLines,
+      mailingLetterLines: mailing.letterLines,
       lastSaleDate: row.last_sale_date?.trim() || null,
       purchaseDate: visionPurchaseDate({
         lastSaleDate: row.last_sale_date,

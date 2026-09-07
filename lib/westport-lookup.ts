@@ -41,6 +41,7 @@ import {
   type VisionFieldCardField,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
+import { formatVisionMailingAddress } from '@/lib/vision-mailing-address'
 
 export const WESTPORT_LOOKUP_TOWN = 'Westport'
 
@@ -51,6 +52,8 @@ export type WestportLookupHit = {
   mblu: string | null
   ownerName: string | null
   ownerMailingAddress: string | null
+  /** Offsite mailing letter block (`Mailing Address` + lines). Empty when on-site. */
+  mailingDisplayLines: string[]
   listingId: string | null
   mlsId: string | null
   status: string | null
@@ -112,6 +115,8 @@ export type WestportMergedProperty = {
   ownerDisplayLines: string[]
   /** VGSI mailing address (often the same as the parcel, sometimes a PO box / out of town). */
   ownerMailingAddress: string | null
+  mailingLetterLines: string[]
+  mailingDisplayLines: string[]
   /** Date of the last paid purchase (not a $0 quitclaim). */
   purchaseDate: string | null
   lastSoldPrice: number | null
@@ -234,13 +239,21 @@ function hitFromVision(
   listing: { status: string | null; price: number | null } | null,
   siblingCount: number,
 ): WestportLookupHit {
+  const street = streetLine(v)
+  const mailing = formatVisionMailingAddress({
+    mailing: v.ownerMailingAddress,
+    residenceStreet: street,
+    town: WESTPORT_LOOKUP_TOWN,
+    ownerName: v.ownerName,
+  })
   return {
     visionPid: v.visionPid,
     addressFull: v.addressFull || `${streetLine(v)}, Westport`,
-    street: streetLine(v),
+    street,
     mblu: v.mblu,
     ownerName: v.ownerName,
     ownerMailingAddress: v.ownerMailingAddress,
+    mailingDisplayLines: mailing.labeledLines,
     listingId: v.listingId,
     mlsId: v.mlsId,
     status: listing?.status ?? (v.listingId || v.mlsId ? 'Listed' : null),
@@ -487,6 +500,7 @@ export async function searchWestportLookup(
       mblu: null,
       ownerName: null,
       ownerMailingAddress: null,
+      mailingDisplayLines: [],
       listingId: preferred.id,
       mlsId: preferred.mls_id,
       status: preferred.status_bucket,
@@ -520,6 +534,7 @@ export async function searchWestportLookup(
           mblu: null,
           ownerName: listing.ownerName,
           ownerMailingAddress: null,
+          mailingDisplayLines: [],
           listingId: listing.listingKey,
           mlsId: listing.mlsId,
           status: listing.status,
@@ -591,6 +606,16 @@ export async function mergeWestportProperty(
       : ownerDisplayName
         ? [ownerDisplayName]
         : []
+  const ownerMailingAddress =
+    ownerMailingAddressFromFields(fieldCard.fields) ??
+    vision.ownerMailingAddress
+  const residenceStreet = listing?.address.street || streetLine(vision)
+  const mailing = formatVisionMailingAddress({
+    mailing: ownerMailingAddress,
+    residenceStreet,
+    town: WESTPORT_LOOKUP_TOWN,
+    ownerName: ownerDisplayName,
+  })
 
   return {
     town: WESTPORT_LOOKUP_TOWN,
@@ -599,7 +624,7 @@ export async function mergeWestportProperty(
       listing?.address.full ||
       vision.addressFull ||
       `${streetLine(vision)}, Westport, CT`,
-    street: listing?.address.street || streetLine(vision),
+    street: residenceStreet,
     mblu: vision.mblu,
     parcelUrl: vision.parcelUrl,
     fieldCard,
@@ -631,9 +656,9 @@ export async function mergeWestportProperty(
     ),
     ownerDisplayName,
     ownerDisplayLines,
-    ownerMailingAddress:
-      ownerMailingAddressFromFields(fieldCard.fields) ??
-      vision.ownerMailingAddress,
+    ownerMailingAddress,
+    mailingLetterLines: mailing.letterLines,
+    mailingDisplayLines: mailing.labeledLines,
     purchaseDate: visionPurchaseDate({
       lastSaleDate: vision.lastSaleDate,
       lastSalePrice: vision.lastSalePrice,
