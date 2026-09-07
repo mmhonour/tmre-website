@@ -193,6 +193,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'market-digest',
       'cama-tax',
       'street-listings',
+      'db-size',
     ],
     jobs: {
       'full-resync': {
@@ -271,6 +272,11 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         frequency: 'weekly',
         startTimeEt: '02:00',
         weekdayEt: 3,
+      },
+      // Neon size + growth snapshot for Admin → NEON → Size & growth.
+      'db-size': {
+        frequency: 'daily',
+        startTimeEt: '06:00',
       },
     },
   }

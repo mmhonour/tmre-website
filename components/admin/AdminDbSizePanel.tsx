@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   DbSizeGrowthRow,
+  DbSizeListingsTown,
   DbSizeReport,
   DbSizeTable,
 } from "@/lib/db-size-report-shared";
-import { formatUsd } from "@/lib/db-size-report-shared";
+import { formatSignedCount, formatUsd } from "@/lib/db-size-report-shared";
+import { tablePurposeFor } from "@/lib/db-size-table-glossary";
 
 const TH =
   "px-3 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/50 border-b border-r border-charcoal/[0.08] whitespace-nowrap";
@@ -18,6 +20,12 @@ const TF =
 function formatCount(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return Math.round(n).toLocaleString("en-US");
+}
+
+function signedClass(n: number): string {
+  if (n > 0) return "text-navy";
+  if (n < 0) return "text-coral";
+  return "text-charcoal/50";
 }
 
 type SortDir = "asc" | "desc";
@@ -72,28 +80,115 @@ function compareValues(
   return dir === "asc" ? cmp : -cmp;
 }
 
+function TablePurposeName({
+  name,
+  purpose,
+}: {
+  name: string;
+  purpose: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(ev: MouseEvent) {
+      if (!wrapRef.current?.contains(ev.target as Node)) setOpen(false);
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <span ref={wrapRef} className="relative inline-block max-w-[18rem]">
+      <button
+        type="button"
+        title={purpose}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((v) => !v)}
+        className="text-left underline decoration-dotted decoration-charcoal/35 underline-offset-2 hover:text-gold"
+      >
+        {name}
+      </button>
+      {open ? (
+        <span
+          role="dialog"
+          aria-label={`${name} purpose`}
+          className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-charcoal/15 bg-white px-3 py-2 text-left font-sans text-[12px] font-normal normal-case tracking-normal text-charcoal/80 shadow-lg shadow-charcoal/10"
+        >
+          {purpose}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export default function AdminDbSizePanel() {
   const [report, setReport] = useState<DbSizeReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  async function runReport() {
-    setRunning(true);
+  async function loadSnapshot() {
     setError(null);
     try {
       const res = await fetch("/api/admin/db-size", { cache: "no-store" });
-      const body = (await res.json()) as DbSizeReport & { error?: string };
+      const body = (await res.json()) as {
+        report?: DbSizeReport | null;
+        error?: string;
+      };
       if (!res.ok) {
         throw new Error(body.error || `HTTP ${res.status}`);
       }
-      setReport(body);
+      setReport(body.report ?? null);
     } catch (err) {
-      setReport(null);
+      setError(err instanceof Error ? err.message : "Failed to load size report");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runAgain() {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/db-size", {
+        method: "POST",
+        cache: "no-store",
+      });
+      const body = (await res.json()) as {
+        report?: DbSizeReport;
+        error?: string;
+      };
+      if (!res.ok || !body.report) {
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      setReport(body.report);
+    } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run report");
     } finally {
       setRunning(false);
     }
   }
+
+  useEffect(() => {
+    void loadSnapshot();
+  }, []);
+
+  const triggerLabel =
+    report?.trigger === "schedule"
+      ? "Daily 6:00 AM ET"
+      : report?.trigger === "adhoc"
+        ? "Ad-hoc"
+        : null;
 
   return (
     <div
@@ -106,27 +201,33 @@ export default function AdminDbSizePanel() {
         </p>
         <p className="mt-1 text-sm text-charcoal/65">
           How big Neon is, how fast tables are growing, and which queries keep
-          compute awake. Storage is cheap; an always-on compute is the usual
-          bill. Same numbers as{" "}
+          compute awake. The daily sync job writes this page at 6:00 AM ET.
+          Run again is an ad-hoc recompute of the same snapshot. Same numbers as{" "}
           <span className="font-mono text-[11px] text-navy">npm run db:size</span>
           .
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => void runReport()}
-            disabled={running}
+            onClick={() => void runAgain()}
+            disabled={running || loading}
             className="rounded-full border border-navy/30 bg-cream/40 px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:bg-cream disabled:opacity-40"
           >
-            {running ? "Running…" : report ? "Run again" : "Run report"}
+            {running ? "Running…" : "Run again"}
           </button>
           {report ? (
             <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/40">
+              {triggerLabel ? `${triggerLabel} · ` : ""}
               {report.database} · {new Date(report.fetchedAt).toLocaleString()}
+            </p>
+          ) : loading ? (
+            <p className="font-mono text-[10px] text-charcoal/45">
+              Loading last snapshot…
             </p>
           ) : (
             <p className="font-mono text-[10px] text-charcoal/45">
-              Not run this session — scans birth timestamps on the largest tables
+              No snapshot yet — the 6:00 AM ET job will populate this page, or
+              Run again now
             </p>
           )}
         </div>
@@ -151,6 +252,17 @@ type GrowthSortKey =
   | "perDay"
   | "bytesPerDay";
 type ChatterSortKey = "calls" | "callsPerDay" | "everyLabel" | "query";
+type TownSortKey =
+  | "town"
+  | "active"
+  | "closed"
+  | "listed1d"
+  | "closed1d"
+  | "listed7d"
+  | "closed7d"
+  | "listed30d"
+  | "closed30d"
+  | "net1d";
 
 function ReportBody({ report }: { report: DbSizeReport }) {
   const [sizeSort, setSizeSort] = useState<{ key: SizeSortKey; dir: SortDir }>({
@@ -169,6 +281,10 @@ function ReportBody({ report }: { report: DbSizeReport }) {
     dir: SortDir;
   }>({
     key: "calls",
+    dir: "desc",
+  });
+  const [townSort, setTownSort] = useState<{ key: TownSortKey; dir: SortDir }>({
+    key: "listed1d",
     dir: "desc",
   });
 
@@ -216,6 +332,14 @@ function ReportBody({ report }: { report: DbSizeReport }) {
     return rows;
   }, [report.chatter?.rows, chatterSort]);
 
+  const towns = useMemo(() => {
+    const rows = [...(report.listingsByTown ?? [])];
+    rows.sort((a, b) =>
+      compareValues(townValue(a, townSort.key), townValue(b, townSort.key), townSort.dir),
+    );
+    return rows;
+  }, [report.listingsByTown, townSort]);
+
   function cycleSize(key: SizeSortKey) {
     setSizeSort((prev) =>
       prev.key === key
@@ -240,8 +364,17 @@ function ReportBody({ report }: { report: DbSizeReport }) {
     );
   }
 
+  function cycleTown(key: TownSortKey) {
+    setTownSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: key === "town" ? "asc" : "desc" },
+    );
+  }
+
   const tableRollup = report.tableRollup;
   const growthRollup = report.growthRollup;
+  const townRollup = report.listingsByTownRollup
 
   return (
     <div className="space-y-8 px-5 py-5 sm:px-6">
@@ -257,7 +390,8 @@ function ReportBody({ report }: { report: DbSizeReport }) {
           Size by table
         </h3>
         <p className="mt-1 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
-          Click headers to sort · footer is the sum of every row
+          Hover or click a table name for what it stores · click headers to sort
+          · footer is the sum of every row
         </p>
         <div className="mt-3 max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08]">
           <table className="border-collapse text-left w-max min-w-full">
@@ -309,7 +443,12 @@ function ReportBody({ report }: { report: DbSizeReport }) {
             <tbody>
               {tables.map((row) => (
                 <tr key={row.table}>
-                  <td className={TD}>{row.table}</td>
+                  <td className={TD}>
+                    <TablePurposeName
+                      name={row.table}
+                      purpose={row.purpose || tablePurposeFor(row.table)}
+                    />
+                  </td>
                   <td className={`${TD} text-right`}>{formatCount(row.rows)}</td>
                   <td className={`${TD} text-right`}>{row.totalLabel}</td>
                   <td className={`${TD} text-right`}>{row.heapLabel}</td>
@@ -370,6 +509,144 @@ function ReportBody({ report }: { report: DbSizeReport }) {
 
       <section>
         <h3 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
+          Listings by town
+        </h3>
+        <p className="mt-1 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
+          + newly listed · − newly closed · footer is the sum of every town
+        </p>
+        {towns.length === 0 ? (
+          <p className="mt-3 text-sm text-charcoal/55">
+            No per-town listing increments in this snapshot.
+          </p>
+        ) : (
+          <div className="mt-3 max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08]">
+            <table className="border-collapse text-left w-max min-w-full">
+              <thead className="sticky top-0 z-[1] bg-cream/95">
+                <tr>
+                  <SortHeader
+                    label="Town"
+                    active={townSort.key === "town"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("town")}
+                  />
+                  <SortHeader
+                    label="Active"
+                    align="right"
+                    active={townSort.key === "active"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("active")}
+                  />
+                  <SortHeader
+                    label="Closed"
+                    align="right"
+                    active={townSort.key === "closed"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("closed")}
+                  />
+                  <SortHeader
+                    label="+24h"
+                    align="right"
+                    active={townSort.key === "listed1d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("listed1d")}
+                  />
+                  <SortHeader
+                    label="−24h"
+                    align="right"
+                    active={townSort.key === "closed1d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("closed1d")}
+                  />
+                  <SortHeader
+                    label="Net 24h"
+                    align="right"
+                    active={townSort.key === "net1d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("net1d")}
+                  />
+                  <SortHeader
+                    label="+7d"
+                    align="right"
+                    active={townSort.key === "listed7d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("listed7d")}
+                  />
+                  <SortHeader
+                    label="−7d"
+                    align="right"
+                    active={townSort.key === "closed7d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("closed7d")}
+                  />
+                  <SortHeader
+                    label="+30d"
+                    align="right"
+                    active={townSort.key === "listed30d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("listed30d")}
+                  />
+                  <SortHeader
+                    label="−30d"
+                    align="right"
+                    active={townSort.key === "closed30d"}
+                    dir={townSort.dir}
+                    onClick={() => cycleTown("closed30d")}
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {towns.map((row) => (
+                  <tr key={row.town}>
+                    <td className={TD}>{row.town}</td>
+                    <td className={`${TD} text-right`}>{formatCount(row.active)}</td>
+                    <td className={`${TD} text-right`}>{formatCount(row.closed)}</td>
+                    <td className={`${TD} text-right ${signedClass(row.listed1d)}`}>
+                      {formatSignedCount(row.listed1d)}
+                    </td>
+                    <td className={`${TD} text-right ${signedClass(-row.closed1d)}`}>
+                      {formatSignedCount(-row.closed1d)}
+                    </td>
+                    <td className={`${TD} text-right ${signedClass(row.net1d)}`}>
+                      {formatSignedCount(row.net1d)}
+                    </td>
+                    <td className={`${TD} text-right ${signedClass(row.listed7d)}`}>
+                      {formatSignedCount(row.listed7d)}
+                    </td>
+                    <td className={`${TD} text-right ${signedClass(-row.closed7d)}`}>
+                      {formatSignedCount(-row.closed7d)}
+                    </td>
+                    <td className={`${TD} text-right ${signedClass(row.listed30d)}`}>
+                      {formatSignedCount(row.listed30d)}
+                    </td>
+                    <td className={`${TD} text-right ${signedClass(-row.closed30d)}`}>
+                      {formatSignedCount(-row.closed30d)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {townRollup ? (
+                <tfoot className="sticky bottom-0">
+                  <tr>
+                    <td className={TF}>Sum · {townRollup.townsLabel} towns</td>
+                    <td className={`${TF} text-right`}>{townRollup.activeLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.closedLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.listed1dLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.closed1dLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.net1dLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.listed7dLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.closed7dLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.listed30dLabel}</td>
+                    <td className={`${TF} text-right`}>{townRollup.closed30dLabel}</td>
+                  </tr>
+                </tfoot>
+              ) : null}
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h3 className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
           Growth
         </h3>
         {report.growth.length === 0 ? (
@@ -379,7 +656,8 @@ function ReportBody({ report }: { report: DbSizeReport }) {
         ) : (
           <>
             <p className="mt-1 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/45">
-              Click headers to sort · footer is the sum of every row
+              Hover or click a table name for what it stores · click headers to
+              sort · footer is the sum of every row
             </p>
             <div className="mt-3 max-h-[36rem] overflow-auto rounded-lg border border-charcoal/[0.08]">
               <table className="border-collapse text-left w-max min-w-full">
@@ -437,7 +715,12 @@ function ReportBody({ report }: { report: DbSizeReport }) {
                 <tbody>
                   {growth.map((row) => (
                     <tr key={`${row.table}.${row.column}`}>
-                      <td className={TD}>{row.table}</td>
+                      <td className={TD}>
+                        <TablePurposeName
+                          name={row.table}
+                          purpose={tablePurposeFor(row.table)}
+                        />
+                      </td>
                       <td className={TD}>{row.column}</td>
                       <td className={`${TD} text-right`}>{formatCount(row.d1)}</td>
                       <td className={`${TD} text-right`}>{formatCount(row.d7)}</td>
@@ -589,5 +872,9 @@ function growthValue(
   row: DbSizeGrowthRow,
   key: GrowthSortKey,
 ): string | number {
+  return row[key];
+}
+
+function townValue(row: DbSizeListingsTown, key: TownSortKey): string | number {
   return row[key];
 }

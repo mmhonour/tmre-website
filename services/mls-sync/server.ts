@@ -132,6 +132,12 @@ const SWEEPS: {
     bootDelayMs: 10 * 60_000,
     label: 'street listings',
   },
+  {
+    jobId: 'db-size',
+    everyMs: 30 * 60_000,
+    bootDelayMs: 11 * 60_000,
+    label: 'size & growth',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {
@@ -396,6 +402,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/market-digest': 'market-digest',
   '/cama-tax': 'cama-tax',
   '/street-listings': 'street-listings',
+  '/db-size': 'db-size',
 }
 
 async function handleRequest(

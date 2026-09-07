@@ -715,6 +715,7 @@ export type PanelStatus = {
   marketDigestLastSentAt?: string | null;
   camaTaxHistorySyncedAt?: string | null;
   streetListingsSyncedAt?: string | null;
+  lastDbSize?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -1077,6 +1078,8 @@ function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
       return { started: null, finished: status.marketDigestLastSentAt ?? null };
     case "street-listings":
       return { started: null, finished: status.streetListingsSyncedAt ?? null };
+    case "db-size":
+      return { started: null, finished: status.lastDbSize ?? null };
     default:
       return { started: null, finished: null };
   }
@@ -1371,6 +1374,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "market-digest": "market-digest",
   "cama-tax": "cama-tax",
   "street-listings": "street-listings",
+  "db-size": "db-size",
 };
 
 function pauseJobForSyncAllAction(

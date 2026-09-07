@@ -8,6 +8,7 @@ import {
   BIRTH_COLUMNS,
   decorateChatterRow,
   decorateGrowthRow,
+  decorateListingsTown,
   decorateTableSize,
   GB,
   quoteIdent,
@@ -15,14 +16,19 @@ import {
   storageMonthlyUsd,
   formatUsd,
   rollupGrowthRows,
+  rollupListingsByTown,
   rollupTableSizes,
+  DB_SIZE_REPORT_META_KEY,
+  LAST_DB_SIZE_META_KEY,
   type DbSizeGrowthRow,
   type DbSizeListings,
+  type DbSizeListingsTown,
   type DbSizeReport,
+  type DbSizeReportTrigger,
   type DbSizeTable,
 } from '@/lib/db-size-report-shared'
 
-export type { DbSizeReport } from '@/lib/db-size-report-shared'
+export type { DbSizeReport, DbSizeReportTrigger } from '@/lib/db-size-report-shared'
 export {
   alwaysOnCosts,
   alwaysOnMonthlyUsd,
@@ -32,6 +38,8 @@ export {
   formatUsd,
   quoteIdent,
   storageMonthlyUsd,
+  DB_SIZE_REPORT_META_KEY,
+  LAST_DB_SIZE_META_KEY,
 } from '@/lib/db-size-report-shared'
 
 const MAX_GROWTH_TABLES = 30
@@ -146,6 +154,52 @@ async function tableGrowth(
   }
 }
 
+async function listingsByTown(
+  client: PoolClient,
+): Promise<DbSizeListingsTown[]> {
+  try {
+    const { rows } = await client.query<{
+      town: string
+      active: string | number
+      closed: string | number
+      listed_1d: string | number
+      listed_7d: string | number
+      listed_30d: string | number
+      closed_1d: string | number
+      closed_7d: string | number
+      closed_30d: string | number
+    }>(`
+      SELECT COALESCE(NULLIF(btrim(town), ''), '(unknown)')           AS town,
+             count(*) FILTER (WHERE status_bucket = 'Active')         AS active,
+             count(*) FILTER (WHERE status_bucket = 'Closed')         AS closed,
+             count(*) FILTER (WHERE list_date  >= now() - interval '1 day')   AS listed_1d,
+             count(*) FILTER (WHERE list_date  >= now() - interval '7 days')  AS listed_7d,
+             count(*) FILTER (WHERE list_date  >= now() - interval '30 days') AS listed_30d,
+             count(*) FILTER (WHERE close_date >= now() - interval '1 day')   AS closed_1d,
+             count(*) FILTER (WHERE close_date >= now() - interval '7 days')  AS closed_7d,
+             count(*) FILTER (WHERE close_date >= now() - interval '30 days') AS closed_30d
+      FROM listings
+      GROUP BY 1
+      ORDER BY 1
+    `)
+    return rows.map((row) =>
+      decorateListingsTown({
+        town: row.town,
+        active: Number(row.active),
+        closed: Number(row.closed),
+        listed1d: Number(row.listed_1d),
+        listed7d: Number(row.listed_7d),
+        listed30d: Number(row.listed_30d),
+        closed1d: Number(row.closed_1d),
+        closed7d: Number(row.closed_7d),
+        closed30d: Number(row.closed_30d),
+      }),
+    )
+  } catch {
+    return []
+  }
+}
+
 async function listingsIncrement(client: PoolClient): Promise<DbSizeListings | null> {
   try {
     const { rows } = await client.query<{
@@ -239,7 +293,28 @@ async function chattiestQueries(
   }
 }
 
-export async function loadDbSizeReport(): Promise<DbSizeReport> {
+export async function persistDbSizeReport(report: DbSizeReport): Promise<void> {
+  const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
+  await setSyncMetaDurable(DB_SIZE_REPORT_META_KEY, JSON.stringify(report))
+  await setSyncMetaDurable(LAST_DB_SIZE_META_KEY, report.fetchedAt)
+}
+
+export async function readStoredDbSizeReport(): Promise<DbSizeReport | null> {
+  const { getSyncMeta } = await import('@/lib/db/sync-meta')
+  const raw = await getSyncMeta(DB_SIZE_REPORT_META_KEY)
+  if (!raw?.trim()) return null
+  try {
+    const parsed = JSON.parse(raw) as DbSizeReport
+    if (!parsed || typeof parsed !== 'object' || !parsed.fetchedAt) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export async function loadDbSizeReport(
+  options?: { trigger?: DbSizeReportTrigger },
+): Promise<DbSizeReport> {
   const client = await getPool().connect()
   try {
     const { rows: meta } = await client.query<{
@@ -249,6 +324,7 @@ export async function loadDbSizeReport(): Promise<DbSizeReport> {
     const totalBytes = Number(meta[0]?.bytes ?? 0)
     const tables = await tableSizes(client)
     const listings = await listingsIncrement(client)
+    const byTown = listings ? await listingsByTown(client) : []
     const picked = await birthColumns(client)
     const growth: DbSizeGrowthRow[] = []
     const candidates = tables
@@ -274,6 +350,7 @@ export async function loadDbSizeReport(): Promise<DbSizeReport> {
     const chatter = await chattiestQueries(client)
     return {
       fetchedAt: new Date().toISOString(),
+      trigger: options?.trigger ?? 'adhoc',
       database: meta[0]?.db ?? '',
       totalBytes,
       totalLabel: formatBytes(totalBytes),
@@ -282,6 +359,8 @@ export async function loadDbSizeReport(): Promise<DbSizeReport> {
       tables,
       tableRollup: rollupTableSizes(tables),
       listings,
+      listingsByTown: byTown,
+      listingsByTownRollup: rollupListingsByTown(byTown),
       growth,
       growthRollup: rollupGrowthRows(growth),
       growthBytesPerDay,

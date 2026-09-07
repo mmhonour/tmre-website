@@ -8,7 +8,7 @@
 
 import { closePool } from '../lib/db/postgres'
 import { loadDbSizeReport } from '../lib/db-size-report'
-import { formatUsd } from '../lib/db-size-report-shared'
+import { formatSignedCount, formatUsd } from '../lib/db-size-report-shared'
 
 function num(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
@@ -65,6 +65,35 @@ async function main() {
     console.log(
       'Listings upsert in place, so the table grows by unique MLS ids (mostly new\n' +
         'closings that stay on file), not by every incremental RETS pull.',
+    )
+  }
+
+  heading('Listings by town (+ listed / − closed)')
+  if (report.listingsByTown.length === 0) {
+    console.log('No per-town listing increments.')
+  } else {
+    const tWidth = Math.max(14, ...report.listingsByTown.map((row) => row.town.length))
+    console.log(
+      `${pad('TOWN', tWidth)}  ${pad('ACTIVE', 8, 'right')}  ${pad('CLOSED', 8, 'right')}` +
+        `  ${pad('+24H', 7, 'right')}  ${pad('−24H', 7, 'right')}  ${pad('NET24', 7, 'right')}` +
+        `  ${pad('+7D', 7, 'right')}  ${pad('−7D', 7, 'right')}` +
+        `  ${pad('+30D', 7, 'right')}  ${pad('−30D', 7, 'right')}`,
+    )
+    for (const row of report.listingsByTown) {
+      console.log(
+        `${pad(row.town, tWidth)}  ${pad(num(row.active), 8, 'right')}  ${pad(num(row.closed), 8, 'right')}` +
+          `  ${pad(formatSignedCount(row.listed1d), 7, 'right')}  ${pad(formatSignedCount(-row.closed1d), 7, 'right')}` +
+          `  ${pad(formatSignedCount(row.net1d), 7, 'right')}` +
+          `  ${pad(formatSignedCount(row.listed7d), 7, 'right')}  ${pad(formatSignedCount(-row.closed7d), 7, 'right')}` +
+          `  ${pad(formatSignedCount(row.listed30d), 7, 'right')}  ${pad(formatSignedCount(-row.closed30d), 7, 'right')}`,
+      )
+    }
+    const rollup = report.listingsByTownRollup
+    console.log(
+      `${pad(`Sum · ${rollup.townsLabel} towns`, tWidth)}  ${pad(rollup.activeLabel, 8, 'right')}  ${pad(rollup.closedLabel, 8, 'right')}` +
+        `  ${pad(rollup.listed1dLabel, 7, 'right')}  ${pad(rollup.closed1dLabel, 7, 'right')}  ${pad(rollup.net1dLabel, 7, 'right')}` +
+        `  ${pad(rollup.listed7dLabel, 7, 'right')}  ${pad(rollup.closed7dLabel, 7, 'right')}` +
+        `  ${pad(rollup.listed30dLabel, 7, 'right')}  ${pad(rollup.closed30dLabel, 7, 'right')}`,
     )
   }
 

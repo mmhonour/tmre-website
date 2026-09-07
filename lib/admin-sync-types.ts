@@ -74,6 +74,11 @@ export const ADMIN_SYNC_ACTIONS = {
     description:
       'Walk /streets Vision house numbers with no listings row, pull the last MLS listing from RETS (address + Closed window), stamp vision_pid. Fills towns the bulk Closed-since-2019 sync never stored. Clicking an address on Streets requests the same hop.',
   },
+  'db-size': {
+    label: 'Size & growth',
+    description:
+      'Daily 6:00 AM ET Neon size, growth, and listings +/- by town. Writes one snapshot the Admin Size & growth page reads. Sync now / the schedule overwrite that same slot; Run again on the page is the ad-hoc path.',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -127,6 +132,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'market-digest': 12,
   'cama-tax': 13,
   'street-listings': 14,
+  'db-size': 15,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

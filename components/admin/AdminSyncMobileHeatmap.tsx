@@ -55,6 +55,7 @@ type HeatmapStatus = {
   cpiLastSyncedAt?: string | null;
   marketDigestLastSentAt?: string | null;
   streetListingsSyncedAt?: string | null;
+  lastDbSize?: string | null;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   stats: {
     lastFullSync: string | null;
@@ -163,6 +164,8 @@ function liveFinishedForRow(
       return status.marketDigestLastSentAt ?? null;
     case "street-listings":
       return status.streetListingsSyncedAt ?? null;
+    case "db-size":
+      return status.lastDbSize ?? null;
     case "latest-mls":
       return status.latestListingUpdate ?? null;
     default:

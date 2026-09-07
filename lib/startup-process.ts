@@ -482,7 +482,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET + sync-street-listings every 30m gated to weekly Wed ~2am ET (and 6h catch-up while unlinked street addresses remain). Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA), Street listings (RETS) and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET + sync-street-listings every 30m gated to weekly Wed ~2am ET (and 6h catch-up while unlinked street addresses remain) + sync-db-size every 30m gated to daily 6:00 AM ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA), Street listings (RETS), Size & growth and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -563,6 +563,24 @@ export function describeStartupProcess(): {
         timing: "30-min sweep → weekly Wed ~02:00 ET (Configure) + 6h catch-up",
         detail:
           "syncStreetListings(). Walks vision_street_parcels with no listings.vision_pid / vision_addresses.listing_id, up to 40 addresses per run. Each hop is the same Find ingest: Neon street/MBLU match, then RETS address, then Closed StatusChangeTimestamp window around the Vision deed. Stamps listings.vision_pid and vision_street_parcels.listing_ingest_at so a miss is not retried for 14 days. The Railway 30-min sweep and the Netlify thin */30 (sync-street-listings) enqueue on sync_queue at the weekly slot, or sooner when leftover work is older than 6h so chunks keep filling between other runner jobs. Clicking an address on /streets runs the same hop in-request and shows admin RETS status on the page. Stamps street_listings_synced_at.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
+
+  lanes.push({
+    id: "db-size",
+    title: "Size & growth (Neon)",
+    subtitle:
+      "Daily snapshot of table size, growth, and listings +/- by town for Admin → NEON",
+    steps: [
+      {
+        id: "db-size-daily",
+        title: "Daily Neon size report",
+        timing: "30-min sweep → daily 06:00 ET (Configure)",
+        detail:
+          "loadDbSizeReport() + persistDbSizeReport(). The Railway 30-min sweep and the Netlify thin */30 (sync-db-size) enqueue on sync_queue at the configured daily slot. The runner claims one row into a forked child under Configure → Size & growth → Budget (default 15 min). Writes sync_meta keys db_size_report (full JSON) and last_db_size (ISO finish). Admin → NEON → Size & growth GET reads that snapshot; Run again on the page is POST ad-hoc and overwrites the same keys. Not stored anywhere else. Stamps last_db_size.",
         status: "scheduled",
         statusLabel: "Cron",
       },
