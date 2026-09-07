@@ -6,11 +6,15 @@ import {
 } from './listing-condition'
 
 describe('listing condition grades', () => {
-  it('assigns 772 Rowland Good and 877 South Pine Creek Excellent', () => {
+  it('assigns the hand-graded Fairfield coastal comps', () => {
     assert.equal(resolveListingCondition({ mlsId: '24186969' }), 'good')
     assert.equal(listingConditionRank('good'), 2)
     assert.equal(resolveListingCondition({ mlsId: '24149919' }), 'excellent')
     assert.equal(resolveListingCondition({ mlsId: '24201368' }), 'excellent')
+    assert.equal(resolveListingCondition({ mlsId: '24145969' }), 'excellent')
+    assert.equal(resolveListingCondition({ mlsId: '24163818' }), 'excellent')
+    assert.equal(resolveListingCondition({ mlsId: '24126283' }), 'fair')
+    assert.equal(resolveListingCondition({ mlsId: '24153317' }), 'good')
   })
 
   it('treats new construction as Excellent', () => {

@@ -28,13 +28,17 @@ export const LISTING_CONDITION_RANKS: Record<ListingConditionGrade, ListingCondi
 
 /**
  * Manual grades until listings carry a stored condition.
- * 772 Rowland Rd (MLS 24186969) is Good. 877 South Pine Creek is Excellent
- * on both the closed sale and the current listing.
+ * 772 Rowland Rd is Good. 877 / 915 South Pine Creek and 119 Old Dam are
+ * Excellent. 196 Catherine is Fair. 510 Reef is Good.
  */
 export const LISTING_CONDITION_OVERRIDES: Record<string, ListingConditionGrade> = {
   '24186969': 'good',
   '24149919': 'excellent',
   '24201368': 'excellent',
+  '24145969': 'excellent',
+  '24163818': 'excellent',
+  '24126283': 'fair',
+  '24153317': 'good',
 }
 
 export function isListingConditionGrade(

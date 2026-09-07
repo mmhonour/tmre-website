@@ -7,6 +7,7 @@ import {
   IF_STRIP_BOOST_TOWN,
   IF_STRIP_BOOST_TWO_STEPS,
   inlandStripBoostPct,
+  preferSoldOverSameProperty,
   selectStripSearchPool,
   stripSearchRings,
 } from './listing-if-strip-search'
@@ -22,17 +23,22 @@ function soldComp(args: {
   townCenter?: boolean
   lat?: number
   lon?: number
+  address?: string
+  parcelNumber?: string | null
+  underAgreement?: boolean
+  closeDate?: string
 }): ComparableListing {
   const sqft = args.sqft ?? 1040
   return {
     mlsId: args.mlsId,
     listingKey: args.mlsId,
-    address: `${args.mlsId} Test Rd`,
+    address: args.address ?? `${args.mlsId} Test Rd`,
     city: 'Fairfield',
     zip: '06824',
+    parcelNumber: args.parcelNumber ?? null,
     price: args.ppsf * sqft,
     closePrice: args.ppsf * sqft,
-    closeDate: '2026-06-01',
+    closeDate: args.closeDate ?? '2026-06-01',
     beds: args.beds ?? 3,
     baths: args.baths ?? 2,
     lotAcres: 0.15,
@@ -50,6 +56,7 @@ function soldComp(args: {
     coastalStrip: args.strip,
     inTownCenter: args.townCenter ?? false,
     conditionGrade: 'excellent',
+    underAgreement: args.underAgreement ?? false,
   }
 }
 
@@ -188,5 +195,42 @@ describe('coastal strip search', () => {
     assert.ok(
       selected.comps.every((comp) => comp.stripBoostPct === IF_STRIP_BOOST_TOWN),
     )
+  })
+
+  it('drops a UAG re-list when the same parcel already sold', () => {
+    const sold = soldComp({
+      mlsId: '877-sold',
+      ppsf: 964,
+      strip: 3,
+      address: '877 South Pine Creek Road',
+      parcelNumber: '134429',
+      sqft: 1297,
+    })
+    const uag = soldComp({
+      mlsId: '877-uag',
+      ppsf: 1002,
+      strip: 3,
+      address: '877 South Pine Creek Rd',
+      parcelNumber: '134429',
+      sqft: 1297,
+      underAgreement: true,
+    })
+    const kept = preferSoldOverSameProperty([sold, uag])
+    assert.deepEqual(kept.map((c) => c.mlsId), ['877-sold'])
+
+    const selected = selectStripSearchPool({
+      subjectStrip: 3,
+      subject: { ...subject, sqft: 1297 },
+      sold: [
+        sold,
+        soldComp({ mlsId: 's4-b', ppsf: 900, strip: 3, sqft: 1297 }),
+        soldComp({ mlsId: 's4-c', ppsf: 910, strip: 3, sqft: 1297 }),
+      ],
+      underAgreement: [uag],
+    })
+    assert.ok(selected)
+    assert.equal(selected.comps.length, 3)
+    assert.ok(!selected.comps.some((comp) => comp.mlsId === '877-uag'))
+    assert.ok(selected.comps.some((comp) => comp.mlsId === '877-sold'))
   })
 })

@@ -44,7 +44,7 @@ const MLS_DATE_FIELDS: readonly {
   { field: 'UpdateDate', label: 'Feed update date', hasTime: false },
 ]
 
-/** Published dates present on this record, in lifecycle order. Absent fields are skipped. */
+/** Published dates present on this record, newest first. Absent fields are skipped. */
 export function listingMlsDates(
   raw: RawRetsRecord | null | undefined,
 ): ListingMlsDate[] {
@@ -67,5 +67,9 @@ export function listingMlsDates(
       hasTime: spec.hasTime,
     })
   }
+  out.sort((a, b) => {
+    const byDate = b.iso.localeCompare(a.iso)
+    return byDate !== 0 ? byDate : a.field.localeCompare(b.field)
+  })
   return out
 }

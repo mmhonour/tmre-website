@@ -13,6 +13,8 @@ import {
   coastalStripLabel,
   type CoastalStripIndex,
 } from '@/lib/location-estimate-zip-grid-shared'
+import { streetsMatch } from '@/lib/listing-history'
+import { normalizeParcelNumber } from '@/lib/property-address'
 import {
   DEFAULT_PRICING_MATCHING_CONFIG,
   type PricingMatchingConfig,
@@ -190,6 +192,50 @@ function eligibleStripCandidate(
   return isSoldInLookback(comp, args.lookbackMonths, args.nowMs)
 }
 
+function sameCity(a: ComparableListing, b: ComparableListing): boolean {
+  const cityA = a.city?.trim().toLowerCase()
+  const cityB = b.city?.trim().toLowerCase()
+  return Boolean(cityA && cityB && cityA === cityB)
+}
+
+function sameProperty(a: ComparableListing, b: ComparableListing): boolean {
+  const parcelA = normalizeParcelNumber(a.parcelNumber)
+  const parcelB = normalizeParcelNumber(b.parcelNumber)
+  if (parcelA && parcelB) return parcelA === parcelB
+  return sameCity(a, b) && streetsMatch(a.address, b.address)
+}
+
+function closeDateMs(comp: ComparableListing): number {
+  const ms = Date.parse(comp.closeDate ?? '')
+  return Number.isFinite(ms) ? ms : 0
+}
+
+/**
+ * Same house can be sold and under agreement (or re-listed) in the same year.
+ * A sold comp always wins over UAG/active at that parcel or address.
+ */
+export function preferSoldOverSameProperty(
+  comps: readonly ComparableListing[],
+): ComparableListing[] {
+  const remaining = [...comps]
+  const out: ComparableListing[] = []
+  while (remaining.length > 0) {
+    const seed = remaining.shift()!
+    const group = [seed]
+    for (let i = remaining.length - 1; i >= 0; i -= 1) {
+      if (!sameProperty(seed, remaining[i]!) && !group.some((g) => sameProperty(g, remaining[i]!))) {
+        continue
+      }
+      group.push(remaining.splice(i, 1)[0]!)
+    }
+    const solds = group.filter((comp) => !comp.underAgreement)
+    const pickFrom = solds.length > 0 ? solds : group
+    pickFrom.sort((a, b) => closeDateMs(b) - closeDateMs(a))
+    out.push(pickFrom[0]!)
+  }
+  return out
+}
+
 function stampSelectedComp(
   comp: ComparableListing,
   subjectStrip: CoastalStripIndex,
@@ -227,15 +273,17 @@ export function selectStripSearchPool(args: {
     stampComparableTownCenter(comp, placements),
   )
 
-  const eligible = pool.filter((comp) =>
-    eligibleStripCandidate(comp, {
-      subjectStrip: args.subjectStrip,
-      subject: args.subject,
-      match,
-      lookbackMonths,
-      nowMs,
-      allowUnderAgreement: true,
-    }),
+  const eligible = preferSoldOverSameProperty(
+    pool.filter((comp) =>
+      eligibleStripCandidate(comp, {
+        subjectStrip: args.subjectStrip,
+        subject: args.subject,
+        match,
+        lookbackMonths,
+        nowMs,
+        allowUnderAgreement: true,
+      }),
+    ),
   )
 
   let fallback: StripSearchSelection | null = null

@@ -147,10 +147,12 @@ describe('zip grid', () => {
     assert.equal(countSuggestedOverwrite({ '1,1': 2, '1,2': 1 }, suggested), 1)
   })
 
-  it('toggles a painted square off when clicked with the same brush', () => {
-    assert.equal(nextCellAction(0, 0), 'erase')
+  it('cycles a square Coast → 2nd → 3rd → 4th → empty', () => {
     assert.equal(nextCellAction(undefined, 0), 0)
-    assert.equal(nextCellAction(1, 0), 0)
+    assert.equal(nextCellAction(0, 2), 1)
+    assert.equal(nextCellAction(1, 0), 2)
+    assert.equal(nextCellAction(2, 3), 3)
+    assert.equal(nextCellAction(3, 1), 'erase')
     assert.equal(nextCellAction(2, 'erase'), 'erase')
   })
 

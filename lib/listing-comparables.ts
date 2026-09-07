@@ -17,6 +17,8 @@ import {
   type ComparablesResult,
 } from '@/lib/listing-comparables-shared'
 import { closeFieldsFromListing, compactHistoryEvents } from '@/lib/listing-history'
+import { parcelNumberFromRaw } from '@/lib/listing-property-tax'
+import { normalizeParcelNumber } from '@/lib/property-address'
 import { isClosedListing, isMarketListing } from '@/lib/listings-store'
 import {
   DEFAULT_PRICING_MATCHING_CONFIG,
@@ -221,6 +223,7 @@ export function buildComparableListing(
     address: street,
     city: l.address.city?.trim() || null,
     zip: normalizeZip(l.address.postalCode),
+    parcelNumber: normalizeParcelNumber(parcelNumberFromRaw(l.raw)),
     price: l.price != null && l.price > 0 ? l.price : null,
     closePrice: closePrice != null && closePrice > 0 ? closePrice : null,
     closeDate: closeDate ?? null,

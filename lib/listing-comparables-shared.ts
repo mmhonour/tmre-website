@@ -10,6 +10,8 @@ export type ComparableListing = {
   address: string
   city: string | null
   zip: string | null
+  /** MLS ParcelNumber when present — same-house sold vs UAG / re-list key. */
+  parcelNumber?: string | null
   price: number | null
   closePrice: number | null
   closeDate: string | null
