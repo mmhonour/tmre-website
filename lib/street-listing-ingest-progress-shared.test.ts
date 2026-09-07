@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   listingIngestStatusCopy,
+  listingIngestStatusHeading,
   parseStreetListingIngestProgress,
   streetListingIngestIsFresh,
   streetListingIngestMetaKey,
@@ -97,5 +98,18 @@ describe('listingIngestStatusCopy', () => {
     )
     assert.equal(listingIngestStatusCopy('found', 'Closed'), 'Closed')
     assert.equal(listingIngestStatusCopy('none'), 'No MLS listing in RETS')
+  })
+})
+
+describe('listingIngestStatusHeading', () => {
+  it('uses looking then loading then available', () => {
+    assert.equal(listingIngestStatusHeading('queued'), 'Looking for a listing')
+    assert.equal(
+      listingIngestStatusHeading('checking-db'),
+      'Looking for a listing',
+    )
+    assert.equal(listingIngestStatusHeading('rets-address'), 'Loading a listing')
+    assert.equal(listingIngestStatusHeading('found'), 'Listing is available')
+    assert.equal(listingIngestStatusHeading('none'), 'Listing search')
   })
 })

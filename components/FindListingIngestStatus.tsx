@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { streetListingCardHref } from '@/lib/street-listing-card-shared'
 import {
   listingIngestStatusCopy,
+  listingIngestStatusHeading,
   STREET_LISTING_INGEST_IN_FLIGHT,
   type StreetListingIngestPhase,
 } from '@/lib/street-listing-ingest-progress-shared'
@@ -90,12 +91,11 @@ export function FindListingIngestStatus({
   if (hasListing) return null
 
   const copy = listingIngestStatusCopy(phase, message)
-  const inFlight = !phase || STREET_LISTING_INGEST_IN_FLIGHT.has(phase)
 
   return (
     <div className="mb-5 rounded-xl border border-gold/45 bg-gold/15 px-4 py-3">
       <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-gold">
-        {inFlight ? 'Looking for a listing' : phase === 'found' ? 'Listing is available' : 'Listing search'}
+        {listingIngestStatusHeading(phase)}
       </p>
       <p className="mt-1 text-sm text-white/80">{copy}</p>
       {listingId ? (
