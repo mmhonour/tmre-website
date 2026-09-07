@@ -16,6 +16,7 @@ import {
 import { closedVsLastListPct } from "@/lib/listing-history";
 import { formatInsightMedianPpsf } from "@/lib/insight-median-ppsf";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 
 export type ListingOverviewSchools = {
   elementary: string | null;
@@ -59,6 +60,8 @@ export type ListingDetailsSchoolsPanelProps = {
   medianPpsfBand?: "below" | "at" | "above" | null;
   /** Shown only when MLS discloses Furnished or Partially furnished. */
   furnishedLabel?: string | null;
+  /** Painted 1–4 strip, town center, or Unpainted — admin Details only. */
+  coastalStripLabel?: string | null;
   schools: ListingOverviewSchools;
   fmtMoney: (n: number | null) => string;
   fmtDate: (value: string | null) => string | null;
@@ -155,11 +158,13 @@ export default function ListingDetailsSchoolsPanel({
   listingPricePerSqft = null,
   medianPpsfBand = null,
   furnishedLabel = null,
+  coastalStripLabel = null,
   schools,
   fmtMoney,
   fmtDate,
   unframed = false,
 }: ListingDetailsSchoolsPanelProps & { unframed?: boolean }) {
+  const siteUnlocked = useSiteUnlocked();
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [lotSizeInSqft, setLotSizeInSqft] = useState(false);
   const [priorListings, setPriorListings] = useState<PriorListing[]>([]);
@@ -428,6 +433,7 @@ export default function ListingDetailsSchoolsPanel({
     ppsf,
     lotAcres,
     furnishedLabel,
+    coastalStripLabel,
     assessedMarketValue,
     annualPropertyTax,
     propertyTaxYear,
@@ -510,6 +516,12 @@ export default function ListingDetailsSchoolsPanel({
               value={ppsf ? `$${ppsf}` : "—"}
             />
           )}
+          {siteUnlocked ? (
+            <Stat
+              label="Coastal strip"
+              value={coastalStripLabel?.trim() || "Unpainted"}
+            />
+          ) : null}
           {lotAcres != null && lotAcres > 0 ? (
             <Stat
               label="Lot size"

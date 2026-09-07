@@ -1,5 +1,6 @@
 import type { MedianPpsfBand } from "@/lib/insight-median-ppsf";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
+import type { LocationEstimate } from "@/lib/listing-location-estimates";
 
 export function listingHeaderScoreProps(input: {
   goldilocksScore?: number | null;
@@ -28,6 +29,7 @@ export type ListingScoreApiFields = {
   medianPpsfBand?: MedianPpsfBand | null;
   /** Admin Market Bands category + fine step, e.g. "Mid-market · $1.75M–$2.249M". */
   marketBandLabel?: string | null;
+  locationEstimate?: LocationEstimate | null;
   edgeScore?: number | null;
   edgeScoreBreakdown?: Record<string, unknown> | null;
 };

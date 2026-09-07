@@ -72,6 +72,7 @@ export default function ListingHistoryClient({
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     vision,
     state,
   } =
@@ -149,6 +150,7 @@ export default function ListingHistoryClient({
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
       marketBandLabel,
+      locationEstimate,
     },
   );
 

@@ -79,6 +79,7 @@ export default function ListingComparablesClient({
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     vision,
     state,
   } = useListingChrome<Listing>(mlsId);
@@ -170,6 +171,7 @@ export default function ListingComparablesClient({
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
       marketBandLabel,
+      locationEstimate,
     },
   );
 

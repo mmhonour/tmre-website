@@ -21,6 +21,7 @@ export default function SpotlightHistoryClient() {
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     propertyTab,
     presentation,
   } = useSpotlightListing();
@@ -47,6 +48,7 @@ export default function SpotlightHistoryClient() {
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
       marketBandLabel,
+      locationEstimate,
     },
   );
 

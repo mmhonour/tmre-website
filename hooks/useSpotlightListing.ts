@@ -43,6 +43,7 @@ type SpotlightFetchPayload = {
   pricePerSqft?: number | null;
   medianPpsfBand?: ListingScoreApiFields["medianPpsfBand"];
   marketBandLabel?: string | null;
+  locationEstimate?: ListingScoreApiFields["locationEstimate"];
   /** VGSI parcel pairing for the Admin panel; null outside Westport. */
   vision?: ListingVisionLink | null;
 };
@@ -77,6 +78,9 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
   const [medianPpsfBand, setMedianPpsfBand] =
     useState<ListingScoreApiFields["medianPpsfBand"]>(null);
   const [marketBandLabel, setMarketBandLabel] = useState<string | null>(null);
+  const [locationEstimate, setLocationEstimate] = useState<
+    ListingScoreApiFields["locationEstimate"]
+  >(null);
   const [vision, setVision] = useState<ListingVisionLink | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("ready");
@@ -111,6 +115,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setPricePerSqft(null);
       setMedianPpsfBand(null);
       setMarketBandLabel(null);
+      setLocationEstimate(null);
       setVision(null);
       setPhotos([]);
       lastPropertyTabRef.current = propertyTab;
@@ -123,6 +128,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setPricePerSqft(cached.pricePerSqft ?? null);
       setMedianPpsfBand(cached.medianPpsfBand ?? null);
       setMarketBandLabel(cached.marketBandLabel ?? null);
+      setLocationEstimate(cached.locationEstimate ?? null);
       setVision(cached.vision ?? null);
       if (includePhotos && cached.photos) {
         setPhotos(cached.photos);
@@ -153,6 +159,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
       setPricePerSqft(peeked.pricePerSqft ?? null);
       setMedianPpsfBand(peeked.medianPpsfBand ?? null);
       setMarketBandLabel(peeked.marketBandLabel ?? null);
+      setLocationEstimate(peeked.locationEstimate ?? null);
       setVision(peeked.vision ?? null);
       if (includePhotos && peeked.photos) {
         setPhotos(peeked.photos);
@@ -176,6 +183,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
         setPricePerSqft(d.pricePerSqft ?? null);
         setMedianPpsfBand(d.medianPpsfBand ?? null);
         setMarketBandLabel(d.marketBandLabel ?? null);
+        setLocationEstimate(d.locationEstimate ?? null);
         setVision(d.vision ?? null);
         if (includePhotos) {
           setPhotos(d.photos ?? []);
@@ -224,6 +232,7 @@ export function useSpotlightListing(options: UseSpotlightListingOptions = {}) {
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     vision,
     photos,
     photosState,

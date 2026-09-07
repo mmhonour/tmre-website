@@ -72,6 +72,17 @@ export function coastalStripLabel(strip: CoastalStripIndex): string {
   return `${row.mark} ${row.name}`
 }
 
+/** Admin Details field — painted strip, town-center disk, or unpainted. */
+export function adminCoastalStripFieldLabel(input?: {
+  kind?: string | null
+  coastalStrip?: { index?: number | null } | null
+} | null): string {
+  const index = input?.coastalStrip?.index
+  if (isCoastalStripIndex(index)) return coastalStripLabel(index)
+  if (input?.kind === 'town_center') return 'Town center'
+  return 'Unpainted'
+}
+
 export function parseZipGridPayload(raw: string | null | undefined): ZipGridPayload {
   if (!raw) return emptyZipGrid()
   try {

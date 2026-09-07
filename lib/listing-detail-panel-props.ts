@@ -22,6 +22,8 @@ import type { SpotlightDisplay, SpotlightMlsListing } from "@/lib/spotlight-disp
 import type { SpotlightPresentation } from "@/lib/spotlight-privacy-shared";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import type { ListingOverviewSchools } from "@/components/listing/ListingDetailsSchoolsPanel";
+import { adminCoastalStripFieldLabel } from "@/lib/location-estimate-zip-grid-shared";
+import type { LocationEstimate } from "@/lib/listing-location-estimates";
 
 type ListingForDetailsPanel = {
   mlsId: string;
@@ -72,6 +74,7 @@ export type BuildListingDetailsPanelOpts = {
   medianPpsfBand?: "below" | "at" | "above" | null;
   /** Admin Market Bands category + fine step for sale homes. */
   marketBandLabel?: string | null;
+  locationEstimate?: LocationEstimate | null;
 };
 
 type SpotlightMlsEnrichment = {
@@ -94,6 +97,7 @@ export function buildSpotlightDetailsPanelProps(
     listingPricePerSqft?: number | null;
     medianPpsfBand?: "below" | "at" | "above" | null;
     marketBandLabel?: string | null;
+    locationEstimate?: LocationEstimate | null;
   },
 ): ListingDetailsSchoolsPanelProps {
   return buildListingDetailsPanelProps(
@@ -124,6 +128,7 @@ export function buildSpotlightDetailsPanelProps(
       listingPricePerSqft: median?.listingPricePerSqft,
       medianPpsfBand: median?.medianPpsfBand,
       marketBandLabel: median?.marketBandLabel,
+      locationEstimate: median?.locationEstimate,
     },
   );
 }
@@ -220,6 +225,7 @@ export function buildListingDetailsPanelProps(
     listingPricePerSqft: opts?.listingPricePerSqft ?? null,
     medianPpsfBand: opts?.medianPpsfBand ?? null,
     furnishedLabel,
+    coastalStripLabel: adminCoastalStripFieldLabel(opts?.locationEstimate),
     schools: listing.schools ?? {
       elementary: null,
       middle: null,

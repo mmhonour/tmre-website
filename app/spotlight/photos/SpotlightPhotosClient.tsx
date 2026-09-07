@@ -31,6 +31,7 @@ export default function SpotlightPhotosClient() {
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     photos,
     photosState,
     propertyTab,
@@ -89,6 +90,7 @@ export default function SpotlightPhotosClient() {
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
       marketBandLabel,
+      locationEstimate,
     },
   );
 

@@ -12,6 +12,7 @@ import {
   lonLatToCell,
   milesBetween,
   nextCellAction,
+  adminCoastalStripFieldLabel,
   coastalStripLabel,
   coastalStripMark,
   countSuggestedOverwrite,
@@ -84,6 +85,18 @@ describe('zip grid', () => {
   it('labels each strip with its mark and name', () => {
     assert.equal(coastalStripLabel(0), '1 Coast')
     assert.equal(coastalStripLabel(3), '4 4th strip')
+  })
+
+  it('formats the admin Details coastal-strip field', () => {
+    assert.equal(
+      adminCoastalStripFieldLabel({ coastalStrip: { index: 1 } }),
+      '2 2nd strip',
+    )
+    assert.equal(
+      adminCoastalStripFieldLabel({ kind: 'town_center' }),
+      'Town center',
+    )
+    assert.equal(adminCoastalStripFieldLabel(null), 'Unpainted')
   })
 
   it('paints four strips north from the south-facing town edge', () => {
