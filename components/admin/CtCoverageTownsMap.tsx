@@ -698,8 +698,9 @@ export default function CtCoverageTownsMap({
             </select>
           </label>
           <p className="w-full font-mono text-[9px] uppercase tracking-[0.12em] text-charcoal/45">
-            Click a square to cycle 1–4, then empty. Erase still clears. Town-center
-            disks keep a coastal number underneath.
+            Empty square takes the selected strip. Click again to cycle 1–4, then
+            empty. Erase still clears. Town-center disks keep a coastal number
+            underneath.
           </p>
           <div className="flex flex-wrap gap-1">
             {(

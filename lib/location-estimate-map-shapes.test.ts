@@ -147,7 +147,8 @@ describe('zip grid', () => {
     assert.equal(countSuggestedOverwrite({ '1,1': 2, '1,2': 1 }, suggested), 1)
   })
 
-  it('cycles a square Coast → 2nd → 3rd → 4th → empty', () => {
+  it('paints an empty square with the selected brush, then cycles', () => {
+    assert.equal(nextCellAction(undefined, 1), 1)
     assert.equal(nextCellAction(undefined, 0), 0)
     assert.equal(nextCellAction(0, 2), 1)
     assert.equal(nextCellAction(1, 0), 2)

@@ -30,7 +30,9 @@ import {
   stripSearchRingLabel,
   usesCoastalStripWhatIf,
 } from '@/lib/listing-if-strip-search'
+import { resolveListingCoastalStrip } from '@/lib/listing-coastal-strip'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
+import { coastalStripLabel } from '@/lib/location-estimate-zip-grid-shared'
 import { getLocationEstimateTownCentersFresh } from '@/lib/location-estimate-town-centers-config'
 import {
   townCenterOwningAt,
@@ -66,7 +68,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 18
+export const IF_ESTIMATES_ALGO_VERSION = 19
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -119,6 +121,30 @@ function listingInTownCenter(
 ): boolean {
   if (listing.latitude == null || listing.longitude == null) return false
   return townCenterOwningAt(listing.latitude, listing.longitude, placements) != null
+}
+
+function locationPremiumForListing(
+  listing: Listing,
+  cells: ZipGridCells | undefined,
+  inTownCenter: boolean,
+): ReturnType<typeof computeLocationPremium> {
+  const computed = computeLocationPremium(
+    listing.latitude,
+    listing.longitude,
+    listing.address.postalCode,
+    listing.address.city,
+    { cells: inTownCenter ? undefined : cells },
+  )
+  const strip = resolveListingCoastalStrip(listing.mlsId, computed.coastalStrip)
+  if (strip === computed.coastalStrip) return computed
+  if (strip == null) {
+    return { ...computed, coastalStrip: null }
+  }
+  const labels = [
+    coastalStripLabel(strip),
+    ...computed.labels.filter((label) => !label.includes('strip') && label !== '1 Coast'),
+  ]
+  return { ...computed, coastalStrip: strip, labels }
 }
 
 function buildStripSearchCandidates(
@@ -353,12 +379,10 @@ function computeIfEstimates(
     normalizeZip(subject.address.postalCode),
   )
   const inTownCenter = listingInTownCenter(subject, townCenters)
-  const locationPremium = computeLocationPremium(
-    subject.latitude,
-    subject.longitude,
-    subject.address.postalCode,
-    subject.address.city,
-    { cells: inTownCenter ? undefined : cells },
+  const locationPremium = locationPremiumForListing(
+    subject,
+    cells,
+    inTownCenter,
   )
   const subjectVintage = subjectVintageFromYear(subject.yearBuilt)
   const subjectCondition = resolveListingCondition(subject)
@@ -689,13 +713,7 @@ export async function resolveListingIfPayload(
   ])
   const inTownCenter = listingInTownCenter(listing, townCenters)
   const painted = usesCoastalStripWhatIf(
-    computeLocationPremium(
-      listing.latitude,
-      listing.longitude,
-      listing.address.postalCode,
-      listing.address.city,
-      { cells: inTownCenter ? undefined : cells },
-    ).coastalStrip,
+    locationPremiumForListing(listing, cells, inTownCenter).coastalStrip,
     inTownCenter,
   )
   if (painted) {

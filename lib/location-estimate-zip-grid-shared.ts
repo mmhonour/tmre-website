@@ -303,13 +303,16 @@ export function suggestCoastalStrips(
   return cells
 }
 
-/** Click cycles Coast → 2nd → 3rd → 4th → empty. Erase brush still erases. */
+/**
+ * Empty square takes the selected brush. A painted square cycles
+ * Coast → 2nd → 3rd → 4th → empty. Erase still clears.
+ */
 export function nextCellAction(
   current: CoastalStripIndex | undefined,
   brush: CoastalStripIndex | 'erase',
 ): CoastalStripIndex | 'erase' {
   if (brush === 'erase') return 'erase'
-  if (current == null) return 0
+  if (current == null) return brush
   if (current >= COASTAL_STRIP_MAX_INDEX) return 'erase'
   return (current + 1) as CoastalStripIndex
 }
