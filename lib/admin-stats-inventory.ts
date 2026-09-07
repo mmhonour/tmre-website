@@ -194,6 +194,18 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-closed:' },
   },
   {
+    id: 'market-pulse-snapshots',
+    name: 'Market Pulse weekly snapshots',
+    category: 'market',
+    medium: 'postgres',
+    location: 'market_pulse_snapshots',
+    keyPattern: 'slot_date (Eastern send-day)',
+    owner: 'lib/db/market-pulse-snapshots-repo.ts',
+    notes:
+      'Point-in-time Monday brief / Market Pulse payload for WoW / MoM / YoY. Not stats_cache — that table is current market math and is overwritten. Written on a real send and by npm run snapshot:market-pulse. Send test does not write.',
+    live: { kind: 'postgres_table', table: 'market_pulse_snapshots' },
+  },
+  {
     id: 'market-pulse-tax',
     name: 'Market Pulse tax year',
     category: 'market',
