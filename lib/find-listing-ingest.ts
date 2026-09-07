@@ -2,12 +2,12 @@ import 'server-only'
 
 import { execute, query } from '@/lib/db/postgres'
 import { listingRowId, readListingByIdFromDb } from '@/lib/db/listings-repo'
-import { streetsMatch } from '@/lib/listing-history'
 import { persistListingByMlsId, persistListingRecord } from '@/lib/listings-store'
+import { normalizePropertyAddress } from '@/lib/property-address'
 import {
-  normalizePropertyAddress,
-  streetSearchVariants,
-} from '@/lib/property-address'
+  findListingStreetQueries,
+  findListingStreetsMatch,
+} from '@/lib/find-listing-street-match'
 import { getListingByMlsId, searchListings, type Listing } from '@/lib/rets'
 import type { VisionAddressRecord } from '@/lib/db/vision-addresses-repo'
 import { compactMblu, visionListingKeys } from '@/lib/vision-listing-match'
@@ -119,9 +119,8 @@ const LISTING_STATUS_RANK_SQL = `CASE status_bucket
 
 /**
  * Neon listings already at this Vision address (Ln↔Lane / Rd↔Road via
- * addressMatchKey), then unique MBLU / ParcelNumber. Same stack as
- * backfillVisionListingLinks — Find used to skip this and only RETS-search
- * the Vision spelling (`*Locust*Ln*`), which cannot match MLS `Locust Lane`.
+ * addressMatchKey, plus Sea Spray↔Seaspray), then unique MBLU /
+ * ParcelNumber. Same stack as backfillVisionListingLinks.
  */
 export async function findListingInDbByVisionAddress(
   vision: VisionAddressRecord,
@@ -166,7 +165,13 @@ async function findListingInDbByStreet(
     const keys = visionListingKeys(
       normalizePropertyAddress(town, listingStreet, row.postal_code),
     )
-    if (keys.exact !== want.exact && keys.loose !== want.loose) continue
+    if (
+      keys.exact !== want.exact &&
+      keys.loose !== want.loose &&
+      !findListingStreetsMatch(street, listingStreet)
+    ) {
+      continue
+    }
     const listing = await readListingByIdFromDb(row.id)
     if (listing) return listing
   }
@@ -198,20 +203,8 @@ export async function findListingInDbByVisionMblu(
   return readListingByIdFromDb(id)
 }
 
-/** MLS UnparsedAddress uses Lane/Road — pick the longest spelling for one RETS hop. */
-function preferredRetsStreet(street: string): string {
-  const variants = streetSearchVariants(street)
-  return variants.reduce(
-    (best, next) => (next.length > best.length ? next : best),
-    variants[0] ?? street,
-  )
-}
-
 function listingMatchesStreetQuery(street: string, listingStreet: string): boolean {
-  if (streetsMatch(street, listingStreet)) return true
-  return streetSearchVariants(street).some((variant) =>
-    streetsMatch(variant, listingStreet),
-  )
+  return findListingStreetsMatch(street, listingStreet)
 }
 
 function listingMatchesIngestTown(town: string, listing: Listing): boolean {
@@ -261,20 +254,21 @@ async function persistByStreet(
   street: string,
   town: string,
 ): Promise<Listing | null> {
-  const queryStreet = preferredRetsStreet(street)
-  const hits = await withTimeout(
-    searchListings({
-      county: 'fairfield',
-      city: town,
-      addressContains: queryStreet,
-      limit: 24,
-    }),
-    INGEST_TIMEOUT_MS,
-  )
-  if (!hits || hits.length === 0) return null
-  const match = pickBestStreetMatch(street, hits, town)
-  if (!match) return null
-  return persistMatchedListing(match)
+  for (const queryStreet of findListingStreetQueries(street)) {
+    const hits = await withTimeout(
+      searchListings({
+        county: 'fairfield',
+        city: town,
+        addressContains: queryStreet,
+        limit: 24,
+      }),
+      INGEST_TIMEOUT_MS,
+    )
+    if (!hits || hits.length === 0) continue
+    const match = pickBestStreetMatch(street, hits, town)
+    if (match) return persistMatchedListing(match)
+  }
+  return null
 }
 
 /**
@@ -287,24 +281,25 @@ async function persistByStreetClosed(
   lastSaleDate: string | null | undefined,
   town: string,
 ): Promise<Listing | null> {
-  const queryStreet = preferredRetsStreet(street)
   const window = closedSearchWindowForSaleDate(lastSaleDate)
-  const hits = await withTimeout(
-    searchListings({
-      county: 'fairfield',
-      city: town,
-      addressContains: queryStreet,
-      status: 'Closed',
-      closedAfter: window.closedAfter,
-      closedBefore: window.closedBefore,
-      limit: 24,
-    }),
-    INGEST_TIMEOUT_MS,
-  )
-  if (!hits || hits.length === 0) return null
-  const match = pickBestStreetMatch(street, hits, town)
-  if (!match) return null
-  return persistMatchedListing(match)
+  for (const queryStreet of findListingStreetQueries(street)) {
+    const hits = await withTimeout(
+      searchListings({
+        county: 'fairfield',
+        city: town,
+        addressContains: queryStreet,
+        status: 'Closed',
+        closedAfter: window.closedAfter,
+        closedBefore: window.closedBefore,
+        limit: 24,
+      }),
+      INGEST_TIMEOUT_MS,
+    )
+    if (!hits || hits.length === 0) continue
+    const match = pickBestStreetMatch(street, hits, town)
+    if (match) return persistMatchedListing(match)
+  }
+  return null
 }
 
 export function looksLikeStreetQuery(raw: string): boolean {
