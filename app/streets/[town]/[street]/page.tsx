@@ -119,7 +119,12 @@ export default async function StreetsStreetPage({
                   addressLabel={row.addressLabel}
                   ownerName={row.ownerName}
                   ownerDisplayLines={row.ownerDisplayLines}
-                  mailingAddress={row.ownerMailingAddress}
+                  mailingAddress={
+                    row.mailingLetterLines.length > 0
+                      ? row.mailingLetterLines.join('\n')
+                      : row.ownerMailingAddress
+                  }
+                  mailingDisplayLines={row.mailingDisplayLines}
                   soldLabel={
                     row.purchaseDate
                       ? [

@@ -12,6 +12,7 @@ type LookupHit = {
   mblu: string | null;
   ownerName: string | null;
   ownerMailingAddress: string | null;
+  mailingDisplayLines?: string[];
   listingId: string | null;
   mlsId: string | null;
   status: string | null;
@@ -324,12 +325,7 @@ export default function FindClient({
 
 function FindCard({ hit }: { hit: LookupHit }) {
   const status = hit.status ?? "Off market";
-  const mailing =
-    hit.ownerMailingAddress &&
-    hit.ownerMailingAddress.trim().toLowerCase() !==
-      hit.addressFull.trim().toLowerCase()
-      ? hit.ownerMailingAddress
-      : null;
+  const mailingLines = hit.mailingDisplayLines ?? [];
 
   return (
     <article className="rounded-2xl bg-white border border-charcoal/[0.08] p-5 transition-all hover:border-gold/30 hover:shadow-lg hover:shadow-navy/5">
@@ -342,10 +338,17 @@ function FindCard({ hit }: { hit: LookupHit }) {
       <p className="mt-1 font-mono text-[13px] text-navy/80">
         {hit.ownerName ?? "Owner pending Field Card"}
       </p>
-      {mailing ? (
-        <p className="mt-0.5 font-mono text-[11px] text-slate/70 leading-relaxed">
-          {mailing}
-        </p>
+      {mailingLines.length > 0 ? (
+        <div className="mt-1 font-mono text-[11px] text-slate/70">
+          <p className="tracking-[0.08em] uppercase text-slate/55">
+            {mailingLines[0]}
+          </p>
+          {mailingLines.length > 1 ? (
+            <p className="mt-0.5 whitespace-pre-line leading-relaxed">
+              {mailingLines.slice(1).join("\n")}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       <p className="font-mono text-[10px] tracking-[0.1em] uppercase text-slate/60 mt-2">
         {[status, hit.mblu ? `MBLU ${hit.mblu}` : null, hit.visionPid ? `PID ${hit.visionPid}` : null]

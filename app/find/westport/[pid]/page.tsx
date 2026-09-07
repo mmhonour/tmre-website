@@ -257,8 +257,10 @@ export default async function WestportParcelPage({
                 <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
                   Mailing address
                 </dt>
-                <dd className="mt-0.5 font-mono text-sm text-white/85 leading-relaxed">
-                  {property.ownerMailingAddress ?? "Pending Field Card"}
+                <dd className="mt-0.5 font-mono text-sm text-white/85 leading-relaxed whitespace-pre-line">
+                  {property.mailingLetterLines.length > 0
+                    ? property.mailingLetterLines.join("\n")
+                    : (property.ownerMailingAddress ?? "Pending Field Card")}
                 </dd>
               </div>
               <div>
@@ -282,7 +284,11 @@ export default async function WestportParcelPage({
                       ownerName={
                         ownerBlock === "—" ? property.ownerDisplayName : ownerBlock
                       }
-                      mailingAddress={property.ownerMailingAddress}
+                      mailingAddress={
+                        property.mailingLetterLines.length > 0
+                          ? property.mailingLetterLines.join("\n")
+                          : property.ownerMailingAddress
+                      }
                       soldLabel={[
                         property.purchaseDate
                           ? `Bought ${property.purchaseDate}`
