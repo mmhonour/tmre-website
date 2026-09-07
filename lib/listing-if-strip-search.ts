@@ -1,6 +1,7 @@
 import {
   conditionsAreExact,
   conditionsAreSimilar,
+  listingConditionRank,
   type ListingConditionGrade,
 } from '@/lib/listing-condition'
 import type { ComparableListing } from '@/lib/listing-comparables-shared'
@@ -20,7 +21,7 @@ import {
   type PricingMatchingConfig,
 } from '@/lib/pricing-matching-config-shared'
 
-/** First ring with this many sold/UAG comps in 12 months is the What-if basis. */
+/** What-if starts with this many sold/UAG comps (fill outward if a ring is short). */
 export const IF_STRIP_SEARCH_MIN_COMPS = 3
 
 /** Exact living-area band for matchFit (similar uses PricingMatchingConfig). */
@@ -251,8 +252,57 @@ function stampSelectedComp(
 }
 
 /**
- * Walk outward from the subject strip. First ring with ≥3 sold/UAG comps
- * in the lookback window is the What-if PPSF basis. Never look seaward.
+ * When a ring is short, fill from the next inland ring. Prefer the same
+ * condition as the subject; a Fair house is a different class than Good.
+ */
+function conditionFillRank(
+  subject: StripSearchSubject,
+  comp: ComparableListing,
+): number {
+  const subjectRank = listingConditionRank(subject.conditionGrade)
+  if (subjectRank == null) return 0
+  const compRank = listingConditionRank(comp.conditionGrade)
+  if (compRank == null) return 200
+  if (compRank === subjectRank) return 0
+  if (compRank < subjectRank) return 10 + (subjectRank - compRank)
+  return 500 + (compRank - subjectRank)
+}
+
+function rankRingComps(
+  comps: readonly ComparableListing[],
+  subject: StripSearchSubject,
+): ComparableListing[] {
+  return [...comps].sort((a, b) => {
+    const condition = conditionFillRank(subject, a) - conditionFillRank(subject, b)
+    if (condition !== 0) return condition
+    const soldRank = Number(Boolean(a.underAgreement)) - Number(Boolean(b.underAgreement))
+    if (soldRank !== 0) return soldRank
+    const fitA = stripMatchFit(a, subject) === 'exact' ? 0 : 1
+    const fitB = stripMatchFit(b, subject) === 'exact' ? 0 : 1
+    if (fitA !== fitB) return fitA - fitB
+    return closeDateMs(b) - closeDateMs(a)
+  })
+}
+
+function toSelection(
+  comps: ComparableListing[],
+  rings: StripSearchRing[],
+): StripSearchSelection {
+  const ring = rings[0] ?? 'town'
+  const uniqueRings = [...new Set(rings)]
+  return {
+    ring,
+    ringLabel: uniqueRings.map(stripSearchRingLabel).join(' + '),
+    sold: comps.filter((comp) => !comp.underAgreement),
+    underAgreement: comps.filter((comp) => Boolean(comp.underAgreement)),
+    comps,
+  }
+}
+
+/**
+ * Walk outward from the subject strip and pick 3 sold/UAG comps to start.
+ * Keep a short ring and fill from the next inland ring — do not dump the
+ * whole town pool. Never look seaward. Each comp keeps its own inland boost.
  */
 export function selectStripSearchPool(args: {
   subjectStrip: CoastalStripIndex
@@ -286,24 +336,24 @@ export function selectStripSearchPool(args: {
     ),
   )
 
-  let fallback: StripSearchSelection | null = null
+  const picked: ComparableListing[] = []
+  const usedRings: StripSearchRing[] = []
   for (const ring of stripSearchRings(args.subjectStrip)) {
     const inRing = eligible.filter(
       (comp) => comparableStripRing(comp, args.subjectStrip) === ring,
     )
     if (inRing.length === 0) continue
-    const stamped = inRing.map((comp) =>
-      stampSelectedComp(comp, args.subjectStrip, ring, args.subject),
+    const needed = IF_STRIP_SEARCH_MIN_COMPS - picked.length
+    const take = rankRingComps(inRing, args.subject).slice(0, needed)
+    picked.push(
+      ...take.map((comp) =>
+        stampSelectedComp(comp, args.subjectStrip, ring, args.subject),
+      ),
     )
-    const selection: StripSearchSelection = {
-      ring,
-      ringLabel: stripSearchRingLabel(ring),
-      sold: stamped.filter((comp) => !comp.underAgreement),
-      underAgreement: stamped.filter((comp) => Boolean(comp.underAgreement)),
-      comps: stamped,
+    usedRings.push(ring)
+    if (picked.length >= IF_STRIP_SEARCH_MIN_COMPS) {
+      return toSelection(picked, usedRings)
     }
-    if (stamped.length >= IF_STRIP_SEARCH_MIN_COMPS) return selection
-    if (!fallback) fallback = selection
   }
-  return fallback
+  return picked.length > 0 ? toSelection(picked, usedRings) : null
 }

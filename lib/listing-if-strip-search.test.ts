@@ -20,6 +20,7 @@ function soldComp(args: {
   beds?: number
   baths?: number
   sqft?: number
+  conditionGrade?: ComparableListing['conditionGrade']
   townCenter?: boolean
   lat?: number
   lon?: number
@@ -55,7 +56,7 @@ function soldComp(args: {
     locationPremiumMultiplier: 1,
     coastalStrip: args.strip,
     inTownCenter: args.townCenter ?? false,
-    conditionGrade: 'excellent',
+    conditionGrade: args.conditionGrade ?? 'excellent',
     underAgreement: args.underAgreement ?? false,
   }
 }
@@ -115,7 +116,7 @@ describe('coastal strip search', () => {
     assert.ok(selected.comps.every((comp) => !comp.mlsId.startsWith('coast')))
   })
 
-  it('moves inland and boosts when the subject strip lacks three comps', () => {
+  it('keeps a short subject-strip ring and fills from the next inland ring', () => {
     const selected = selectStripSearchPool({
       subjectStrip: 1,
       subject,
@@ -128,12 +129,17 @@ describe('coastal strip search', () => {
       ],
     })
     assert.ok(selected)
-    assert.equal(selected.ring, 2)
+    assert.equal(selected.ring, 1)
     assert.equal(selected.comps.length, 3)
+    assert.ok(selected.comps.some((comp) => comp.mlsId === 's2-only'))
+    assert.equal(
+      selected.comps.find((comp) => comp.mlsId === 's2-only')?.stripBoostPct,
+      0,
+    )
     assert.ok(
-      selected.comps.every(
-        (comp) => comp.stripBoostPct === IF_STRIP_BOOST_ONE_STEP,
-      ),
+      selected.comps
+        .filter((comp) => comp.mlsId.startsWith('s3-'))
+        .every((comp) => comp.stripBoostPct === IF_STRIP_BOOST_ONE_STEP),
     )
   })
 
@@ -232,5 +238,58 @@ describe('coastal strip search', () => {
     assert.equal(selected.comps.length, 3)
     assert.ok(!selected.comps.some((comp) => comp.mlsId === '877-uag'))
     assert.ok(selected.comps.some((comp) => comp.mlsId === '877-sold'))
+  })
+
+  it('fills a short 4th-strip ring with the best-condition town sold, not Fair', () => {
+    const selected = selectStripSearchPool({
+      subjectStrip: 1,
+      subject: { ...subject, conditionGrade: 'good', sqft: 1040 },
+      sold: [
+        soldComp({
+          mlsId: '915',
+          ppsf: 900,
+          strip: 3,
+          sqft: 1239,
+          conditionGrade: 'excellent',
+        }),
+        soldComp({
+          mlsId: '877',
+          ppsf: 964,
+          strip: 3,
+          sqft: 1297,
+          conditionGrade: 'excellent',
+        }),
+        soldComp({
+          mlsId: '196',
+          ppsf: 654,
+          strip: null,
+          sqft: 1224,
+          conditionGrade: 'fair',
+        }),
+        soldComp({
+          mlsId: '510',
+          ppsf: 664,
+          strip: null,
+          sqft: 1174,
+          beds: 2,
+          baths: 1,
+          conditionGrade: 'good',
+        }),
+      ],
+    })
+    assert.ok(selected)
+    assert.deepEqual(
+      selected.comps.map((comp) => comp.mlsId).sort(),
+      ['510', '877', '915'],
+    )
+    assert.equal(
+      selected.comps.find((comp) => comp.mlsId === '915')?.stripBoostPct,
+      IF_STRIP_BOOST_TWO_STEPS,
+    )
+    assert.equal(
+      selected.comps.find((comp) => comp.mlsId === '510')?.stripBoostPct,
+      IF_STRIP_BOOST_TOWN,
+    )
+    assert.equal(selected.ringLabel, '4 4th strip + Rest of town')
   })
 })

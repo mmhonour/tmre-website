@@ -76,9 +76,10 @@ export default function AdminLocationEstimateOverlayPanel() {
             </p>
             <p className="mt-1 text-[12px] leading-snug text-slate">
               What if searches the subject strip first, then only outward
-              (2 → 3 → 4 → rest of town). The first ring with at least three
-              sold or under-agreement comps in 12 months is the $/sqft basis.
-              Inland rings get a temporary boost (33% / 50% / 75% / 100%).
+              (2 → 3 → 4 → rest of town). It starts with three sold or
+              under-agreement comps in 12 months: keep a short ring and fill
+              from the next inland ring (same condition before Fair). Inland
+              rings get a temporary boost (33% / 50% / 75% / 100%).
               Town-center comps are excluded. Search never runs seaward.
               Unpainted houses still use distance to water-access pins.
             </p>
