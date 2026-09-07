@@ -7,6 +7,7 @@ import {
   IF_STRIP_BOOST_TOWN,
   IF_STRIP_BOOST_TWO_STEPS,
   inlandStripBoostPct,
+  listStripSearchEligible,
   preferSoldOverSameProperty,
   selectStripSearchPool,
   stripSearchRings,
@@ -346,5 +347,48 @@ describe('coastal strip search', () => {
       IF_STRIP_BOOST_TOWN,
     )
     assert.equal(selected.ringLabel, '4 4th strip + Rest of town')
+  })
+
+  it('lists the rest of the inland cohort beyond the targeted 3', () => {
+    const sold = [
+      soldComp({
+        mlsId: '915',
+        ppsf: 900,
+        strip: 3,
+        sqft: 1239,
+        conditionGrade: 'excellent',
+      }),
+      soldComp({
+        mlsId: '877',
+        ppsf: 964,
+        strip: 3,
+        sqft: 1297,
+        conditionGrade: 'excellent',
+      }),
+      soldComp({
+        mlsId: '510',
+        ppsf: 664,
+        strip: null,
+        sqft: 1174,
+        beds: 2,
+        baths: 1,
+        conditionGrade: 'good',
+      }),
+      soldComp({
+        mlsId: 'town-extra',
+        ppsf: 500,
+        strip: null,
+        sqft: 1100,
+        conditionGrade: 'good',
+      }),
+    ]
+    const eligible = listStripSearchEligible({
+      subjectStrip: 1,
+      subject: { ...subject, conditionGrade: 'good', sqft: 1040 },
+      sold,
+    })
+    assert.ok(eligible.length >= 4)
+    assert.ok(eligible.some((comp) => comp.mlsId === 'town-extra'))
+    assert.ok(eligible.every((comp) => !comp.stripSearchPick))
   })
 })

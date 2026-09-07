@@ -169,6 +169,41 @@ function parseCloseDateMs(closeDate: string | null | undefined): number {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
+type IfCompYearGroup = { key: string; label: string; comps: IfCompRow[] };
+
+function groupIfCompsByYear(comps: IfCompRow[]): IfCompYearGroup[] {
+  const uag: IfCompRow[] = [];
+  const byYear = new Map<number, IfCompRow[]>();
+  const undated: IfCompRow[] = [];
+  for (const comp of comps) {
+    if (comp.underAgreement) {
+      uag.push(comp);
+      continue;
+    }
+    const ms = parseCloseDateMs(comp.closeDate);
+    if (ms <= 0) {
+      undated.push(comp);
+      continue;
+    }
+    const year = new Date(ms).getFullYear();
+    const arr = byYear.get(year) ?? [];
+    arr.push(comp);
+    byYear.set(year, arr);
+  }
+  const years = [...byYear.keys()].sort((a, b) => b - a);
+  const groups: IfCompYearGroup[] = [];
+  if (uag.length > 0) {
+    groups.push({ key: "uag", label: "Under agreement", comps: uag });
+  }
+  for (const year of years) {
+    groups.push({ key: String(year), label: String(year), comps: byYear.get(year)! });
+  }
+  if (undated.length > 0) {
+    groups.push({ key: "earlier", label: "Earlier", comps: undated });
+  }
+  return groups;
+}
+
 function sortIfComps(
   comps: IfCompRow[],
   sortKey: IfCompSortKey,
@@ -703,7 +738,9 @@ function IfMathWorksheet({
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4">
         <div className="min-w-0 normal-case tracking-normal text-left space-y-3">
           <p className="m-0 whitespace-pre-wrap">
-            25th–75th percentile excluded
+            {est.soldCount + est.activeCount < 4
+              ? "Full set — too few comps to drop top/bottom percentiles"
+              : "25th–75th percentile excluded"}
             {"\n"}
             <IfMathBandKeyword
               label="TOP"
@@ -909,9 +946,11 @@ function CompList({
     }
   }, [showTopBand, showBottomBand]);
 
+  const keepAllMatching = comps.some((comp) => comp.stripSearchPick);
   const visibleComps = useMemo(
     () =>
       comps.filter((comp) => {
+        if (comp.stripSearchPick || keepAllMatching) return true;
         const quarter = compQuarterBand(
           comp.impliedSubjectAmount,
           amountLow,
@@ -921,7 +960,7 @@ function CompList({
         if (quarter === "bottom") return showBottomBand;
         return true;
       }),
-    [comps, amountLow, amountHigh, showTopBand, showBottomBand],
+    [comps, amountLow, amountHigh, showTopBand, showBottomBand, keepAllMatching],
   );
   const sorted = useMemo(
     () =>
@@ -950,10 +989,13 @@ function CompList({
   const isRent = kind === "rent";
   const totalCount = comps.length;
   const visibleCount = visibleComps.length;
+  const pickCount = comps.filter((comp) => comp.stripSearchPick).length;
   const propertiesUsedLabel =
-    visibleCount < totalCount
-      ? `Properties used (${visibleCount}/${totalCount})`
-      : `Properties used (${totalCount})`;
+    pickCount > 0
+      ? `What-if (${pickCount}) · Matching (${totalCount})`
+      : visibleCount < totalCount
+        ? `Properties used (${visibleCount}/${totalCount})`
+        : `Properties used (${totalCount})`;
   const wtLinkClass =
     "text-gold underline decoration-gold/50 underline-offset-2 hover:text-gold-light transition-colors cursor-pointer";
 
@@ -1043,8 +1085,20 @@ function CompList({
         </div>
       ) : null}
 
-      <ul className="divide-y divide-white/[0.06] border-t border-white/10">
-        {sorted.map((comp) => {
+      {(() => {
+        const pickComps = sorted.filter((comp) => comp.stripSearchPick);
+        const restGroups = groupIfCompsByYear(
+          sorted.filter((comp) => !comp.stripSearchPick),
+        );
+        const useYearBuckets = pickComps.length > 0 && restGroups.length > 0;
+        const sections: IfCompYearGroup[] = useYearBuckets
+          ? [
+              { key: "what-if", label: "What-if", comps: pickComps },
+              ...restGroups,
+            ]
+          : [{ key: "all", label: "", comps: sorted }];
+
+        const renderRow = (comp: IfCompRow) => {
           const id = comp.listingKey || comp.mlsId;
           const href = listingDetailHref(
             id,
@@ -1146,9 +1200,8 @@ function CompList({
                     ? ` · +${Math.round(comp.stripBoostPct * 100)}%`
                     : ""}
                   {comp.matchFit ? ` · ${comp.matchFit}` : ""}
-                  {listingConditionLabel(comp.conditionGrade)
-                    ? ` · ${listingConditionLabel(comp.conditionGrade)}`
-                    : ""}
+                  {` · ${listingConditionLabel(comp.conditionGrade) ?? "—"}`}
+                  {comp.stripSearchPick ? " · What-if" : ""}
                   {" · "}
                   <button
                     type="button"
@@ -1172,8 +1225,25 @@ function CompList({
               ) : null}
             </li>
           );
-        })}
-      </ul>
+        };
+
+        return (
+          <div className="space-y-3">
+            {sections.map((section) => (
+              <div key={section.key}>
+                {section.label ? (
+                  <p className="mb-2 border-y border-white/15 py-2 text-center font-mono text-[10px] font-bold tracking-[0.16em] uppercase tabular-nums text-white">
+                    {section.label}
+                  </p>
+                ) : null}
+                <ul className="divide-y divide-white/[0.06] border-t border-white/10">
+                  {section.comps.map(renderRow)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1393,6 +1463,7 @@ function ScenarioPanel({
   midpointMethod,
   onMidpointMethodChange,
   skipRangeAnimation = false,
+  subjectConditionLabel = null,
   className,
 }: {
   title: string;
@@ -1412,6 +1483,8 @@ function ScenarioPanel({
   onMidpointMethodChange: (method: IfMidpointMethod) => void;
   /** Cookie / method click — suppress the outer↔median size swap. */
   skipRangeAnimation?: boolean;
+  /** Admin-facing Excellent/Good/Fair/Poor for the subject. */
+  subjectConditionLabel?: string | null;
   className?: string;
 }) {
   const [showTopBand, setShowTopBand] = useState(false);
@@ -1510,6 +1583,11 @@ function ScenarioPanel({
           <p className="lg:mt-2 text-white/70 text-sm leading-relaxed">
             {headline}
           </p>
+          {subjectConditionLabel ? (
+            <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+              Subject condition · {subjectConditionLabel}
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-start gap-2">
           {saleMarketBand ? <IfMarketBandBadge band={saleMarketBand} /> : null}
@@ -1846,8 +1924,10 @@ export default function ListingIfPanel({
 
   const saleComps = useMemo(() => {
     if (!matchCriteria || !sessionMatch) return saleEstimate.comps;
-    return saleEstimate.comps.filter((row) =>
-      ifCompMatchesSession(row, matchCriteria, sessionMatch),
+    return saleEstimate.comps.filter(
+      (row) =>
+        row.stripSearchPick ||
+        ifCompMatchesSession(row, matchCriteria, sessionMatch),
     );
   }, [saleEstimate.comps, matchCriteria, sessionMatch]);
 
@@ -2052,6 +2132,7 @@ export default function ListingIfPanel({
           headline="Likely sale range if this home went to market today."
           scenario={saleEstimate}
           comps={saleComps}
+          subjectConditionLabel={listingConditionLabel(data?.subjectCondition)}
           kind="sale"
           townHint={townHint}
           foundCountEmphasized={foundCountEmphasized}

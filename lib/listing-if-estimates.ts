@@ -45,6 +45,8 @@ const ACTIVE_PPSF_WEIGHT = IF_ACTIVE_BLEND_WEIGHT
 /** Comp spread band for If low/high range (weighted 25th–75th percentile). */
 const RANGE_LOW_PERCENTILE = 0.25
 const RANGE_HIGH_PERCENTILE = 0.75
+/** Need more than a hand-picked 3 before dropping top/bottom percentiles. */
+const MIN_COMPS_FOR_PERCENTILE_TRIM = 4
 const MIN_SALE_RANGE_SPREAD = 10_000
 const MIN_RENT_RANGE_SPREAD = 200
 const SINGLE_COMP_RANGE_PAD = 0.05
@@ -149,6 +151,9 @@ export type IfEstimateContext = {
   /** Painted coastal path already chose the outward ring. */
   useStripSearchBasis?: boolean
   stripSearch?: IfStripSearchMeta | null
+  /** Full criteria-fitting cohort to list; estimate still uses `sold`/`active`. */
+  displaySold?: ComparableListing[]
+  displayActive?: ComparableListing[]
 }
 
 function median(nums: number[]): number | null {
@@ -591,6 +596,15 @@ function finalizeEstimateRange(
     }
   }
 
+  if (amountEntries.length < MIN_COMPS_FOR_PERCENTILE_TRIM) {
+    const values = amountEntries.map((entry) => entry.value)
+    return {
+      amount,
+      amountLow: Math.round(Math.min(...values, amount)),
+      amountHigh: Math.round(Math.max(...values, amount)),
+    }
+  }
+
   let low =
     weightedPercentile(amountEntries, RANGE_LOW_PERCENTILE) ?? amount
   let high =
@@ -767,6 +781,8 @@ export type IfCompRow = {
   conditionGrade?: ListingConditionGrade | null
   underAgreement?: boolean
   matchFit?: StripMatchFit | null
+  /** True when this row is one of the targeted What-if start-set of 3. */
+  stripSearchPick?: boolean
 }
 
 export type IfEstimateMath = {
@@ -977,6 +993,7 @@ function buildCompRows(
       conditionGrade: comp.conditionGrade ?? null,
       underAgreement: Boolean(comp.underAgreement),
       matchFit: comp.matchFit ?? null,
+      stripSearchPick: Boolean(comp.stripSearchPick),
     }
   }
 
@@ -1103,7 +1120,12 @@ function finalizeScenario(
       matchedSoldCount,
       matchedActiveCount,
     },
-    comps: buildCompRows(tierSold, tierActive, subjectSqft, context),
+    comps: buildCompRows(
+      context.displaySold ?? tierSold,
+      context.displayActive ?? tierActive,
+      subjectSqft,
+      context,
+    ),
     midpointAggregates,
     stripSearch: context.stripSearch ?? null,
   }

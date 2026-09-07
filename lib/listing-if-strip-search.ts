@@ -262,13 +262,14 @@ function stampSelectedComp(
   subjectStrip: CoastalStripIndex,
   ring: StripSearchRing,
   subject: StripSearchSubject,
+  pick: boolean,
 ): ComparableListing {
   const boostPct = inlandStripBoostPct(subjectStrip, ring)
   return {
     ...comp,
     stripBoostPct: boostPct,
     matchFit: stripMatchFit(comp, subject),
-    stripSearchPick: true,
+    stripSearchPick: pick,
   }
 }
 
@@ -369,7 +370,7 @@ export function selectStripSearchPool(args: {
     const take = rankRingComps(inRing, args.subject).slice(0, needed)
     picked.push(
       ...take.map((comp) =>
-        stampSelectedComp(comp, args.subjectStrip, ring, args.subject),
+        stampSelectedComp(comp, args.subjectStrip, ring, args.subject, true),
       ),
     )
     usedRings.push(ring)
@@ -378,4 +379,50 @@ export function selectStripSearchPool(args: {
     }
   }
   return picked.length > 0 ? toSelection(picked, usedRings) : null
+}
+
+export type StripSearchArgs = Parameters<typeof selectStripSearchPool>[0]
+
+/**
+ * Every inland sold/UAG that fits beds/baths/sqft/condition — not just the
+ * targeted 3. Used so What-if can year-bucket the rest of the cohort.
+ */
+export function listStripSearchEligible(
+  args: StripSearchArgs,
+): ComparableListing[] {
+  const match = args.match ?? DEFAULT_PRICING_MATCHING_CONFIG
+  const lookbackMonths = args.lookbackMonths ?? 12
+  const nowMs = args.nowMs ?? Date.now()
+  const placements = args.townCenterPlacements ?? {}
+
+  const pool = [...args.sold, ...(args.underAgreement ?? [])].map((comp) =>
+    stampComparableTownCenter(comp, placements),
+  )
+  const eligible = preferSoldOverSameProperty(
+    pool.filter((comp) =>
+      eligibleStripCandidate(comp, {
+        subjectStrip: args.subjectStrip,
+        subject: args.subject,
+        match,
+        lookbackMonths,
+        nowMs,
+        allowUnderAgreement: true,
+      }),
+    ),
+  )
+  const out: ComparableListing[] = []
+  for (const ring of stripSearchRings(args.subjectStrip)) {
+    const inRing = rankRingComps(
+      eligible.filter(
+        (comp) => comparableStripRing(comp, args.subjectStrip) === ring,
+      ),
+      args.subject,
+    )
+    out.push(
+      ...inRing.map((comp) =>
+        stampSelectedComp(comp, args.subjectStrip, ring, args.subject, false),
+      ),
+    )
+  }
+  return out
 }

@@ -62,6 +62,37 @@ function soldComp(args: {
 }
 
 describe('What-if coastal strips', () => {
+  it('keeps the top and bottom of a 3-comp set in the range', () => {
+    const sold = [
+      soldComp({ mlsId: 'low', ppsf: 664, strip: null, boost: 1 }),
+      soldComp({ mlsId: 'mid', ppsf: 900, strip: 3, boost: 0.5 }),
+      soldComp({ mlsId: 'high', ppsf: 964, strip: 3, boost: 0.5 }),
+    ]
+    const scenario = estimateFromComparables(
+      sold,
+      [],
+      1040,
+      1500000,
+      {
+        subjectVintage: '1900-1940',
+        locationPremium: premium(1),
+        useStripSearchBasis: true,
+        stripSearch: {
+          subjectStrip: 1,
+          basisRing: 3,
+          basisLabel: '4 4th strip + Rest of town',
+          foundCount: 3,
+        },
+      },
+    )
+    assert.equal(scenario.amountLow, Math.round(664 * 2 * 1040))
+    assert.equal(scenario.amountHigh, Math.round(964 * 1.5 * 1040))
+    assert.ok(scenario.comps.every((row) => {
+      const implied = row.impliedSubjectAmount
+      return implied != null && implied >= scenario.amountLow! && implied <= scenario.amountHigh!
+    }))
+  })
+
   it('uses same-strip comps with no boost when the ring is already chosen', () => {
     const sold = [
       soldComp({ mlsId: 'c1', ppsf: 900, strip: 1 }),

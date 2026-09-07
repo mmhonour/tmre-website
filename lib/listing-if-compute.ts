@@ -26,6 +26,7 @@ import {
   type ListingIfPayload,
 } from '@/lib/listing-if-estimates'
 import {
+  listStripSearchEligible,
   selectStripSearchPool,
   stripSearchRingLabel,
   usesCoastalStripWhatIf,
@@ -68,7 +69,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 20
+export const IF_ESTIMATES_ALGO_VERSION = 21
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -190,9 +191,9 @@ function paintedSaleScenario(
     lookbackMonths,
     cells,
   )
-  const selected =
+  const stripArgs =
     subjectStrip != null
-      ? selectStripSearchPool({
+      ? {
           subjectStrip,
           subject: {
             beds: subject.beds,
@@ -207,8 +208,15 @@ function paintedSaleScenario(
           match,
           lookbackMonths,
           townCenterPlacements: townCenters,
-        })
+        }
       : null
+  const selected = stripArgs ? selectStripSearchPool(stripArgs) : null
+  const eligible = stripArgs ? listStripSearchEligible(stripArgs) : []
+  const pickIds = new Set(selected?.comps.map((comp) => comp.mlsId) ?? [])
+  const display = eligible.map((comp) => ({
+    ...comp,
+    stripSearchPick: pickIds.has(comp.mlsId),
+  }))
   const { criteria } = subjectComparablesCriteria(subject, match)
   const params = buildIfMatchParams('sale', criteria, lookbackMonths, match)
   const sqft = subject.sqft != null && subject.sqft > 0 ? subject.sqft : null
@@ -230,6 +238,8 @@ function paintedSaleScenario(
               foundCount: selected?.comps.length ?? 0,
             }
           : null,
+      displaySold: display.filter((comp) => !comp.underAgreement),
+      displayActive: display.filter((comp) => Boolean(comp.underAgreement)),
     },
     'sale',
     params,
