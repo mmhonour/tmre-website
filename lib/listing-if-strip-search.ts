@@ -24,6 +24,19 @@ import {
 /** What-if starts with this many sold/UAG comps (fill outward if a ring is short). */
 export const IF_STRIP_SEARCH_MIN_COMPS = 3
 
+/**
+ * Strip-search What-if is only for a house sitting on a painted coastal
+ * square. Unpainted and town-center-disk subjects keep the production path
+ * (vintage + pin / village / golf). A strip painted *under* the disk is
+ * stored for later, not used as the sale basis.
+ */
+export function usesCoastalStripWhatIf(
+  coastalStrip: CoastalStripIndex | null | undefined,
+  inTownCenter: boolean,
+): boolean {
+  return coastalStrip != null && !inTownCenter
+}
+
 /** Exact living-area band for matchFit (similar uses PricingMatchingConfig). */
 export const IF_STRIP_EXACT_SQFT_TOLERANCE = 0.1
 

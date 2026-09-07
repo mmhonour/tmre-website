@@ -10,6 +10,7 @@ import {
   preferSoldOverSameProperty,
   selectStripSearchPool,
   stripSearchRings,
+  usesCoastalStripWhatIf,
 } from './listing-if-strip-search'
 import type { CoastalStripIndex } from './location-estimate-zip-grid-shared'
 
@@ -70,6 +71,13 @@ const subject = {
 }
 
 describe('coastal strip search', () => {
+  it('uses strip-search What-if only for painted coastal squares outside a town disk', () => {
+    assert.equal(usesCoastalStripWhatIf(1, false), true)
+    assert.equal(usesCoastalStripWhatIf(1, true), false)
+    assert.equal(usesCoastalStripWhatIf(null, false), false)
+    assert.equal(usesCoastalStripWhatIf(null, true), false)
+  })
+
   it('walks outward from the subject strip and never seaward', () => {
     assert.deepEqual(stripSearchRings(0), [0, 1, 2, 3, 'town'])
     assert.deepEqual(stripSearchRings(1), [1, 2, 3, 'town'])

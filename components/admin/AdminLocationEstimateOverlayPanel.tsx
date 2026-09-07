@@ -81,7 +81,10 @@ export default function AdminLocationEstimateOverlayPanel() {
               from the next inland ring (same condition before Fair). Inland
               rings get a temporary boost (33% / 50% / 75% / 100%).
               Town-center comps are excluded. Search never runs seaward.
-              Unpainted houses still use distance to water-access pins.
+              Unpainted houses and houses inside a town-center radius keep
+              the production What if (vintage + pins / village / golf). A
+              coastal number under a town disk is stored, not used as the
+              sale basis.
             </p>
             <ul className="mt-2 space-y-1">
               {([0, 1, 2, 3] as const).map((strip) => {

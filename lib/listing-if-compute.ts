@@ -28,10 +28,14 @@ import {
 import {
   selectStripSearchPool,
   stripSearchRingLabel,
+  usesCoastalStripWhatIf,
 } from '@/lib/listing-if-strip-search'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
 import { getLocationEstimateTownCentersFresh } from '@/lib/location-estimate-town-centers-config'
-import type { TownCenterPlacements } from '@/lib/location-estimate-town-centers-shared'
+import {
+  townCenterOwningAt,
+  type TownCenterPlacements,
+} from '@/lib/location-estimate-town-centers-shared'
 import { getLocationEstimateZipGridFresh } from '@/lib/location-estimate-zip-grid-config'
 import type { ZipGridCells } from '@/lib/location-estimate-zip-grid-shared'
 import { isRentalListing } from '@/lib/listing-kind'
@@ -62,7 +66,7 @@ import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 17
+export const IF_ESTIMATES_ALGO_VERSION = 18
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -107,6 +111,14 @@ async function loadTownCenterPlacements(): Promise<TownCenterPlacements> {
   } catch {
     return {}
   }
+}
+
+function listingInTownCenter(
+  listing: Pick<Listing, 'latitude' | 'longitude'>,
+  placements: TownCenterPlacements,
+): boolean {
+  if (listing.latitude == null || listing.longitude == null) return false
+  return townCenterOwningAt(listing.latitude, listing.longitude, placements) != null
 }
 
 function buildStripSearchCandidates(
@@ -266,6 +278,7 @@ function scenariosFromComparablesResults(
   rentComps: ComparablesResult,
   match: PricingMatchingConfig,
   cells?: ZipGridCells,
+  townCenters: TownCenterPlacements = {},
 ): {
   sale: IfScenario
   rent: IfScenario
@@ -278,12 +291,14 @@ function scenariosFromComparablesResults(
     subject.address.city,
     normalizeZip(subject.address.postalCode),
   )
+  const inTownCenter = listingInTownCenter(subject, townCenters)
+  const locationCells = inTownCenter ? undefined : cells
   const locationPremium = computeLocationPremium(
     subject.latitude,
     subject.longitude,
     subject.address.postalCode,
     subject.address.city,
-    { cells },
+    { cells: locationCells },
   )
   const subjectVintage = subjectVintageFromYear(subject.yearBuilt)
   const subjectCondition = resolveListingCondition(subject)
@@ -292,8 +307,8 @@ function scenariosFromComparablesResults(
     locationPremium,
     subjectCondition,
   }
-  const sale = applyGridToComparables(saleComps, cells)
-  const rent = applyGridToComparables(rentComps, cells)
+  const sale = applyGridToComparables(saleComps, locationCells)
+  const rent = applyGridToComparables(rentComps, locationCells)
 
   return {
     sale: scenarioFromComparablesResult(
@@ -337,12 +352,13 @@ function computeIfEstimates(
     subject.address.city,
     normalizeZip(subject.address.postalCode),
   )
+  const inTownCenter = listingInTownCenter(subject, townCenters)
   const locationPremium = computeLocationPremium(
     subject.latitude,
     subject.longitude,
     subject.address.postalCode,
     subject.address.city,
-    { cells },
+    { cells: inTownCenter ? undefined : cells },
   )
   const subjectVintage = subjectVintageFromYear(subject.yearBuilt)
   const subjectCondition = resolveListingCondition(subject)
@@ -354,11 +370,11 @@ function computeIfEstimates(
   const rankOpts = {
     soldLookbackMonths: lookbackMonths,
     match,
-    locationCells: cells,
+    locationCells: inTownCenter ? undefined : cells,
   }
   const rentComps = applyGridToComparables(
     findComparableRentals(subject, soldPool, activePool, rankOpts),
-    cells,
+    inTownCenter ? undefined : cells,
   )
   const rent = scenarioFromComparablesResult(
     'rent',
@@ -368,7 +384,7 @@ function computeIfEstimates(
     estimateContext,
   )
 
-  if (locationPremium.coastalStrip != null) {
+  if (usesCoastalStripWhatIf(locationPremium.coastalStrip, inTownCenter)) {
     return {
       sale: paintedSaleScenario(
         subject,
@@ -665,19 +681,23 @@ export async function resolveListingIfPayload(
   // Painted coastal subjects skip those edges: strip search needs the full
   // town sold + UAG pool, not the vintage-ranked Sales tab set.
   const match = await getPricingMatchingConfigFresh()
-  const [saleCached, rentCached, cells] = await Promise.all([
+  const [saleCached, rentCached, cells, townCenters] = await Promise.all([
     readCachedComparables(listing, 'sale'),
     readCachedComparables(listing, 'rental'),
     loadWhatIfLocationCells(),
+    loadTownCenterPlacements(),
   ])
-  const painted =
+  const inTownCenter = listingInTownCenter(listing, townCenters)
+  const painted = usesCoastalStripWhatIf(
     computeLocationPremium(
       listing.latitude,
       listing.longitude,
       listing.address.postalCode,
       listing.address.city,
-      { cells },
-    ).coastalStrip != null
+      { cells: inTownCenter ? undefined : cells },
+    ).coastalStrip,
+    inTownCenter,
+  )
   if (painted) {
     const { soldPool, activePool } = await compPoolsForListing(listing)
     return cacheIfEstimatesForListing(listing, soldPool, activePool)
@@ -693,6 +713,7 @@ export async function resolveListingIfPayload(
         rentCached,
         match,
         cells,
+        townCenters,
       ),
     )
   }
@@ -704,7 +725,7 @@ export async function resolveListingIfPayload(
     const rankOpts = {
       soldLookbackMonths: lookbackMonths,
       match,
-      locationCells: cells,
+      locationCells: inTownCenter ? undefined : cells,
     }
     const saleComps =
       saleCached ??
@@ -721,6 +742,7 @@ export async function resolveListingIfPayload(
         rentComps,
         match,
         cells,
+        townCenters,
       ),
     )
   }
