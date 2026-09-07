@@ -734,6 +734,10 @@ export type IfMatchParams = {
   lookbackLabel: string
   /** Present when the subject is furnished / partial / negotiable. */
   furnished?: ListingFurnished
+  /** MLS DirectWaterfrontYN as Y/N for the Criteria box. */
+  waterfrontYn?: 'Y' | 'N' | null
+  /** MLS WaterfrontDescription for the Criteria box. */
+  waterfrontDescription?: string | null
 }
 
 /** One comparable that contributed to the estimate (hyperlinkable). */
@@ -889,6 +893,10 @@ export function buildIfMatchParams(
     lookbackMonths,
     lookbackLabel: lookbackLabel(lookbackMonths),
     ...(criteria?.furnished ? { furnished: criteria.furnished } : {}),
+    ...(criteria?.waterfrontYn ? { waterfrontYn: criteria.waterfrontYn } : {}),
+    ...(criteria?.waterfrontDescription
+      ? { waterfrontDescription: criteria.waterfrontDescription }
+      : {}),
   }
 }
 

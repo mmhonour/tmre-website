@@ -18,6 +18,10 @@ import {
 } from '@/lib/listing-comparables-shared'
 import { closeFieldsFromListing, compactHistoryEvents } from '@/lib/listing-history'
 import { parcelNumberFromRaw } from '@/lib/listing-property-tax'
+import {
+  waterfrontDescriptionFromRaw,
+  waterfrontYnFromRaw,
+} from '@/lib/listing-waterfront'
 import { normalizeParcelNumber } from '@/lib/property-address'
 import { isClosedListing, isMarketListing } from '@/lib/listings-store'
 import {
@@ -304,6 +308,8 @@ export function subjectComparablesCriteria(
       ...(subjectHasFurnishedCriteria(subjectFurnished)
         ? { furnished: subjectFurnished }
         : {}),
+      waterfrontYn: waterfrontYnFromRaw(subject.raw),
+      waterfrontDescription: waterfrontDescriptionFromRaw(subject.raw),
     },
     missingCriteria: [],
   }

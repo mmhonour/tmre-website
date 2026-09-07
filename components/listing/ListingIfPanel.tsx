@@ -487,6 +487,10 @@ function criteriaFromIfParams(
       ? { vintageEdgeLabels: params.vintageEdgeLabels }
       : {}),
     ...(params.furnished ? { furnished: params.furnished } : {}),
+    ...(params.waterfrontYn ? { waterfrontYn: params.waterfrontYn } : {}),
+    ...(params.waterfrontDescription
+      ? { waterfrontDescription: params.waterfrontDescription }
+      : {}),
   };
 }
 

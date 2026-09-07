@@ -77,6 +77,10 @@ export type ComparablesCriteria = {
    * the same furnish status unless the session expands to any.
    */
   furnished?: ListingFurnished
+  /** MLS `raw.DirectWaterfrontYN` — Criteria shows Waterfront (Y/N). */
+  waterfrontYn?: 'Y' | 'N' | null
+  /** MLS `raw.WaterfrontDescription` — shown in Criteria when present. */
+  waterfrontDescription?: string | null
 }
 
 /**

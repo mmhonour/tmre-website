@@ -33,7 +33,9 @@ export type CriteriaStepKey =
   | "bath"
   | "vintage"
   | "sqft"
-  | "furnish";
+  | "furnish"
+  | "waterfront"
+  | "waterfrontDesc";
 
 export type CriteriaStepFeedback = {
   key: CriteriaStepKey;
@@ -84,7 +86,7 @@ export type MatchCriteriaTolerances = {
 
 type CriteriaBound = {
   key: CriteriaStepKey;
-  /** Left column label: ZIP, Beds, Baths, Vintage, SQFT, Furnish. */
+  /** Left column label: ZIP, Beds, Baths, Vintage, SQFT, Furnish, Waterfront. */
   rowLabel: string;
   /** Subject value shown after the label (`n` / `n.n`). */
   value: string;
@@ -94,6 +96,8 @@ type CriteriaBound = {
   expanded: string;
   canDecrement: boolean;
   canIncrement: boolean;
+  /** MLS waterfront rows — shown, not ±-stepped. */
+  displayOnly?: boolean;
 };
 
 function criteriaBounds(
@@ -187,6 +191,32 @@ function criteriaBounds(
     });
   }
 
+  if (criteria.waterfrontYn === "Y" || criteria.waterfrontYn === "N") {
+    bounds.push({
+      key: "waterfront",
+      rowLabel: "Waterfront (Y/N)",
+      value: criteria.waterfrontYn,
+      token: "",
+      expanded: "",
+      canDecrement: false,
+      canIncrement: false,
+      displayOnly: true,
+    });
+  }
+
+  if (criteria.waterfrontDescription) {
+    bounds.push({
+      key: "waterfrontDesc",
+      rowLabel: "Description",
+      value: criteria.waterfrontDescription,
+      token: "",
+      expanded: "",
+      canDecrement: false,
+      canIncrement: false,
+      displayOnly: true,
+    });
+  }
+
   return bounds;
 }
 
@@ -240,6 +270,8 @@ const AUTO_REVEAL_MS = 10_000;
  *   Vintage  n [v1, v2, …]    (−)(+)
  *   SQFT     n [±n%]          (−)(+)
  *   Furnish  Furnished [exact](−)(+)  — only when subject is furnished
+ *   Waterfront (Y/N)  Y|N             — MLS DirectWaterfrontYN, display only
+ *   Description       …               — MLS WaterfrontDescription, when present
  *
  * Click the bracket to toggle the encapsulated range. When manipulation is
  * enabled, ± buttons sit right-aligned on each row.
@@ -400,6 +432,9 @@ export default function MatchingCriteriaSummary({
         if (!criteria.furnished) break;
         next.furnishedScope = delta > 0 ? "any" : "exact";
         break;
+      case "waterfront":
+      case "waterfrontDesc":
+        return;
     }
     onSessionChange(next, { key });
     flashExpanded(key);
@@ -452,13 +487,24 @@ export default function MatchingCriteriaSummary({
         return (
           <div
             key={bound.key}
-            className="flex w-full min-w-0 items-center gap-x-2 gap-y-0.5"
+            className={`flex w-full min-w-0 gap-x-2 gap-y-0.5 ${
+              bound.displayOnly ? "items-start" : "items-center"
+            }`}
           >
-            <span className={`w-[4.5rem] shrink-0 ${labelClass}`}>
+            <span className={`w-[8.5rem] shrink-0 ${labelClass}`}>
               {bound.rowLabel}
             </span>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-              <span className={valueClass}>{bound.value}</span>
+              <span
+                className={
+                  bound.key === "waterfrontDesc"
+                    ? `${isModal ? "text-navy/85" : "text-white/80"} text-[11px] leading-snug normal-case tracking-normal`
+                    : valueClass
+                }
+              >
+                {bound.value}
+              </span>
+              {!bound.displayOnly ? (
               <button
                 type="button"
                 onClick={() => toggle(bound.key)}
@@ -468,13 +514,14 @@ export default function MatchingCriteriaSummary({
               >
                 {isOpen ? bound.expanded : `[${bound.token}]`}
               </button>
+              ) : null}
               {showNote ? (
                 <span className={noteClass} role="status" aria-live="polite">
                   {stepFeedback.text}
                 </span>
               ) : null}
             </div>
-            {editable && controlsOpen ? (
+            {editable && controlsOpen && !bound.displayOnly ? (
               <span className="ml-auto inline-flex shrink-0 items-center gap-0.5">
                 <RaisedStepButton
                   label="−"
