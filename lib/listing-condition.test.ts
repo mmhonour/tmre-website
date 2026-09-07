@@ -6,9 +6,11 @@ import {
 } from './listing-condition'
 
 describe('listing condition grades', () => {
-  it('assigns 772 Rowland Excellent via the per-listing override', () => {
-    assert.equal(resolveListingCondition({ mlsId: '24186969' }), 'excellent')
-    assert.equal(listingConditionRank('excellent'), 1)
+  it('assigns 772 Rowland Good and 877 South Pine Creek Excellent', () => {
+    assert.equal(resolveListingCondition({ mlsId: '24186969' }), 'good')
+    assert.equal(listingConditionRank('good'), 2)
+    assert.equal(resolveListingCondition({ mlsId: '24149919' }), 'excellent')
+    assert.equal(resolveListingCondition({ mlsId: '24201368' }), 'excellent')
   })
 
   it('treats new construction as Excellent', () => {

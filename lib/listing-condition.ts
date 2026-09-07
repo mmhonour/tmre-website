@@ -28,10 +28,13 @@ export const LISTING_CONDITION_RANKS: Record<ListingConditionGrade, ListingCondi
 
 /**
  * Manual grades until listings carry a stored condition.
- * 772 Rowland Rd (MLS 24186969) is Excellent for coastal What-if.
+ * 772 Rowland Rd (MLS 24186969) is Good. 877 South Pine Creek is Excellent
+ * on both the closed sale and the current listing.
  */
 export const LISTING_CONDITION_OVERRIDES: Record<string, ListingConditionGrade> = {
-  '24186969': 'excellent',
+  '24186969': 'good',
+  '24149919': 'excellent',
+  '24201368': 'excellent',
 }
 
 export function isListingConditionGrade(
