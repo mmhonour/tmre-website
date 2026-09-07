@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  listingIngestStatusCopy,
   parseStreetListingIngestProgress,
   streetListingIngestIsFresh,
   streetListingIngestMetaKey,
@@ -83,5 +84,18 @@ describe('streetListingIngestIsFresh', () => {
       ),
       false,
     )
+  })
+})
+
+describe('listingIngestStatusCopy', () => {
+  it('says looking then loading then the outcome', () => {
+    assert.equal(listingIngestStatusCopy('queued'), 'Looking for a listing…')
+    assert.equal(listingIngestStatusCopy('checking-db'), 'Looking for a listing…')
+    assert.equal(
+      listingIngestStatusCopy('rets-address'),
+      'Loading listing from RETS…',
+    )
+    assert.equal(listingIngestStatusCopy('found', 'Closed'), 'Closed')
+    assert.equal(listingIngestStatusCopy('none'), 'No MLS listing in RETS')
   })
 })

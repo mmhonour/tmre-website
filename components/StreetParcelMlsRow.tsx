@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { VisionDeedHistoryPopout, type VisionDeedHistoryRow } from '@/components/VisionDeedHistoryPopout'
 import {
   formatStreetListingLine,
@@ -9,6 +9,7 @@ import {
   type StreetListingCard,
 } from '@/lib/street-listing-card-shared'
 import {
+  listingIngestStatusCopy,
   STREET_LISTING_INGEST_IN_FLIGHT,
   type StreetListingIngestPhase,
 } from '@/lib/street-listing-ingest-progress-shared'
@@ -53,17 +54,22 @@ export function StreetParcelMlsRow({
     initialListing ? 'found' : null,
   )
   const [message, setMessage] = useState<string | null>(null)
+  const inflight = useRef(false)
 
   const applyPayload = useCallback((payload: IngestPayload) => {
     if (payload.listing) {
       setListing(payload.listing)
       setPhase('found')
       setMessage(payload.message ?? payload.listing.status)
+      inflight.current = false
       return
     }
     if (payload.phase) {
       setPhase(payload.phase)
       setMessage(payload.message ?? null)
+      if (!STREET_LISTING_INGEST_IN_FLIGHT.has(payload.phase)) {
+        inflight.current = false
+      }
     }
   }, [])
 
@@ -75,10 +81,37 @@ export function StreetParcelMlsRow({
     applyPayload((await res.json()) as IngestPayload)
   }, [applyPayload, town, visionPid])
 
+  const startIngest = useCallback(() => {
+    if (listing || inflight.current) return
+    inflight.current = true
+    setPhase('queued')
+    setMessage('Looking for a listing…')
+    void (async () => {
+      try {
+        const res = await fetch('/api/streets/ingest-listing', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ town, visionPid }),
+        })
+        if (!res.ok) {
+          setPhase('error')
+          setMessage('Listing search failed')
+          inflight.current = false
+          return
+        }
+        applyPayload((await res.json()) as IngestPayload)
+      } catch {
+        setPhase('error')
+        setMessage('Listing search failed')
+        inflight.current = false
+      }
+    })()
+  }, [applyPayload, listing, town, visionPid])
+
   useEffect(() => {
     if (initialListing) return
-    void poll()
-  }, [initialListing, poll])
+    startIngest()
+  }, [initialListing, startIngest])
 
   useEffect(() => {
     if (!phase || !STREET_LISTING_INGEST_IN_FLIGHT.has(phase)) return
@@ -184,11 +217,11 @@ export function StreetParcelMlsRow({
         </p>
       ) : phase && STREET_LISTING_INGEST_IN_FLIGHT.has(phase) ? (
         <p className="mt-1 font-mono text-[11px] tracking-[0.04em] text-gold/90">
-          {message || 'Searching RETS…'}
+          {listingIngestStatusCopy(phase, message)}
         </p>
       ) : phase === 'none' || phase === 'error' ? (
         <p className="mt-1 font-mono text-[11px] tracking-[0.04em] text-charcoal/40">
-          {message || 'No MLS listing in RETS'}
+          {listingIngestStatusCopy(phase, message)}
         </p>
       ) : null}
     </li>

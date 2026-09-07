@@ -106,6 +106,22 @@ export function parseStreetListingIngestProgress(
 /** Progress younger than this is still a live search the page can watch. */
 export const STREET_LISTING_INGEST_FRESH_MS = 2 * 60 * 1000
 
+/** Page copy while a missing MLS row is lazy-loaded from RETS. */
+export function listingIngestStatusCopy(
+  phase: StreetListingIngestPhase | null | undefined,
+  message?: string | null,
+): string {
+  if (!phase || phase === 'queued' || phase === 'checking-db') {
+    return 'Looking for a listing…'
+  }
+  if (STREET_LISTING_INGEST_IN_FLIGHT.has(phase)) {
+    return 'Loading listing from RETS…'
+  }
+  if (phase === 'found') return message?.trim() || 'Listing is available'
+  if (phase === 'error') return message?.trim() || 'Listing search failed'
+  return message?.trim() || 'No MLS listing in RETS'
+}
+
 export function streetListingIngestIsFresh(
   progress: StreetListingIngestProgress | null,
   now = Date.now(),
