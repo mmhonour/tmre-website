@@ -1,4 +1,5 @@
 import { normalizeStreetLine, streetSearchVariants } from '@/lib/property-address'
+import { streetLineWithoutType } from '@/lib/street-type-abbreviations'
 
 const STREET_TYPES = new Set([
   'st',
@@ -86,8 +87,9 @@ export function findListingStreetsMatch(a: string, b: string): boolean {
 }
 
 /**
- * RETS UnparsedAddress hops: Lane/Road form first, then the collapsed
- * compound (`16 Seaspray`) so a glued MLS spelling still hits.
+ * RETS UnparsedAddress hops. Omit Rd/Road first — `*road*` misses `Rd`
+ * and `*ln*` misses `Lane`. Then the short type, then the long type.
+ * Name-pattern glue (Seaspray) is a last hop, not the main guess.
  */
 export function findListingStreetQueries(street: string): string[] {
   const seen = new Set<string>()
@@ -98,13 +100,10 @@ export function findListingStreetQueries(street: string): string[] {
     seen.add(key)
     out.push(value.replace(/\s+/g, ' ').trim())
   }
-  const variants = streetSearchVariants(street)
-  const longest = variants.reduce(
-    (best, next) => (next.length > best.length ? next : best),
-    variants[0] ?? street,
+  add(streetLineWithoutType(street))
+  const variants = [...streetSearchVariants(street)].sort(
+    (a, b) => a.length - b.length,
   )
-  add(longest)
-  const collapsed = collapsedListingStreet(street)
-  if (collapsed) add(`${collapsed.house} ${collapsed.name}`)
+  for (const variant of variants) add(variant)
   return out
 }

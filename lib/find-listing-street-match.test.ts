@@ -65,11 +65,22 @@ describe('findListingStreetsMatch', () => {
 })
 
 describe('findListingStreetQueries', () => {
-  it('searches the expanded spelling then the glued compound', () => {
+  it('searches without Rd/Road first, then both abbreviations', () => {
     const queries = findListingStreetQueries('16 Sea Spray Rd').map((q) =>
       q.toLowerCase(),
     )
-    assert.ok(queries.some((q) => q.includes('spray') && q.includes('road')))
-    assert.ok(queries.includes('16 seaspray'))
+    assert.equal(queries[0], '16 sea spray')
+    assert.ok(queries.some((q) => q.endsWith(' rd')))
+    assert.ok(queries.some((q) => q.endsWith(' road')))
+    assert.ok(!queries.includes('16 seaspray'))
+  })
+
+  it('searches Locust without Ln so Lane still hits', () => {
+    const queries = findListingStreetQueries('5 Locust Ln').map((q) =>
+      q.toLowerCase(),
+    )
+    assert.equal(queries[0], '5 locust')
+    assert.ok(queries.some((q) => q.endsWith(' ln')))
+    assert.ok(queries.some((q) => q.endsWith(' lane')))
   })
 })

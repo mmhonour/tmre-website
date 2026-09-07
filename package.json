@@ -47,6 +47,7 @@
     "sync:vision-streets": "tsx --require ./scripts/stub-server-only.cjs scripts/sync-vision-streets.ts",
     "match:vision-listings": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-listings.ts",
     "match:vision-abbrev": "tsx --require ./scripts/stub-server-only.cjs scripts/match-vision-abbrev.ts",
+    "listing:street-suffixes": "tsx --require ./scripts/stub-server-only.cjs scripts/listing-street-suffixes.ts",
     "backfill:missed-vision-pids": "tsx --require ./scripts/stub-server-only.cjs scripts/backfill-missed-vision-pids.ts",
     "scores:edge": "tsx --require ./scripts/stub-server-only.cjs scripts/rebuild-edge-scores.ts",
     "estimates:location": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/rebuild-location-estimates.ts",
