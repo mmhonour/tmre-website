@@ -75,10 +75,12 @@ export default function AdminLocationEstimateOverlayPanel() {
               What if on listing / showcase
             </p>
             <p className="mt-1 text-[12px] leading-snug text-slate">
-              What if reads these painted 1–4 squares. Same-strip homes weigh
-              more; $/sqft is scaled by the 0.75^n inland rule when comparing
-              across strips. Unpainted houses still use distance to water-access
-              pins.
+              What if searches the subject strip first, then only outward
+              (2 → 3 → 4 → rest of town). The first ring with at least three
+              sold or under-agreement comps in 12 months is the $/sqft basis.
+              Inland rings get a temporary boost (33% / 50% / 75% / 100%).
+              Town-center comps are excluded. Search never runs seaward.
+              Unpainted houses still use distance to water-access pins.
             </p>
             <ul className="mt-2 space-y-1">
               {([0, 1, 2, 3] as const).map((strip) => {

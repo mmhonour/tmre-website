@@ -64,7 +64,9 @@ import {
 import CriteriaMatchPreviewList, {
   criteriaPreviewRowFromIfComp,
 } from "@/components/listing/CriteriaMatchPreviewList";
+import { listingConditionLabel } from "@/lib/listing-condition";
 import { listingDetailHref } from "@/lib/listing-url";
+import { coastalStripLabel } from "@/lib/location-estimate-zip-grid-shared";
 import {
   loadTabJson,
   loadTabJsonWithRetry,
@@ -1100,7 +1102,9 @@ function CompList({
                     ? isRent
                       ? "Rented"
                       : "Sold"
-                    : "Listed"}
+                    : comp.underAgreement
+                      ? "UAG"
+                      : "Listed"}
                   {comp.closeDate ? ` · ${fmtDate(comp.closeDate)}` : ""}
                   {" · "}
                   <span
@@ -1129,6 +1133,18 @@ function CompList({
                     </>
                   ) : null}
                   {sizeParts.length > 0 ? ` · ${sizeParts.join(" · ")}` : null}
+                  {comp.coastalStrip != null
+                    ? ` · ${coastalStripLabel(comp.coastalStrip)}`
+                    : comp.stripBoostPct != null && comp.stripBoostPct > 0
+                      ? " · Rest of town"
+                      : ""}
+                  {comp.stripBoostPct != null && comp.stripBoostPct > 0
+                    ? ` · +${Math.round(comp.stripBoostPct * 100)}%`
+                    : ""}
+                  {comp.matchFit ? ` · ${comp.matchFit}` : ""}
+                  {listingConditionLabel(comp.conditionGrade)
+                    ? ` · ${listingConditionLabel(comp.conditionGrade)}`
+                    : ""}
                   {" · "}
                   <button
                     type="button"

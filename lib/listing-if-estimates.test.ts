@@ -1,12 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ComparableListing } from './listing-comparables-shared'
-import {
-  estimateFromComparables,
-  IF_LOCATION_WEIGHT_TIER_1,
-  IF_LOCATION_WEIGHT_TIER_2,
-  IF_VINTAGE_WEIGHT_SAME,
-} from './listing-if-estimates'
+import { estimateFromComparables } from './listing-if-estimates'
+import { IF_STRIP_BOOST_ONE_STEP } from './listing-if-strip-search'
 import type { LocationPremiumFactors } from './listing-location-premium'
 import type { CoastalStripIndex } from './location-estimate-zip-grid-shared'
 
@@ -32,8 +28,9 @@ function soldComp(args: {
   ppsf: number
   strip: CoastalStripIndex | null
   multiplier?: number
+  boost?: number
 }): ComparableListing {
-  const sqft = 2000
+  const sqft = 1040
   return {
     mlsId: args.mlsId,
     listingKey: args.mlsId,
@@ -47,9 +44,9 @@ function soldComp(args: {
     baths: 2,
     lotAcres: 0.2,
     sqft,
-    vintageBucket: '1941-1970',
-    vintageLabel: '1941–1970',
-    yearBuilt: 1960,
+    vintageBucket: '1900-1940',
+    vintageLabel: '1900–1940',
+    yearBuilt: 1928,
     furnished: null,
     pricePerSqft: args.ppsf,
     dom: 12,
@@ -58,73 +55,105 @@ function soldComp(args: {
     longitude: -73.26,
     locationPremiumMultiplier: args.multiplier ?? 1,
     coastalStrip: args.strip,
+    stripBoostPct: args.boost ?? 0,
+    conditionGrade: 'excellent',
+    matchFit: 'exact',
   }
 }
 
 describe('What-if coastal strips', () => {
-  it('prefers same-strip comps when at least three painted peers exist', () => {
+  it('uses same-strip comps with no boost when the ring is already chosen', () => {
     const sold = [
-      soldComp({ mlsId: 'c1', ppsf: 900, strip: 0 }),
-      soldComp({ mlsId: 'c2', ppsf: 900, strip: 0 }),
-      soldComp({ mlsId: 'c3', ppsf: 900, strip: 0 }),
-      soldComp({ mlsId: 'inland-1', ppsf: 780, strip: 2 }),
-      soldComp({ mlsId: 'inland-2', ppsf: 780, strip: 2 }),
-      soldComp({ mlsId: 'inland-3', ppsf: 780, strip: 2 }),
-      soldComp({ mlsId: 'inland-4', ppsf: 780, strip: 2 }),
-      soldComp({ mlsId: 'inland-5', ppsf: 780, strip: 2 }),
+      soldComp({ mlsId: 'c1', ppsf: 900, strip: 1 }),
+      soldComp({ mlsId: 'c2', ppsf: 900, strip: 1 }),
+      soldComp({ mlsId: 'c3', ppsf: 900, strip: 1 }),
     ]
     const scenario = estimateFromComparables(
       sold,
       [],
-      2000,
-      850 * 2000,
+      1040,
+      1500000,
       {
-        subjectVintage: '1941-1970',
-        locationPremium: premium(0),
+        subjectVintage: '1900-1940',
+        locationPremium: premium(1),
+        useStripSearchBasis: true,
+        stripSearch: {
+          subjectStrip: 1,
+          basisRing: 1,
+          basisLabel: '2 2nd strip',
+          foundCount: 3,
+        },
       },
     )
     assert.equal(scenario.soldCount, 3)
-    assert.equal(scenario.comps.length, 3)
-    assert.ok(scenario.comps.every((row) => row.mlsId.startsWith('c')))
     assert.equal(scenario.math.blendedPpsf, 900)
+    assert.equal(scenario.comps[0]?.adjustedPricePerSqft, 900)
+    assert.equal(scenario.comps[0]?.stripBoostPct, 0)
   })
 
-  it('scales PPSF by 0.75^n when both sides are painted on different strips', () => {
-    const sold = [soldComp({ mlsId: 'second', ppsf: 750, strip: 1 })]
-    const scenario = estimateFromComparables(
-      sold,
-      [],
-      2000,
-      null,
-      {
-        subjectVintage: '1941-1970',
-        locationPremium: premium(0),
-      },
-    )
-    assert.ok(scenario.math.blendedPpsf != null)
-    assert.ok(Math.abs((scenario.math.blendedPpsf ?? 0) - 1000) < 1e-6)
-    assert.equal(scenario.comps[0]?.weight, IF_VINTAGE_WEIGHT_SAME * IF_LOCATION_WEIGHT_TIER_2)
-  })
-
-  it('weights same-strip comps at the close-tier factor', () => {
+  it('applies the temporary inland boost instead of 0.75^n', () => {
     const sold = [
-      soldComp({ mlsId: 'a', ppsf: 800, strip: 0 }),
-      soldComp({ mlsId: 'b', ppsf: 800, strip: 0 }),
-      soldComp({ mlsId: 'c', ppsf: 800, strip: 0 }),
+      soldComp({
+        mlsId: 'third',
+        ppsf: 800,
+        strip: 2,
+        boost: IF_STRIP_BOOST_ONE_STEP,
+      }),
     ]
     const scenario = estimateFromComparables(
       sold,
       [],
-      2000,
-      800 * 2000,
+      1040,
+      null,
       {
-        subjectVintage: '1941-1970',
-        locationPremium: premium(0),
+        subjectVintage: '1900-1940',
+        locationPremium: premium(1),
+        useStripSearchBasis: true,
+        stripSearch: {
+          subjectStrip: 1,
+          basisRing: 2,
+          basisLabel: '3 3rd strip',
+          foundCount: 1,
+        },
       },
     )
-    for (const row of scenario.comps) {
-      assert.equal(row.weight, IF_VINTAGE_WEIGHT_SAME * IF_LOCATION_WEIGHT_TIER_1)
-    }
+    assert.ok(scenario.math.blendedPpsf != null)
+    assert.ok(
+      Math.abs((scenario.math.blendedPpsf ?? 0) - 800 * (1 + IF_STRIP_BOOST_ONE_STEP)) <
+        1e-6,
+    )
+    assert.equal(scenario.comps[0]?.pricePerSqft, 800)
+    assert.equal(
+      scenario.comps[0]?.adjustedPricePerSqft,
+      800 * (1 + IF_STRIP_BOOST_ONE_STEP),
+    )
+  })
+
+  it('does not filter the strip ring by the subject list $/sqft', () => {
+    const sold = [
+      soldComp({ mlsId: 'a', ppsf: 700, strip: 1 }),
+      soldComp({ mlsId: 'b', ppsf: 710, strip: 1 }),
+      soldComp({ mlsId: 'c', ppsf: 720, strip: 1 }),
+    ]
+    const scenario = estimateFromComparables(
+      sold,
+      [],
+      1040,
+      1442 * 1040,
+      {
+        subjectVintage: '1900-1940',
+        locationPremium: premium(1),
+        useStripSearchBasis: true,
+        stripSearch: {
+          subjectStrip: 1,
+          basisRing: 1,
+          basisLabel: '2 2nd strip',
+          foundCount: 3,
+        },
+      },
+    )
+    assert.equal(scenario.soldCount, 3)
+    assert.ok((scenario.math.blendedPpsf ?? 0) < 800)
   })
 
   it('keeps pin-multiplier weighting when the subject is unpainted', () => {
@@ -134,14 +163,13 @@ describe('What-if coastal strips', () => {
     const scenario = estimateFromComparables(
       sold,
       [],
-      2000,
+      1040,
       null,
       {
-        subjectVintage: '1941-1970',
+        subjectVintage: '1900-1940',
         locationPremium: premium(null, 1.1),
       },
     )
     assert.equal(scenario.math.blendedPpsf, 800)
-    assert.equal(scenario.comps[0]?.weight, IF_VINTAGE_WEIGHT_SAME * IF_LOCATION_WEIGHT_TIER_1)
   })
 })

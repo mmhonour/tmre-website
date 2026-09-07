@@ -1,10 +1,12 @@
 import 'server-only'
 
 import { parseLotAcres } from '@/lib/fixer-listings'
+import { resolveListingCondition } from '@/lib/listing-condition'
 import {
   listingFurnished,
   subjectHasFurnishedCriteria,
 } from '@/lib/listing-furnished'
+import { isUnderContractListing } from '@/lib/listings-store'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
 import type { ZipGridCells } from '@/lib/location-estimate-zip-grid-shared'
 import { isRentalListing } from '@/lib/listing-kind'
@@ -237,6 +239,8 @@ export function buildComparableListing(
     longitude: l.longitude,
     locationPremiumMultiplier: locationPremium.combinedMultiplier,
     coastalStrip: locationPremium.coastalStrip,
+    conditionGrade: resolveListingCondition(l),
+    underAgreement: isUnderContractListing(l),
   }
 }
 

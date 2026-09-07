@@ -6,7 +6,17 @@ import {
   COMPARABLES_DEFAULT_LOOKBACK_MONTHS,
   lookbackLabel,
 } from '@/lib/listing-comparables-shared'
+import type { ListingConditionGrade } from '@/lib/listing-condition'
 import type { ListingFurnished } from '@/lib/listing-furnished'
+import {
+  IF_STRIP_BOOST_ONE_STEP,
+  IF_STRIP_BOOST_THREE_STEPS,
+  IF_STRIP_BOOST_TOWN,
+  IF_STRIP_BOOST_TWO_STEPS,
+  IF_STRIP_SEARCH_MIN_COMPS,
+  type StripMatchFit,
+  type StripSearchRing,
+} from '@/lib/listing-if-strip-search'
 import {
   formatLocationPremiumLabels,
   type LocationPremiumFactors,
@@ -53,7 +63,7 @@ export const IF_LOCATION_WEIGHT_TIER_2 = 1.6
 export const IF_LOCATION_WEIGHT_TIER_3 = 1.2
 export const IF_LOCATION_WEIGHT_FAR = 0.85
 /** Prefer same-strip homes when this many painted comps have a usable $/sqft. */
-export const IF_SAME_STRIP_MIN_COMPS = 3
+export const IF_SAME_STRIP_MIN_COMPS = IF_STRIP_SEARCH_MIN_COMPS
 
 /** Midpoint $/sqft (or price) aggregations — all three are cached on each scenario. */
 export const IF_MIDPOINT_METHODS = [
@@ -97,7 +107,7 @@ export function ifCompWeightExplainLines(): string[] {
     'wt is the weight each comparable gets when you pick Weighted avg for the What if midpoint. Higher wt pulls that average more toward that property. Median and Average ignore wt.',
     'wt = vintage factor × location-tier factor.',
     `Vintage factor: same era ×${IF_VINTAGE_WEIGHT_SAME}, neighboring era ×${IF_VINTAGE_WEIGHT_ADJACENT}, farther eras ×${IF_VINTAGE_WEIGHT_FAR}. If this home’s vintage is unknown, every comp uses ×1.`,
-    `Location-tier factor (painted coastal strips): when this home and the comp are both on the Admin 1–4 grid, weight by strip distance — same strip ×${IF_LOCATION_WEIGHT_TIER_1}, one strip inland/out ×${IF_LOCATION_WEIGHT_TIER_2}, two strips ×${IF_LOCATION_WEIGHT_TIER_3}, farther ×${IF_LOCATION_WEIGHT_FAR}. Same-strip solds are preferred when at least ${IF_SAME_STRIP_MIN_COMPS} are available. Across strips, $/sqft is scaled by the 0.75^n inland rule.`,
+    `Location-tier factor (painted coastal strips): search the subject strip first, then only outward (2 → 3 → 4 → rest of town). The first ring with at least ${IF_SAME_STRIP_MIN_COMPS} sold or under-agreement comps in 12 months is the $/sqft basis. Same-strip comps are unboosted. Inland rings get a temporary boost: +${Math.round(IF_STRIP_BOOST_ONE_STEP * 100)}% / +${Math.round(IF_STRIP_BOOST_TWO_STEPS * 100)}% / +${Math.round(IF_STRIP_BOOST_THREE_STEPS * 100)}% / +${Math.round(IF_STRIP_BOOST_TOWN * 100)}% (rest of town). Town-center comps are excluded. Search never runs seaward.`,
     `Location-tier factor (unpainted): compare this home’s location-premium multiplier to the comp’s. Difference ≤${IF_LOCATION_PREMIUM_TIER_1} → ×${IF_LOCATION_WEIGHT_TIER_1}; ≤${IF_LOCATION_PREMIUM_TIER_2} → ×${IF_LOCATION_WEIGHT_TIER_2}; ≤${IF_LOCATION_PREMIUM_TIER_3} → ×${IF_LOCATION_WEIGHT_TIER_3}; otherwise ×${IF_LOCATION_WEIGHT_FAR}. If this home has no location premium, every comp uses ×1.`,
     'Example: same-vintage (×4) and same coastal strip (×2.5) → wt 10.00. Neighboring vintage (×1.75) and far tier (×0.85) → wt 1.49.',
   ]
@@ -125,9 +135,20 @@ export function ifSoldActiveBlendExplainLines(
   ]
 }
 
+export type IfStripSearchMeta = {
+  subjectStrip: CoastalStripIndex
+  basisRing: StripSearchRing
+  basisLabel: string
+  foundCount: number
+}
+
 export type IfEstimateContext = {
   subjectVintage?: VintageBucketId | null
   locationPremium?: LocationPremiumFactors | null
+  subjectCondition?: ListingConditionGrade | null
+  /** Painted coastal path already chose the outward ring. */
+  useStripSearchBasis?: boolean
+  stripSearch?: IfStripSearchMeta | null
 }
 
 function median(nums: number[]): number | null {
@@ -222,10 +243,8 @@ function paintedStripOf(
   return premium?.coastalStrip ?? null
 }
 
-/** Same 0.75^n inland rule as location estimates (`coastalStripRelativeValue`). */
-function stripRelativeValue(strip: number): number {
-  if (!Number.isFinite(strip) || strip <= 0) return 1
-  return 0.75 ** strip
+function usesStripSearchBasis(context?: IfEstimateContext | null): boolean {
+  return Boolean(context?.useStripSearchBasis)
 }
 
 function locationPremiumWeight(
@@ -258,13 +277,9 @@ function locationPremiumRatio(
   comp: ComparableListing,
 ): number {
   const subjectStrip = paintedStripOf(subjectPremium)
-  const compStrip = comp.coastalStrip ?? null
-  if (subjectStrip != null && compStrip != null) {
-    const subjectRel = stripRelativeValue(subjectStrip)
-    const compRel = stripRelativeValue(compStrip)
-    if (compRel > 0 && Math.abs(subjectRel - compRel) > 0.001) {
-      return subjectRel / compRel
-    }
+  if (subjectStrip != null) {
+    const boost = comp.stripBoostPct
+    if (boost != null && Number.isFinite(boost) && boost > 0) return 1 + boost
     return 1
   }
   const subjectMult = subjectPremium?.combinedMultiplier ?? 1
@@ -305,7 +320,9 @@ function locationPeerPools(
   sold: ComparableListing[],
   active: ComparableListing[],
   subjectPremium: LocationPremiumFactors | null | undefined,
+  skip = false,
 ): { sold: ComparableListing[]; active: ComparableListing[] } {
+  if (skip) return { sold, active }
   const strip = paintedStripOf(subjectPremium)
   if (strip == null) return { sold, active }
   const sameCount = [...sold, ...active].filter(
@@ -322,7 +339,9 @@ function locationPeerPools(
 function compsInSubjectPriceTier(
   comps: ComparableListing[],
   subjectPpsfValue: number | null,
+  skip = false,
 ): ComparableListing[] {
+  if (skip) return comps
   const ranked = comps.slice(0, TOP_COMP_COUNT)
   if (subjectPpsfValue == null) return ranked
 
@@ -398,7 +417,24 @@ function buildMidpointAggregatesFromPpsf(
   subjectSqft: number,
   subjectVintage: VintageBucketId | null | undefined,
   subjectPremium: LocationPremiumFactors | null | undefined,
+  combinePools = false,
 ): IfMidpointAggregates {
+  if (combinePools) {
+    const entries = ppsfEntries(
+      [...sold, ...active],
+      subjectVintage,
+      subjectPremium,
+    )
+    const out = emptyMidpointAggregates()
+    for (const method of IF_MIDPOINT_METHODS) {
+      const blended = aggregateEntries(entries, method)
+      out[method] = {
+        blendedPpsf: blended,
+        amount: blended != null ? Math.round(blended * subjectSqft) : null,
+      }
+    }
+    return out
+  }
   const soldEntries = ppsfEntries(sold, subjectVintage, subjectPremium)
   const activeEntries = ppsfEntries(active, subjectVintage, subjectPremium)
   const out = emptyMidpointAggregates()
@@ -500,8 +536,9 @@ function collectTierAmountEntries(
   context: IfEstimateContext,
 ): { value: number; weight: number }[] {
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
-  const tierSold = compsInSubjectPriceTier(sold, refPpsf)
-  const tierActive = compsInSubjectPriceTier(active, refPpsf)
+  const skipTier = usesStripSearchBasis(context)
+  const tierSold = compsInSubjectPriceTier(sold, refPpsf, skipTier)
+  const tierActive = compsInSubjectPriceTier(active, refPpsf, skipTier)
   const subjectVintage = context.subjectVintage ?? null
   const subjectPremium = context.locationPremium ?? null
 
@@ -585,8 +622,9 @@ function estimateFromPpsf(
   kind: 'sale' | 'rent',
 ): IfEstimate & { midpointAggregates: IfMidpointAggregates } {
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
-  const tierSold = compsInSubjectPriceTier(sold, refPpsf)
-  const tierActive = compsInSubjectPriceTier(active, refPpsf)
+  const skipTier = usesStripSearchBasis(context)
+  const tierSold = compsInSubjectPriceTier(sold, refPpsf, skipTier)
+  const tierActive = compsInSubjectPriceTier(active, refPpsf, skipTier)
   const subjectVintage = context.subjectVintage ?? null
   const subjectPremium = context.locationPremium ?? null
 
@@ -596,6 +634,7 @@ function estimateFromPpsf(
     subjectSqft,
     subjectVintage,
     subjectPremium,
+    skipTier,
   )
   const ppsf = midpointAggregates[IF_DEFAULT_MIDPOINT_METHOD].blendedPpsf
   const soldCount = tierSold.filter((c) => validPpsf(c.pricePerSqft)).length
@@ -638,8 +677,9 @@ function estimateFromPrices(
   kind: 'sale' | 'rent',
 ): IfEstimate & { midpointAggregates: IfMidpointAggregates } {
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
-  const tierSold = compsInSubjectPriceTier(sold, refPpsf)
-  const tierActive = compsInSubjectPriceTier(active, refPpsf)
+  const skipTier = usesStripSearchBasis(context)
+  const tierSold = compsInSubjectPriceTier(sold, refPpsf, skipTier)
+  const tierActive = compsInSubjectPriceTier(active, refPpsf, skipTier)
   const subjectVintage = context.subjectVintage ?? null
   const subjectPremium = context.locationPremium ?? null
 
@@ -718,6 +758,11 @@ export type IfCompRow = {
   /** Comp $/sqft (adjusted) × subject sqft, or adjusted price when no sqft. */
   impliedSubjectAmount: number | null
   weight: number
+  coastalStrip?: CoastalStripIndex | null
+  stripBoostPct?: number | null
+  conditionGrade?: ListingConditionGrade | null
+  underAgreement?: boolean
+  matchFit?: StripMatchFit | null
 }
 
 export type IfEstimateMath = {
@@ -742,6 +787,7 @@ export type IfScenario = IfEstimate & {
   comps: IfCompRow[]
   /** Median / average / weighted-average midpoints — pick without refetch. */
   midpointAggregates: IfMidpointAggregates
+  stripSearch?: IfStripSearchMeta | null
 }
 
 /** Fill midpoint aggregates for older cached payloads that only stored one mid. */
@@ -816,6 +862,7 @@ export type ListingIfPayload = {
   subjectSqft?: number | null
   /** Subject listing is a rental — mobile What if defaults to “If you rent”. */
   subjectIsRental?: boolean
+  subjectCondition?: ListingConditionGrade | null
   /** Admin Market Bands — attached by `/if` API for sale midpoint labeling. */
   inventorySegmentBands?: InventorySegmentBandsConfig
 }
@@ -871,6 +918,7 @@ function emptyScenario(
     },
     comps: [],
     midpointAggregates: emptyMidpointAggregates(),
+    stripSearch: null,
   }
 }
 
@@ -916,6 +964,11 @@ function buildCompRows(
       adjustedPricePerSqft: adjPpsf,
       impliedSubjectAmount: implied,
       weight: compWeight(comp, subjectVintage, subjectPremium),
+      coastalStrip: comp.coastalStrip ?? null,
+      stripBoostPct: comp.stripBoostPct ?? null,
+      conditionGrade: comp.conditionGrade ?? null,
+      underAgreement: Boolean(comp.underAgreement),
+      matchFit: comp.matchFit ?? null,
     }
   }
 
@@ -945,7 +998,12 @@ export function estimateFromComparables(
     buildIfMatchParams(kind, null, COMPARABLES_DEFAULT_LOOKBACK_MONTHS)
   const matchedSold = matchedSoldCount ?? sold.length
   const matchedActive = matchedActiveCount ?? active.length
-  const peers = locationPeerPools(sold, active, context.locationPremium)
+  const peers = locationPeerPools(
+    sold,
+    active,
+    context.locationPremium,
+    usesStripSearchBasis(context),
+  )
 
   if (subjectSqft != null && subjectSqft > 0) {
     const fromPpsf = estimateFromPpsf(
@@ -1017,8 +1075,9 @@ function finalizeScenario(
   }
 
   const refPpsf = subjectPpsf(subjectPrice, subjectSqft)
-  const tierSold = compsInSubjectPriceTier(sold, refPpsf)
-  const tierActive = compsInSubjectPriceTier(active, refPpsf)
+  const skipTier = usesStripSearchBasis(context)
+  const tierSold = compsInSubjectPriceTier(sold, refPpsf, skipTier)
+  const tierActive = compsInSubjectPriceTier(active, refPpsf, skipTier)
   const primary = midpointAggregates[IF_DEFAULT_MIDPOINT_METHOD]
 
   return {
@@ -1038,6 +1097,7 @@ function finalizeScenario(
     },
     comps: buildCompRows(tierSold, tierActive, subjectSqft, context),
     midpointAggregates,
+    stripSearch: context.stripSearch ?? null,
   }
 }
 
