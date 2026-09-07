@@ -365,7 +365,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Monday market brief',
     category: 'product',
     definition:
-      'Weekly Resend email via Netlify market-digest cron (every 30m wake, gated to Configure weekly day + start time ET — default Mon 08:00 — plus a send lock) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. Dedupe is the slot itself: market_digest_last_sent_at versus the most recent slot, the same rule every other scheduled job uses, so a brief sends once per slot and a changed day/time is simply a slot that has not been served yet. It used to carry a second day-keyed watermark on top, which made any later time on a day that already sent unsendable for the rest of the week. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Communications Enabled is tied to Syncs Pause for market-digest — a paused job locks day/time scheduling on Communications and the cron will not send. Recipient, subject `{date}`, optional social footer on Communications.',
+      'Weekly Resend email via Netlify market-digest cron (every 30m wake, gated to Configure weekly day + start time ET — default Mon 08:00 — plus a send lock) — not the MLS incremental sync. HTML bars + DOTW card; same snapshot powers /market-pulse. A real send also archives the payload on market_pulse_snapshots (one row per Eastern send-day) so later briefs can show WoW / MoM / YoY; Communications → Send test does not write that row. Dedupe is the slot itself: market_digest_last_sent_at versus the most recent slot, the same rule every other scheduled job uses, so a brief sends once per slot and a changed day/time is simply a slot that has not been served yet. It used to carry a second day-keyed watermark on top, which made any later time on a day that already sent unsendable for the rest of the week. Send day/time live on Syncs → Configure and Communications → Monday market brief (shared Postgres sync_schedule_config); changing the day rewrites the subject day name. Communications Enabled is tied to Syncs Pause for market-digest — a paused job locks day/time scheduling on Communications and the cron will not send. Recipient, subject `{date}`, optional social footer on Communications.',
   },
   {
     term: 'Buyer / Seller Friendly (Market Pulse)',
@@ -511,7 +511,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'stats_cache',
     category: 'sync-admin',
     definition:
-      'Postgres table of precomputed JSON payloads (market stats, vintage charts, Latest feeds, deal boards, IF/UAG caches) so pages don’t recompute from raw listings every request. Market rebuild upserts in place (no wipe); hourly cron is stale-only; incremental sync refreshes changed towns.',
+      'Postgres table of precomputed JSON payloads (market stats, vintage charts, Latest feeds, deal boards, IF/UAG caches) so pages don’t recompute from raw listings every request. Market rebuild upserts in place (no wipe); hourly cron is stale-only; incremental sync refreshes changed towns. Current math only — not a weekly archive. See market_pulse_snapshots.',
+  },
+  {
+    term: 'market_pulse_snapshots',
+    category: 'sync-admin',
+    definition:
+      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. stats_cache is overwritten on every rebuild, so WoW / MoM / YoY cannot live there. Send test does not insert a row.',
   },
   {
     term: 'stats_cache_rebuild_lock',

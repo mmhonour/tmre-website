@@ -13,6 +13,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'sync_meta',
   'sync_queue',
   'stats_cache',
+  'market_pulse_snapshots',
   'listing_tax_history',
   'listing_if_estimates',
   'listing_location_estimates',

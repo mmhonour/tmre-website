@@ -295,6 +295,19 @@ async function runMarketDigestSend(
 
     if (stampWeek) {
       await markMarketDigestSent()
+      try {
+        const { recordMarketPulseSnapshot } = await import(
+          '@/lib/market-pulse-snapshot-record'
+        )
+        const { slotDate } = await recordMarketPulseSnapshot({
+          snapshot,
+          source: 'send',
+          sentAt: new Date().toISOString(),
+        })
+        console.info(`[market-digest] archived pulse snapshot slot=${slotDate}`)
+      } catch (err) {
+        console.warn('[market-digest] could not archive pulse snapshot', err)
+      }
     }
 
     console.info(
