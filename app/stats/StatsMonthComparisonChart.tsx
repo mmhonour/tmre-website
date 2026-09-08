@@ -66,6 +66,13 @@ export type StatsMonthComparisonChartProps = {
   allowYDecimals?: boolean;
   /** Format tooltip metric values (defaults to raw number). */
   formatMetricValue?: (value: number) => string;
+  /** Closings count (default) or dollar volume on the same month series. */
+  valueKey?: "count" | "volume";
+  /** Extra controls next to Compare years (e.g. Closings | Volume). */
+  toolbarExtra?: ReactNode;
+  /** Y-axis tick formatter (volume uses compact dollars). */
+  formatYTick?: (value: number) => string;
+  yAxisWidth?: number;
 };
 
 export default function StatsMonthComparisonChart({
@@ -83,6 +90,10 @@ export default function StatsMonthComparisonChart({
   headerActiveCount,
   allowYDecimals = false,
   formatMetricValue,
+  valueKey = "count",
+  toolbarExtra,
+  formatYTick,
+  yAxisWidth,
 }: StatsMonthComparisonChartProps) {
   const id = useId().replace(/:/g, "");
   const viewCtx = useStatsMonthComparisonViewOptional();
@@ -224,13 +235,20 @@ export default function StatsMonthComparisonChart({
   }, [city, kind, statsKey, headerActiveCount]);
 
   const data = cache[key] ?? [];
+  const seriesData = useMemo(
+    () =>
+      valueKey === "volume"
+        ? data.map((row) => ({ ...row, count: row.volume ?? 0 }))
+        : data,
+    [data, valueKey],
+  );
   const isFallback = fallbacks[key] ?? false;
   const chartData = useMemo(
     () =>
       continuousMode
-        ? buildContinuousYearChartData(data, visibleYears, isFutureCalendarMonth)
-        : buildMonthChartData(data, visibleYears, isFutureCalendarMonth),
-    [continuousMode, data, visibleYears],
+        ? buildContinuousYearChartData(seriesData, visibleYears, isFutureCalendarMonth)
+        : buildMonthChartData(seriesData, visibleYears, isFutureCalendarMonth),
+    [continuousMode, seriesData, visibleYears],
   );
   const activeCount = statsCache[statsKey]?.activeCount ?? null;
   const chartHeight = continuousMode ? 360 : 300;
@@ -299,6 +317,7 @@ export default function StatsMonthComparisonChart({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 mb-4">
+          {toolbarExtra}
           {effectiveYearSelection ? (
             <>
               <span className="font-mono text-[9px] tracking-[0.15em] uppercase text-white/30 shrink-0">
@@ -410,7 +429,8 @@ export default function StatsMonthComparisonChart({
                 tick={{ fontFamily: "monospace", fontSize: 10, fill: "rgba(255,255,255,0.35)" }}
                 axisLine={false}
                 tickLine={false}
-                width={allowYDecimals ? 36 : 28}
+                width={yAxisWidth ?? (allowYDecimals ? 36 : 28)}
+                tickFormatter={formatYTick}
               />
               <Tooltip
                 contentStyle={{
@@ -440,7 +460,7 @@ export default function StatsMonthComparisonChart({
                   const display = formatMetricValue
                     ? formatMetricValue(n)
                     : String(n);
-                  return [`${display} ${volumeNoun}`, String(name)];
+                  return [`${display} ${volumeNoun}`.trim(), String(name)];
                 }}
                 cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }}
               />

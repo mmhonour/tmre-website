@@ -4,41 +4,17 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { HomeMarketPulseTown } from "@/lib/home-market-pulse-types";
 import {
-  relativeStatColorStyle,
-  type StatScaleDirection,
-} from "@/lib/stat-scale-color";
+  compareHomePulseValues,
+  nextHomePulseSort,
+  type HomePulseSortDir,
+  type HomePulseSortKey,
+} from "@/lib/home-market-pulse-sort";
+import { formatCompactDollars } from "@/lib/stats-compact-dollars";
+import { relativeStatColorStyle } from "@/lib/stat-scale-color";
 import { statsSalesTrendHref } from "@/lib/stats-url";
 
-type SortKey =
-  | "medianPrice"
-  | "daysOnMarket"
-  | "saleToList"
-  | "monthsSupply"
-  | "closedLast4WeeksVolume"
-  | "closedLast4Weeks";
-
-const SORT_FIELDS: {
-  key: SortKey;
-  label: string;
-  /** Natural first-click order for this field. */
-  natural: StatScaleDirection;
-}[] = [
-  { key: "medianPrice", label: "Median price", natural: "asc" },
-  { key: "daysOnMarket", label: "Days on market", natural: "desc" },
-  { key: "saleToList", label: "Sale-to-list", natural: "asc" },
-  { key: "monthsSupply", label: "Months supply", natural: "desc" },
-  { key: "closedLast4WeeksVolume", label: "Volume closed", natural: "desc" },
-  { key: "closedLast4Weeks", label: "Closings", natural: "desc" },
-];
-
 function formatPrice(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  if (n >= 1_000_000) {
-    const m = n / 1_000_000;
-    return `$${m >= 10 ? m.toFixed(1) : m.toFixed(2).replace(/\.?0+$/, "")}M`;
-  }
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return formatCompactDollars(n);
 }
 
 function formatDom(n: number | null): string {
@@ -66,9 +42,8 @@ export default function HomeMarketPulse({
 }: {
   towns: HomeMarketPulseTown[];
 }) {
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
-  /** When true, reverse the field's natural order. */
-  const [sortReversed, setSortReversed] = useState(false);
+  const [sortKey, setSortKey] = useState<HomePulseSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<HomePulseSortDir>("desc");
 
   const peers = useMemo(
     () => ({
@@ -84,42 +59,22 @@ export default function HomeMarketPulse({
 
   const sorted = useMemo(() => {
     if (!sortKey) return towns;
-    const field = SORT_FIELDS.find((f) => f.key === sortKey);
-    const naturalDesc = field?.natural === "desc";
-    return [...towns].sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      const cmp = av - bv;
-      const natural = naturalDesc ? -cmp : cmp;
-      return sortReversed ? -natural : natural;
-    });
-  }, [towns, sortKey, sortReversed]);
+    return [...towns].sort((a, b) =>
+      compareHomePulseValues(a[sortKey], b[sortKey], sortDir),
+    );
+  }, [towns, sortKey, sortDir]);
 
-  function onSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortReversed((r) => !r);
-      return;
-    }
-    setSortKey(key);
-    setSortReversed(false);
-  }
-
-  function sortIndicator(key: SortKey): string {
-    if (sortKey !== key) return "";
-    const field = SORT_FIELDS.find((f) => f.key === key);
-    const showingDesc =
-      field?.natural === "desc" ? !sortReversed : sortReversed;
-    return showingDesc ? " ↓" : " ↑";
+  function onSort(key: HomePulseSortKey) {
+    const next = nextHomePulseSort(sortKey, sortDir, key);
+    setSortKey(next.key);
+    setSortDir(next.dir);
   }
 
   return (
     <section className="bg-navy text-white relative">
       <div className="mx-auto max-w-7xl px-6 lg:px-10 -mt-20 relative z-10">
         <div className="rounded-3xl bg-gradient-to-br from-navy-light to-navy border border-white/10 shadow-2xl shadow-black/30 p-8 lg:p-12">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
             <div>
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
                 Market Pulse
@@ -138,50 +93,16 @@ export default function HomeMarketPulse({
             </Link>
           </div>
 
-          <div
-            className="mb-8 flex flex-wrap items-center gap-2"
-            role="group"
-            aria-label="Sort town stats"
-          >
-            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-white/45 mr-1">
-              Sort by
-            </span>
-            {SORT_FIELDS.map((field) => {
-              const active = sortKey === field.key;
-              return (
-                <button
-                  key={field.key}
-                  type="button"
-                  onClick={() => onSort(field.key)}
-                  className={`rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
-                    active
-                      ? "border-gold/50 bg-gold/15 text-gold"
-                      : "border-white/15 text-white/60 hover:border-white/30 hover:text-white"
-                  }`}
-                  aria-pressed={active}
-                >
-                  {field.label}
-                  {sortIndicator(field.key)}
-                </button>
-              );
-            })}
-            {sortKey ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSortKey(null);
-                  setSortReversed(false);
-                }}
-                className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/40 hover:text-white/70 underline underline-offset-2"
-              >
-                Reset
-              </button>
-            ) : null}
-          </div>
-
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {sorted.map((town) => (
-              <CityCard key={town.town} town={town} peers={peers} />
+              <CityCard
+                key={town.town}
+                town={town}
+                peers={peers}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+              />
             ))}
           </div>
         </div>
@@ -194,6 +115,9 @@ export default function HomeMarketPulse({
 function CityCard({
   town,
   peers,
+  sortKey,
+  sortDir,
+  onSort,
 }: {
   town: HomeMarketPulseTown;
   peers: {
@@ -204,15 +128,23 @@ function CityCard({
     closedLast4WeeksVolume: (number | null)[];
     closedLast4Weeks: (number | null)[];
   };
+  sortKey: HomePulseSortKey | null;
+  sortDir: HomePulseSortDir;
+  onSort: (key: HomePulseSortKey) => void;
 }) {
   const statsSalesHref = statsSalesTrendHref({ city: town.town });
+  const statsVolumeHref = statsSalesTrendHref({
+    city: town.town,
+    metric: "volume",
+  });
   const stats: {
-    key: SortKey;
+    key: HomePulseSortKey;
     label: string;
     value: string;
     trend: string;
     style: { color: string } | undefined;
     href?: string;
+    hrefTitle?: string;
   }[] = [
     {
       key: "medianPrice",
@@ -264,7 +196,8 @@ function CityCard({
         peers.closedLast4WeeksVolume,
         "asc",
       ),
-      href: statsSalesHref,
+      href: statsVolumeHref,
+      hrefTitle: "Volume closed by month on Stats",
     },
     {
       key: "closedLast4Weeks",
@@ -277,6 +210,7 @@ function CityCard({
         "asc",
       ),
       href: statsSalesHref,
+      hrefTitle: "Closed sales by month on Stats",
     },
   ];
 
@@ -287,31 +221,52 @@ function CityCard({
         {town.tagline}
       </p>
       <div className="grid grid-cols-2 gap-5">
-        {stats.map((stat) => (
-          <div key={stat.key} className="border-l border-white/10 pl-4">
-            <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/50 mb-1.5">
-              {stat.label}
-            </p>
-            {stat.href ? (
-              <Link
-                href={stat.href}
-                className="font-mono text-2xl font-medium tabular-nums underline-offset-4 hover:underline"
-                style={stat.style ?? { color: "rgb(255 255 255)" }}
-                title="Closed sales by month on Stats"
+        {stats.map((stat) => {
+          const active = sortKey === stat.key;
+          return (
+            <div key={stat.key} className="border-l border-white/10 pl-4">
+              <button
+                type="button"
+                onClick={() => onSort(stat.key)}
+                aria-pressed={active}
+                className={`mb-1.5 flex items-center gap-1.5 text-left font-mono text-[10px] tracking-[0.15em] uppercase transition-colors ${
+                  active
+                    ? "text-gold"
+                    : "text-white/50 hover:text-white/80"
+                }`}
               >
-                {stat.value}
-              </Link>
-            ) : (
-              <p
-                className="font-mono text-2xl font-medium tabular-nums"
-                style={stat.style ?? { color: "rgb(255 255 255)" }}
-              >
-                {stat.value}
-              </p>
-            )}
-            <p className="text-[11px] text-white/45 mt-1">{stat.trend}</p>
-          </div>
-        ))}
+                {active ? (
+                  <span aria-hidden className="w-2.5 shrink-0">
+                    {sortDir === "desc" ? "↓" : "↑"}
+                  </span>
+                ) : (
+                  <span className="w-2.5 shrink-0" aria-hidden />
+                )}
+                <span className="underline-offset-2 hover:underline">
+                  {stat.label}
+                </span>
+              </button>
+              {stat.href ? (
+                <Link
+                  href={stat.href}
+                  className="font-mono text-2xl font-medium tabular-nums underline-offset-4 hover:underline"
+                  style={stat.style ?? { color: "rgb(255 255 255)" }}
+                  title={stat.hrefTitle}
+                >
+                  {stat.value}
+                </Link>
+              ) : (
+                <p
+                  className="font-mono text-2xl font-medium tabular-nums"
+                  style={stat.style ?? { color: "rgb(255 255 255)" }}
+                >
+                  {stat.value}
+                </p>
+              )}
+              <p className="text-[11px] text-white/45 mt-1">{stat.trend}</p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

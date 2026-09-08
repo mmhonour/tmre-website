@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchClosedListingsForCity, listingCacheHeaders } from '@/lib/listings-store'
 import { parseListingKindParam, type ListingKind } from '@/lib/listing-kind'
-import { computeSalesByMonth } from '@/lib/stats-compute'
+import {
+  computeSalesByMonth,
+  salesByMonthDataHasVolume,
+} from '@/lib/stats-compute'
 import { statsMonthChartYears } from '@/lib/stats-month-years'
 import { readAggregatedSalesByMonth, readStatsCache, writeStatsCache } from '@/lib/stats-cache'
 import { fetchClosedListingsAcrossTowns } from '@/lib/listings-store'
@@ -14,7 +17,7 @@ export const dynamic = 'force-dynamic'
 const SUPPORTED_CITIES = [...TMRE_TOWNS, 'All'] as string[]
 const YEARS = statsMonthChartYears()
 
-type MonthlyCount = { year: number; month: number; count: number }
+type MonthlyCount = { year: number; month: number; count: number; volume?: number }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -29,7 +32,7 @@ export async function GET(req: NextRequest) {
   try {
     if (city === 'All') {
       const cached = await readAggregatedSalesByMonth(kind)
-      if (cached) {
+      if (cached && salesByMonthDataHasVolume(cached.data)) {
         return NextResponse.json(
           {
             ...cached,
@@ -69,7 +72,7 @@ export async function GET(req: NextRequest) {
       city,
       kind,
     )
-    if (cached) {
+    if (cached && salesByMonthDataHasVolume(cached.data)) {
       return NextResponse.json(
         {
           ...cached,

@@ -3,7 +3,12 @@ import {
   statsMonthChartYears,
 } from "@/lib/stats-month-years";
 
-export type MonthlyCount = { year: number; month: number; count: number };
+export type MonthlyCount = {
+  year: number;
+  month: number;
+  count: number;
+  volume?: number;
+};
 
 export const MONTHS = [
   "Jan",

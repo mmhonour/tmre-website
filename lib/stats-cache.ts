@@ -267,23 +267,35 @@ async function releaseStatsCacheRebuildLock(token: string | null): Promise<void>
   }
 }
 
-type MonthlyCount = { year: number; month: number; count: number }
+type MonthlyCount = { year: number; month: number; count: number; volume?: number }
 
 function aggregateMonthCounts(
   rows: MonthlyCount[][],
   years: readonly number[],
 ): MonthlyCount[] {
   const totals = new Map<string, number>()
+  const volumes = new Map<string, number>()
+  let sawVolume = false
   for (const data of rows) {
-    for (const { year, month, count } of data) {
+    for (const { year, month, count, volume } of data) {
       const key = `${year}-${month}`
       totals.set(key, (totals.get(key) ?? 0) + count)
+      if (typeof volume === 'number') {
+        sawVolume = true
+        volumes.set(key, (volumes.get(key) ?? 0) + volume)
+      }
     }
   }
   const combined: MonthlyCount[] = []
   for (const year of years) {
     for (let month = 1; month <= 12; month++) {
-      combined.push({ year, month, count: totals.get(`${year}-${month}`) ?? 0 })
+      const key = `${year}-${month}`
+      combined.push({
+        year,
+        month,
+        count: totals.get(key) ?? 0,
+        ...(sawVolume ? { volume: volumes.get(key) ?? 0 } : {}),
+      })
     }
   }
   return combined
