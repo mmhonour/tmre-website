@@ -44,6 +44,10 @@ const TABLE_PURPOSE: Record<(typeof POSTGRES_KNOWN_TABLES)[number], string> = {
     'Official VGSI street-name index per town, filled letter-by-letter from Streets.aspx.',
   vision_street_parcels:
     'House numbers on those Vision streets. Street-listings walks rows that still lack an MLS link.',
+  vision_owner_keys:
+    'Mailing and name fingerprints extracted from a Vision Field Card so two PIDs can share an owner cluster.',
+  vision_owner_cluster_members:
+    'Vision cards that share a mailing or name key (2+ parcels). Find lists the other homes on the parcel page.',
   zip_boundaries:
     'Census TIGERweb ZCTA rings for Intelligence / Latest maps.',
   visitors:

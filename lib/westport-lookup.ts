@@ -7,6 +7,11 @@ import {
   searchVisionAddresses,
   type VisionAddressRecord,
 } from '@/lib/db/vision-addresses-repo'
+import {
+  listVisionOwnerClusterMates,
+  refreshVisionOwnerKeysSafe,
+  type VisionOwnerClusterMate,
+} from '@/lib/db/vision-owner-clusters-repo'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { query, queryOne } from '@/lib/db/postgres'
 import { buildListingPhotoProxyUrls } from '@/lib/listing-photos-cache'
@@ -85,6 +90,8 @@ export type WestportMergedProperty = {
   parcelUrl: string | null
   fieldCard: WestportFieldCard
   siblings: WestportLookupHit[]
+  /** Other Vision cards in the same owner mailing/name cluster. */
+  otherHomes: VisionOwnerClusterMate[]
   /** True when this request pulled the row from RETS into listings. */
   listingIngested: boolean
   listing: {
@@ -595,6 +602,12 @@ export async function mergeWestportProperty(
     fieldCard.fields,
     vision.ownerName ?? listing?.ownerName,
   )
+  await refreshVisionOwnerKeysSafe(WESTPORT_LOOKUP_TOWN, vision.visionPid)
+  const otherHomes = await listVisionOwnerClusterMates(
+    WESTPORT_LOOKUP_TOWN,
+    vision.visionPid,
+  ).catch(() => [])
+
   const compiledOwner = compileVisionOwnerParts(
     fieldCard.ownership ?? [],
     cardOwner,
@@ -629,6 +642,7 @@ export async function mergeWestportProperty(
     parcelUrl: vision.parcelUrl,
     fieldCard,
     siblings,
+    otherHomes,
     listingIngested,
     listing: listing
       ? {

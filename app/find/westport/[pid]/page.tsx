@@ -257,6 +257,25 @@ export default async function WestportParcelPage({
             <p className="mt-1 font-serif text-xl sm:text-2xl text-white leading-snug whitespace-pre-line">
               {ownerBlock}
             </p>
+            {property.otherHomes.length > 0 ? (
+              <div className="mt-3">
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+                  Other homes
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {property.otherHomes.map((home) => (
+                    <li key={`${home.town}:${home.visionPid}`}>
+                      <Link
+                        href={westportParcelHref(home.visionPid)}
+                        className="font-mono text-sm text-gold hover:text-white"
+                      >
+                        {home.siteAddress}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
                 <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">

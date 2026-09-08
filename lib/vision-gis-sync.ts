@@ -910,6 +910,20 @@ export async function syncVisionAddresses(
     }
   }
 
+  let ownerKeysFilled = 0
+  try {
+    const { fillMissingVisionOwnerKeys } = await import(
+      '@/lib/db/vision-owner-clusters-repo'
+    )
+    const filled = await fillMissingVisionOwnerKeys({
+      town: cfg.town,
+      limit: 80,
+    })
+    ownerKeysFilled = filled.keyed
+  } catch (err) {
+    console.warn('[vision-gis-sync] owner-cluster fill failed', err)
+  }
+
   const totalRows = await countVisionAddresses(cfg.town)
   const detail = [
     `${cfg.town} phase=${state.phase}`,
@@ -922,6 +936,7 @@ export async function syncVisionAddresses(
     formatStreetOwnerFill(streetOwnerFill),
     townComplete ? 'full fill complete → incremental' : null,
     `linked vision=${visionLinked} listings=${listingsLinked}`,
+    ownerKeysFilled > 0 ? `owner keys ${ownerKeysFilled}` : null,
   ]
     .filter(Boolean)
     .join(' · ')
