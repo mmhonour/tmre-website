@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FindAddressDivergenceNote } from "@/components/FindAddressDivergenceNote";
 import { FindListingIngestStatus } from "@/components/FindListingIngestStatus";
 import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
@@ -250,6 +251,13 @@ export default async function WestportParcelPage({
           <p className="mt-3 font-mono text-sm text-white/70">
             {property.addressFull}
           </p>
+          {property.addressesDiverge && property.mlsStreet ? (
+            <FindAddressDivergenceNote
+              visionStreet={property.visionStreet}
+              mlsStreet={property.mlsStreet}
+              tone="dark"
+            />
+          ) : null}
           <div className="mt-6 max-w-xl rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-4">
             <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
               Owner of record
