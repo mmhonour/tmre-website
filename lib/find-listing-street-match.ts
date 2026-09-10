@@ -170,6 +170,22 @@ export function findListingStructuredStreet(
 }
 
 /**
+ * RETS StreetNumber values we actually send. SmartMLS 20206s when
+ * StreetNumber and StreetName=*a*b* are in the same query — match the
+ * street in-process after StreetNumber=2A* (99065198).
+ */
+export function findListingStreetNumberHops(street: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const hop of findListingStructuredStreets(street)) {
+    if (seen.has(hop.streetNumber)) continue
+    seen.add(hop.streetNumber)
+    out.push(hop.streetNumber)
+  }
+  return out
+}
+
+/**
  * RETS UnparsedAddress hops. Expand mid-name abbrevs and omit Rd/Road
  * first — `*pt*` misses `Point`, `*road*` misses `Rd`, `*ln*` misses
  * `Lane`. Then the original no-type line, then short/long type variants.

@@ -9,10 +9,15 @@ import {
   findListingHouseHasLetterSuffix,
   findListingStreetQueries,
   findListingStreetsMatch,
-  findListingStructuredStreets,
+  findListingStreetNumberHops,
   listingHouseIlikePatterns,
 } from '@/lib/find-listing-street-match'
-import { getListingByMlsId, searchListings, type Listing } from '@/lib/rets'
+import {
+  getListingByMlsId,
+  isRetsInvalidQueryError,
+  searchListings,
+  type Listing,
+} from '@/lib/rets'
 import type { VisionAddressRecord } from '@/lib/db/vision-addresses-repo'
 import { compactMblu, visionListingKeys } from '@/lib/vision-listing-match'
 import { listingIngestTown } from '@/lib/find-listing-ingest-shared'
@@ -249,30 +254,32 @@ function listingIsWeakOffMarket(status: string | null | undefined): boolean {
 async function searchStreetNumberHop(
   street: string,
   town: string,
-  hop: { streetNumber: string; streetNameContains?: string },
+  streetNumber: string,
   closed?: { closedAfter: string; closedBefore: string },
 ): Promise<Listing | null> {
-  const hits = await withTimeout(
-    searchListings({
-      county: 'fairfield',
-      city: town,
-      streetNumber: hop.streetNumber,
-      ...(hop.streetNameContains
-        ? { streetNameContains: hop.streetNameContains }
-        : {}),
-      limit: 24,
-      ...(closed
-        ? {
-            status: 'Closed' as const,
-            closedAfter: closed.closedAfter,
-            closedBefore: closed.closedBefore,
-          }
-        : {}),
-    }),
-    INGEST_TIMEOUT_MS,
-  )
-  if (!hits || hits.length === 0) return null
-  return pickBestStreetMatch(street, hits, town)
+  try {
+    const hits = await withTimeout(
+      searchListings({
+        county: 'fairfield',
+        city: town,
+        streetNumber,
+        limit: 24,
+        ...(closed
+          ? {
+              status: 'Closed' as const,
+              closedAfter: closed.closedAfter,
+              closedBefore: closed.closedBefore,
+            }
+          : {}),
+      }),
+      INGEST_TIMEOUT_MS,
+    )
+    if (!hits || hits.length === 0) return null
+    return pickBestStreetMatch(street, hits, town)
+  } catch (err) {
+    if (isRetsInvalidQueryError(err)) return null
+    throw err
+  }
 }
 
 async function persistStructuredStreet(
@@ -280,22 +287,10 @@ async function persistStructuredStreet(
   town: string,
   closed?: { closedAfter: string; closedBefore: string },
 ): Promise<Listing | null> {
-  for (const hop of findListingStructuredStreets(street)) {
-    const match = await searchStreetNumberHop(street, town, hop, closed)
+  for (const streetNumber of findListingStreetNumberHops(street)) {
+    const match = await searchStreetNumberHop(street, town, streetNumber, closed)
     if (match && (closed || !listingIsWeakOffMarket(match.status))) {
       return persistMatchedListing(match)
-    }
-  }
-  if (closed) {
-    const houseHop = findListingStructuredStreets(street)[0]
-    if (houseHop) {
-      const match = await searchStreetNumberHop(
-        street,
-        town,
-        { streetNumber: houseHop.streetNumber },
-        closed,
-      )
-      if (match) return persistMatchedListing(match)
     }
   }
   return null

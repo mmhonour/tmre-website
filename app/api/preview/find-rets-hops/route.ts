@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import {
-  findListingHouseHasLetterSuffix,
-  findListingStreetQueries,
-  findListingStructuredStreets,
-} from '@/lib/find-listing-street-match'
+import { findListingStreetNumberHops } from '@/lib/find-listing-street-match'
 import { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
 import { isRetsConfigured, searchListings, type Listing } from '@/lib/rets'
 
@@ -92,34 +88,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  for (const hop of findListingStructuredStreets(street)) {
-    await run(
-      `(StreetNumber=${hop.streetNumber}),(StreetName=*${hop.streetNameContains.split(/\s+/).join('*')}*)`,
-      {
-        streetNumber: hop.streetNumber,
-        streetNameContains: hop.streetNameContains,
-      },
-      {
-        streetNumber: hop.streetNumber,
-        streetNameContains: hop.streetNameContains,
-      },
-    )
-  }
-
-  const first = findListingStructuredStreets(street)[0]
-  if (first) {
-    await run(`(StreetNumber=${first.streetNumber}) only`, {
-      streetNumber: first.streetNumber,
-    }, { streetNumber: first.streetNumber })
-  }
-
-  if (!findListingHouseHasLetterSuffix(street)) {
-    const query = findListingStreetQueries(street)[0]
-    if (query) {
-      await run(`UnparsedAddress=*${query.split(/\s+/).join('*')}*`, {
-        addressContains: query,
-      }, { addressContains: query })
-    }
+  for (const streetNumber of findListingStreetNumberHops(street)) {
+    await run(`(StreetNumber=${streetNumber})`, { streetNumber }, { streetNumber })
   }
 
   return NextResponse.json({ configured: true, hops, window })
