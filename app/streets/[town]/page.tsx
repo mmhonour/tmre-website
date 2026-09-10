@@ -12,6 +12,7 @@ import {
   resolveStreetTown,
   streetNameToSlug,
   townToStreetSlug,
+  visionOwnersPageHref,
 } from '@/lib/vision-streets-page'
 
 export const dynamic = 'force-dynamic'
@@ -74,6 +75,13 @@ export default async function StreetsTownPage({
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
             Admin · Streets
+            {' · '}
+            <Link
+              href={visionOwnersPageHref(town)}
+              className="hover:text-white transition-colors"
+            >
+              2+ home owners
+            </Link>
           </p>
           <h1 className="font-serif italic text-4xl sm:text-5xl text-white leading-[1.05]">
             Streets

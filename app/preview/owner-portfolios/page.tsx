@@ -7,7 +7,7 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-const FIXTURES = pickUniqueOwnerPortfolios([
+const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
   {
     clusterId: "mailing:po box 88|westport",
     clusterKind: "mailing",
@@ -59,10 +59,14 @@ export default function OwnerPortfoliosPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Fixture list — largest first, mailing cluster wins over a name
-          overlap. Production route: /find/owners.
+          overlap. Production (admin / Streets password): /streets/owners
+          or /streets/owners?town=Westport&street=STONY+PT+RD.
         </p>
-        <ol className="space-y-5">
-          {FIXTURES.map((row) => (
+        <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
+          Town-wide
+        </h2>
+        <ol className="mb-10 space-y-5">
+          {TOWN_FIXTURES.map((row) => (
             <li
               key={row.clusterId}
               className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4"
@@ -72,6 +76,57 @@ export default function OwnerPortfoliosPreviewPage() {
                 <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
                   {row.parcelCount} homes
                   {row.clusterKind === "mailing" ? " · same mailing" : ""}
+                </p>
+              </div>
+              <ul className="mt-3 space-y-1">
+                {row.parcels.map((parcel) => (
+                  <li key={parcel.visionPid}>
+                    <Link
+                      href={westportParcelHref(parcel.visionPid)}
+                      className="font-mono text-sm text-navy hover:underline"
+                    >
+                      {parcel.siteAddress}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
+        <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
+          On STONY PT RD (2+ on this street)
+        </h2>
+        <ol className="space-y-5">
+          {pickUniqueOwnerPortfolios([
+            {
+              clusterId: "mailing:2a stony pt rd|westport",
+              clusterKind: "mailing",
+              town: "Westport",
+              displayName: "CASTILLO EDWARD AND SNYDER CAMERON",
+              mailingLabel: "2a stony pt rd, westport",
+              parcelCount: 2,
+              parcels: [
+                {
+                  town: "Westport",
+                  visionPid: "5384",
+                  siteAddress: "2A STONY PT RD",
+                },
+                {
+                  town: "Westport",
+                  visionPid: "5385",
+                  siteAddress: "2B STONY PT RD",
+                },
+              ],
+            },
+          ]).map((row) => (
+            <li
+              key={row.clusterId}
+              className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="font-serif text-2xl text-navy">{row.displayName}</h2>
+                <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
+                  {row.parcelCount} homes on this street
                 </p>
               </div>
               <ul className="mt-3 space-y-1">

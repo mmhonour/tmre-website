@@ -16,7 +16,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "owner-portfolios",
     title: "Owner portfolios (2+ homes)",
     summary:
-      "Largest Westport Vision clusters first. Mailing overlap wins over a name-only duplicate.",
+      "Admin owner aggregation: largest 2+ clusters first, optional street scope. Mailing overlap wins over a name-only duplicate.",
   },
 ];
 

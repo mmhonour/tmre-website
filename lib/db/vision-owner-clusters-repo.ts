@@ -281,41 +281,76 @@ export async function listVisionOwnerClusterMates(
 
 export async function listVisionOwnerPortfolios(opts: {
   town: string
+  streetName?: string | null
   minParcels?: number
 }): Promise<VisionOwnerPortfolio[]> {
   await ensureVisionOwnerClusterTables()
   const town = opts.town.trim()
+  const streetName = opts.streetName?.trim() || null
   const minParcels = Math.max(2, opts.minParcels ?? 2)
-  const rows = await query<{
-    cluster_id: string
-    parcel_count: string
-    display_name: string | null
-    town: string
-    parcels: {
-      town: string
-      visionPid: string
-      siteAddress: string | null
-    }[]
-  }>(
-    `SELECT m.cluster_id,
-            COUNT(*)::text AS parcel_count,
-            MIN(m.display_name) AS display_name,
-            MIN(m.town) AS town,
-            jsonb_agg(
-              jsonb_build_object(
-                'town', m.town,
-                'visionPid', m.vision_pid,
-                'siteAddress', m.site_address
-              )
-              ORDER BY m.site_address, m.vision_pid
-            ) AS parcels
-       FROM vision_owner_cluster_members m
-      WHERE m.town = $1
-      GROUP BY m.cluster_id
-     HAVING COUNT(*) >= $2
-      ORDER BY COUNT(*) DESC, MIN(m.display_name)`,
-    [town, minParcels],
-  )
+  const rows = streetName
+    ? await query<{
+        cluster_id: string
+        parcel_count: string
+        display_name: string | null
+        town: string
+        parcels: {
+          town: string
+          visionPid: string
+          siteAddress: string | null
+        }[]
+      }>(
+        `SELECT m.cluster_id,
+                COUNT(*)::text AS parcel_count,
+                MIN(m.display_name) AS display_name,
+                MIN(m.town) AS town,
+                jsonb_agg(
+                  jsonb_build_object(
+                    'town', m.town,
+                    'visionPid', m.vision_pid,
+                    'siteAddress', COALESCE(m.site_address, p.address_label)
+                  )
+                  ORDER BY COALESCE(m.site_address, p.address_label), m.vision_pid
+                ) AS parcels
+           FROM vision_owner_cluster_members m
+           JOIN vision_street_parcels p
+             ON p.town = m.town AND p.vision_pid = m.vision_pid
+          WHERE m.town = $1 AND p.street_name = $2
+          GROUP BY m.cluster_id
+         HAVING COUNT(*) >= $3
+          ORDER BY COUNT(*) DESC, MIN(m.display_name)`,
+        [town, streetName, minParcels],
+      )
+    : await query<{
+        cluster_id: string
+        parcel_count: string
+        display_name: string | null
+        town: string
+        parcels: {
+          town: string
+          visionPid: string
+          siteAddress: string | null
+        }[]
+      }>(
+        `SELECT m.cluster_id,
+                COUNT(*)::text AS parcel_count,
+                MIN(m.display_name) AS display_name,
+                MIN(m.town) AS town,
+                jsonb_agg(
+                  jsonb_build_object(
+                    'town', m.town,
+                    'visionPid', m.vision_pid,
+                    'siteAddress', m.site_address
+                  )
+                  ORDER BY m.site_address, m.vision_pid
+                ) AS parcels
+           FROM vision_owner_cluster_members m
+          WHERE m.town = $1
+          GROUP BY m.cluster_id
+         HAVING COUNT(*) >= $2
+          ORDER BY COUNT(*) DESC, MIN(m.display_name)`,
+        [town, minParcels],
+      )
 
   const portfolios: VisionOwnerPortfolio[] = []
   for (const row of rows) {
