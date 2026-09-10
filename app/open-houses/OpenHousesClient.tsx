@@ -27,11 +27,13 @@ import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 import {
   etCalendarDate,
   formatOpenHouseHistory,
+  formatOpenHouseWeekCount,
   formatOpenHouseWhen,
   type OpenHouseEvent,
   type OpenHouseListing,
 } from "@/lib/open-houses";
 import { groupOpenHousesByTownAndDay } from "@/lib/open-houses-groups";
+import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
 
 const OH_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const OH_TX_VALUES = ["all", "sale", "rental"] as const;
@@ -255,9 +257,9 @@ export default function OpenHousesClient() {
             <span className="italic gold-shimmer">this week.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Public open houses across {formatTownList(TOWN_NAMES)} in the next 7
-            calendar days. Each home shows how many public showings we have on
-            file — past, and scheduled after today.
+            Public open houses across {formatTownList(TOWN_NAMES)} this
+            Monday–Sunday week. Town counts are unique homes. Each home shows
+            how many public open houses it has this week.
           </p>
 
           <OhFilterBar
@@ -283,7 +285,7 @@ export default function OpenHousesClient() {
             <span className="text-white/50">
               {loadState === "loading"
                 ? "Loading open houses…"
-                : `${allListings.length} upcoming · ${windowLabel || "next 7 days (ET)"}`}
+                : `${allListings.length} homes · ${windowLabel || "Monday–Sunday this week (ET)"}`}
             </span>
           </div>
 
@@ -320,7 +322,7 @@ export default function OpenHousesClient() {
                 No open houses found
               </p>
               <p className="text-charcoal/70">
-                No public open houses scheduled in the next 7 days
+                No public open houses scheduled this Monday–Sunday week
                 {townFilter !== "All" ? ` in ${townFilter}` : ""}. Try another town or check back
                 soon.
               </p>
@@ -387,12 +389,11 @@ export default function OpenHousesClient() {
 
               <div className="space-y-10">
                 {groupedListings.map((townGroup) => (
-                  <section key={townGroup.town}>
-                    {townFilter === "All" ? (
-                      <h3 className="mb-4 font-serif text-2xl text-navy">
-                        {townGroup.town}
-                      </h3>
-                    ) : null}
+                  <OpenHouseTownSection
+                    key={townGroup.town}
+                    town={townGroup.town}
+                    propertyCount={townGroup.propertyCount}
+                  >
                     <div className="space-y-6">
                       {townGroup.days.map((day) => (
                         <div key={day.date || townGroup.town}>
@@ -405,7 +406,7 @@ export default function OpenHousesClient() {
                         </div>
                       ))}
                     </div>
-                  </section>
+                  </OpenHouseTownSection>
                 ))}
               </div>
             </>
@@ -467,7 +468,8 @@ function listingMeta(l: OpenHouseListing) {
   const priceLabel = isRental ? "Rent" : "Price";
   const priceValue = `${fmtMoney(l.price)}${isRental && l.price != null ? "/mo" : ""}`;
   const ohLabel = formatOpenHouseWhen(l.nextOpenHouse);
-  const moreCount = l.openHouses.length > 1 ? l.openHouses.length - 1 : 0;
+  const weekCount = l.weekOpenHouseCount;
+  const weekLabel = formatOpenHouseWeekCount(weekCount);
   const historyLabel = formatOpenHouseHistory(l.pastCount ?? 0, l.upcomingCount ?? 0);
 
   return {
@@ -479,7 +481,8 @@ function listingMeta(l: OpenHouseListing) {
     priceLabel,
     priceValue,
     ohLabel,
-    moreCount,
+    weekCount,
+    weekLabel,
     historyLabel,
   };
 }
@@ -693,14 +696,11 @@ function OpenHouseSchedule({ events }: { events: OpenHouseEvent[] }) {
   if (events.length <= 1) return null;
   return (
     <ul className="mt-1 space-y-0.5">
-      {events.slice(1, 4).map((e) => (
+      {events.map((e) => (
         <li key={e.id} className="font-mono text-[9px] text-slate/60">
           {formatOpenHouseWhen(e)}
         </li>
       ))}
-      {events.length > 4 ? (
-        <li className="font-mono text-[9px] text-slate/45">+{events.length - 4} more</li>
-      ) : null}
     </ul>
   );
 }
@@ -736,6 +736,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
           )}
           <span className="font-mono text-[9px] text-slate/70">{meta.place}</span>
           <span className="font-mono text-[9px] text-gold-dark">{meta.ohLabel}</span>
+          <span className="font-mono text-[9px] tabular-nums text-navy">{meta.weekLabel}</span>
           <span className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</span>
           <span className="font-mono text-[10px] tabular-nums text-navy font-medium">
             {meta.priceValue}
@@ -775,12 +776,8 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
             )}
             <p className="text-xs text-slate mt-0.5 truncate">{meta.place}</p>
             <p className="font-mono text-[10px] text-gold-dark mt-1">{meta.ohLabel}</p>
+            <p className="font-mono text-[9px] tabular-nums text-navy">{meta.weekLabel}</p>
             <p className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</p>
-            {meta.moreCount > 0 ? (
-              <p className="font-mono text-[9px] text-slate/55">
-                +{meta.moreCount} more showing{meta.moreCount === 1 ? "" : "s"}
-              </p>
-            ) : null}
             <OpenHouseSchedule events={l.openHouses} />
           </div>
           <div className="shrink-0 sm:text-right sm:min-w-[7.5rem]">
@@ -831,14 +828,9 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
 
         <div className="mt-auto space-y-1.5 pt-3 border-t border-charcoal/[0.06]">
           <Row label="Next open" value={meta.ohLabel} accent compact />
+          <Row label="This week" value={meta.weekLabel} compact />
+          <OpenHouseSchedule events={l.openHouses} />
           <Row label="Showings" value={meta.historyLabel} compact />
-          {meta.moreCount > 0 ? (
-            <Row
-              label="Also"
-              value={`${meta.moreCount} more showing${meta.moreCount === 1 ? "" : "s"}`}
-              compact
-            />
-          ) : null}
           <Row label={meta.isRental ? "Monthly rent" : "List price"} value={meta.priceValue} compact />
           {meta.specs ? <Row label="Specs" value={meta.specs} compact /> : null}
         </div>

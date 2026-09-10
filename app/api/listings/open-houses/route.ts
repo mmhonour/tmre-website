@@ -8,7 +8,8 @@ import { OPEN_HOUSES_SYNCED_AT_KEY } from '@/lib/open-houses-sync'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import {
   etCalendarDate,
-  openHouseDateWindow,
+  openHouseWeekWindow,
+  pickNextOpenHouse,
   type OpenHouseEvent,
   type OpenHouseListing,
 } from '@/lib/open-houses'
@@ -19,7 +20,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Open houses for the rolling window, joined to listings in Postgres.
+ * Open houses for this Monday–Sunday week (ET), joined to listings in Postgres.
  *
  * This route used to query RETS on every request — a login, then a per-listing
  * lookup that fell back to RETS again for anything not already stored, twelve
@@ -68,7 +69,7 @@ function sortEvents(events: OpenHouseEvent[]): OpenHouseEvent[] {
 }
 
 export async function GET() {
-  const window = openHouseDateWindow()
+  const window = openHouseWeekWindow()
   try {
     await ensureOpenHousesTable()
 
@@ -137,7 +138,7 @@ export async function GET() {
     const listings: OpenHouseListing[] = []
     for (const { listing, events, dom } of byMls.values()) {
       const sorted = sortEvents([...events.values()])
-      const next = sorted[0]
+      const next = pickNextOpenHouse(sorted, today)
       if (!next) continue
       const city =
         resolveListingTown(listing.address.city) ?? listing.address.city
@@ -170,6 +171,7 @@ export async function GET() {
         nextOpenHouse: next,
         pastCount: counts.past,
         upcomingCount: Math.max(counts.upcoming, sorted.length),
+        weekOpenHouseCount: sorted.length,
       })
     }
 
@@ -192,7 +194,7 @@ export async function GET() {
         source: 'db',
         syncedAt,
         window,
-        windowLabel: `${window.start} through ${window.end} (ET)`,
+        windowLabel: `Monday–Sunday this week · ${window.start} through ${window.end} (ET)`,
         eventsFound: rows.length,
         listingsMatched: listings.length,
       },

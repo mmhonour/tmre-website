@@ -47,6 +47,7 @@ function listing(
     nextOpenHouse: event,
     pastCount: 0,
     upcomingCount: 1,
+    weekOpenHouseCount: 1,
   }
 }
 
@@ -81,6 +82,30 @@ describe('groupOpenHousesByTownAndDay', () => {
       ['Today', 'Saturday, Sep 12'],
     )
     assert.equal(groups[0]?.days.length, 2)
+    assert.equal(groups[0]?.propertyCount, 2)
     assert.equal(groups[1]?.days[0]?.label, 'Today')
+    assert.equal(groups[1]?.propertyCount, 1)
+  })
+
+  it('counts a home once even when it has several open houses this week', () => {
+    const first = listing('Westport', '06880', '2026-09-10', '16 Sea Spray')
+    const extra = {
+      ...first.nextOpenHouse,
+      id: 'sat',
+      date: '2026-09-12',
+      startDateTime: '2026-09-12T11:00:00',
+      endDateTime: '2026-09-12T13:00:00',
+    }
+    const busy = {
+      ...first,
+      openHouses: [first.nextOpenHouse, extra],
+      weekOpenHouseCount: 2,
+    }
+    const groups = groupOpenHousesByTownAndDay([busy], {
+      today: '2026-09-10',
+      townOrder: ['Westport'],
+    })
+    assert.equal(groups[0]?.propertyCount, 1)
+    assert.equal(groups[0]?.days[0]?.listings[0]?.weekOpenHouseCount, 2)
   })
 })

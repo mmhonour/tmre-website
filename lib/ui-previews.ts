@@ -22,7 +22,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-town-day",
     title: "Open houses by town and day",
     summary:
-      "Town sections, then Today / Tomorrow / weekday. Days with no showing are omitted.",
+      "Town +/− with a unique-home count for the Monday–Sunday week. Cards list every open house that home has this week.",
   },
   {
     slug: "find-address-diverge",
