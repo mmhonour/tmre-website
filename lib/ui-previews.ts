@@ -25,6 +25,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Town +/− with a unique-home count for the Monday–Sunday week. Cards list every open house that home has this week.",
   },
   {
+    slug: "open-houses-next-oh",
+    title: "Open houses — next OH + alerts",
+    summary:
+      "Next open-house gold mark on grid (upper right), rows (upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
+  },
+  {
     slug: "find-address-diverge",
     title: "Vision vs MLS address",
     summary:

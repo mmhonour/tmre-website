@@ -4,6 +4,7 @@ import {
   addCalendarDays,
   formatOpenHouseHistory,
   formatOpenHouseWeekCount,
+  formatOpenHouseWhenShort,
   openHouseHorizonWindow,
   openHouseLookbackWindow,
   openHouseWeekWindow,
@@ -88,5 +89,21 @@ describe('formatOpenHouseWeekCount', () => {
   it('uses singular and plural labels', () => {
     assert.equal(formatOpenHouseWeekCount(1), '1 this week')
     assert.equal(formatOpenHouseWeekCount(3), '3 this week')
+  })
+})
+
+describe('formatOpenHouseWhenShort', () => {
+  it('uses weekday and times without the month', () => {
+    const sat: OpenHouseEvent = {
+      id: '1',
+      listingKey: 'k',
+      listingId: '1',
+      date: '2026-09-12',
+      startDateTime: '2026-09-12T12:00:00',
+      endDateTime: '2026-09-12T14:00:00',
+      type: 'Public',
+      comment: null,
+    }
+    assert.equal(formatOpenHouseWhenShort(sat), 'Sat · 12:00 PM–2:00 PM')
   })
 })

@@ -155,6 +155,26 @@ function formatTime12(hhmm: string): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
+/** Corner / compact badge: weekday + times, no month. */
+export function formatOpenHouseWhenShort(event: OpenHouseEvent): string {
+  const [y, mo, d] = event.date.split('-').map(Number)
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, mo - 1, d)))
+
+  const start = event.startDateTime?.includes('T')
+    ? event.startDateTime.slice(11, 16)
+    : event.startDateTime?.slice(0, 5) ?? null
+  const end = event.endDateTime?.includes('T')
+    ? event.endDateTime.slice(11, 16)
+    : event.endDateTime?.slice(0, 5) ?? null
+
+  if (start && end) return `${weekday} · ${formatTime12(start)}–${formatTime12(end)}`
+  if (start) return `${weekday} · ${formatTime12(start)}`
+  return weekday
+}
+
 /** Human label for an open house slot (naive MLS datetimes treated as ET). */
 export function formatOpenHouseWhen(event: OpenHouseEvent): string {
   const [y, mo, d] = event.date.split('-').map(Number)
