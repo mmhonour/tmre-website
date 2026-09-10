@@ -18,6 +18,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Admin owner aggregation: largest 2+ clusters first, optional street scope. Mailing overlap wins over a name-only duplicate.",
   },
+  {
+    slug: "open-houses-town-day",
+    title: "Open houses by town and day",
+    summary:
+      "Town sections, then Today / Tomorrow / weekday. Days with no showing are omitted.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {

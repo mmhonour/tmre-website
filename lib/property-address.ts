@@ -229,6 +229,22 @@ const STREET_NAME_LONG: Record<string, string> = {
   ctr: 'center',
 }
 
+/** One token: `pt` → `point`, `rd` → `road`. Leaves unknown words alone. */
+export function expandStreetToken(token: string): string {
+  const key = token.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return STREET_TYPE_LONG[key] ?? STREET_NAME_LONG[key] ?? token
+}
+
+/**
+ * Canon short tokens → spelled words (`2A STONY PT RD` → `2a stony point road`).
+ * Used as the first Find/Streets RETS hop so `*pt*` still hits `Point`.
+ */
+export function expandStreetLine(street: string): string {
+  const canon = normalizeStreetLine(street)
+  if (!canon) return street.replace(/\s+/g, ' ').trim()
+  return canon.split(' ').map(expandStreetToken).join(' ')
+}
+
 /**
  * RETS / LIKE spellings for one street: original, canon (`ln`/`rd`),
  * and expanded (`lane`/`road`). `5 Locust Ln` and `5 Locust Lane` both
@@ -238,10 +254,7 @@ export function streetSearchVariants(street: string): string[] {
   const original = street.replace(/\s+/g, ' ').trim()
   const canon = normalizeStreetLine(original)
   if (!canon) return original ? [original] : []
-  const expanded = canon
-    .split(' ')
-    .map((token) => STREET_TYPE_LONG[token] ?? STREET_NAME_LONG[token] ?? token)
-    .join(' ')
+  const expanded = expandStreetLine(original)
   const seen = new Set<string>()
   const out: string[] = []
   for (const variant of [original, canon, expanded]) {
