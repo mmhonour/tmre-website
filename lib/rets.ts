@@ -121,6 +121,10 @@ export type SearchParams = {
   modifiedAfter?: string
   /** Space-separated tokens matched with wildcards on UnparsedAddress (live RETS). */
   addressContains?: string
+  /** StreetNumber, may end with `*` so Vision `2A` hits MLS `2A-A`. */
+  streetNumber?: string
+  /** Space-separated tokens matched with wildcards on StreetName. */
+  streetNameContains?: string
 }
 
 export type MarketStats = {
@@ -396,6 +400,19 @@ function buildDmql(params: SearchParams): string {
       .map(escapeDmqlValue)
     if (tokens.length > 0) {
       clauses.push(`(UnparsedAddress=*${tokens.join('*')}*)`)
+    }
+  }
+  if (params.streetNumber?.trim()) {
+    clauses.push(`(StreetNumber=${escapeDmqlValue(params.streetNumber.trim())})`)
+  }
+  if (params.streetNameContains) {
+    const tokens = params.streetNameContains
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(escapeDmqlValue)
+    if (tokens.length > 0) {
+      clauses.push(`(StreetName=*${tokens.join('*')}*)`)
     }
   }
   if (clauses.length === 0) clauses.push('(ModificationTimestamp=1900-01-01+)')

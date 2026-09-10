@@ -105,6 +105,34 @@ export function findListingStreetsMatch(a: string, b: string): boolean {
 }
 
 /**
+ * Neon `address_street ILIKE` for Vision house `2A`. MLS stores `2A-A`,
+ * so `2A %` misses. Also try `2A-%`.
+ */
+export function listingHouseIlikePatterns(house: string): string[] {
+  const h = house.trim()
+  if (!h) return []
+  return [`${h} %`, `${h}-%`]
+}
+
+/**
+ * Structured RETS hop when UnparsedAddress is empty (99065198).
+ * Vision `2A STONY PT RD` → StreetNumber `2A*` + StreetName `*stony*point*`.
+ */
+export function findListingStructuredStreet(
+  street: string,
+): { streetNumber: string; streetNameContains: string } | null {
+  const house = collapsedListingStreet(street)?.house
+  if (!house) return null
+  const name = streetLineWithoutType(expandStreetLine(street))
+    .split(/\s+/)
+    .slice(1)
+    .join(' ')
+    .trim()
+  if (!name) return null
+  return { streetNumber: `${house}*`, streetNameContains: name }
+}
+
+/**
  * RETS UnparsedAddress hops. Expand mid-name abbrevs and omit Rd/Road
  * first — `*pt*` misses `Point`, `*road*` misses `Rd`, `*ln*` misses
  * `Lane`. Then the original no-type line, then short/long type variants.
