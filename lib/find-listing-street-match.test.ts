@@ -4,6 +4,8 @@ import {
   collapsedListingStreet,
   findListingStreetQueries,
   findListingStreetsMatch,
+  findListingStructuredStreet,
+  listingHouseIlikePatterns,
 } from './find-listing-street-match'
 
 describe('collapsedListingStreet', () => {
@@ -116,5 +118,20 @@ describe('findListingStreetQueries', () => {
     )
     assert.equal(queries[0], '2a stony point')
     assert.ok(queries.some((q) => q.includes('stony pt')))
+  })
+})
+
+describe('findListingStructuredStreet', () => {
+  it('builds a StreetNumber / StreetName hop for 2A Stony Pt', () => {
+    assert.deepEqual(findListingStructuredStreet('2A STONY PT RD'), {
+      streetNumber: '2a*',
+      streetNameContains: 'stony point',
+    })
+  })
+})
+
+describe('listingHouseIlikePatterns', () => {
+  it('matches 2A-A as well as 2A plus a space', () => {
+    assert.deepEqual(listingHouseIlikePatterns('2A'), ['2A %', '2A-%'])
   })
 })
