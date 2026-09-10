@@ -25,20 +25,24 @@ import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { isRentalListing } from "@/lib/listing-kind";
 import { usePersistedFilter } from "@/hooks/usePersistedFilter";
 import {
+  etCalendarDate,
   formatOpenHouseHistory,
   formatOpenHouseWhen,
   type OpenHouseEvent,
   type OpenHouseListing,
 } from "@/lib/open-houses";
+import { groupOpenHousesByTownAndDay } from "@/lib/open-houses-groups";
 
 const OH_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const OH_TX_VALUES = ["all", "sale", "rental"] as const;
 const OH_VIEW_VALUES = ["grid", "rows", "line"] as const;
 const OH_SORT_VALUES = ["date", "price-asc", "price-desc"] as const;
+const OH_GROUP_VALUES = ["day", "town"] as const;
 
 type ViewMode = (typeof OH_VIEW_VALUES)[number];
 type TxFilter = "all" | "sale" | "rental";
 type SortMode = (typeof OH_SORT_VALUES)[number];
+type GroupMode = (typeof OH_GROUP_VALUES)[number];
 type TownName = TmreTown;
 type TownFilter = "All" | TownName;
 
@@ -151,7 +155,13 @@ export default function OpenHousesClient() {
     "grid",
     OH_VIEW_VALUES,
   );
+  const [groupMode, setGroupMode] = usePersistedFilter<GroupMode>(
+    "tmre_oh_group",
+    "day",
+    OH_GROUP_VALUES,
+  );
   const orderedTowns = usePersonalizedTowns(TOWN_NAMES);
+  const today = useMemo(() => etCalendarDate(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,6 +222,16 @@ export default function OpenHousesClient() {
       return mult * (pa - pb);
     });
   }, [listings, sortMode]);
+
+  const groupedListings = useMemo(
+    () =>
+      groupOpenHousesByTownAndDay(displayListings, {
+        today,
+        byDay: groupMode === "day",
+        townOrder: orderedTowns,
+      }),
+    [displayListings, today, groupMode, orderedTowns],
+  );
 
   const townCounts = useMemo(() => {
     let pool = allListings.filter((l) =>
@@ -330,6 +350,17 @@ export default function OpenHousesClient() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
+                      groupMode === "day"
+                        ? "border-gold/50 bg-gold/10 text-navy"
+                        : "border-charcoal/[0.08] bg-white text-navy hover:border-gold/40"
+                    }`}
+                  >
+                    {groupMode === "day" ? "By day" : "By town"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() =>
                       setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
                     }
@@ -354,33 +385,29 @@ export default function OpenHousesClient() {
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
 
-              {viewMode === "line" ? (
-                <div className="flex flex-col rounded-xl border border-charcoal/[0.08] bg-white overflow-hidden">
-                  <div className="flex items-center gap-2.5 px-3 py-2 border-b border-charcoal/[0.08] bg-cream/60 font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
-                    <div className={`${PHOTO_PREVIEW_LINE} shrink-0`} aria-hidden />
-                    <span className="min-w-0 flex-1">Property</span>
-                    <span className="shrink-0">Open house</span>
-                    <span className="shrink-0">Price</span>
-                  </div>
-                  <div className="flex flex-col divide-y divide-charcoal/[0.08]">
-                    {displayListings.map((l) => (
-                      <ListingCard key={l.mlsId + l.address.street} listing={l} view={viewMode} />
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className={
-                    viewMode === "grid"
-                      ? "grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
-                      : "flex flex-col gap-3"
-                  }
-                >
-                  {displayListings.map((l) => (
-                    <ListingCard key={l.mlsId + l.address.street} listing={l} view={viewMode} />
-                  ))}
-                </div>
-              )}
+              <div className="space-y-10">
+                {groupedListings.map((townGroup) => (
+                  <section key={townGroup.town}>
+                    {townFilter === "All" ? (
+                      <h3 className="mb-4 font-serif text-2xl text-navy">
+                        {townGroup.town}
+                      </h3>
+                    ) : null}
+                    <div className="space-y-6">
+                      {townGroup.days.map((day) => (
+                        <div key={day.date || townGroup.town}>
+                          {day.label ? (
+                            <h4 className="mb-3 font-mono text-[11px] tracking-[0.14em] uppercase text-slate">
+                              {day.label}
+                            </h4>
+                          ) : null}
+                          <ListingCollection listings={day.listings} view={viewMode} />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </>
           )}
         </div>
@@ -472,6 +499,45 @@ function useFirstPhoto(listing: {
       ? listing.primaryPhotoIndex
       : 0;
   return listingPhotoProxyUrl(id, index);
+}
+
+function ListingCollection({
+  listings,
+  view,
+}: {
+  listings: OpenHouseListing[];
+  view: ViewMode;
+}) {
+  if (view === "line") {
+    return (
+      <div className="flex flex-col rounded-xl border border-charcoal/[0.08] bg-white overflow-hidden">
+        <div className="flex items-center gap-2.5 px-3 py-2 border-b border-charcoal/[0.08] bg-cream/60 font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
+          <div className={`${PHOTO_PREVIEW_LINE} shrink-0`} aria-hidden />
+          <span className="min-w-0 flex-1">Property</span>
+          <span className="shrink-0">Open house</span>
+          <span className="shrink-0">Price</span>
+        </div>
+        <div className="flex flex-col divide-y divide-charcoal/[0.08]">
+          {listings.map((l) => (
+            <ListingCard key={l.mlsId + l.address.street} listing={l} view={view} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className={
+        view === "grid"
+          ? "grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
+          : "flex flex-col gap-3"
+      }
+    >
+      {listings.map((l) => (
+        <ListingCard key={l.mlsId + l.address.street} listing={l} view={view} />
+      ))}
+    </div>
+  );
 }
 
 function ListingPhoto({
