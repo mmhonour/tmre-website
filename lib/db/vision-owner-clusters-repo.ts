@@ -2,9 +2,12 @@ import 'server-only'
 
 import { execute, query, queryOne } from '@/lib/db/postgres'
 import {
+  clusterKindFromId,
   extractVisionOwnerKeys,
+  pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   type VisionOwnerKey,
+  type VisionOwnerPortfolio,
 } from '@/lib/vision-owner-keys'
 import type { VisionFieldCardJson, VisionOwnershipRow } from '@/lib/vision-gis-parse'
 
@@ -274,6 +277,71 @@ export async function listVisionOwnerClusterMates(
     displayName: row.display_name?.trim() || null,
     clusterId: row.cluster_id,
   }))
+}
+
+export async function listVisionOwnerPortfolios(opts: {
+  town: string
+  minParcels?: number
+}): Promise<VisionOwnerPortfolio[]> {
+  await ensureVisionOwnerClusterTables()
+  const town = opts.town.trim()
+  const minParcels = Math.max(2, opts.minParcels ?? 2)
+  const rows = await query<{
+    cluster_id: string
+    parcel_count: string
+    display_name: string | null
+    town: string
+    parcels: {
+      town: string
+      visionPid: string
+      siteAddress: string | null
+    }[]
+  }>(
+    `SELECT m.cluster_id,
+            COUNT(*)::text AS parcel_count,
+            MIN(m.display_name) AS display_name,
+            MIN(m.town) AS town,
+            jsonb_agg(
+              jsonb_build_object(
+                'town', m.town,
+                'visionPid', m.vision_pid,
+                'siteAddress', m.site_address
+              )
+              ORDER BY m.site_address, m.vision_pid
+            ) AS parcels
+       FROM vision_owner_cluster_members m
+      WHERE m.town = $1
+      GROUP BY m.cluster_id
+     HAVING COUNT(*) >= $2
+      ORDER BY COUNT(*) DESC, MIN(m.display_name)`,
+    [town, minParcels],
+  )
+
+  const portfolios: VisionOwnerPortfolio[] = []
+  for (const row of rows) {
+    const kind = clusterKindFromId(row.cluster_id)
+    if (!kind) continue
+    const parcelCount = Number(row.parcel_count)
+    if (!Number.isFinite(parcelCount) || parcelCount < minParcels) continue
+    const mailingLabel =
+      kind === 'mailing'
+        ? row.cluster_id.slice('mailing:'.length).replace(/\|/g, ', ')
+        : null
+    portfolios.push({
+      clusterId: row.cluster_id,
+      clusterKind: kind,
+      town: row.town,
+      displayName: row.display_name?.trim() || mailingLabel || row.cluster_id,
+      mailingLabel,
+      parcelCount,
+      parcels: (row.parcels ?? []).map((parcel) => ({
+        town: parcel.town,
+        visionPid: parcel.visionPid,
+        siteAddress: parcel.siteAddress?.trim() || parcel.visionPid,
+      })),
+    })
+  }
+  return pickUniqueOwnerPortfolios(portfolios)
 }
 
 export async function fillMissingVisionOwnerKeys(opts: {

@@ -12,6 +12,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Open several town cards at once, scroll the rail, and drag one over another to stack them.",
   },
+  {
+    slug: "owner-portfolios",
+    title: "Owner portfolios (2+ homes)",
+    summary:
+      "Largest Westport Vision clusters first. Mailing overlap wins over a name-only duplicate.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {

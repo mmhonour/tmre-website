@@ -293,7 +293,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision_owner_cluster_members',
     category: 'sync-admin',
     definition:
-      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes. Rebuilt when a parcel’s keys change. FK `(town, vision_pid)` → `vision_addresses`. CLI: `npm run sync:owner-clusters`. Vision GIS chunks also fill 80 missing cards. See vision_owner_keys.',
+      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes; `/find/owners` ranks Westport portfolios by stored parcel_count, largest first. Rebuilt when a parcel’s keys change. FK `(town, vision_pid)` → `vision_addresses`. CLI: `npm run sync:owner-clusters`. Vision GIS chunks also fill 80 missing cards. See vision_owner_keys.',
   },
   {
     term: 'vision_street_parcels',

@@ -125,3 +125,52 @@ export function extractVisionOwnerKeys(input: {
 
   return out
 }
+
+export type VisionOwnerPortfolioParcel = {
+  town: string
+  visionPid: string
+  siteAddress: string
+}
+
+export type VisionOwnerPortfolio = {
+  clusterId: string
+  clusterKind: VisionOwnerKeyKind
+  town: string
+  displayName: string
+  mailingLabel: string | null
+  parcelCount: number
+  parcels: VisionOwnerPortfolioParcel[]
+}
+
+export function clusterKindFromId(
+  clusterId: string,
+): VisionOwnerKeyKind | null {
+  if (clusterId.startsWith('mailing:')) return 'mailing'
+  if (clusterId.startsWith('name:')) return 'name'
+  return null
+}
+
+/**
+ * One row per portfolio. Prefer the largest cluster, mailing over name
+ * when counts tie, and skip a cluster whose cards already appeared.
+ */
+export function pickUniqueOwnerPortfolios(
+  rows: readonly VisionOwnerPortfolio[],
+): VisionOwnerPortfolio[] {
+  const ranked = [...rows].sort((a, b) => {
+    if (b.parcelCount !== a.parcelCount) return b.parcelCount - a.parcelCount
+    if (a.clusterKind !== b.clusterKind) {
+      return a.clusterKind === 'mailing' ? -1 : 1
+    }
+    return a.displayName.localeCompare(b.displayName)
+  })
+  const seen = new Set<string>()
+  const out: VisionOwnerPortfolio[] = []
+  for (const row of ranked) {
+    const keys = row.parcels.map((p) => `${p.town}:${p.visionPid}`)
+    if (keys.length === 0 || keys.every((key) => seen.has(key))) continue
+    for (const key of keys) seen.add(key)
+    out.push(row)
+  }
+  return out
+}

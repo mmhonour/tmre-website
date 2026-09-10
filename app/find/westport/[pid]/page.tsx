@@ -260,7 +260,12 @@ export default async function WestportParcelPage({
             {property.otherHomes.length > 0 ? (
               <div className="mt-3">
                 <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
-                  Other homes
+                  <Link
+                    href="/find/owners"
+                    className="hover:text-white transition-colors"
+                  >
+                    Other homes
+                  </Link>
                 </p>
                 <ul className="mt-1 space-y-0.5">
                   {property.otherHomes.map((home) => (

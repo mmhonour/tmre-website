@@ -175,6 +175,10 @@ export default function FindClient({
         <div className="relative z-[60] mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Find · Westport
+            {" · "}
+            <Link href="/find/owners" className="hover:text-white transition-colors">
+              2+ homes
+            </Link>
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
             Westport{" "}

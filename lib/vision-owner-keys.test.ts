@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   extractVisionOwnerKeys,
+  pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   visionOwnerMailingKeyNorm,
   visionOwnerNameKeyNorm,
+  type VisionOwnerPortfolio,
 } from './vision-owner-keys'
 
 describe('visionOwnerNameKeyNorm', () => {
@@ -60,5 +62,39 @@ describe('extractVisionOwnerKeys', () => {
       visionOwnerClusterId('name', 'castillo|edward'),
       'name:castillo|edward',
     )
+  })
+})
+
+describe('pickUniqueOwnerPortfolios', () => {
+  it('keeps the larger mailing cluster and drops a name overlap', () => {
+    const mailing: VisionOwnerPortfolio = {
+      clusterId: 'mailing:po box 88|westport',
+      clusterKind: 'mailing',
+      town: 'Westport',
+      displayName: 'KING ALBERT',
+      mailingLabel: 'PO BOX 88',
+      parcelCount: 3,
+      parcels: [
+        { town: 'Westport', visionPid: '1', siteAddress: '1 Main' },
+        { town: 'Westport', visionPid: '2', siteAddress: '2 Main' },
+        { town: 'Westport', visionPid: '3', siteAddress: '3 Main' },
+      ],
+    }
+    const name: VisionOwnerPortfolio = {
+      clusterId: 'name:king|albert',
+      clusterKind: 'name',
+      town: 'Westport',
+      displayName: 'KING ALBERT',
+      mailingLabel: null,
+      parcelCount: 2,
+      parcels: [
+        { town: 'Westport', visionPid: '1', siteAddress: '1 Main' },
+        { town: 'Westport', visionPid: '2', siteAddress: '2 Main' },
+      ],
+    }
+    const picked = pickUniqueOwnerPortfolios([name, mailing])
+    assert.equal(picked.length, 1)
+    assert.equal(picked[0]?.clusterId, mailing.clusterId)
+    assert.equal(picked[0]?.parcelCount, 3)
   })
 })
