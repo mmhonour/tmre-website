@@ -12,7 +12,8 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
     clusterId: "mailing:po box 88|westport",
     clusterKind: "mailing",
     town: "Westport",
-    displayName: "KING ALBERT",
+    displayName: "Albert King",
+    relationship: "owner",
     mailingLabel: "po box 88, westport",
     parcelCount: 3,
     parcels: [
@@ -25,7 +26,8 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
     clusterId: "name:king|albert",
     clusterKind: "name",
     town: "Westport",
-    displayName: "KING ALBERT",
+    displayName: "Albert King",
+    relationship: "landlord",
     mailingLabel: null,
     parcelCount: 2,
     parcels: [
@@ -34,15 +36,16 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
     ],
   },
   {
-    clusterId: "name:smith|joan",
+    clusterId: "name:denise|penna",
     clusterKind: "name",
     town: "Westport",
-    displayName: "SMITH JOAN",
+    displayName: "Denise Penna",
+    relationship: "landlord",
     mailingLabel: null,
     parcelCount: 2,
     parcels: [
-      { town: "Westport", visionPid: "300", siteAddress: "1 Elm St" },
-      { town: "Westport", visionPid: "301", siteAddress: "3 Elm St" },
+      { town: "Westport", visionPid: "4100", siteAddress: "12 Compo Rd S" },
+      { town: "Westport", visionPid: "4101", siteAddress: "88 Hillspoint Rd" },
     ],
   },
 ]);
@@ -58,9 +61,13 @@ export default function OwnerPortfoliosPreviewPage() {
           Owner portfolios (2+ homes)
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture list — largest first, mailing cluster wins over a name
-          overlap. Production (admin / Streets password): /streets/owners
-          or /streets/owners?town=Westport&street=STONY+PT+RD.
+          Fixture list — largest first. A name on two warranty or
+          quitclaim rows is a landlord (Denise Penna). Same mailbox is an
+          owner cluster. Production (admin): /streets/owners or Find →
+          Landlord / owners.
+        </p>
+        <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
+          Find · Westport · Landlord / owners
         </p>
         <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
           Town-wide
@@ -75,7 +82,9 @@ export default function OwnerPortfoliosPreviewPage() {
                 <h2 className="font-serif text-2xl text-navy">{row.displayName}</h2>
                 <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
                   {row.parcelCount} homes
-                  {row.clusterKind === "mailing" ? " · same mailing" : ""}
+                  {row.relationship === "landlord"
+                    ? " · landlord"
+                    : " · same mailing"}
                 </p>
               </div>
               <ul className="mt-3 space-y-1">
@@ -103,6 +112,7 @@ export default function OwnerPortfoliosPreviewPage() {
               clusterKind: "mailing",
               town: "Westport",
               displayName: "CASTILLO EDWARD AND SNYDER CAMERON",
+              relationship: "owner",
               mailingLabel: "2a stony pt rd, westport",
               parcelCount: 2,
               parcels: [

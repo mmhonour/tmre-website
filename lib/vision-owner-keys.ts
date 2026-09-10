@@ -3,8 +3,9 @@ import {
   normalizePropertyAddress,
 } from '@/lib/property-address'
 import { parseVisionMailingLetterParts } from '@/lib/vision-mailing-address'
+import { VISION_OWNER_ENTITY_RE } from '@/lib/vision-owner-display'
 import {
-  compileVisionOwnerParts,
+  isVisionQuitclaim,
   normalizeVisionOwnerLine,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
@@ -41,12 +42,16 @@ export function splitVisionOwnerPeople(line: string): string[] {
 }
 
 export function visionOwnerNameKeyNorm(person: string): string {
-  return person
+  const tokens = person
     .toLowerCase()
     .replace(/[.,']/g, '')
     .split(/\s+/)
     .filter(Boolean)
-    .join('|')
+  if (tokens.length === 0) return ''
+  if (tokens.length === 1 || VISION_OWNER_ENTITY_RE.test(person)) {
+    return tokens.join('|')
+  }
+  return [...tokens].sort().join('|')
 }
 
 export function visionOwnerMailingKeyNorm(
@@ -92,10 +97,6 @@ export function extractVisionOwnerKeys(input: {
   ownerMailingAddress?: string | null
   ownership?: readonly VisionOwnershipRow[] | null
 }): VisionOwnerKey[] {
-  const compiled = compileVisionOwnerParts(
-    input.ownership ?? [],
-    input.ownerName,
-  )
   const out: VisionOwnerKey[] = []
   const seen = new Set<string>()
 
@@ -113,15 +114,13 @@ export function extractVisionOwnerKeys(input: {
     })
   }
 
-  const lines = compiled.displayLines
-  const warranty = lines[0] ?? compiled.displayName ?? input.ownerName
-  pushNameKeys(out, seen, warranty, 'warranty_buyer')
-  for (const line of lines.slice(1)) {
-    pushNameKeys(out, seen, line, 'quitclaim_grantee')
+  for (const row of input.ownership ?? []) {
+    const role: VisionOwnerKeyRole = isVisionQuitclaim(row)
+      ? 'quitclaim_grantee'
+      : 'warranty_buyer'
+    pushNameKeys(out, seen, row.owner, role)
   }
-  if (lines.length === 0) {
-    pushNameKeys(out, seen, input.ownerName, 'owner_of_record')
-  }
+  pushNameKeys(out, seen, input.ownerName, 'owner_of_record')
 
   return out
 }
@@ -135,6 +134,8 @@ export type VisionOwnerPortfolioParcel = {
 export type VisionOwnerPortfolio = {
   clusterId: string
   clusterKind: VisionOwnerKeyKind
+  /** Name from deed history (2+ homes) vs same mailbox. */
+  relationship: 'landlord' | 'owner'
   town: string
   displayName: string
   mailingLabel: string | null
@@ -173,4 +174,10 @@ export function pickUniqueOwnerPortfolios(
     out.push(row)
   }
   return out
+}
+
+export function ownerPortfolioRelationship(
+  clusterKind: VisionOwnerKeyKind,
+): 'landlord' | 'owner' {
+  return clusterKind === 'name' ? 'landlord' : 'owner'
 }

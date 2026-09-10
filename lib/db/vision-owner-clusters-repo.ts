@@ -1,9 +1,11 @@
 import 'server-only'
 
 import { execute, query, queryOne } from '@/lib/db/postgres'
+import { formatVisionOwnerDisplay } from '@/lib/vision-owner-display'
 import {
   clusterKindFromId,
   extractVisionOwnerKeys,
+  ownerPortfolioRelationship,
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   type VisionOwnerKey,
@@ -293,6 +295,7 @@ export async function listVisionOwnerPortfolios(opts: {
         cluster_id: string
         parcel_count: string
         display_name: string | null
+        key_label: string | null
         town: string
         parcels: {
           town: string
@@ -303,6 +306,7 @@ export async function listVisionOwnerPortfolios(opts: {
         `SELECT m.cluster_id,
                 COUNT(*)::text AS parcel_count,
                 MIN(m.display_name) AS display_name,
+                MIN(k.display_label) AS key_label,
                 MIN(m.town) AS town,
                 jsonb_agg(
                   jsonb_build_object(
@@ -315,6 +319,10 @@ export async function listVisionOwnerPortfolios(opts: {
            FROM vision_owner_cluster_members m
            JOIN vision_street_parcels p
              ON p.town = m.town AND p.vision_pid = m.vision_pid
+           LEFT JOIN vision_owner_keys k
+             ON k.town = m.town
+            AND k.vision_pid = m.vision_pid
+            AND k.key_kind || ':' || k.key_norm = m.cluster_id
           WHERE m.town = $1 AND p.street_name = $2
           GROUP BY m.cluster_id
          HAVING COUNT(*) >= $3
@@ -325,6 +333,7 @@ export async function listVisionOwnerPortfolios(opts: {
         cluster_id: string
         parcel_count: string
         display_name: string | null
+        key_label: string | null
         town: string
         parcels: {
           town: string
@@ -335,6 +344,7 @@ export async function listVisionOwnerPortfolios(opts: {
         `SELECT m.cluster_id,
                 COUNT(*)::text AS parcel_count,
                 MIN(m.display_name) AS display_name,
+                MIN(k.display_label) AS key_label,
                 MIN(m.town) AS town,
                 jsonb_agg(
                   jsonb_build_object(
@@ -345,6 +355,10 @@ export async function listVisionOwnerPortfolios(opts: {
                   ORDER BY m.site_address, m.vision_pid
                 ) AS parcels
            FROM vision_owner_cluster_members m
+           LEFT JOIN vision_owner_keys k
+             ON k.town = m.town
+            AND k.vision_pid = m.vision_pid
+            AND k.key_kind || ':' || k.key_norm = m.cluster_id
           WHERE m.town = $1
           GROUP BY m.cluster_id
          HAVING COUNT(*) >= $2
@@ -362,11 +376,17 @@ export async function listVisionOwnerPortfolios(opts: {
       kind === 'mailing'
         ? row.cluster_id.slice('mailing:'.length).replace(/\|/g, ', ')
         : null
+    const personLabel = row.key_label?.trim() || row.display_name?.trim() || ''
+    const displayName =
+      kind === 'name'
+        ? formatVisionOwnerDisplay(personLabel) || personLabel || row.cluster_id
+        : row.display_name?.trim() || mailingLabel || row.cluster_id
     portfolios.push({
       clusterId: row.cluster_id,
       clusterKind: kind,
+      relationship: ownerPortfolioRelationship(kind),
       town: row.town,
-      displayName: row.display_name?.trim() || mailingLabel || row.cluster_id,
+      displayName,
       mailingLabel,
       parcelCount,
       parcels: (row.parcels ?? []).map((parcel) => ({

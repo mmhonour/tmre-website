@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { listingDetailHref, westportParcelHref } from "@/lib/listing-url";
+import { visionOwnersPageHref } from "@/lib/vision-streets-page";
 
 type LookupHit = {
   visionPid: string;
@@ -45,8 +46,10 @@ function hitHref(hit: LookupHit): string {
 
 export default function FindClient({
   initialQuery = "",
+  showLandlordLink = false,
 }: {
   initialQuery?: string;
+  showLandlordLink?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
@@ -175,6 +178,17 @@ export default function FindClient({
         <div className="relative z-[60] mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Find · Westport
+            {showLandlordLink ? (
+              <>
+                {" · "}
+                <Link
+                  href={visionOwnersPageHref("Westport")}
+                  className="hover:text-white transition-colors"
+                >
+                  Landlord / owners
+                </Link>
+              </>
+            ) : null}
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.05] max-w-3xl animate-fade-up">
             Westport{" "}

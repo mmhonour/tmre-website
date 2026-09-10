@@ -293,7 +293,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision_owner_cluster_members',
     category: 'sync-admin',
     definition:
-      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes. Owner ranking is Admin / Streets only: `/streets/owners` (town-wide) or `?street=` (2+ homes on that street), largest stored parcel_count first. Rebuilt when a parcel’s keys change. FK `(town, vision_pid)` → `vision_addresses`. CLI: `npm run sync:owner-clusters`. Vision GIS chunks also fill 80 missing cards. See vision_owner_keys.',
+      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). Name keys come from every warranty and quitclaim owner on the Field Card, not only the current stack, so a landlord who later quitclaimed still clusters (PENNA DENISE / Denise Penna). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes. Admin ranking: `/streets/owners` (also linked from Find and Streets as Landlord / owners). Rebuilt when a parcel’s keys change. CLI: `npm run sync:owner-clusters`. See vision_owner_keys.',
   },
   {
     term: 'vision_street_parcels',
