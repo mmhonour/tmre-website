@@ -40,6 +40,8 @@ export type OpenHouseListing = {
   pastCount: number
   /** Public events on file with OHDate today or later (ET), not only this week. */
   upcomingCount: number
+  /** Public OH events this Monday–Sunday week (ET). One listing, many slots. */
+  weekOpenHouseCount: number
 }
 
 /** Calendar date (YYYY-MM-DD) in America/New_York. */
@@ -65,6 +67,34 @@ export const OPEN_HOUSE_LOOKAHEAD_DAYS = 90
 export function openHouseDateWindow(from = new Date()): { start: string; end: string } {
   const start = etCalendarDate(from)
   return { start, end: addCalendarDays(start, 6) }
+}
+
+/** Monday of the calendar week that contains `isoDate` (YYYY-MM-DD). */
+export function mondayOfContainingWeek(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const jsSunday0 = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  const mondayOffset = jsSunday0 === 0 ? 6 : jsSunday0 - 1
+  return addCalendarDays(isoDate, -mondayOffset)
+}
+
+/** Monday–Sunday of the ET week that contains `from` (inclusive). */
+export function openHouseWeekWindow(from = new Date()): { start: string; end: string } {
+  const start = mondayOfContainingWeek(etCalendarDate(from))
+  return { start, end: addCalendarDays(start, 6) }
+}
+
+/** First event on or after today; otherwise the last event this week. */
+export function pickNextOpenHouse(
+  events: readonly OpenHouseEvent[],
+  today: string,
+): OpenHouseEvent | undefined {
+  if (events.length === 0) return undefined
+  const sorted = [...events].sort((a, b) => {
+    const dateCmp = a.date.localeCompare(b.date)
+    if (dateCmp !== 0) return dateCmp
+    return (a.startDateTime ?? '').localeCompare(b.startDateTime ?? '')
+  })
+  return sorted.find((event) => event.date >= today) ?? sorted[sorted.length - 1]
 }
 
 /** Yesterday back through the lookback horizon (empty when lookback is 0). */
@@ -104,6 +134,10 @@ export function formatOpenHouseHistory(past: number, upcoming: number): string {
   const pastLabel = past === 1 ? '1 past' : `${past} past`
   const upcomingLabel = upcoming === 1 ? '1 upcoming' : `${upcoming} upcoming`
   return `${pastLabel} · ${upcomingLabel}`
+}
+
+export function formatOpenHouseWeekCount(count: number): string {
+  return count === 1 ? '1 this week' : `${count} this week`
 }
 
 export function isDateInOpenHouseWindow(

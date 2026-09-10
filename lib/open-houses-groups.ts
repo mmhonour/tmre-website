@@ -16,6 +16,8 @@ export type OpenHouseDayGroup = {
 
 export type OpenHouseTownGroup = {
   town: string
+  /** Unique homes in this town with ≥1 OH in the loaded week. */
+  propertyCount: number
   days: OpenHouseDayGroup[]
 }
 
@@ -71,7 +73,7 @@ export function groupOpenHousesByTownAndDay(
   return towns.map((town) => {
     const rows = byTown.get(town) ?? []
     if (!byDay) {
-      return { town, days: [{ date: '', label: '', listings: rows }] }
+      return { town, propertyCount: rows.length, days: [{ date: '', label: '', listings: rows }] }
     }
     const byDate = new Map<string, OpenHouseListing[]>()
     for (const listing of rows) {
@@ -85,6 +87,6 @@ export function groupOpenHousesByTownAndDay(
       label: openHouseDayLabel(date, opts.today),
       listings: byDate.get(date) ?? [],
     }))
-    return { town, days }
+    return { town, propertyCount: rows.length, days }
   })
 }
