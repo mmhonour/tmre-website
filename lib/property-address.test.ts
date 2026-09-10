@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   addressMatchKey,
+  expandStreetLine,
   normalizePropertyAddress,
   streetSearchVariants,
 } from './property-address'
@@ -21,6 +22,12 @@ describe('streetSearchVariants', () => {
     const variants = streetSearchVariants('5 Locust Lane').map((v) => v.toLowerCase())
     assert.ok(variants.includes('5 locust lane'))
     assert.ok(variants.includes('5 locust ln'))
+  })
+})
+
+describe('expandStreetLine', () => {
+  it('spells Pt / Rd so the first RETS hop can hit Point / Road', () => {
+    assert.equal(expandStreetLine('2A STONY PT RD'), '2a stony point road')
   })
 })
 

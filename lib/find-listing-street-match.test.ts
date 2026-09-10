@@ -28,6 +28,21 @@ describe('collapsedListingStreet', () => {
       'seaspray',
     )
   })
+
+  it('treats 2A-A as house 2A and expands Pt to Point', () => {
+    assert.deepEqual(collapsedListingStreet('2A STONY PT RD'), {
+      house: '2a',
+      name: 'stonypoint',
+    })
+    assert.deepEqual(collapsedListingStreet('2A-A Stony Point Road'), {
+      house: '2a',
+      name: 'stonypoint',
+    })
+    assert.deepEqual(collapsedListingStreet('2A Stony Point RD'), {
+      house: '2a',
+      name: 'stonypoint',
+    })
+  })
 })
 
 describe('findListingStreetsMatch', () => {
@@ -62,6 +77,17 @@ describe('findListingStreetsMatch', () => {
       false,
     )
   })
+
+  it('matches Vision 2A Stony Pt to MLS 2A-A Stony Point', () => {
+    assert.equal(
+      findListingStreetsMatch('2A STONY PT RD', '2A-A Stony Point Road'),
+      true,
+    )
+    assert.equal(
+      findListingStreetsMatch('2A Stony Point RD', '2A-A Stony Point Road'),
+      true,
+    )
+  })
 })
 
 describe('findListingStreetQueries', () => {
@@ -82,5 +108,13 @@ describe('findListingStreetQueries', () => {
     assert.equal(queries[0], '5 locust')
     assert.ok(queries.some((q) => q.endsWith(' ln')))
     assert.ok(queries.some((q) => q.endsWith(' lane')))
+  })
+
+  it('expands Pt before the first RETS hop so Point still hits', () => {
+    const queries = findListingStreetQueries('2A STONY PT RD').map((q) =>
+      q.toLowerCase(),
+    )
+    assert.equal(queries[0], '2a stony point')
+    assert.ok(queries.some((q) => q.includes('stony pt')))
   })
 })
