@@ -31,6 +31,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "FYI on the Find parcel page when the assessor street and the MLS street are not the same spelling.",
   },
   {
+    slug: "find-stony-rets",
+    title: "Find RETS hops (2A Stony Pt)",
+    summary:
+      "StreetNumber hops, paid-deed Closed window, and Vision↔MLS match for 2A STONY PT RD. Probe RETS is read-only.",
+  },
+  {
     slug: "vision-owner-first-last",
     title: "Owner First Last",
     summary:
