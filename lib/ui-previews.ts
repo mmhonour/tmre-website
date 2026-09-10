@@ -30,6 +30,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "FYI on the Find parcel page when the assessor street and the MLS street are not the same spelling.",
   },
+  {
+    slug: "vision-owner-first-last",
+    title: "Owner First Last",
+    summary:
+      "VGSI LAST FIRST becomes First Last for people; LLC and trust lines stay as filed.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {
