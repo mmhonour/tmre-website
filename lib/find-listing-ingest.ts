@@ -12,7 +12,10 @@ import { getListingByMlsId, searchListings, type Listing } from '@/lib/rets'
 import type { VisionAddressRecord } from '@/lib/db/vision-addresses-repo'
 import { compactMblu, visionListingKeys } from '@/lib/vision-listing-match'
 import { listingIngestTown } from '@/lib/find-listing-ingest-shared'
-import { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
+import {
+  closedSearchDateForVision,
+  closedSearchWindowForSaleDate,
+} from '@/lib/find-listing-window'
 
 export { listingIngestTown } from '@/lib/find-listing-ingest-shared'
 export { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
@@ -382,16 +385,13 @@ export async function ingestFindListingIfMissing(
         return { listing: byAddress, ingested: true }
       }
 
-      const window = closedSearchWindowForSaleDate(vision.lastSaleDate)
+      const closedDate = closedSearchDateForVision(vision)
+      const window = closedSearchWindowForSaleDate(closedDate)
       await report(
         'rets-closed',
         `Closed window ${window.closedAfter.slice(0, 4)}–${window.closedBefore.slice(0, 4)}…`,
       )
-      const byClosed = await persistByStreetClosed(
-        street,
-        vision.lastSaleDate,
-        town,
-      )
+      const byClosed = await persistByStreetClosed(street, closedDate, town)
       if (byClosed) {
         await stampVisionListingLink(vision, byClosed)
         await report('found', byClosed.status || 'Found in RETS')
