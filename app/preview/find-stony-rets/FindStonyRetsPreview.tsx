@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { findAddressDivergence } from "@/lib/find-address-divergence";
 import {
   findListingHouseHasLetterSuffix,
+  findListingStreetNumberHops,
   findListingStreetQueries,
   findListingStreetsMatch,
-  findListingStructuredStreets,
 } from "@/lib/find-listing-street-match";
 import {
   closedSearchDateForVision,
@@ -73,12 +73,6 @@ type ProbeResponse = {
   hops?: ProbeHop[];
 };
 
-function hopLabel(hop: {
-  streetNumber: string;
-  streetNameContains: string;
-}): string {
-  return `(StreetNumber=${hop.streetNumber}),(StreetName=*${hop.streetNameContains.trim().split(/\s+/).join("*")}*)`;
-}
 
 export function FindStonyRetsPreview() {
   const [street, setStreet] = useState(VISION_STREET);
@@ -86,7 +80,7 @@ export function FindStonyRetsPreview() {
   const [probe, setProbe] = useState<ProbeResponse | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const hops = useMemo(() => findListingStructuredStreets(street), [street]);
+  const hops = useMemo(() => findListingStreetNumberHops(street), [street]);
   const unparsed = useMemo(() => findListingStreetQueries(street), [street]);
   const skipUnparsed = findListingHouseHasLetterSuffix(street);
   const matches = findListingStreetsMatch(street, mlsStreet);
@@ -168,23 +162,24 @@ export function FindStonyRetsPreview() {
 
       <section className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gold">
-          StreetNumber hops
+          StreetNumber hops Find sends
         </p>
         {hops.length === 0 ? (
           <p className="mt-2 font-mono text-sm text-slate">No structured hop.</p>
         ) : (
           <ol className="mt-3 space-y-2">
-            {hops.map((hop, index) => (
-              <li key={`${hop.streetNumber}-${hop.streetNameContains}`} className="font-mono text-sm text-navy">
+            {hops.map((streetNumber, index) => (
+              <li key={streetNumber} className="font-mono text-sm text-navy">
                 <span className="text-slate/60">{index + 1}. </span>
-                {hopLabel(hop)}
+                (StreetNumber={streetNumber}) plus the Closed window. Street
+                name is matched after RETS returns.
               </li>
             ))}
           </ol>
         )}
         <p className="mt-3 font-mono text-xs text-slate">
           {skipUnparsed
-            ? "Letter house — UnparsedAddress hops are skipped (99065198 is blank)."
+            ? "Letter house — UnparsedAddress is skipped (blank on 99065198). StreetNumber+StreetName is 20206 on SmartMLS."
             : `UnparsedAddress hops: ${unparsed.join(" · ")}`}
         </p>
       </section>

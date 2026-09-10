@@ -5,6 +5,7 @@ import {
   findListingHouseHasLetterSuffix,
   findListingStreetQueries,
   findListingStreetsMatch,
+  findListingStreetNumberHops,
   findListingStructuredStreet,
   findListingStructuredStreets,
   listingHouseIlikePatterns,
@@ -137,6 +138,10 @@ describe('findListingStructuredStreet', () => {
     ])
     assert.equal(findListingHouseHasLetterSuffix('2A STONY PT RD'), true)
     assert.equal(findListingHouseHasLetterSuffix('16 Sea Spray Rd'), false)
+    assert.deepEqual(findListingStreetNumberHops('2A STONY PT RD'), [
+      '2A*',
+      '2A-*',
+    ])
   })
 })
 

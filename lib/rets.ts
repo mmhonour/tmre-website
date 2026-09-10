@@ -532,6 +532,19 @@ function isRetsNoRecordsError(err: unknown): boolean {
   return code === '20201' || tag === 'NO_RECORDS_FOUND'
 }
 
+/** StreetNumber + StreetName=*token*token* is 20206 on SmartMLS. */
+export function isRetsInvalidQueryError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = String((err as { replyCode?: string }).replyCode ?? '')
+  const tag = String((err as { replyTag?: string }).replyTag ?? '')
+  const message = err instanceof Error ? err.message : String(err)
+  return (
+    code === '20206' ||
+    tag === 'INVALID_QUERY_SYNTAX' ||
+    /INVALID_QUERY_SYNTAX/i.test(message)
+  )
+}
+
 /**
  * SmartMLS answering 20513 MISC_ERROR / "Database error" is a fault on their
  * side, and an intermittent one — the same search usually succeeds moments
