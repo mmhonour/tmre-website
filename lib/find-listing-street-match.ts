@@ -1,4 +1,9 @@
-import { normalizeStreetLine, streetSearchVariants } from '@/lib/property-address'
+import {
+  expandStreetLine,
+  expandStreetToken,
+  normalizeStreetLine,
+  streetSearchVariants,
+} from '@/lib/property-address'
 import { streetLineWithoutType } from '@/lib/street-type-abbreviations'
 
 const STREET_TYPES = new Set([
@@ -50,16 +55,27 @@ function levenshtein(a: string, b: string): number {
 }
 
 /**
+ * `2A` or `2A-A` (MLS unit glued to the house). The Vision card is `2A`;
+ * SmartMLS stores `2A-A`. Same house for matching.
+ */
+function parseCollapsedHouse(token: string | undefined): string | null {
+  if (!token) return null
+  return token.match(/^(\d+[a-z]?)(?:-[a-z0-9]+)?$/)?.[1] ?? null
+}
+
+/**
  * House number + street name with spaces/hyphens removed and the type
  * stripped. `16 Sea Spray Rd` and `16 Seaspray Road` both → `16` / `seaspray`.
- * That is the only handle Find has before a listing is pulled (no parcel #).
+ * Mid-name abbrevs expand first (`pt` → `point`) so `Stony Pt` matches
+ * `Stony Point`. That is the only handle Find has before a listing is
+ * pulled (no parcel #).
  */
 export function collapsedListingStreet(
   street: string,
 ): { house: string; name: string } | null {
   const tokens = normalizeStreetLine(street).split(' ').filter(Boolean)
-  const house = tokens[0]
-  if (!house || !/^\d+[a-z]?$/.test(house)) return null
+  const house = parseCollapsedHouse(tokens[0])
+  if (!house) return null
   const nameTokens = tokens.slice(1).filter((token) => !UNIT_TOKENS.has(token))
   while (nameTokens.length > 0) {
     const last = nameTokens[nameTokens.length - 1]
@@ -70,7 +86,9 @@ export function collapsedListingStreet(
     }
     break
   }
-  const name = nameTokens.join('').replace(/[^a-z0-9]/g, '')
+  const name = nameTokens
+    .map((token) => expandStreetToken(token).replace(/[^a-z0-9]/g, ''))
+    .join('')
   if (!name) return null
   return { house, name }
 }
@@ -87,9 +105,10 @@ export function findListingStreetsMatch(a: string, b: string): boolean {
 }
 
 /**
- * RETS UnparsedAddress hops. Omit Rd/Road first — `*road*` misses `Rd`
- * and `*ln*` misses `Lane`. Then the short type, then the long type.
- * Name-pattern glue (Seaspray) is a last hop, not the main guess.
+ * RETS UnparsedAddress hops. Expand mid-name abbrevs and omit Rd/Road
+ * first — `*pt*` misses `Point`, `*road*` misses `Rd`, `*ln*` misses
+ * `Lane`. Then the original no-type line, then short/long type variants.
+ * Name-pattern glue (Seaspray) is not a RETS hop.
  */
 export function findListingStreetQueries(street: string): string[] {
   const seen = new Set<string>()
@@ -100,6 +119,7 @@ export function findListingStreetQueries(street: string): string[] {
     seen.add(key)
     out.push(value.replace(/\s+/g, ' ').trim())
   }
+  add(streetLineWithoutType(expandStreetLine(street)))
   add(streetLineWithoutType(street))
   const variants = [...streetSearchVariants(street)].sort(
     (a, b) => a.length - b.length,
