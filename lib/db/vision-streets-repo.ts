@@ -21,6 +21,10 @@ import {
 } from '@/lib/vision-gis-parse'
 import { formatVisionMailingAddress } from '@/lib/vision-mailing-address'
 import {
+  formatVisionOwnerDisplay,
+  formatVisionOwnerDisplayLines,
+} from '@/lib/vision-owner-display'
+import {
   VISION_GIS_TOWNS,
   missingVisionStreetLetters,
 } from '@/lib/vision-gis-towns'
@@ -357,7 +361,8 @@ export async function listVisionStreetParcels(
             lastSaleDate: row.last_sale_date,
           })
     const compiledOwner = compileVisionOwnerParts(deeds, ownerName)
-    const compiledName = compiledOwner.displayName ?? ownerName
+    const rawName = compiledOwner.displayName ?? ownerName
+    const compiledName = formatVisionOwnerDisplay(rawName)
     const mailingRaw = row.owner_mailing_address?.trim() || fromCard
     const mailing = formatVisionMailingAddress({
       mailing: mailingRaw,
@@ -376,12 +381,13 @@ export async function listVisionStreetParcels(
           ? row.synced_at.toISOString()
           : String(row.synced_at),
       ownerName: compiledName,
-      ownerDisplayLines:
+      ownerDisplayLines: formatVisionOwnerDisplayLines(
         compiledOwner.displayLines.length > 0
           ? compiledOwner.displayLines
-          : compiledName
-            ? [compiledName]
+          : rawName
+            ? [rawName]
             : [],
+      ),
       ownerMailingAddress: mailingRaw,
       mailingDisplayLines: mailing.labeledLines,
       mailingLetterLines: mailing.letterLines,

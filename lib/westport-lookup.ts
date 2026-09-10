@@ -48,6 +48,10 @@ import {
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
 import { formatVisionMailingAddress } from '@/lib/vision-mailing-address'
+import {
+  formatVisionOwnerDisplay,
+  formatVisionOwnerDisplayLines,
+} from '@/lib/vision-owner-display'
 
 export const WESTPORT_LOOKUP_TOWN = 'Westport'
 
@@ -619,13 +623,15 @@ export async function mergeWestportProperty(
     fieldCard.ownership ?? [],
     cardOwner,
   )
-  const ownerDisplayName = compiledOwner.displayName ?? cardOwner
-  const ownerDisplayLines =
+  const rawOwnerName = compiledOwner.displayName ?? cardOwner
+  const ownerDisplayName = formatVisionOwnerDisplay(rawOwnerName)
+  const ownerDisplayLines = formatVisionOwnerDisplayLines(
     compiledOwner.displayLines.length > 0
       ? compiledOwner.displayLines
-      : ownerDisplayName
-        ? [ownerDisplayName]
-        : []
+      : rawOwnerName
+        ? [rawOwnerName]
+        : [],
+  )
   const ownerMailingAddress =
     ownerMailingAddressFromFields(fieldCard.fields) ??
     vision.ownerMailingAddress
@@ -705,7 +711,12 @@ export async function mergeWestportProperty(
       ownership: fieldCard.ownership,
     }),
     quitclaimCount: countVisionQuitclaims(fieldCard.ownership),
-    deedHistory: visionDeedDisplayRows(fieldCard.ownership, ownerDisplayName),
+    deedHistory: visionDeedDisplayRows(fieldCard.ownership, rawOwnerName).map(
+      (row) => ({
+        ...row,
+        owner: formatVisionOwnerDisplay(row.owner) ?? row.owner,
+      }),
+    ),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
     appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),
