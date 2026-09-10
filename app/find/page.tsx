@@ -1,3 +1,4 @@
+import { isAdminAuthorizedFromCookies } from "@/lib/admin-auth";
 import FindClient from "./FindClient";
 
 export const metadata = {
@@ -13,5 +14,11 @@ export default async function FindPage({
 }) {
   const { q } = await searchParams;
   const initialQuery = Array.isArray(q) ? (q[0] ?? "") : (q ?? "");
-  return <FindClient initialQuery={initialQuery} />;
+  const showLandlordLink = await isAdminAuthorizedFromCookies();
+  return (
+    <FindClient
+      initialQuery={initialQuery}
+      showLandlordLink={showLandlordLink}
+    />
+  );
 }

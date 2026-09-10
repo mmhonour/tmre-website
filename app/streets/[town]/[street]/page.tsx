@@ -85,7 +85,7 @@ export default async function StreetsStreetPage({
               href={visionOwnersPageHref(town, streetName)}
               className="hover:text-white transition-colors"
             >
-              Owners on this street
+              Landlords on this street
             </Link>
           </p>
           <p className="text-sm text-white/60 mb-3">

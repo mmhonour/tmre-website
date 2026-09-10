@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 export const metadata = {
   title: 'Owners with 2+ homes — Streets — TMRE',
   description:
-    'Admin: Vision cards that share a mailing or owner name — two or more homes, largest first.',
+    'Admin: landlords (same name on warranty or quitclaim history) and owners who share a mailing — two or more homes, largest first.',
   robots: { index: false, follow: false },
 }
 
@@ -121,11 +121,12 @@ export default async function StreetsOwnersPage({
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl text-white leading-[1.08] max-w-3xl">
             {streetName
-              ? `Owners with two or more homes on ${streetName}`
-              : `Owners with two or more homes`}
+              ? `Landlords and owners with two or more homes on ${streetName}`
+              : `Landlords and owners with two or more homes`}
           </h1>
           <p className="mt-3 max-w-xl font-mono text-sm text-white/70">
-            Admin only. Largest first. Same mailbox or the same assessor name.
+            Admin only. Largest first. A landlord is the same person on two
+            warranty or quitclaim rows. An owner cluster is the same mailbox.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}
@@ -136,7 +137,7 @@ export default async function StreetsOwnersPage({
                 href={visionOwnersPageHref(town)}
                 className="font-mono text-[11px] tracking-[0.12em] uppercase text-gold hover:text-white"
               >
-                All {town} 2+ owners
+                All {town} landlords / owners
               </Link>
             </p>
           ) : null}
@@ -165,7 +166,9 @@ export default async function StreetsOwnersPage({
                     <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
                       {row.parcelCount}{' '}
                       {row.parcelCount === 1 ? 'home' : 'homes'}
-                      {row.clusterKind === 'mailing' ? ' · same mailing' : ''}
+                      {row.relationship === 'landlord'
+                        ? ' · landlord'
+                        : ' · same mailing'}
                     </p>
                   </div>
                   {row.mailingLabel ? (

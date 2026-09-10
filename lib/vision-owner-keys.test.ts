@@ -10,8 +10,15 @@ import {
 } from './vision-owner-keys'
 
 describe('visionOwnerNameKeyNorm', () => {
-  it('keeps VGSI last-first order', () => {
+  it('collapses Last First and First Last to the same person', () => {
     assert.equal(visionOwnerNameKeyNorm('CASTILLO EDWARD'), 'castillo|edward')
+    assert.equal(visionOwnerNameKeyNorm('EDWARD CASTILLO'), 'castillo|edward')
+    assert.equal(visionOwnerNameKeyNorm('PENNA DENISE'), 'denise|penna')
+    assert.equal(visionOwnerNameKeyNorm('Denise Penna'), 'denise|penna')
+  })
+
+  it('does not scramble an LLC', () => {
+    assert.equal(visionOwnerNameKeyNorm('ACME HOLDINGS LLC'), 'acme|holdings|llc')
   })
 })
 
@@ -55,13 +62,56 @@ describe('extractVisionOwnerKeys', () => {
       [
         'mailing:2a stony pt rd|westport',
         'name:castillo|edward',
-        'name:snyder|cameron',
+        'name:cameron|snyder',
+        'name:cameron|synder',
       ],
     )
     assert.equal(
       visionOwnerClusterId('name', 'castillo|edward'),
       'name:castillo|edward',
     )
+  })
+
+  it('keys Denise from a later quitclaim even when she is not of record', () => {
+    const occupied = extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'SMITH JOHN',
+      ownership: [
+        {
+          owner: 'SMITH JOHN',
+          date: '06/01/2020',
+          price: '$0',
+          bookPage: '1/1',
+          qualified: 'U',
+          instrument: '29',
+        },
+        {
+          owner: 'PENNA DENISE',
+          date: '03/15/2012',
+          price: '$850,000',
+          bookPage: '2/2',
+          qualified: 'Q',
+          instrument: '00',
+        },
+      ],
+    })
+    const secondHome = extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'DENISE PENNA AND PENNA MARK',
+      ownership: [
+        {
+          owner: 'DENISE PENNA AND PENNA MARK',
+          date: '08/01/2018',
+          price: '$1,200,000',
+          bookPage: '3/3',
+          qualified: 'Q',
+          instrument: '00',
+        },
+      ],
+    })
+    assert.ok(occupied.some((row) => row.keyNorm === 'denise|penna'))
+    assert.ok(secondHome.some((row) => row.keyNorm === 'denise|penna'))
+    assert.ok(occupied.some((row) => row.keyNorm === 'john|smith'))
   })
 })
 
@@ -72,6 +122,7 @@ describe('pickUniqueOwnerPortfolios', () => {
       clusterKind: 'mailing',
       town: 'Westport',
       displayName: 'KING ALBERT',
+      relationship: 'owner',
       mailingLabel: 'PO BOX 88',
       parcelCount: 3,
       parcels: [
@@ -85,6 +136,7 @@ describe('pickUniqueOwnerPortfolios', () => {
       clusterKind: 'name',
       town: 'Westport',
       displayName: 'KING ALBERT',
+      relationship: 'landlord',
       mailingLabel: null,
       parcelCount: 2,
       parcels: [

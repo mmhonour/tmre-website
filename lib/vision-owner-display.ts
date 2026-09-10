@@ -3,7 +3,7 @@
  * people. Entities (LLC, trust, …) stay in assessor order.
  */
 
-const ENTITY_RE =
+export const VISION_OWNER_ENTITY_RE =
   /\b(llc|l\.l\.c\.?|inc\.?|corp\.?|ltd\.?|l\.?p\.?|llp|pllc|p\.?c\.?|trust|trustee|bank|assoc(?:iation)?|hoa|condo|church|estate|foundation|partners(?:hip)?|nominee|irrevocable|revocable|holdings)\b/i
 
 function titleCaseToken(token: string): string {
@@ -29,7 +29,7 @@ function titleCaseToken(token: string): string {
 function formatVisionOwnerPerson(raw: string): string {
   const tokens = raw.trim().split(/\s+/).filter(Boolean)
   if (tokens.length === 0) return ''
-  if (tokens.length === 1 || ENTITY_RE.test(raw)) {
+  if (tokens.length === 1 || VISION_OWNER_ENTITY_RE.test(raw)) {
     return tokens.map(titleCaseToken).join(' ')
   }
   const last = tokens[0]!
