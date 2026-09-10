@@ -16,6 +16,7 @@ import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { query, queryOne } from '@/lib/db/postgres'
 import { buildListingPhotoProxyUrls } from '@/lib/listing-photos-cache'
 import { listingDetailHref } from '@/lib/listing-url'
+import { findAddressDivergence } from '@/lib/find-address-divergence'
 import {
   normalizePropertyAddress,
   normalizeStreetLine,
@@ -86,6 +87,12 @@ export type WestportMergedProperty = {
   visionPid: string
   addressFull: string
   street: string
+  /** VGSI site line (`2A STONY PT RD`). */
+  visionStreet: string
+  /** MLS street when a listing is linked. */
+  mlsStreet: string | null
+  /** True when the two display lines are not the same spelling. */
+  addressesDiverge: boolean
   mblu: string | null
   parcelUrl: string | null
   fieldCard: WestportFieldCard
@@ -622,7 +629,12 @@ export async function mergeWestportProperty(
   const ownerMailingAddress =
     ownerMailingAddressFromFields(fieldCard.fields) ??
     vision.ownerMailingAddress
-  const residenceStreet = listing?.address.street || streetLine(vision)
+  const visionStreet = streetLine(vision)
+  const mlsStreet = listing
+    ? (listing.address.street || listing.address.full || '').trim() || null
+    : null
+  const addressLines = findAddressDivergence(visionStreet, mlsStreet)
+  const residenceStreet = listing?.address.street || visionStreet
   const mailing = formatVisionMailingAddress({
     mailing: ownerMailingAddress,
     residenceStreet,
@@ -636,8 +648,11 @@ export async function mergeWestportProperty(
     addressFull:
       listing?.address.full ||
       vision.addressFull ||
-      `${streetLine(vision)}, Westport, CT`,
+      `${visionStreet}, Westport, CT`,
     street: residenceStreet,
+    visionStreet: addressLines.visionStreet,
+    mlsStreet: addressLines.mlsStreet,
+    addressesDiverge: addressLines.diverge,
     mblu: vision.mblu,
     parcelUrl: vision.parcelUrl,
     fieldCard,

@@ -24,6 +24,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Town sections, then Today / Tomorrow / weekday. Days with no showing are omitted.",
   },
+  {
+    slug: "find-address-diverge",
+    title: "Vision vs MLS address",
+    summary:
+      "FYI on the Find parcel page when the assessor street and the MLS street are not the same spelling.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {
