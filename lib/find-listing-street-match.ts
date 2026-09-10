@@ -114,22 +114,59 @@ export function listingHouseIlikePatterns(house: string): string[] {
   return [`${h} %`, `${h}-%`]
 }
 
+/** Vision house with a letter (`2A`) — MLS often stores `2A-A` and blanks UnparsedAddress. */
+export function findListingHouseHasLetterSuffix(street: string): boolean {
+  return /^\d+[A-Za-z]/.test(street.trim())
+}
+
+function listingHouseToken(street: string): string | null {
+  if (!collapsedListingStreet(street)?.house) return null
+  return street.trim().match(/^(\d+[A-Za-z]?)/)?.[1] ?? null
+}
+
+function streetNameWithoutType(street: string): string {
+  return streetLineWithoutType(street).split(/\s+/).slice(1).join(' ').trim()
+}
+
+export type FindListingStructuredHop = {
+  streetNumber: string
+  streetNameContains: string
+}
+
 /**
- * Structured RETS hop when UnparsedAddress is empty (99065198).
- * Vision `2A STONY PT RD` → StreetNumber `2A*` + StreetName `*stony*point*`.
+ * Structured RETS hops when UnparsedAddress is empty (99065198).
+ * Keep the Vision house case (`2A*` not `2a*`). Search both the expanded
+ * street name (`stony point`) and the filed abbrev (`STONY PT`) — MLS
+ * StreetName is sometimes still `STONY PT`.
  */
+export function findListingStructuredStreets(
+  street: string,
+): FindListingStructuredHop[] {
+  const house = listingHouseToken(street)
+  if (!house) return []
+  const numbers = [`${house}*`]
+  if (/[A-Za-z]$/.test(house)) numbers.push(`${house}-*`)
+  const names: string[] = []
+  const addName = (value: string) => {
+    const key = value.replace(/\s+/g, ' ').trim().toLowerCase()
+    if (!key || names.some((name) => name.toLowerCase() === key)) return
+    names.push(value.replace(/\s+/g, ' ').trim())
+  }
+  addName(streetNameWithoutType(expandStreetLine(street)))
+  addName(streetNameWithoutType(street))
+  const hops: FindListingStructuredHop[] = []
+  for (const streetNameContains of names) {
+    for (const streetNumber of numbers) {
+      hops.push({ streetNumber, streetNameContains })
+    }
+  }
+  return hops
+}
+
 export function findListingStructuredStreet(
   street: string,
-): { streetNumber: string; streetNameContains: string } | null {
-  const house = collapsedListingStreet(street)?.house
-  if (!house) return null
-  const name = streetLineWithoutType(expandStreetLine(street))
-    .split(/\s+/)
-    .slice(1)
-    .join(' ')
-    .trim()
-  if (!name) return null
-  return { streetNumber: `${house}*`, streetNameContains: name }
+): FindListingStructuredHop | null {
+  return findListingStructuredStreets(street)[0] ?? null
 }
 
 /**
