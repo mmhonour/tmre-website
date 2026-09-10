@@ -284,6 +284,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Each Vision chunk starts by fetching any missing Streets.aspx?Letter= pages into this table (fillMissingVisionStreetIndex) — that does not move the parcel crawl cursor. Entering a letter during the parcel walk also replaces that letter. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. Admin-only page `/streets` (password gate, not in the public menu) reads this table. House numbers live in `vision_street_parcels`. `vision_addresses.street_name` is only streets whose Field Cards have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
   },
   {
+    term: 'vision_owner_keys',
+    category: 'sync-admin',
+    definition:
+      'Neon table of join fingerprints extracted from a Vision Field Card (db/migrations/0031_vision_owner_clusters.sql). `vision_pid` is the card, not the owner. Each row is a mailing key (`12 main st|westport`) or a name key (`castillo|edward`) with a role (warranty / quitclaim / of-record). Written on Vision upsert, Field Card persist, and Find parcel load. FK `(town, vision_pid)` → `vision_addresses`. See vision_owner_cluster_members.',
+  },
+  {
+    term: 'vision_owner_cluster_members',
+    category: 'sync-admin',
+    definition:
+      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes. Owner ranking is Admin / Streets only: `/streets/owners` (town-wide) or `?street=` (2+ homes on that street), largest stored parcel_count first. Rebuilt when a parcel’s keys change. FK `(town, vision_pid)` → `vision_addresses`. CLI: `npm run sync:owner-clusters`. Vision GIS chunks also fill 80 missing cards. See vision_owner_keys.',
+  },
+  {
     term: 'vision_street_parcels',
     category: 'sync-admin',
     definition:

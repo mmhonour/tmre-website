@@ -51,11 +51,25 @@ function isCityStateLine(token: string): boolean {
   return STATE_ABBR.test(last)
 }
 
+function nameTokenKey(value: string): string {
+  return collapse(value)
+    .toLowerCase()
+    .replace(/\s+and\s+/g, ' ')
+    .replace(/&/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join('|')
+}
+
 function namesMatch(a: string, b: string): boolean {
   const left = collapse(a).toLowerCase()
   const right = collapse(b).toLowerCase()
   if (!left || !right) return false
-  return left === right || left.includes(right) || right.includes(left)
+  if (left === right || left.includes(right) || right.includes(left)) return true
+  const leftKey = nameTokenKey(left)
+  const rightKey = nameTokenKey(right)
+  return Boolean(leftKey) && leftKey === rightKey
 }
 
 /**
@@ -147,9 +161,14 @@ export function formatVisionMailingAddress(opts: {
 
   const parts = parseVisionMailingLetterParts(mailing)
   const owner = collapse(opts.ownerName ?? '')
+  // VGSI owner is LAST FIRST. A mailing addressee is often FIRST LAST.
+  // Same tokens → keep the assessor order. A different addressee (LLC,
+  // manager) stays on the letter.
   const name =
-    parts.name ||
-    (owner && !namesMatch(owner, parts.street ?? '') ? owner : null)
+    parts.name && owner && namesMatch(parts.name, owner)
+      ? owner
+      : parts.name ||
+        (owner && !namesMatch(owner, parts.street ?? '') ? owner : null)
 
   const letterLines = [name, parts.street, parts.cityState].filter(
     (line): line is string => Boolean(line),

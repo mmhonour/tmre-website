@@ -21,6 +21,17 @@ export function streetNameToSlug(streetName: string): string {
   return townToStreetSlug(streetName)
 }
 
+/** Admin-only owner aggregation (Streets password). Optional street scope. */
+export function visionOwnersPageHref(
+  town: string,
+  streetName?: string | null,
+): string {
+  const params = new URLSearchParams({ town: town.trim() })
+  const street = streetName?.trim()
+  if (street) params.set('street', street)
+  return `/streets/owners?${params.toString()}`
+}
+
 export function visionStreetPageHref(
   town: string,
   streetName: string,

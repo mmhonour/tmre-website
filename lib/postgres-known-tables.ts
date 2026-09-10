@@ -28,6 +28,8 @@ export const POSTGRES_KNOWN_TABLES = [
   'vision_addresses',
   'vision_streets',
   'vision_street_parcels',
+  'vision_owner_keys',
+  'vision_owner_cluster_members',
   'zip_boundaries',
   'visitors',
   'content_views',

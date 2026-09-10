@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   compareAddressLabels,
   streetNameToSlug,
+  visionOwnersPageHref,
   visionParcelFindHref,
   visionStreetPageHref,
 } from './vision-streets-page'
@@ -16,6 +17,19 @@ describe('visionStreetPageHref', () => {
     assert.equal(
       visionStreetPageHref('Westport', 'SEA SPRAY RD', '3564'),
       '/streets/westport/sea-spray-rd#pid-3564',
+    )
+  })
+})
+
+describe('visionOwnersPageHref', () => {
+  it('scopes town-wide or to one street', () => {
+    assert.equal(
+      visionOwnersPageHref('Westport'),
+      '/streets/owners?town=Westport',
+    )
+    assert.equal(
+      visionOwnersPageHref('Westport', 'STONY PT RD'),
+      '/streets/owners?town=Westport&street=STONY+PT+RD',
     )
   })
 })

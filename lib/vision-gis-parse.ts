@@ -383,10 +383,105 @@ export type VisionCompiledOwner = {
   displayLines: string[]
 }
 
+/** Collapse AND/&, case, and punctuation so deed strings can compare. */
+export function normalizeVisionOwnerLine(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .replace(/[.,']/g, '')
+    .replace(/\s+AND\s+/g, ' & ')
+}
+
+/** Damerau–Levenshtein so SYNDER / SNYDER counts as one slip. */
+function ownerLineEditDistance(a: string, b: string): number {
+  if (a === b) return 0
+  const n = a.length
+  const m = b.length
+  if (!n) return m
+  if (!m) return n
+  const d: number[][] = Array.from({ length: n + 1 }, (_, i) =>
+    Array.from({ length: m + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  )
+  for (let i = 1; i <= n; i += 1) {
+    for (let j = 1; j <= m; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      d[i]![j] = Math.min(
+        d[i - 1]![j]! + 1,
+        d[i]![j - 1]! + 1,
+        d[i - 1]![j - 1]! + cost,
+      )
+      if (
+        i > 1 &&
+        j > 1 &&
+        a[i - 1] === b[j - 2] &&
+        a[i - 2] === b[j - 1]
+      ) {
+        d[i]![j] = Math.min(d[i]![j]!, d[i - 2]![j - 2]! + 1)
+      }
+    }
+  }
+  return d[n]![m]!
+}
+
+function ownerLineTokens(value: string): string[] {
+  return normalizeVisionOwnerLine(value)
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && token !== '&')
+}
+
+/**
+ * True when a later quitclaim is the same owner as the warranty line
+ * (AND vs &, or a one-letter slip on a long token — SYNDER / SNYDER).
+ */
+export function visionOwnerLinesMirror(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const a = (left ?? '').replace(/\s+/g, ' ').trim()
+  const b = (right ?? '').replace(/\s+/g, ' ').trim()
+  if (!a || !b) return false
+  if (normalizeVisionOwnerLine(a) === normalizeVisionOwnerLine(b)) return true
+  const leftTokens = ownerLineTokens(a)
+  const rightTokens = ownerLineTokens(b)
+  if (leftTokens.length === 0 || leftTokens.length !== rightTokens.length) {
+    return false
+  }
+  return leftTokens.every((token, i) => {
+    const other = rightTokens[i]!
+    if (token === other) return true
+    const minLen = Math.min(token.length, other.length)
+    return minLen >= 5 && ownerLineEditDistance(token, other) <= 1
+  })
+}
+
+function ownerLineAlreadyListed(
+  name: string,
+  lines: readonly string[],
+): boolean {
+  return lines.some((line) => visionOwnerLinesMirror(name, line))
+}
+
+function pickOwnerDisplayName(
+  lines: readonly string[],
+  currentOwner?: string | null,
+): string | null {
+  let displayName: string | null = null
+  for (const line of lines) {
+    displayName = joinVisionOwnerNames(displayName, line)
+  }
+  const current = currentOwner?.replace(/\s+/g, ' ').trim() || null
+  if (current && !ownerLineAlreadyListed(current, lines)) {
+    displayName = joinVisionOwnerNames(displayName, current)
+  }
+  return displayName
+}
+
 /**
  * Last paid / warranty buyers, plus every later quitclaim grantee.
  * Four quitclaim adds are legitimate owners; the $ transaction still stands.
  * Quitclaims after that deed become their own display lines.
+ * A quitclaim that mirrors the warranty buyers is dropped from the summary.
  */
 export function compileVisionOwnerParts(
   ownership: readonly VisionOwnershipRow[],
@@ -403,24 +498,30 @@ export function compileVisionOwnerParts(
   if (anchorIdx >= 0) {
     const warranty = clean(sorted[anchorIdx]?.owner)
     const quitclaimLines: string[] = []
+    const seen = warranty ? [warranty] : []
     for (let i = anchorIdx - 1; i >= 0; i -= 1) {
       const name = clean(sorted[i]?.owner)
-      if (name) quitclaimLines.push(name)
+      if (!name || ownerLineAlreadyListed(name, seen)) continue
+      quitclaimLines.push(name)
+      seen.push(name)
     }
     if (quitclaimLines.length === 0) {
-      const displayName = joinVisionOwnerNames(warranty, currentOwner)
+      const primary =
+        warranty &&
+        currentOwner &&
+        visionOwnerLinesMirror(warranty, currentOwner)
+          ? currentOwner.replace(/\s+/g, ' ').trim()
+          : joinVisionOwnerNames(warranty, currentOwner)
       return {
-        displayName,
-        displayLines: displayName ? [displayName] : [],
+        displayName: primary,
+        displayLines: primary ? [primary] : [],
       }
     }
     const displayLines = [...(warranty ? [warranty] : []), ...quitclaimLines]
-    let displayName: string | null = null
-    for (const line of displayLines) {
-      displayName = joinVisionOwnerNames(displayName, line)
+    return {
+      displayName: pickOwnerDisplayName(displayLines, currentOwner),
+      displayLines,
     }
-    displayName = joinVisionOwnerNames(displayName, currentOwner)
-    return { displayName, displayLines }
   }
 
   let compiled: string | null = null

@@ -343,6 +343,10 @@ export async function upsertVisionAddress(
       parsed.ownerMailingAddress,
     ],
   )
+  const { refreshVisionOwnerKeysSafe } = await import(
+    '@/lib/db/vision-owner-clusters-repo'
+  )
+  await refreshVisionOwnerKeysSafe(parsed.town, parsed.visionPid)
 }
 
 export async function persistVisionFieldCardJson(
@@ -366,6 +370,10 @@ export async function persistVisionFieldCardJson(
       ownerName,
     ],
   )
+  const { refreshVisionOwnerKeysSafe } = await import(
+    '@/lib/db/vision-owner-clusters-repo'
+  )
+  await refreshVisionOwnerKeysSafe(town, visionPid)
 }
 
 export async function countVisionAddresses(town?: string): Promise<number> {

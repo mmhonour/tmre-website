@@ -7,6 +7,7 @@ import {
   formatVisionMoney,
   visionDeedDisplayRows,
   visionLastPaidSale,
+  visionOwnerLinesMirror,
 } from './vision-gis-parse'
 
 describe('completeDanglingDeedOwner', () => {
@@ -230,5 +231,52 @@ describe('compileVisionOwnerParts', () => {
     assert.deepEqual(parts.displayLines, [
       'SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE',
     ])
+  })
+
+  it('drops a quitclaim that mirrors the warranty buyers', () => {
+    const parts = compileVisionOwnerParts(
+      [
+        {
+          owner: 'CASTILLO EDWARD AND SNYDER CAMERON',
+          date: '09/12/2016',
+          price: '0',
+          bookPage: '3729/0032',
+          qualified: 'U',
+          instrument: '29',
+        },
+        {
+          owner: 'CASTILLO EDWARD AND SYNDER CAMERON',
+          date: '11/03/2014',
+          price: '1530000',
+          bookPage: '3565/0068',
+          qualified: 'Q',
+          instrument: '00',
+        },
+      ],
+      'CASTILLO EDWARD AND SNYDER CAMERON',
+    )
+    assert.deepEqual(parts.displayLines, [
+      'CASTILLO EDWARD AND SNYDER CAMERON',
+    ])
+    assert.equal(parts.displayName, 'CASTILLO EDWARD AND SNYDER CAMERON')
+  })
+})
+
+describe('visionOwnerLinesMirror', () => {
+  it('treats AND vs & and a one-letter last-name slip as the same line', () => {
+    assert.equal(
+      visionOwnerLinesMirror(
+        'CASTILLO EDWARD AND SYNDER CAMERON',
+        'CASTILLO EDWARD AND SNYDER CAMERON',
+      ),
+      true,
+    )
+  })
+
+  it('does not collapse a one-letter first-name change on a short token', () => {
+    assert.equal(
+      visionOwnerLinesMirror('SMITH JOHN', 'SMITH JOAN'),
+      false,
+    )
   })
 })

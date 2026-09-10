@@ -13,6 +13,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Open several town cards at once, scroll the rail, and drag one over another to stack them.",
   },
   {
+    slug: "owner-portfolios",
+    title: "Owner portfolios (2+ homes)",
+    summary:
+      "Admin owner aggregation: largest 2+ clusters first, optional street scope. Mailing overlap wins over a name-only duplicate.",
+  },
+  {
     slug: "open-houses-town-day",
     title: "Open houses by town and day",
     summary:

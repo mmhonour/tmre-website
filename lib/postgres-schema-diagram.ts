@@ -76,6 +76,16 @@ const DOCUMENTED_POSTGRES_RELATIONSHIPS: SqliteRelationship[] = [
     source: 'documented',
   },
   {
+    from: { table: 'vision_owner_keys', column: 'vision_pid' },
+    to: { table: 'vision_addresses', column: 'vision_pid' },
+    source: 'documented',
+  },
+  {
+    from: { table: 'vision_owner_cluster_members', column: 'vision_pid' },
+    to: { table: 'vision_addresses', column: 'vision_pid' },
+    source: 'documented',
+  },
+  {
     from: { table: 'listings', column: 'id' },
     to: { table: 'listing_price_history', column: 'listing_id' },
     source: 'documented',
@@ -111,6 +121,23 @@ const DOCUMENTED_POSTGRES_COLUMNS: Record<string, SqliteColumnInfo[]> = {
     { name: 'lookup_text', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'content_fingerprint', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'scraped_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'updated_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  vision_owner_keys: [
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'vision_pid', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'key_kind', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'key_norm', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'display_label', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'role', type: 'text', notNull: true, primaryKey: false, defaultValue: null },
+    { name: 'updated_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
+  ],
+  vision_owner_cluster_members: [
+    { name: 'cluster_id', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'town', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'vision_pid', type: 'text', notNull: true, primaryKey: true, defaultValue: null },
+    { name: 'display_name', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
+    { name: 'site_address', type: 'text', notNull: false, primaryKey: false, defaultValue: null },
     { name: 'updated_at', type: 'timestamp with time zone', notNull: true, primaryKey: false, defaultValue: null },
   ],
   town_property_addresses: [
