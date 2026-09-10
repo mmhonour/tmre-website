@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   collapsedListingStreet,
+  findListingHouseHasLetterSuffix,
   findListingStreetQueries,
   findListingStreetsMatch,
   findListingStructuredStreet,
+  findListingStructuredStreets,
   listingHouseIlikePatterns,
 } from './find-listing-street-match'
 
@@ -122,11 +124,19 @@ describe('findListingStreetQueries', () => {
 })
 
 describe('findListingStructuredStreet', () => {
-  it('builds a StreetNumber / StreetName hop for 2A Stony Pt', () => {
+  it('keeps Vision house case and searches Point then Pt', () => {
     assert.deepEqual(findListingStructuredStreet('2A STONY PT RD'), {
-      streetNumber: '2a*',
+      streetNumber: '2A*',
       streetNameContains: 'stony point',
     })
+    assert.deepEqual(findListingStructuredStreets('2A STONY PT RD'), [
+      { streetNumber: '2A*', streetNameContains: 'stony point' },
+      { streetNumber: '2A-*', streetNameContains: 'stony point' },
+      { streetNumber: '2A*', streetNameContains: 'STONY PT' },
+      { streetNumber: '2A-*', streetNameContains: 'STONY PT' },
+    ])
+    assert.equal(findListingHouseHasLetterSuffix('2A STONY PT RD'), true)
+    assert.equal(findListingHouseHasLetterSuffix('16 Sea Spray Rd'), false)
   })
 })
 
