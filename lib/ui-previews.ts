@@ -31,12 +31,6 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Town +/− with a unique-home count for the Monday–Sunday week. Cards list every open house that home has this week.",
   },
   {
-    slug: "open-houses-town-order",
-    title: "Open houses — collapsed towns",
-    summary:
-      "Towns start collapsed. Close all towns / Expand all towns. No drag reorder.",
-  },
-  {
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
