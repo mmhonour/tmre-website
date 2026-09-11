@@ -1,6 +1,6 @@
 # Catalogue historical SmartMLS OpenHouse events into Neon.
 #
-# Not the hourly Open houses job. That job only refreshes today → +90 days.
+# Not the hourly Open houses job. That job only refreshes today through +90 days.
 # This fills past showings so /open-houses Most / First / pastCount have history.
 #
 # From the repo root, with DATABASE_URL + RETS_* in .env.local
@@ -12,6 +12,7 @@
 #   .\scripts\backfill-open-houses.ps1 -OldestFirst
 #
 # Re-runs are safe. Newest-first so recent history lands even if you stop early.
+# Keep this file ASCII. Windows PowerShell 5.1 breaks on UTF-8 em dashes.
 
 [CmdletBinding()]
 param(
@@ -31,8 +32,10 @@ if (-not (Test-Path (Join-Path $RepoRoot 'package.json'))) {
 Set-Location $RepoRoot
 
 $envFile = Join-Path $RepoRoot '.env.local'
-if (-not (Test-Path $envFile)) {
-  throw "Missing .env.local — needs DATABASE_URL, RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD."
+$hasFile = Test-Path $envFile
+$hasEnv = $env:DATABASE_URL -and $env:RETS_SERVER_URL -and $env:RETS_USERNAME -and $env:RETS_PASSWORD
+if (-not $hasFile -and -not $hasEnv) {
+  throw 'Missing .env.local. Add DATABASE_URL, RETS_SERVER_URL, RETS_USERNAME, RETS_PASSWORD (or set those env vars).'
 }
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -51,10 +54,10 @@ if ($OldestFirst) {
   $npmArgs += '--oldest-first'
 }
 
-Write-Host "Open house history backfill (not the hourly calendar job)"
+Write-Host 'Open house history backfill (not the hourly calendar job)'
 Write-Host "  $RepoRoot"
 Write-Host "  npm $($npmArgs -join ' ')"
-Write-Host ""
+Write-Host ''
 
 & npm @npmArgs
 if ($LASTEXITCODE -ne 0) {

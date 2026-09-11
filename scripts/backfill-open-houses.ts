@@ -27,8 +27,8 @@ import {
 import { backfillOpenHouseHistory } from '../lib/open-houses-sync'
 import { isRetsConfigured, retsSyncBlockedMessage } from '../lib/rets'
 
-if (existsSync('.env.local')) {
-  process.loadEnvFile('.env.local')
+for (const file of ['.env.local', '.env']) {
+  if (existsSync(file)) process.loadEnvFile(file)
 }
 
 async function main() {
