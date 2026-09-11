@@ -40,7 +40,7 @@ export type OpenHouseListing = {
   pastCount: number
   /** Public events on file with OHDate today or later (ET), not only this week. */
   upcomingCount: number
-  /** Public OH events this Monday–Sunday week (ET). One listing, many slots. */
+  /** Remaining public OH events today through Sunday this week (ET). */
   weekOpenHouseCount: number
 }
 
@@ -83,7 +83,27 @@ export function openHouseWeekWindow(from = new Date()): { start: string; end: st
   return { start, end: addCalendarDays(start, 6) }
 }
 
-/** First event on or after today; otherwise the last event this week. */
+/**
+ * The page is forward-looking: today through Sunday of this ET week.
+ * Homes whose last open house was yesterday or earlier are out of scope.
+ */
+export function openHouseRemainingWeekWindow(from = new Date()): {
+  start: string
+  end: string
+} {
+  const week = openHouseWeekWindow(from)
+  const today = etCalendarDate(from)
+  return { start: today > week.start ? today : week.start, end: week.end }
+}
+
+export function openHouseRemainingWeekLabel(window: {
+  start: string
+  end: string
+}): string {
+  return `Today through Sunday · ${window.start} through ${window.end} (ET)`
+}
+
+/** First event on or after today. Nothing if the series already ended. */
 export function pickNextOpenHouse(
   events: readonly OpenHouseEvent[],
   today: string,
@@ -94,8 +114,12 @@ export function pickNextOpenHouse(
     if (dateCmp !== 0) return dateCmp
     return (a.startDateTime ?? '').localeCompare(b.startDateTime ?? '')
   })
-  return sorted.find((event) => event.date >= today) ?? sorted[sorted.length - 1]
+  return sorted.find((event) => event.date >= today)
 }
+
+export const OPEN_HOUSES_LOAD_ERROR_TITLE = 'Open houses could not be loaded'
+export const OPEN_HOUSES_LOAD_ERROR_BODY =
+  'The week list failed to load. Refresh the page. This is not an empty calendar.'
 
 /** Yesterday back through the lookback horizon (empty when lookback is 0). */
 export function openHouseLookbackWindow(from = new Date()): { start: string; end: string } {
@@ -130,6 +154,25 @@ export function splitDateWindow(
   return chunks
 }
 
+/** One stored OpenHouse row on a listing History panel. `upcoming` is set upstream. */
+export type ListingOpenHouse = OpenHouseEvent & {
+  upcoming: boolean
+}
+
+export function markOpenHouseUpcoming(
+  event: OpenHouseEvent,
+  today: string,
+): ListingOpenHouse {
+  return { ...event, upcoming: event.date >= today }
+}
+
+/** SmartMLS OHType `O` is a public open house. */
+export function formatOpenHouseType(type: string | null | undefined): string {
+  const raw = type?.trim()
+  if (!raw || raw === 'O') return 'Public'
+  return raw
+}
+
 export function formatOpenHouseHistory(past: number, upcoming: number): string {
   const pastLabel = past === 1 ? '1 past' : `${past} past`
   const upcomingLabel = upcoming === 1 ? '1 upcoming' : `${upcoming} upcoming`
@@ -153,6 +196,18 @@ function formatTime12(hhmm: string): string {
   const suffix = h >= 12 ? 'PM' : 'AM'
   const hour12 = h % 12 || 12
   return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
+/** Calendar day from an OHDate string, no timezone shift. */
+export function formatOpenHouseDate(iso: string): string {
+  const [y, mo, d] = iso.split('-').map(Number)
+  if (!y || !mo || !d) return iso
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, mo - 1, d)))
 }
 
 /** Corner / compact badge: weekday + times, no month. */

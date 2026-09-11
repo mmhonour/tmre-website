@@ -1,0 +1,121 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import {
+  formatOpenHouseHistory,
+  formatOpenHouseWeekCount,
+  OPEN_HOUSES_LOAD_ERROR_BODY,
+  OPEN_HOUSES_LOAD_ERROR_TITLE,
+  openHouseRemainingWeekWindow,
+  pickNextOpenHouse,
+  type OpenHouseEvent,
+} from "@/lib/open-houses";
+
+type Scene = "loaded" | "empty" | "error";
+
+function slot(id: string, date: string): OpenHouseEvent {
+  return {
+    id,
+    listingKey: id,
+    listingId: id,
+    date,
+    startDateTime: `${date}T11:00:00`,
+    endDateTime: `${date}T13:00:00`,
+    type: "Public",
+    comment: null,
+  };
+}
+
+const TODAY = "2026-09-11";
+const MON = slot("ended-mon", "2026-09-07");
+const SAT = slot("live-sat", "2026-09-12");
+const LIVE_EVENTS = [MON, SAT];
+const ENDED_EVENTS = [MON];
+
+export function OpenHousesForwardPreview() {
+  const [scene, setScene] = useState<Scene>("loaded");
+  const remaining = openHouseRemainingWeekWindow(
+    new Date("2026-09-11T16:00:00Z"),
+  );
+  const liveNext = pickNextOpenHouse(LIVE_EVENTS, TODAY);
+  const endedNext = pickNextOpenHouse(ENDED_EVENTS, TODAY);
+  const remainingLive = useMemo(
+    () => LIVE_EVENTS.filter((event) => event.date >= TODAY),
+    [],
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["loaded", "Loaded week"],
+            ["empty", "Empty week"],
+            ["error", "Load failed"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={scene === value}
+            onClick={() => setScene(value)}
+            className={`rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] ${
+              scene === value
+                ? "border-gold/50 bg-gold/10 text-navy"
+                : "border-charcoal/[0.08] bg-white text-navy"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+        Remaining window {remaining.start} → {remaining.end}
+      </p>
+
+      {scene === "error" ? (
+        <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-10 text-center">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-3">
+            {OPEN_HOUSES_LOAD_ERROR_TITLE}
+          </p>
+          <p className="text-charcoal/70">{OPEN_HOUSES_LOAD_ERROR_BODY}</p>
+        </div>
+      ) : scene === "empty" ? (
+        <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-10 text-center">
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-3">
+            No open houses found
+          </p>
+          <p className="text-charcoal/70">
+            Nothing left today through Sunday in this town.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4">
+            <p className="font-medium text-navy">16 Sea Spray Rd</p>
+            <p className="mt-1 text-sm text-slate">
+              Monday already happened; Saturday is still ahead. On the page:
+              Saturday only. History stays as documentation.
+            </p>
+            <p className="mt-2 font-mono text-[11px] text-slate">
+              next {liveNext?.date ?? "none"} ·{" "}
+              {formatOpenHouseWeekCount(remainingLive.length)} ·{" "}
+              {formatOpenHouseHistory(1, remainingLive.length)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-dashed border-charcoal/[0.12] bg-white/60 px-5 py-4">
+            <p className="font-medium text-navy/60">2 Main St — not listed</p>
+            <p className="mt-1 text-sm text-slate">
+              Only Monday. The series ended T-1, so it is not a card. Past
+              rows stay in the catalogue in case this home relists.
+            </p>
+            <p className="mt-2 font-mono text-[11px] text-slate">
+              next {endedNext?.date ?? "none"} · out of remaining week
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

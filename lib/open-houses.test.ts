@@ -3,10 +3,13 @@ import { describe, it } from 'node:test'
 import {
   addCalendarDays,
   formatOpenHouseHistory,
+  formatOpenHouseType,
   formatOpenHouseWeekCount,
   formatOpenHouseWhenShort,
+  markOpenHouseUpcoming,
   openHouseHorizonWindow,
   openHouseLookbackWindow,
+  openHouseRemainingWeekWindow,
   openHouseWeekWindow,
   pickNextOpenHouse,
   splitDateWindow,
@@ -48,6 +51,25 @@ describe('formatOpenHouseHistory', () => {
   })
 })
 
+describe('listing open house rows', () => {
+  it('marks upcoming from the server today stamp', () => {
+    const event = {
+      id: '1',
+      listingKey: 'k',
+      listingId: 'MLS-1',
+      date: '2026-09-12',
+      startDateTime: '2026-09-12T11:00:00',
+      endDateTime: '2026-09-12T13:00:00',
+      type: 'O',
+      comment: null,
+    }
+    assert.equal(markOpenHouseUpcoming(event, '2026-09-11').upcoming, true)
+    assert.equal(markOpenHouseUpcoming(event, '2026-09-13').upcoming, false)
+    assert.equal(formatOpenHouseType('O'), 'Public')
+    assert.equal(formatOpenHouseType('Broker'), 'Broker')
+  })
+})
+
 describe('openHouseWeekWindow', () => {
   it('uses Monday–Sunday of the ET week that contains today', () => {
     assert.deepEqual(openHouseWeekWindow(new Date('2026-09-10T20:00:00Z')), {
@@ -65,6 +87,22 @@ describe('openHouseWeekWindow', () => {
   })
 })
 
+describe('openHouseRemainingWeekWindow', () => {
+  it('starts today when Monday has already passed', () => {
+    assert.deepEqual(
+      openHouseRemainingWeekWindow(new Date('2026-09-10T20:00:00Z')),
+      { start: '2026-09-10', end: '2026-09-13' },
+    )
+  })
+
+  it('is the full week on Monday', () => {
+    assert.deepEqual(
+      openHouseRemainingWeekWindow(new Date('2026-09-14T12:00:00Z')),
+      { start: '2026-09-14', end: '2026-09-20' },
+    )
+  })
+})
+
 describe('pickNextOpenHouse', () => {
   const slot = (date: string): OpenHouseEvent => ({
     id: date,
@@ -77,11 +115,11 @@ describe('pickNextOpenHouse', () => {
     comment: null,
   })
 
-  it('skips earlier days this week and keeps the last past slot when none remain', () => {
+  it('keeps today-or-later slots and drops a series that already ended', () => {
     const mon = slot('2026-09-07')
     const sat = slot('2026-09-12')
     assert.equal(pickNextOpenHouse([sat, mon], '2026-09-10')?.date, '2026-09-12')
-    assert.equal(pickNextOpenHouse([mon], '2026-09-10')?.date, '2026-09-07')
+    assert.equal(pickNextOpenHouse([mon], '2026-09-10'), undefined)
   })
 })
 

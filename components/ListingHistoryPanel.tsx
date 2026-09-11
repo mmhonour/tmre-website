@@ -7,6 +7,8 @@ import { listingDetailHref, listingHistoryHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import { loadTabJson, peekTabJson } from "@/lib/tab-data-prefetch";
 import type { ListingMlsDate } from "@/lib/listing-mls-dates";
+import { ListingOpenHouseHistory } from "@/components/listing/ListingOpenHouseHistory";
+import type { ListingOpenHouse } from "@/lib/open-houses";
 
 type HistoryEvent = {
   date: string | null;
@@ -28,6 +30,7 @@ type PriorListing = {
 type HistoryResponse = {
   events: HistoryEvent[];
   priorListings: PriorListing[];
+  openHouses?: ListingOpenHouse[];
   town: string | null;
   /** Present only for an authorized admin session — see the history route. */
   mlsDates?: ListingMlsDate[];
@@ -96,12 +99,16 @@ export default function ListingHistoryPanel({
 
   const events = data?.events ?? [];
   const prior = data?.priorListings ?? [];
+  const openHouses = data?.openHouses ?? [];
   const town = data?.town ?? townHint ?? null;
   // Admin dates count as content, or a listing whose only record is its feed
   // stamps would collapse the panel for the one viewer who wants them.
   const mlsDates = data?.mlsDates ?? [];
   const hasContent =
-    events.length > 0 || prior.length > 0 || mlsDates.length > 0;
+    events.length > 0 ||
+    prior.length > 0 ||
+    mlsDates.length > 0 ||
+    openHouses.length > 0;
   const isPage = variant === "page";
   const isModal = variant === "modal";
   const isSide = variant === "side";
@@ -179,13 +186,15 @@ export default function ListingHistoryPanel({
 
       {isPage && (
         <p className="text-white/50 text-sm">
-          Price changes, status updates, and prior MLS listings at this address.
+          Price changes, status updates, prior MLS listings, and public open
+          houses at this address.
         </p>
       )}
 
       {isModal && (
         <p className="text-sm text-slate leading-relaxed">
-          Price changes, status updates, and prior MLS listings at this address.
+          Price changes, status updates, prior MLS listings, and public open
+          houses at this address.
         </p>
       )}
 
@@ -361,6 +370,12 @@ export default function ListingHistoryPanel({
           </ul>
         </div>
       )}
+
+      <ListingOpenHouseHistory
+        events={openHouses}
+        currentMlsId={mlsId}
+        variant={variant}
+      />
     </div>
   );
 }
