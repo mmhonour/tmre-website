@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOpenHouseTownOrder } from "@/hooks/useOpenHouseTownOrder";
 import {
   formatTownList,
@@ -41,6 +41,7 @@ import {
 import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import {
   compareOpenHousePastCountDesc,
+  exclusiveOpenHouseFocus,
   filterOpenHouseFocus,
   openHouseFocusEmptyCopy,
 } from "@/lib/open-houses-focus";
@@ -118,7 +119,60 @@ function creamChipClass(active: boolean): string {
   }`;
 }
 
+function OhPlaceFilters({
+  theme,
+  className = "",
+  txFilter,
+  setTxFilter,
+  townFilter,
+  setTownFilter,
+  orderedTowns,
+  townCounts,
+  loadState,
+}: {
+  theme: FilterPillTheme;
+  className?: string;
+  txFilter: TxFilter;
+  setTxFilter: (value: TxFilter) => void;
+  townFilter: TownFilter;
+  setTownFilter: (value: TownFilter) => void;
+  orderedTowns: readonly TownName[];
+  townCounts: Partial<Record<TownFilter | TownName, number>>;
+  loadState: LoadState;
+}) {
+  return (
+    <div className={`flex flex-wrap items-center gap-3 ${className}`}>
+      <div className={filterPillContainerClass("compact", { wrap: false, theme })}>
+        {TX_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => setTxFilter(f.value)}
+            aria-pressed={txFilter === f.value}
+            className={filterPillButtonClass(txFilter === f.value, "compact", theme)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <TownFilterPills
+        towns={orderedTowns}
+        selected={townFilter}
+        onSelect={setTownFilter}
+        counts={loadState === "ready" ? townCounts : undefined}
+        allLabel="All Towns"
+        showSeparatorAfterAll
+        size="compact"
+        scrollable
+        theme={theme}
+        className="min-w-0 flex-1"
+      />
+    </div>
+  );
+}
+
 function OhStickyFilters({
+  showPlaceFilters,
   txFilter,
   setTxFilter,
   townFilter,
@@ -127,9 +181,8 @@ function OhStickyFilters({
   townCounts,
   loadState,
   mostOpenHouses,
-  setMostOpenHouses,
   firstShowing,
-  setFirstShowing,
+  onFocusChange,
   sortMode,
   setSortMode,
   groupMode,
@@ -145,6 +198,7 @@ function OhStickyFilters({
   showTownChrome,
   alertFallback,
 }: {
+  showPlaceFilters: boolean;
   txFilter: TxFilter;
   setTxFilter: (value: TxFilter) => void;
   townFilter: TownFilter;
@@ -153,9 +207,8 @@ function OhStickyFilters({
   townCounts: Partial<Record<TownFilter | TownName, number>>;
   loadState: LoadState;
   mostOpenHouses: boolean;
-  setMostOpenHouses: (value: boolean) => void;
   firstShowing: boolean;
-  setFirstShowing: (value: boolean) => void;
+  onFocusChange: (next: { most: boolean; first: boolean }) => void;
   sortMode: SortMode;
   setSortMode: (value: SortMode) => void;
   groupMode: GroupMode;
@@ -174,124 +227,117 @@ function OhStickyFilters({
   const theme: FilterPillTheme = "light";
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className={filterPillContainerClass("compact", { wrap: false, theme })}>
-          {TX_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => setTxFilter(f.value)}
-              aria-pressed={txFilter === f.value}
-              className={filterPillButtonClass(txFilter === f.value, "compact", theme)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <TownFilterPills
-          towns={orderedTowns}
-          selected={townFilter}
-          onSelect={setTownFilter}
-          counts={loadState === "ready" ? townCounts : undefined}
-          allLabel="All Towns"
-          showSeparatorAfterAll
-          size="compact"
-          scrollable
+      {showPlaceFilters ? (
+        <OhPlaceFilters
           theme={theme}
-          className="min-w-0 flex-1"
+          txFilter={txFilter}
+          setTxFilter={setTxFilter}
+          townFilter={townFilter}
+          setTownFilter={setTownFilter}
+          orderedTowns={orderedTowns}
+          townCounts={townCounts}
+          loadState={loadState}
         />
+      ) : null}
+
+      <div
+        className="flex flex-wrap items-center gap-2"
+        role="group"
+        aria-label="First showing or most open houses"
+      >
+        <button
+          type="button"
+          onClick={() => onFocusChange(exclusiveOpenHouseFocus("most", !mostOpenHouses))}
+          aria-pressed={mostOpenHouses}
+          title="Top 3 homes in each town by stored past showings; ties stay in"
+          className={creamChipClass(mostOpenHouses)}
+        >
+          {MOST_OH_LABEL}
+        </button>
+        <button
+          type="button"
+          onClick={() => onFocusChange(exclusiveOpenHouseFocus("first", !firstShowing))}
+          aria-pressed={firstShowing}
+          title="Homes with zero public open houses on file before today"
+          className={creamChipClass(firstShowing)}
+        >
+          {FIRST_OH_LABEL}
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2 min-h-8">
-          <LatestSearchAlertForm
-            variant="open-houses"
-            fallbackCriteria={alertFallback}
-            triggerId="open-house-alerts"
-          />
-          <button
-            type="button"
-            onClick={() => setMostOpenHouses(!mostOpenHouses)}
-            aria-pressed={mostOpenHouses}
-            title="Top 3 homes in each town by stored past showings; ties stay in"
-            className={creamChipClass(mostOpenHouses)}
-          >
-            {MOST_OH_LABEL}
-          </button>
-          <button
-            type="button"
-            onClick={() => setFirstShowing(!firstShowing)}
-            aria-pressed={firstShowing}
-            title="Homes with zero public open houses on file before today"
-            className={creamChipClass(firstShowing)}
-          >
-            {FIRST_OH_LABEL}
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortMode("date")}
-            aria-pressed={sortMode === "date"}
-            className={creamChipClass(sortMode === "date")}
-          >
-            Date
-          </button>
-          <button
-            type="button"
-            onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
-            aria-pressed={groupMode === "day"}
-            className={creamChipClass(groupMode === "day")}
-          >
-            {groupMode === "day" ? "By day" : "By town"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
-            }
-            aria-pressed={sortMode !== "date"}
-            className={creamChipClass(sortMode !== "date")}
-          >
-            Price
-            {sortMode === "price-desc" ? (
-              <span className="text-[9px] tabular-nums" aria-hidden>
-                ↓
-              </span>
-            ) : sortMode === "price-asc" ? (
-              <span className="text-[9px] tabular-nums" aria-hidden>
-                ↑
-              </span>
-            ) : null}
-          </button>
-          {showTownChrome ? (
-            <>
-              <button
-                type="button"
-                onClick={onCloseAllTowns}
-                aria-pressed={allTownsCollapsed}
-                className={creamChipClass(allTownsCollapsed)}
-              >
-                Close all towns
-              </button>
-              <button
-                type="button"
-                onClick={onExpandAllTowns}
-                aria-pressed={allTownsExpanded}
-                className={creamChipClass(allTownsExpanded)}
-              >
-                Expand all towns
-              </button>
-              {customOrder ? (
-                <button
-                  type="button"
-                  onClick={onResetOrder}
-                  className={creamChipClass(false)}
-                >
-                  Reset town order
-                </button>
-              ) : null}
-            </>
+      <div className="flex flex-wrap items-center gap-2 min-h-8">
+        <button
+          type="button"
+          onClick={() => setSortMode("date")}
+          aria-pressed={sortMode === "date"}
+          className={creamChipClass(sortMode === "date")}
+        >
+          Date
+        </button>
+        <button
+          type="button"
+          onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
+          aria-pressed={groupMode === "day"}
+          className={creamChipClass(groupMode === "day")}
+        >
+          {groupMode === "day" ? "By day" : "By town"}
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
+          }
+          aria-pressed={sortMode !== "date"}
+          className={creamChipClass(sortMode !== "date")}
+        >
+          Price
+          {sortMode === "price-desc" ? (
+            <span className="text-[9px] tabular-nums" aria-hidden>
+              ↓
+            </span>
+          ) : sortMode === "price-asc" ? (
+            <span className="text-[9px] tabular-nums" aria-hidden>
+              ↑
+            </span>
           ) : null}
-        </div>
+        </button>
+        {showTownChrome ? (
+          <>
+            <button
+              type="button"
+              onClick={onCloseAllTowns}
+              aria-pressed={allTownsCollapsed}
+              className={creamChipClass(allTownsCollapsed)}
+            >
+              Close all towns
+            </button>
+            <button
+              type="button"
+              onClick={onExpandAllTowns}
+              aria-pressed={allTownsExpanded}
+              className={creamChipClass(allTownsExpanded)}
+            >
+              Expand all towns
+            </button>
+            {customOrder ? (
+              <button
+                type="button"
+                onClick={onResetOrder}
+                className={creamChipClass(false)}
+              >
+                Reset town order
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      <div className="flex min-h-8 items-center justify-between gap-3">
+        <LatestSearchAlertForm
+          variant="open-houses"
+          fallbackCriteria={alertFallback}
+          triggerId="open-house-alerts"
+        />
         <ViewModeToggle value={viewMode} onChange={setViewMode} />
       </div>
     </div>
@@ -344,12 +390,29 @@ export default function OpenHousesClient() {
     () => ({ most: mostOpenHouses, first: firstShowing }),
     [mostOpenHouses, firstShowing],
   );
+  const applyFocus = (next: { most: boolean; first: boolean }) => {
+    setMostPref(next.most ? "on" : "off");
+    setFirstPref(next.first ? "on" : "off");
+  };
   const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
     useOpenHouseTownOrder(TOWN_NAMES);
   const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
   const [dragTown, setDragTown] = useState<string | null>(null);
   const [dragOverTown, setDragOverTown] = useState<string | null>(null);
+  const [placeFiltersDocked, setPlaceFiltersDocked] = useState(false);
+  const placeFiltersSentinelRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => etCalendarDate(), []);
+
+  useEffect(() => {
+    const el = placeFiltersSentinelRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
+      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -458,11 +521,6 @@ export default function OpenHousesClient() {
   const expandAllTowns = () =>
     setOpenTowns(new Set(townSections.map((group) => group.town)));
 
-  const moveVisibleTown = (town: string, neighbor: string | undefined, side: "before" | "after") => {
-    if (!neighbor) return;
-    setPreferredOrder(placeTownNextTo(orderedTowns, town, neighbor, side));
-  };
-
   const townCounts = useMemo(() => {
     let pool = allListings.filter((l) =>
       listingInTmreCoverage(l.address.postalCode, l.address.city),
@@ -499,6 +557,19 @@ export default function OpenHousesClient() {
             Monday–Sunday week. Town counts are unique homes. Each card shows
             this week’s slots plus past / upcoming showings we have stored.
           </p>
+
+          <OhPlaceFilters
+            theme="dark"
+            className="mt-5 animate-fade-up-delay-2"
+            txFilter={txFilter}
+            setTxFilter={setTxFilter}
+            townFilter={townFilter}
+            setTownFilter={setTownFilter}
+            orderedTowns={orderedTowns}
+            townCounts={townCounts}
+            loadState={loadState}
+          />
+          <div ref={placeFiltersSentinelRef} className="h-px w-full" aria-hidden />
 
           <div className="mt-4 flex items-center gap-2 font-mono text-xs">
             <span
@@ -542,6 +613,7 @@ export default function OpenHousesClient() {
         >
           <div className="mx-auto max-w-7xl px-6 lg:px-10 py-3">
             <OhStickyFilters
+              showPlaceFilters={placeFiltersDocked}
               txFilter={txFilter}
               setTxFilter={setTxFilter}
               townFilter={townFilter}
@@ -550,9 +622,8 @@ export default function OpenHousesClient() {
               townCounts={townCounts}
               loadState={loadState}
               mostOpenHouses={mostOpenHouses}
-              setMostOpenHouses={(on) => setMostPref(on ? "on" : "off")}
               firstShowing={firstShowing}
-              setFirstShowing={(on) => setFirstPref(on ? "on" : "off")}
+              onFocusChange={applyFocus}
               sortMode={sortMode}
               setSortMode={setSortMode}
               groupMode={groupMode}
@@ -601,10 +672,10 @@ export default function OpenHousesClient() {
                 Past / upcoming counts are public SmartMLS open houses stored in
                 our database. Most open houses is the top 3 historical hosts in
                 each town (ties stay). First showing means zero past showings.
-                Towns start collapsed — ↑↓ or drag ⋮⋮ to set your order.
+                Towns start collapsed — drag ⋮⋮ to set your order.
               </p>
               <div className="space-y-10">
-                {townSections.map((townGroup, index) => (
+                {townSections.map((townGroup) => (
                   <OpenHouseTownSection
                     key={townGroup.town}
                     town={townGroup.town}
@@ -614,20 +685,6 @@ export default function OpenHousesClient() {
                     organize={
                       townSections.length > 1
                         ? {
-                            canMoveUp: index > 0,
-                            canMoveDown: index < townSections.length - 1,
-                            onMoveUp: () =>
-                              moveVisibleTown(
-                                townGroup.town,
-                                townSections[index - 1]?.town,
-                                "before",
-                              ),
-                            onMoveDown: () =>
-                              moveVisibleTown(
-                                townGroup.town,
-                                townSections[index + 1]?.town,
-                                "after",
-                              ),
                             dragging: dragTown === townGroup.town,
                             dragOver:
                               dragOverTown === townGroup.town && dragTown !== townGroup.town,

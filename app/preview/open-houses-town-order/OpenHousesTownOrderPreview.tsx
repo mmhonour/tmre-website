@@ -157,24 +157,6 @@ export function OpenHousesTownOrderPreview() {
               })
             }
             organize={{
-              canMoveUp: index > 0,
-              canMoveDown: index < sections.length - 1,
-              onMoveUp: () => {
-                const neighbor = sections[index - 1]?.town;
-                if (neighbor) {
-                  setPreferredOrder(
-                    placeTownNextTo(orderedTowns, section.town, neighbor, "before"),
-                  );
-                }
-              },
-              onMoveDown: () => {
-                const neighbor = sections[index + 1]?.town;
-                if (neighbor) {
-                  setPreferredOrder(
-                    placeTownNextTo(orderedTowns, section.town, neighbor, "after"),
-                  );
-                }
-              },
               dragging: dragTown === section.town,
               dragOver: dragOverTown === section.town && dragTown !== section.town,
               onDragStart: () => setDragTown(section.town),

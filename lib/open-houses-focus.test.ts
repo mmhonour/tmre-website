@@ -4,6 +4,7 @@ import {
   compareOpenHousePastCountDesc,
   filterOpenHouseFocus,
   isFirstOpenHouse,
+  exclusiveOpenHouseFocus,
   listingsWithMostHistoricalShowings,
   mostHistoricalCutoff,
   openHouseFocusEmptyCopy,
@@ -73,6 +74,23 @@ describe('most historical showings', () => {
       kept.map((r) => `${r.town}:${r.pastCount}`).sort(),
       ['Westport:1', 'Westport:12', 'Westport:3', 'Wilton:2'],
     )
+  })
+})
+
+describe('exclusive Most / First', () => {
+  it('turning one on clears the other; turning it off clears both', () => {
+    assert.deepEqual(exclusiveOpenHouseFocus('most', true), {
+      most: true,
+      first: false,
+    })
+    assert.deepEqual(exclusiveOpenHouseFocus('first', true), {
+      most: false,
+      first: true,
+    })
+    assert.deepEqual(exclusiveOpenHouseFocus('most', false), {
+      most: false,
+      first: false,
+    })
   })
 })
 

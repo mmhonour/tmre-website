@@ -8,6 +8,7 @@ import {
 } from "@/lib/filter-pill-styles";
 import { openHouseListingTown } from "@/lib/open-houses-groups";
 import {
+  exclusiveOpenHouseFocus,
   filterOpenHouseFocus,
   openHouseFocusEmptyCopy,
 } from "@/lib/open-houses-focus";
@@ -114,10 +115,18 @@ export function OpenHousesFocusPreview() {
 
   return (
     <div className="space-y-6">
-      <div className={filterPillIndependentContainerClass("compact")}>
+      <div
+        className={filterPillIndependentContainerClass("compact")}
+        role="group"
+        aria-label="First showing or most open houses"
+      >
         <button
           type="button"
-          onClick={() => setMost((v) => !v)}
+          onClick={() => {
+            const next = exclusiveOpenHouseFocus("most", !most);
+            setMost(next.most);
+            setFirst(next.first);
+          }}
           aria-pressed={most}
           className={filterPillIndependentButtonClass(most, "compact", "light")}
         >
@@ -125,7 +134,11 @@ export function OpenHousesFocusPreview() {
         </button>
         <button
           type="button"
-          onClick={() => setFirst((v) => !v)}
+          onClick={() => {
+            const next = exclusiveOpenHouseFocus("first", !first);
+            setMost(next.most);
+            setFirst(next.first);
+          }}
           aria-pressed={first}
           className={filterPillIndependentButtonClass(first, "compact", "light")}
         >

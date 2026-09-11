@@ -3,10 +3,6 @@
 import { useId, useState, type ReactNode } from "react";
 
 export type OpenHouseTownOrganize = {
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   dragging?: boolean;
   dragOver?: boolean;
   onDragStart?: () => void;
@@ -90,45 +86,28 @@ export function OpenHouseTownSection({
           </span>
         </button>
         {organize ? (
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              aria-label={`Move ${town} up`}
-              disabled={!organize.canMoveUp}
-              onClick={organize.onMoveUp}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-charcoal/[0.12] bg-white font-mono text-xs text-navy disabled:opacity-30"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              aria-label={`Move ${town} down`}
-              disabled={!organize.canMoveDown}
-              onClick={organize.onMoveDown}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-charcoal/[0.12] bg-white font-mono text-xs text-navy disabled:opacity-30"
-            >
-              ↓
-            </button>
-            <button
-              type="button"
-              draggable
-              aria-label={`Drag to reorder ${town}`}
-              title="Drag to reorder"
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", town);
-                organize.onDragStart?.();
-              }}
-              onDragEnd={organize.onDragEnd}
-              className={`inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md border border-charcoal/[0.12] bg-white text-navy/70 active:cursor-grabbing ${
-                organize.dragging ? "opacity-40" : ""
-              }`}
-            >
-              <span aria-hidden className="font-mono text-[10px] leading-none">
-                ⋮⋮
-              </span>
-            </button>
-          </div>
+          <button
+            type="button"
+            draggable
+            aria-label={`Drag to reorder ${town}`}
+            title="Drag to reorder"
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", town);
+              organize.onDragStart?.();
+            }}
+            onDragEnd={organize.onDragEnd}
+            className={`inline-flex h-8 shrink-0 cursor-grab items-center gap-1.5 rounded-md border border-charcoal/[0.12] bg-white px-2 text-navy/70 active:cursor-grabbing ${
+              organize.dragging ? "opacity-40" : ""
+            }`}
+          >
+            <span aria-hidden className="font-mono text-[11px] leading-none">
+              ⋮⋮
+            </span>
+            <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] sm:inline">
+              Drag
+            </span>
+          </button>
         ) : null}
       </div>
       {open ? <div id={panelId}>{children}</div> : null}

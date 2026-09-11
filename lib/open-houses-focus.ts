@@ -60,9 +60,21 @@ export function listingMatchesOpenHouseFocus(
   return true
 }
 
+/** Most and First are a single choice — turning one on clears the other. */
+export function exclusiveOpenHouseFocus(
+  key: keyof OpenHouseFocusFlags,
+  on: boolean,
+): OpenHouseFocusFlags {
+  if (!on) return { most: false, first: false }
+  return key === "most"
+    ? { most: true, first: false }
+    : { most: false, first: true }
+}
+
 /**
  * Most = top 3 historical showing counts per town (ties at #3 stay).
- * First = zero past showings. Both stack as an intersection.
+ * First = zero past showings. The page treats them as exclusive; if both
+ * flags arrive, the intersection is empty by definition.
  */
 export function filterOpenHouseFocus<T extends OpenHouseFocusListing>(
   listings: readonly T[],

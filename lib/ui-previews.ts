@@ -28,13 +28,19 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-town-order",
     title: "Open houses — collapsed towns + order",
     summary:
-      "Towns start collapsed. Close all towns / Expand all towns. ↑↓ or drag to set a preferred order, stored in tmre_oh_town_order.",
+      "Towns start collapsed. Close all towns / Expand all towns. Drag ⋮⋮ to set a preferred order, stored in tmre_oh_town_order.",
+  },
+  {
+    slug: "open-houses-filter-bar",
+    title: "Open houses — hero pills + sticky bar",
+    summary:
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Most / First are exclusive on their own line. Alerts left, view glyphs right.",
   },
   {
     slug: "open-houses-focus",
     title: "Open houses — most / first showing",
     summary:
-      "Toggle Most open houses (top 3 historical hosts per town, ties stay) and First showing (zero past). Sticky bar on /open-houses.",
+      "Most open houses and First showing are mutually exclusive (top 3 historical hosts per town vs zero past).",
   },
   {
     slug: "open-house-alerts",

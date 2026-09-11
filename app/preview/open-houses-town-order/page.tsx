@@ -16,7 +16,7 @@ export default function OpenHousesTownOrderPreviewPage() {
           Collapsed towns + your order
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Towns start collapsed (Close all towns engaged). ↑↓ or drag ⋮⋮ to reorder;
+          Towns start collapsed (Close all towns engaged). Drag ⋮⋮ to reorder;
           the order is cookie tmre_oh_town_order (same as /open-houses). Reset
           clears it. Fixture week of 10 Sep 2026.
         </p>
