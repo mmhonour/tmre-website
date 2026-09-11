@@ -115,7 +115,7 @@ export type MarketStatsPayload = {
 export type SalesByMonthPayload = {
   city: string
   kind: ListingKind
-  data: { year: number; month: number; count: number }[]
+  data: { year: number; month: number; count: number; volume?: number }[]
   /** Closings with CloseDate in the past 7 days. */
   closedThisWeek: number
   closedThisWeekByZip: Record<string, number>
@@ -134,6 +134,12 @@ export type SalesByMonthPayload = {
   /** Active UC / UC-CTS whose StatusChangeTimestamp falls in the past 7 days (from Postgres, not RETS). */
   wentToContractThisWeek: number
   wentToContractThisWeekByZip: Record<string, number>
+}
+
+export function salesByMonthDataHasVolume(
+  data: SalesByMonthPayload['data'] | null | undefined,
+): boolean {
+  return Boolean(data?.some((row) => typeof row.volume === 'number'))
 }
 
 export type ActiveByMonthPayload = {
@@ -626,6 +632,7 @@ export function computeSalesByMonth(
 ): SalesByMonthPayload {
   const filtered = filterListingsByKind(listings, kind)
   const counts = new Map<string, number>()
+  const volumes = new Map<string, number>()
 
   for (const l of filtered) {
     // CloseDate first — StatusChangeTimestamp is often the pending/UC flip,
@@ -636,6 +643,8 @@ export function computeSalesByMonth(
     if (!SALES_BY_MONTH_YEARS.includes(ym.year)) continue
     const key = `${ym.year}-${ym.month}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
+    const price = closedKindPrice(l, kind)
+    if (price != null) volumes.set(key, (volumes.get(key) ?? 0) + price)
   }
 
   const data: SalesByMonthPayload['data'] = []
@@ -646,6 +655,7 @@ export function computeSalesByMonth(
         year,
         month,
         count: month <= maxMonth ? (counts.get(`${year}-${month}`) ?? 0) : 0,
+        volume: month <= maxMonth ? (volumes.get(`${year}-${month}`) ?? 0) : 0,
       })
     }
   }

@@ -36,6 +36,16 @@ export function statsByMonthTitle(kind: StatsKind): string {
   return kind === 'rental' ? 'Closed leases by month' : 'Closed sales by month'
 }
 
+export function statsVolumeByMonthTitle(kind: StatsKind): string {
+  return kind === 'rental' ? 'Lease volume by month' : 'Volume closed by month'
+}
+
+export type SalesTrendMetric = 'count' | 'volume'
+
+export function parseSalesTrendMetric(value: string | null): SalesTrendMetric {
+  return value === 'volume' ? 'volume' : 'count'
+}
+
 export function statsActiveByMonthTitle(kind: StatsKind): string {
   return kind === 'rental' ? 'Active rentals by month' : 'Active listings by month'
 }

@@ -1,7 +1,12 @@
 import { loadTabJson, prefetchTabJson } from "@/lib/tab-data-prefetch";
 import type { StatsCity, StatsKind } from "./stats-towns";
 
-export type MonthlyCount = { year: number; month: number; count: number };
+export type MonthlyCount = {
+  year: number;
+  month: number;
+  count: number;
+  volume?: number;
+};
 
 export type StatsMonthApiResponse = {
   city: string;

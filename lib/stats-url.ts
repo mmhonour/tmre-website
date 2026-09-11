@@ -38,16 +38,19 @@ export function statsMonthsSupplyHref(options: {
   return `/stats?${params.toString()}`;
 }
 
-/** Deep link to Stats → closed sales by month for a town (or All). */
+/** Deep link to Stats → closed sales (or dollar volume) by month for a town. */
 export function statsSalesTrendHref(options: {
   city: string;
   kind?: "sale" | "rental";
+  /** Dollar volume on the same sales-by-month chart. */
+  metric?: "count" | "volume";
 }): string {
   const params = new URLSearchParams({
     city: options.city,
     kind: options.kind ?? "sale",
     chart: "sales-trend",
   });
+  if (options.metric === "volume") params.set("metric", "volume");
   return `/stats?${params.toString()}`;
 }
 

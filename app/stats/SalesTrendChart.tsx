@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { formatCompactDollars } from "@/lib/stats-compact-dollars";
 import {
   defaultStatsMonthCompareYears,
   statsMonthChartYears,
 } from "@/lib/stats-month-years";
 import {
+  parseSalesTrendMetric,
   statsByMonthTitle,
   statsClosedLabel,
+  statsVolumeByMonthTitle,
   statsVolumeNoun,
+  type SalesTrendMetric,
 } from "./stats-labels";
+import { pillClass } from "./stats-month-chart-utils";
 import StatsMonthComparisonChart from "./StatsMonthComparisonChart";
 import type { StatsCity, StatsKind } from "./stats-towns";
 
@@ -55,7 +61,19 @@ export default function SalesTrendChart({
   propertyClass?: PropertyClass;
 }) {
   const cityLabel = city === "All" ? "All Towns" : `${city}, CT`;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const metric = parseSalesTrendMetric(searchParams.get("metric"));
   const [cached, setCached] = useState<CachedMonthsSupply | null>(null);
+
+  function setMetric(next: SalesTrendMetric) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "volume") params.set("metric", "volume");
+    else params.delete("metric");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -82,13 +100,42 @@ export default function SalesTrendChart({
     };
   }, [city, kind, propertyClass]);
 
+  const volumeMode = metric === "volume";
+
   return (
     <StatsMonthComparisonChart
       city={city}
       kind={kind}
       apiPath="/api/sales-by-month"
-      title={statsByMonthTitle(kind)}
-      volumeNoun={statsVolumeNoun(kind)}
+      title={volumeMode ? statsVolumeByMonthTitle(kind) : statsByMonthTitle(kind)}
+      volumeNoun={volumeMode ? "" : statsVolumeNoun(kind)}
+      valueKey={metric}
+      formatMetricValue={volumeMode ? formatCompactDollars : undefined}
+      formatYTick={volumeMode ? formatCompactDollars : undefined}
+      yAxisWidth={volumeMode ? 48 : undefined}
+      toolbarExtra={
+        <div className="flex flex-wrap items-center gap-2 mr-3">
+          <span className="font-mono text-[9px] tracking-[0.15em] uppercase text-white/30 shrink-0">
+            Show
+          </span>
+          <button
+            type="button"
+            onClick={() => setMetric("count")}
+            aria-pressed={!volumeMode}
+            className={pillClass(!volumeMode)}
+          >
+            Closings
+          </button>
+          <button
+            type="button"
+            onClick={() => setMetric("volume")}
+            aria-pressed={volumeMode}
+            className={pillClass(volumeMode)}
+          >
+            Volume
+          </button>
+        </div>
+      }
       compareYears={ALL_TREND_YEARS}
       defaultCompareYears={DEFAULT_TREND_YEARS}
       yearSelectionEnabled

@@ -13,6 +13,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Open several town cards at once, scroll the rail, and drag one over another to stack them.",
   },
   {
+    slug: "home-pulse-label-sort",
+    title: "Home pulse label sort",
+    summary:
+      "Click Median price, DOM, and the other card labels to sort towns. Volume closed opens the Stats chart on Volume.",
+  },
+  {
     slug: "owner-portfolios",
     title: "Owner portfolios (2+ homes)",
     summary:
