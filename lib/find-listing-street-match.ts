@@ -144,8 +144,13 @@ export function findListingStructuredStreets(
 ): FindListingStructuredHop[] {
   const house = listingHouseToken(street)
   if (!house) return []
-  const numbers = [`${house}*`]
-  if (/[A-Za-z]$/.test(house)) numbers.push(`${house}-*`)
+  /**
+   * `2A*` so Vision `2A` hits MLS `2A-A`. A plain `5*` is too wide
+   * (`50`, `51`, `5A`, …) and the 24-row cap misses `5 Locust Lane`.
+   */
+  const numbers = findListingHouseHasLetterSuffix(street)
+    ? [`${house}*`, `${house}-*`]
+    : [house]
   const names: string[] = []
   const addName = (value: string) => {
     const key = value.replace(/\s+/g, ' ').trim().toLowerCase()
@@ -181,6 +186,22 @@ export function findListingStreetNumberHops(street: string): string[] {
     if (seen.has(hop.streetNumber)) continue
     seen.add(hop.streetNumber)
     out.push(hop.streetNumber)
+  }
+  return out
+}
+
+/**
+ * StreetName-only RETS hops (no StreetNumber — that pair is 20206).
+ * `*locust*` hits MLS `Locust Lane` after Vision filed `LOCUST LN`.
+ */
+export function findListingStreetNameHops(street: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const hop of findListingStructuredStreets(street)) {
+    const key = hop.streetNameContains.replace(/\s+/g, ' ').trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(hop.streetNameContains)
   }
   return out
 }

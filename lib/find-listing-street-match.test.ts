@@ -5,6 +5,7 @@ import {
   findListingHouseHasLetterSuffix,
   findListingStreetQueries,
   findListingStreetsMatch,
+  findListingStreetNameHops,
   findListingStreetNumberHops,
   findListingStructuredStreet,
   findListingStructuredStreets,
@@ -60,6 +61,7 @@ describe('findListingStreetsMatch', () => {
 
   it('still matches Ln / Lane', () => {
     assert.equal(findListingStreetsMatch('5 Locust Ln', '5 Locust Lane'), true)
+    assert.equal(findListingStreetsMatch('5 LOCUST LN', '5 Locust Lane'), true)
   })
 
   it('does not treat 16 Sea Spray as 16 Sea Lane', () => {
@@ -142,6 +144,16 @@ describe('findListingStructuredStreet', () => {
       '2A*',
       '2A-*',
     ])
+  })
+
+  it('uses exact house 5 so 5* does not crowd out Locust Lane', () => {
+    assert.deepEqual(findListingStructuredStreet('5 LOCUST LN'), {
+      streetNumber: '5',
+      streetNameContains: 'locust',
+    })
+    assert.deepEqual(findListingStreetNumberHops('5 Locust Lane'), ['5'])
+    assert.deepEqual(findListingStreetNameHops('5 LOCUST LN'), ['locust'])
+    assert.equal(findListingHouseHasLetterSuffix('5 LOCUST LN'), false)
   })
 })
 
