@@ -13,6 +13,7 @@ import { listingPhotoProxyUrl, listingShareHref } from '@/lib/listing-url'
 import {
   fingerprintCriteria,
   labelCriteria,
+  normalizeVisitorSearchCriteria,
   townsForCriteria,
   type VisitorSearchCriteria,
 } from '@/lib/visitor-search-profile'
@@ -136,7 +137,7 @@ export async function createSavedSearchAlert(
     }
   }
 
-  const criteria = input.criteria
+  const criteria = normalizeVisitorSearchCriteria(input.criteria)
   const id = randomUUID()
   const fingerprint = fingerprintCriteria(criteria)
   const label = labelCriteria(criteria)
@@ -501,6 +502,14 @@ export async function findMatchingNewListings(
       `(COALESCE(l.data->>'isNewConstruction','') IN ('true','1','yes')
         OR l.year_built IS NOT NULL AND l.year_built >= EXTRACT(YEAR FROM CURRENT_DATE) - 2)`,
     )
+  }
+  if (c.minPrice != null && c.minPrice > 0) {
+    params.push(c.minPrice)
+    conditions.push(`l.price IS NOT NULL AND l.price >= $${params.length}`)
+  }
+  if (c.maxPrice != null && c.maxPrice > 0) {
+    params.push(c.maxPrice)
+    conditions.push(`l.price IS NOT NULL AND l.price <= $${params.length}`)
   }
 
   params.push(limit)

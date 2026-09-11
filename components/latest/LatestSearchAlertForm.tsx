@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import {
-  listUniqueVisitorSearches,
+  listUniqueVisitorSearchesOrFallback,
+  type VisitorSearchCriteria,
   type VisitorSearchProfileEntry,
 } from "@/lib/visitor-search-profile";
 
@@ -39,9 +40,17 @@ const LINK_BTN_LABEL =
  * Desktop: compact dropdown under the trigger.
  * Mobile: right slide-over (opens from the right, content expands left).
  */
-export default function LatestSearchAlertForm() {
+export default function LatestSearchAlertForm({
+  fallbackCriteria = null,
+  triggerId = "latest-alerts",
+}: {
+  /** Used on Open Houses when the visitor has no Intelligence / Find history. */
+  fallbackCriteria?: VisitorSearchCriteria | null;
+  triggerId?: string;
+} = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [usedFallback, setUsedFallback] = useState(false);
   // Drawer only on narrow viewports so desktop dropdown doesn't lock body scroll.
   const [isNarrow, setIsNarrow] = useState(() =>
     typeof window !== "undefined"
@@ -62,15 +71,17 @@ export default function LatestSearchAlertForm() {
   const [error, setError] = useState<string | null>(null);
 
   const loadSearches = () => {
-    const list = listUniqueVisitorSearches();
+    const { searches: list, usedFallback: fallback } =
+      listUniqueVisitorSearchesOrFallback(fallbackCriteria);
     setSearches(list);
+    setUsedFallback(fallback);
     // Default to the most common search (list is frequency-sorted).
     if (list[0]) setFingerprint(list[0].fingerprint);
   };
 
   useEffect(() => {
     loadSearches();
-  }, []);
+  }, [fallbackCriteria]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
@@ -176,6 +187,7 @@ export default function LatestSearchAlertForm() {
 
   const formProps = {
     searches,
+    usedFallback,
     fingerprint,
     onFingerprintChange: setFingerprint,
     channel,
@@ -199,12 +211,12 @@ export default function LatestSearchAlertForm() {
   } as const;
 
   return (
-    <div id="latest-alerts" ref={rootRef} className="relative inline-flex">
+    <div id={triggerId} ref={rootRef} className="relative inline-flex">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-controls="latest-alerts-panel"
+        aria-controls={`${triggerId}-panel`}
         className={`${LINK_BTN} group inline-flex items-center gap-1.5`}
       >
         <svg
@@ -223,7 +235,9 @@ export default function LatestSearchAlertForm() {
           <>
             <span aria-hidden>-</span>
             <span className="normal-case italic text-navy/55">
-              choose from a previous search
+              {usedFallback
+                ? "town, home type, and price"
+                : "choose from a previous search"}
             </span>
           </>
         )}
@@ -232,7 +246,7 @@ export default function LatestSearchAlertForm() {
       {/* Desktop: inlaid dropdown */}
       {open && !isNarrow ? (
         <div
-          id="latest-alerts-panel"
+          id={`${triggerId}-panel`}
           role="dialog"
           aria-label="Listing alerts"
           className="absolute left-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_32px_rgba(28,42,58,0.18)]"
@@ -258,6 +272,7 @@ export default function LatestSearchAlertForm() {
 
 function AlertFormFields({
   searches,
+  usedFallback,
   fingerprint,
   onFingerprintChange,
   channel,
@@ -280,6 +295,7 @@ function AlertFormFields({
   onSubmit,
 }: {
   searches: VisitorSearchProfileEntry[];
+  usedFallback: boolean;
   fingerprint: string;
   onFingerprintChange: (v: string) => void;
   channel: Channel;
@@ -304,8 +320,9 @@ function AlertFormFields({
   return (
     <>
       <p className="text-xs text-slate leading-snug">
-        Alert from a search you&rsquo;ve already run. Email when a new home
-        matches — text coming later.
+        {usedFallback
+          ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching."
+          : "Alert from a search you've already run. Email when a new home matches — text coming later."}
       </p>
 
       {searches.length === 0 ? (
@@ -326,7 +343,7 @@ function AlertFormFields({
       ) : (
         <label className="flex flex-col gap-1">
           <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
-            Your most common search
+            {usedFallback ? "Starting search" : "Your most common search"}
           </span>
           <select
             value={fingerprint}
@@ -336,7 +353,11 @@ function AlertFormFields({
             {searches.map((s, i) => (
               <option key={s.fingerprint} value={s.fingerprint}>
                 {s.label}
-                {i === 0 ? " · most used" : ""}
+                {usedFallback
+                  ? " · from this page"
+                  : i === 0
+                    ? " · most used"
+                    : ""}
                 {s.useCount > 1 ? ` · ${s.useCount}×` : ""}
               </option>
             ))}

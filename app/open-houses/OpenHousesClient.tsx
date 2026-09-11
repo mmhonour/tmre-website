@@ -29,11 +29,14 @@ import {
   formatOpenHouseHistory,
   formatOpenHouseWeekCount,
   formatOpenHouseWhen,
+  formatOpenHouseWhenShort,
   type OpenHouseEvent,
   type OpenHouseListing,
 } from "@/lib/open-houses";
 import { groupOpenHousesByTownAndDay } from "@/lib/open-houses-groups";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
+import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
+import { fallbackCriteriaFromPage } from "@/lib/visitor-search-profile";
 
 const OH_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const OH_TX_VALUES = ["all", "sale", "rental"] as const;
@@ -75,10 +78,11 @@ function isOhRental(l: OpenHouseListing): boolean {
   return isRentalListing({ propertyType: l.propertyType });
 }
 
-const PHOTO_PREVIEW_HEIGHT = "h-[5.67rem]";
 const PHOTO_PREVIEW_GRID = "h-[8.51rem]";
-const PHOTO_PREVIEW_ROWS = `${PHOTO_PREVIEW_HEIGHT} w-[7.8rem]`;
+const PHOTO_PREVIEW_ROWS = "w-[10.5rem] min-h-[7.5rem]";
 const PHOTO_PREVIEW_LINE = "h-[2.7rem] w-[3.6rem]";
+const LINE_OH_COL = "shrink-0 w-[10.5rem] text-right";
+const LINE_PRICE_COL = "shrink-0 w-[5.25rem] text-right";
 
 function OhFilterBar({
   theme,
@@ -244,6 +248,15 @@ export default function OpenHousesClient() {
     return countListingsByTown(pool, { requireCoverage: true });
   }, [allListings, txFilter]);
 
+  const alertFallback = useMemo(
+    () =>
+      fallbackCriteriaFromPage({
+        town: townFilter === "All" ? null : townFilter,
+        tx: txFilter,
+      }),
+    [townFilter, txFilter],
+  );
+
   return (
     <>
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
@@ -336,6 +349,10 @@ export default function OpenHousesClient() {
               </p>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3 min-h-8">
+                  <LatestSearchAlertForm
+                    fallbackCriteria={alertFallback}
+                    triggerId="open-house-alerts"
+                  />
                   <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                     Sort by
                   </span>
@@ -468,6 +485,7 @@ function listingMeta(l: OpenHouseListing) {
   const priceLabel = isRental ? "Rent" : "Price";
   const priceValue = `${fmtMoney(l.price)}${isRental && l.price != null ? "/mo" : ""}`;
   const ohLabel = formatOpenHouseWhen(l.nextOpenHouse);
+  const ohShort = formatOpenHouseWhenShort(l.nextOpenHouse);
   const weekCount = l.weekOpenHouseCount;
   const weekLabel = formatOpenHouseWeekCount(weekCount);
   const historyLabel = formatOpenHouseHistory(l.pastCount ?? 0, l.upcomingCount ?? 0);
@@ -481,6 +499,7 @@ function listingMeta(l: OpenHouseListing) {
     priceLabel,
     priceValue,
     ohLabel,
+    ohShort,
     weekCount,
     weekLabel,
     historyLabel,
@@ -504,7 +523,7 @@ function useFirstPhoto(listing: {
   return listingPhotoProxyUrl(id, index);
 }
 
-function ListingCollection({
+export function ListingCollection({
   listings,
   view,
 }: {
@@ -517,8 +536,8 @@ function ListingCollection({
         <div className="flex items-center gap-2.5 px-3 py-2 border-b border-charcoal/[0.08] bg-cream/60 font-mono text-[9px] tracking-[0.12em] uppercase text-slate">
           <div className={`${PHOTO_PREVIEW_LINE} shrink-0`} aria-hidden />
           <span className="min-w-0 flex-1">Property</span>
-          <span className="shrink-0">Open house</span>
-          <span className="shrink-0">Price</span>
+          <span className={LINE_OH_COL}>Next open</span>
+          <span className={LINE_PRICE_COL}>Price</span>
         </div>
         <div className="flex flex-col divide-y divide-charcoal/[0.08]">
           {listings.map((l) => (
@@ -591,11 +610,17 @@ function ListingPhoto({
   return image;
 }
 
-function OpenHouseBadge({ label, compact = false }: { label: string; compact?: boolean }) {
+function OpenHouseBadge({
+  label,
+  compact = false,
+}: {
+  label: string;
+  compact?: boolean;
+}) {
   return (
     <span
-      className={`inline-flex items-center font-mono tracking-[0.12em] uppercase border rounded-full whitespace-nowrap bg-gold text-navy border-gold ${
-        compact ? "text-[8px] px-1.5 py-0.5" : "text-[9px] px-2 py-0.5"
+      className={`inline-flex max-w-full items-center justify-end rounded-full border border-gold bg-gold font-mono font-medium tabular-nums leading-tight text-navy shadow-sm ${
+        compact ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-0.5 text-[9px]"
       }`}
     >
       {label}
@@ -735,13 +760,15 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
             </span>
           )}
           <span className="font-mono text-[9px] text-slate/70">{meta.place}</span>
-          <span className="font-mono text-[9px] text-gold-dark">{meta.ohLabel}</span>
           <span className="font-mono text-[9px] tabular-nums text-navy">{meta.weekLabel}</span>
           <span className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</span>
-          <span className="font-mono text-[10px] tabular-nums text-navy font-medium">
-            {meta.priceValue}
-          </span>
         </div>
+        <span className={`${LINE_OH_COL} font-mono text-[9px] font-medium tabular-nums text-gold-dark`}>
+          {meta.ohShort}
+        </span>
+        <span className={`${LINE_PRICE_COL} font-mono text-[10px] font-medium tabular-nums text-navy`}>
+          {meta.priceValue}
+        </span>
       </article>
     );
   }
@@ -750,17 +777,17 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
     return (
       <article
         {...listingHoverHandlers(l.mlsId)}
-        className="flex gap-3 rounded-xl bg-white border border-charcoal/[0.08] p-3 transition-all hover:border-gold/40 hover:shadow-md hover:shadow-navy/5"
+        className="flex items-stretch overflow-hidden rounded-xl bg-white border border-charcoal/[0.08] transition-all hover:border-gold/40 hover:shadow-md hover:shadow-navy/5"
       >
         <div
-          className={`relative ${PHOTO_PREVIEW_ROWS} shrink-0 overflow-hidden rounded-lg border border-charcoal/[0.06] bg-cream`}
+          className={`relative ${PHOTO_PREVIEW_ROWS} shrink-0 self-stretch overflow-hidden bg-cream`}
         >
           <ListingPhoto listing={l} photo={photo} alignTop />
-          <span className="absolute top-1.5 left-1.5">
-            <OpenHouseBadge label="Open" compact />
+          <span className="absolute top-1.5 right-1.5 z-10 max-w-[90%]">
+            <OpenHouseBadge label={meta.ohShort} compact />
           </span>
         </div>
-        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center gap-3 p-3">
           <div className="min-w-0 flex-1">
             {meta.detailHref ? (
               <Link
@@ -775,7 +802,6 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
               </h3>
             )}
             <p className="text-xs text-slate mt-0.5 truncate">{meta.place}</p>
-            <p className="font-mono text-[10px] text-gold-dark mt-1">{meta.ohLabel}</p>
             <p className="font-mono text-[9px] tabular-nums text-navy">{meta.weekLabel}</p>
             <p className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</p>
             <OpenHouseSchedule events={l.openHouses} />
@@ -801,8 +827,8 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
     >
       <div className={`relative ${PHOTO_PREVIEW_GRID} w-full bg-cream border-b border-charcoal/[0.06]`}>
         <ListingPhoto listing={l} photo={photo} alignTop />
-        <span className="absolute top-2 left-2">
-          <OpenHouseBadge label="Open house" />
+        <span className="absolute top-2 right-2 z-10 max-w-[85%]">
+          <OpenHouseBadge label={meta.ohShort} />
         </span>
       </div>
 

@@ -2329,51 +2329,6 @@ export default function IntelligenceClient({
     else prefetchTownBoundaries(active);
   }, [active, showMap]);
 
-  // Persist unique filter combinations into the visitor search-history cookie
-  // so /latest can offer them as alert criteria.
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      recordVisitorSearch({
-        source: "intelligence",
-        town: active === "All" ? null : active,
-        tx,
-        propertyClass: cls,
-        saleProperty: saleProperty === "all" ? null : saleProperty,
-        minBeds: minBedsFilter === "0" ? null : Number(minBedsFilter),
-        maxBeds:
-          maxBedsFilter === "0" || maxBedsFilter === "6"
-            ? null
-            : Number(maxBedsFilter),
-        minBaths: minBathsFilter === "0" ? null : Number(minBathsFilter),
-        maxBaths:
-          maxBathsFilter === "0" || maxBathsFilter === "6"
-            ? null
-            : Number(maxBathsFilter),
-        zip,
-        newConstruction:
-          newConstructionFilter === "new"
-            ? true
-            : newConstructionFilter === "not-new"
-              ? false
-              : null,
-        boardStatus: boardStatusFilter === "all" ? null : boardStatusFilter,
-      });
-    }, 800);
-    return () => window.clearTimeout(timer);
-  }, [
-    active,
-    tx,
-    cls,
-    saleProperty,
-    minBedsFilter,
-    maxBedsFilter,
-    minBathsFilter,
-    maxBathsFilter,
-    zip,
-    newConstructionFilter,
-    boardStatusFilter,
-  ]);
-
   const [middleTierExpanded, setMiddleTierExpanded] = useState(false);
   const [boardPage, setBoardPage] = useState(1);
   const [expandedSnapshotKeys, setExpandedSnapshotKeys] = useState<Set<string>>(
@@ -3284,6 +3239,59 @@ export default function IntelligenceClient({
   const priceFilterActive =
     showPriceFilter &&
     intelPriceFilterActiveOnBoard(minPriceIndex, maxPriceIndex, boardPriceSteps);
+
+  // Persist unique filter combinations into the visitor search-history cookie
+  // so /latest and /open-houses can offer them as alert criteria.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      recordVisitorSearch({
+        source: "intelligence",
+        town: active === "All" ? null : active,
+        tx,
+        propertyClass: cls,
+        saleProperty: saleProperty === "all" ? null : saleProperty,
+        minBeds: minBedsFilter === "0" ? null : Number(minBedsFilter),
+        maxBeds:
+          maxBedsFilter === "0" || maxBedsFilter === "6"
+            ? null
+            : Number(maxBedsFilter),
+        minBaths: minBathsFilter === "0" ? null : Number(minBathsFilter),
+        maxBaths:
+          maxBathsFilter === "0" || maxBathsFilter === "6"
+            ? null
+            : Number(maxBathsFilter),
+        zip,
+        newConstruction:
+          newConstructionFilter === "new"
+            ? true
+            : newConstructionFilter === "not-new"
+              ? false
+              : null,
+        boardStatus: boardStatusFilter === "all" ? null : boardStatusFilter,
+        minPrice: priceFilterActive && minPrice > 0 ? minPrice : null,
+        maxPrice:
+          priceFilterActive && maxPrice != null && Number.isFinite(maxPrice)
+            ? maxPrice
+            : null,
+      });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [
+    active,
+    tx,
+    cls,
+    saleProperty,
+    minBedsFilter,
+    maxBedsFilter,
+    minBathsFilter,
+    maxBathsFilter,
+    zip,
+    newConstructionFilter,
+    boardStatusFilter,
+    priceFilterActive,
+    minPrice,
+    maxPrice,
+  ]);
 
   const listingsBeforeSqft = useMemo(
     () =>
