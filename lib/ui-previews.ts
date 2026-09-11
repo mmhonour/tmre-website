@@ -25,10 +25,22 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Town +/− with a unique-home count for the Monday–Sunday week. Cards list every open house that home has this week.",
   },
   {
+    slug: "open-houses-focus",
+    title: "Open houses — most / first showing",
+    summary:
+      "Toggle Most open houses (2+ this week) and First showing (zero prior public OH). Pills stack.",
+  },
+  {
+    slug: "open-house-alerts",
+    title: "Open house + listing alerts",
+    summary:
+      "Open Houses signup is titled for showings (optional new listings). Latest can add open-house notify when a matching home first schedules a showing.",
+  },
+  {
     slug: "open-houses-next-oh",
     title: "Open houses — next OH + alerts",
     summary:
-      "Next open-house gold mark on grid (upper right), rows (upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
+      "Next-open mark (black on white) on grid (photo upper right), rows (panel upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
   },
   {
     slug: "find-address-diverge",

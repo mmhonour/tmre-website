@@ -17,6 +17,8 @@ import TownFilterPills from "@/components/TownFilterPills";
 import {
   filterPillButtonClass,
   filterPillContainerClass,
+  filterPillIndependentButtonClass,
+  filterPillIndependentContainerClass,
   type FilterPillTheme,
 } from "@/lib/filter-pill-styles";
 import { listingDetailHref, listingPhotoProxyUrl } from "@/lib/listing-url";
@@ -34,6 +36,11 @@ import {
   type OpenHouseListing,
 } from "@/lib/open-houses";
 import { groupOpenHousesByTownAndDay } from "@/lib/open-houses-groups";
+import {
+  compareOpenHouseWeekCountDesc,
+  filterOpenHouseFocus,
+  openHouseFocusEmptyCopy,
+} from "@/lib/open-houses-focus";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import { fallbackCriteriaFromPage } from "@/lib/visitor-search-profile";
@@ -43,11 +50,13 @@ const OH_TX_VALUES = ["all", "sale", "rental"] as const;
 const OH_VIEW_VALUES = ["grid", "rows", "line"] as const;
 const OH_SORT_VALUES = ["date", "price-asc", "price-desc"] as const;
 const OH_GROUP_VALUES = ["day", "town"] as const;
+const OH_TOGGLE_VALUES = ["off", "on"] as const;
 
 type ViewMode = (typeof OH_VIEW_VALUES)[number];
 type TxFilter = "all" | "sale" | "rental";
 type SortMode = (typeof OH_SORT_VALUES)[number];
 type GroupMode = (typeof OH_GROUP_VALUES)[number];
+type ToggleOn = (typeof OH_TOGGLE_VALUES)[number];
 type TownName = TmreTown;
 type TownFilter = "All" | TownName;
 
@@ -94,6 +103,10 @@ function OhFilterBar({
   orderedTowns,
   townCounts,
   loadState,
+  mostOpenHouses,
+  setMostOpenHouses,
+  firstShowing,
+  setFirstShowing,
 }: {
   theme: FilterPillTheme;
   className?: string;
@@ -104,6 +117,10 @@ function OhFilterBar({
   orderedTowns: readonly TownName[];
   townCounts: Partial<Record<TownFilter | TownName, number>>;
   loadState: LoadState;
+  mostOpenHouses: boolean;
+  setMostOpenHouses: (value: boolean) => void;
+  firstShowing: boolean;
+  setFirstShowing: (value: boolean) => void;
 }) {
   return (
     <div className={`flex flex-col gap-3 ${className}`}>
@@ -119,6 +136,25 @@ function OhFilterBar({
             {f.label}
           </button>
         ))}
+      </div>
+
+      <div className={filterPillIndependentContainerClass("compact")}>
+        <button
+          type="button"
+          onClick={() => setMostOpenHouses(!mostOpenHouses)}
+          aria-pressed={mostOpenHouses}
+          className={filterPillIndependentButtonClass(mostOpenHouses, "compact", theme)}
+        >
+          Most open houses
+        </button>
+        <button
+          type="button"
+          onClick={() => setFirstShowing(!firstShowing)}
+          aria-pressed={firstShowing}
+          className={filterPillIndependentButtonClass(firstShowing, "compact", theme)}
+        >
+          First showing
+        </button>
       </div>
 
       <TownFilterPills
@@ -166,6 +202,22 @@ export default function OpenHousesClient() {
     "day",
     OH_GROUP_VALUES,
   );
+  const [mostPref, setMostPref] = usePersistedFilter<ToggleOn>(
+    "tmre_oh_most",
+    "off",
+    OH_TOGGLE_VALUES,
+  );
+  const [firstPref, setFirstPref] = usePersistedFilter<ToggleOn>(
+    "tmre_oh_first",
+    "off",
+    OH_TOGGLE_VALUES,
+  );
+  const mostOpenHouses = mostPref === "on";
+  const firstShowing = firstPref === "on";
+  const focus = useMemo(
+    () => ({ most: mostOpenHouses, first: firstShowing }),
+    [mostOpenHouses, firstShowing],
+  );
   const orderedTowns = usePersonalizedTowns(TOWN_NAMES);
   const today = useMemo(() => etCalendarDate(), []);
 
@@ -208,26 +260,37 @@ export default function OpenHousesClient() {
         );
       });
     }
-    return result;
-  }, [allListings, townFilter, txFilter]);
+    return filterOpenHouseFocus(result, focus);
+  }, [allListings, townFilter, txFilter, focus]);
 
   const displayListings = useMemo(() => {
+    const sorted = [...listings];
     if (sortMode === "date") {
-      return [...listings].sort((a, b) => {
+      sorted.sort((a, b) => {
+        if (focus.most) {
+          const byCount = compareOpenHouseWeekCountDesc(a, b);
+          if (byCount !== 0) return byCount;
+        }
         const dateCmp = a.nextOpenHouse.date.localeCompare(b.nextOpenHouse.date);
         if (dateCmp !== 0) return dateCmp;
         return (a.nextOpenHouse.startDateTime ?? "").localeCompare(
           b.nextOpenHouse.startDateTime ?? "",
         );
       });
+      return sorted;
     }
     const mult = sortMode === "price-asc" ? 1 : -1;
-    return [...listings].sort((a, b) => {
+    sorted.sort((a, b) => {
+      if (focus.most) {
+        const byCount = compareOpenHouseWeekCountDesc(a, b);
+        if (byCount !== 0) return byCount;
+      }
       const pa = a.price ?? (sortMode === "price-asc" ? Infinity : -Infinity);
       const pb = b.price ?? (sortMode === "price-asc" ? Infinity : -Infinity);
       return mult * (pa - pb);
     });
-  }, [listings, sortMode]);
+    return sorted;
+  }, [listings, sortMode, focus]);
 
   const groupedListings = useMemo(
     () =>
@@ -245,8 +308,9 @@ export default function OpenHousesClient() {
     );
     if (txFilter === "sale") pool = pool.filter((l) => !isOhRental(l));
     if (txFilter === "rental") pool = pool.filter(isOhRental);
+    pool = filterOpenHouseFocus(pool, focus);
     return countListingsByTown(pool, { requireCoverage: true });
-  }, [allListings, txFilter]);
+  }, [allListings, txFilter, focus]);
 
   const alertFallback = useMemo(
     () =>
@@ -285,6 +349,10 @@ export default function OpenHousesClient() {
             orderedTowns={orderedTowns}
             townCounts={townCounts}
             loadState={loadState}
+            mostOpenHouses={mostOpenHouses}
+            setMostOpenHouses={(on) => setMostPref(on ? "on" : "off")}
+            firstShowing={firstShowing}
+            setFirstShowing={(on) => setFirstPref(on ? "on" : "off")}
           />
 
           <div className="mt-4 flex items-center gap-2 font-mono text-xs">
@@ -306,6 +374,8 @@ export default function OpenHousesClient() {
             <div className="mt-8">
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
                 Open Houses{townFilter !== "All" ? ` · ${townFilter}` : ""}
+                {focus.most ? " · most this week" : ""}
+                {focus.first ? " · first showing" : ""}
               </p>
               <h2 className="font-serif text-2xl sm:text-3xl text-white">
                 {listings.length}{" "}
@@ -335,9 +405,11 @@ export default function OpenHousesClient() {
                 No open houses found
               </p>
               <p className="text-charcoal/70">
-                No public open houses scheduled this Monday–Sunday week
-                {townFilter !== "All" ? ` in ${townFilter}` : ""}. Try another town or check back
-                soon.
+                {openHouseFocusEmptyCopy({
+                  focus,
+                  town: townFilter === "All" ? null : townFilter,
+                })}{" "}
+                Try another town or turn a filter off.
               </p>
             </div>
           ) : (
@@ -346,10 +418,17 @@ export default function OpenHousesClient() {
                 Past / upcoming counts are public SmartMLS open houses stored in
                 our database. History starts when we began keeping these rows —
                 older showings the MLS no longer returns are not included.
+                {focus.most
+                  ? " Most open houses means two or more public slots this Monday–Sunday week."
+                  : ""}
+                {focus.first
+                  ? " First showing means zero public open houses on file before today."
+                  : ""}
               </p>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3 min-h-8">
                   <LatestSearchAlertForm
+                    variant="open-houses"
                     fallbackCriteria={alertFallback}
                     triggerId="open-house-alerts"
                   />
@@ -619,7 +698,7 @@ function OpenHouseBadge({
 }) {
   return (
     <span
-      className={`inline-flex max-w-full items-center justify-end rounded-full border border-gold bg-gold font-mono font-medium tabular-nums leading-tight text-navy shadow-sm ${
+      className={`inline-flex max-w-full items-center justify-end rounded-full border border-charcoal/20 bg-white font-mono font-medium tabular-nums leading-tight text-navy shadow-sm ${
         compact ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-0.5 text-[9px]"
       }`}
     >
@@ -763,8 +842,8 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
           <span className="font-mono text-[9px] tabular-nums text-navy">{meta.weekLabel}</span>
           <span className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</span>
         </div>
-        <span className={`${LINE_OH_COL} font-mono text-[9px] font-medium tabular-nums text-gold-dark`}>
-          {meta.ohShort}
+        <span className={`${LINE_OH_COL}`}>
+          <OpenHouseBadge label={meta.ohShort} compact />
         </span>
         <span className={`${LINE_PRICE_COL} font-mono text-[10px] font-medium tabular-nums text-navy`}>
           {meta.priceValue}
@@ -783,12 +862,9 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
           className={`relative ${PHOTO_PREVIEW_ROWS} shrink-0 self-stretch overflow-hidden bg-cream`}
         >
           <ListingPhoto listing={l} photo={photo} alignTop />
-          <span className="absolute top-1.5 right-1.5 z-10 max-w-[90%]">
-            <OpenHouseBadge label={meta.ohShort} compact />
-          </span>
         </div>
-        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center gap-3 p-3">
-          <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 flex flex-col sm:flex-row sm:items-start gap-3 p-3">
+          <div className="min-w-0 flex-1 sm:pr-2">
             {meta.detailHref ? (
               <Link
                 href={meta.detailHref}
@@ -806,14 +882,17 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
             <p className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</p>
             <OpenHouseSchedule events={l.openHouses} />
           </div>
-          <div className="shrink-0 sm:text-right sm:min-w-[7.5rem]">
-            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60">
-              {meta.priceLabel}
-            </p>
-            <p className="font-mono text-sm tabular-nums text-navy font-medium">{meta.priceValue}</p>
-            <p className="font-mono text-[9px] text-slate/55 mt-1 truncate max-w-[10rem] sm:max-w-none">
-              {ownerDisplay}
-            </p>
+          <div className="shrink-0 flex flex-col items-end gap-2 sm:min-w-[8.5rem] sm:pt-0">
+            <OpenHouseBadge label={meta.ohShort} />
+            <div className="text-right">
+              <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60">
+                {meta.priceLabel}
+              </p>
+              <p className="font-mono text-sm tabular-nums text-navy font-medium">{meta.priceValue}</p>
+              <p className="font-mono text-[9px] text-slate/55 mt-1 truncate max-w-[10rem] sm:max-w-none">
+                {ownerDisplay}
+              </p>
+            </div>
           </div>
         </div>
       </article>
@@ -853,7 +932,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
         </div>
 
         <div className="mt-auto space-y-1.5 pt-3 border-t border-charcoal/[0.06]">
-          <Row label="Next open" value={meta.ohLabel} accent compact />
+          <Row label="Next open" value={meta.ohLabel} compact />
           <Row label="This week" value={meta.weekLabel} compact />
           <OpenHouseSchedule events={l.openHouses} />
           <Row label="Showings" value={meta.historyLabel} compact />

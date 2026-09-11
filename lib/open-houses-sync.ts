@@ -97,6 +97,15 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   const pruned = await pruneOpenHousesBefore(lookback.start)
   await setSyncMetaDurable(OPEN_HOUSES_SYNCED_AT_KEY, new Date().toISOString())
 
+  try {
+    const { processDueSavedSearchAlerts } = await import(
+      '@/lib/saved-search-alerts'
+    )
+    await processDueSavedSearchAlerts()
+  } catch (err) {
+    console.warn('[open-houses-sync] saved-search alerts failed', err)
+  }
+
   return {
     ok: true,
     window,

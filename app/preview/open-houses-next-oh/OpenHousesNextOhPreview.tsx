@@ -105,9 +105,10 @@ export function OpenHousesNextOhPreview() {
     <div className="space-y-10">
       <section className="rounded-2xl border border-charcoal/[0.08] bg-white px-4 py-3">
         <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-slate">
-          Listing alerts — empty history uses town + homes + $800K–$2M
+          Open house alerts — empty history uses town + homes + $800K–$2M
         </p>
         <LatestSearchAlertForm
+          variant="open-houses"
           fallbackCriteria={FALLBACK}
           triggerId="preview-open-house-alerts"
         />
@@ -129,7 +130,7 @@ export function OpenHousesNextOhPreview() {
 
       <section>
         <h2 className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
-          Rows — next OH upper right, photo matches row height
+          Rows — next OH upper right of the panel, photo matches row height
         </h2>
         <ListingCollection listings={LISTINGS} view="rows" />
       </section>
