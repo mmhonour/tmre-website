@@ -34,7 +34,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-focus",
     title: "Open houses — most / first showing",
     summary:
-      "Toggle Most open houses (2+ this week) and Newest — first showing (zero prior public OH). Pills stack.",
+      "Toggle Most open houses (top 3 historical hosts per town, ties stay) and First showing (zero past). Sticky bar on /open-houses.",
   },
   {
     slug: "open-house-alerts",

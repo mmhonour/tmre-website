@@ -6,6 +6,7 @@ import {
   filterPillIndependentButtonClass,
   filterPillIndependentContainerClass,
 } from "@/lib/filter-pill-styles";
+import { openHouseListingTown } from "@/lib/open-houses-groups";
 import {
   filterOpenHouseFocus,
   openHouseFocusEmptyCopy,
@@ -82,7 +83,7 @@ const HARBOR_SUN = event("8 Harbor Rd", "2026-09-13", "14:00", "16:00");
 
 const LISTINGS: OpenHouseListing[] = [
   fixture("Westport", "06880", "16 Sea Spray Rd", [SAT, SUN], SAT, {
-    pastCount: 4,
+    pastCount: 12,
     weekOpenHouseCount: 2,
     price: 2_195_000,
   }),
@@ -91,12 +92,12 @@ const LISTINGS: OpenHouseListing[] = [
     weekOpenHouseCount: 1,
   }),
   fixture("Wilton", "06897", "5 Locust Ln", [LOCUST], LOCUST, {
-    pastCount: 2,
+    pastCount: 3,
     weekOpenHouseCount: 1,
     price: 875_000,
   }),
   fixture("Westport", "06880", "8 Harbor Rd", [HARBOR, HARBOR_SUN], HARBOR, {
-    pastCount: 0,
+    pastCount: 5,
     weekOpenHouseCount: 2,
     price: 1_595_000,
   }),
@@ -107,7 +108,7 @@ export function OpenHousesFocusPreview() {
   const [first, setFirst] = useState(false);
   const focus = { most, first };
   const shown = useMemo(
-    () => filterOpenHouseFocus(LISTINGS, focus),
+    () => filterOpenHouseFocus(LISTINGS, focus, openHouseListingTown),
     [most, first],
   );
 
@@ -128,7 +129,7 @@ export function OpenHousesFocusPreview() {
           aria-pressed={first}
           className={filterPillIndependentButtonClass(first, "compact", "light")}
         >
-          Newest — first showing
+          First showing
         </button>
       </div>
 

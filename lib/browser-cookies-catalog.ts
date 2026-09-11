@@ -188,7 +188,7 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     "open-houses",
   ),
   tmre_oh_most: pref(
-    "Open houses — most open houses this week (2+ slots)",
+    "Open houses — most historical showings (top 3 per town, ties stay)",
     "open-houses",
   ),
   tmre_oh_first: pref(

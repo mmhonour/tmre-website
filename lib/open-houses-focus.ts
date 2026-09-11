@@ -1,5 +1,5 @@
-/** Homes with at least this many public OH slots this Monday–Sunday week. */
-export const OPEN_HOUSE_MOST_MIN_WEEK = 2
+/** Top N historical hosts in each town; ties at the cutoff stay in. */
+export const OPEN_HOUSE_MOST_TOP_N = 3
 
 export type OpenHouseFocusFlags = {
   most: boolean
@@ -11,38 +11,87 @@ export type OpenHouseFocusListing = {
   weekOpenHouseCount?: number | null
 }
 
-/** No public open house on file before today (ET). */
-export function isFirstOpenHouse(listing: OpenHouseFocusListing): boolean {
-  return (listing.pastCount ?? 0) === 0
+export function historicalShowingCount(listing: OpenHouseFocusListing): number {
+  return listing.pastCount ?? 0
 }
 
-/** Multiple public open houses this week — the busy hosts. */
-export function isMostOpenHouses(listing: OpenHouseFocusListing): boolean {
-  return (listing.weekOpenHouseCount ?? 0) >= OPEN_HOUSE_MOST_MIN_WEEK
+/** No public open house on file before today (ET). */
+export function isFirstOpenHouse(listing: OpenHouseFocusListing): boolean {
+  return historicalShowingCount(listing) === 0
+}
+
+/**
+ * Cutoff past-count for “top N homes, plus ties.” Homes with 0 past never
+ * qualify. `null` means the pool has no history.
+ */
+export function mostHistoricalCutoff(
+  pastCounts: readonly number[],
+  topN = OPEN_HOUSE_MOST_TOP_N,
+): number | null {
+  const ranked = pastCounts
+    .filter((count) => count > 0)
+    .sort((a, b) => b - a)
+  if (ranked.length === 0) return null
+  return ranked[Math.min(topN, ranked.length) - 1] ?? null
+}
+
+export function listingsWithMostHistoricalShowings<T extends OpenHouseFocusListing>(
+  listings: readonly T[],
+  topN = OPEN_HOUSE_MOST_TOP_N,
+): T[] {
+  const cutoff = mostHistoricalCutoff(
+    listings.map(historicalShowingCount),
+    topN,
+  )
+  if (cutoff == null) return []
+  return listings.filter((listing) => historicalShowingCount(listing) >= cutoff)
 }
 
 export function listingMatchesOpenHouseFocus(
   listing: OpenHouseFocusListing,
   focus: OpenHouseFocusFlags,
+  townPool: readonly OpenHouseFocusListing[] = [listing],
 ): boolean {
-  if (focus.most && !isMostOpenHouses(listing)) return false
+  if (focus.most) {
+    const cutoff = mostHistoricalCutoff(townPool.map(historicalShowingCount))
+    if (cutoff == null || historicalShowingCount(listing) < cutoff) return false
+  }
   if (focus.first && !isFirstOpenHouse(listing)) return false
   return true
 }
 
+/**
+ * Most = top 3 historical showing counts per town (ties at #3 stay).
+ * First = zero past showings. Both stack as an intersection.
+ */
 export function filterOpenHouseFocus<T extends OpenHouseFocusListing>(
   listings: readonly T[],
   focus: OpenHouseFocusFlags,
+  townOf?: (listing: T) => string,
 ): T[] {
-  if (!focus.most && !focus.first) return [...listings]
-  return listings.filter((listing) => listingMatchesOpenHouseFocus(listing, focus))
+  let result = [...listings]
+  if (focus.most) {
+    const keyOf = townOf ?? (() => '_')
+    const byTown = new Map<string, T[]>()
+    for (const listing of result) {
+      const town = keyOf(listing)
+      const group = byTown.get(town) ?? []
+      group.push(listing)
+      byTown.set(town, group)
+    }
+    result = [...byTown.values()].flatMap((group) =>
+      listingsWithMostHistoricalShowings(group),
+    )
+  }
+  if (focus.first) result = result.filter(isFirstOpenHouse)
+  return result
 }
 
-export function compareOpenHouseWeekCountDesc(
+export function compareOpenHousePastCountDesc(
   a: OpenHouseFocusListing,
   b: OpenHouseFocusListing,
 ): number {
-  return (b.weekOpenHouseCount ?? 0) - (a.weekOpenHouseCount ?? 0)
+  return historicalShowingCount(b) - historicalShowingCount(a)
 }
 
 export function openHouseFocusEmptyCopy(opts: {
@@ -51,10 +100,10 @@ export function openHouseFocusEmptyCopy(opts: {
 }): string {
   const place = opts.town ? ` in ${opts.town}` : ''
   if (opts.focus.most && opts.focus.first) {
-    return `No first-time homes with two or more public open houses this week${place}.`
+    return `No home can be both a first showing and a top historical host${place}.`
   }
   if (opts.focus.most) {
-    return `No home has more than one public open house this week${place}.`
+    return `No stored past showings${place} — Most open houses needs history on file.`
   }
   if (opts.focus.first) {
     return `No first-time open houses this week${place} — every home here already has a prior showing in our history.`
