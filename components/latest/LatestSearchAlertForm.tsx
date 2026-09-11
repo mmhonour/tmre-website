@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import IntelTownStatsDrawer from "@/components/intelligence/IntelTownStatsDrawer";
 import {
+  criteriaNotifySummary,
   listUniqueVisitorSearchesOrFallback,
   type VisitorSearchCriteria,
   type VisitorSearchProfileEntry,
 } from "@/lib/visitor-search-profile";
+
+export type SearchAlertVariant = "latest" | "open-houses";
 
 type Cadence = "immediate" | "daily" | "weekly";
 type Channel = "email" | "sms";
@@ -43,10 +46,13 @@ const LINK_BTN_LABEL =
 export default function LatestSearchAlertForm({
   fallbackCriteria = null,
   triggerId = "latest-alerts",
+  variant = "latest",
 }: {
   /** Used on Open Houses when the visitor has no Intelligence / Find history. */
   fallbackCriteria?: VisitorSearchCriteria | null;
   triggerId?: string;
+  /** Open Houses page: OH alerts first, optional listing alerts. */
+  variant?: SearchAlertVariant;
 } = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -69,6 +75,14 @@ export default function LatestSearchAlertForm({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [includeListings, setIncludeListings] = useState(variant !== "open-houses");
+  const [includeOpenHouses, setIncludeOpenHouses] = useState(
+    variant === "open-houses",
+  );
+
+  const isOpenHouses = variant === "open-houses";
+  const triggerLabel = isOpenHouses ? "Open house alerts" : "Listing alerts";
+  const dialogLabel = triggerLabel;
 
   const loadSearches = () => {
     const { searches: list, usedFallback: fallback } =
@@ -144,10 +158,21 @@ export default function LatestSearchAlertForm({
       );
       return;
     }
+    if (!includeListings && !includeOpenHouses) {
+      setError("Choose open house alerts, listing alerts, or both.");
+      return;
+    }
     if (!email.trim()) {
       setError("Enter the email address that should receive matches.");
       return;
     }
+
+    const criteria: VisitorSearchCriteria = {
+      ...selected.criteria,
+      alertOnNewListing: includeListings,
+      alertOnOpenHouse: includeOpenHouses,
+    };
+    const notifyWhat = criteriaNotifySummary(criteria);
 
     setSaving(true);
     try {
@@ -155,7 +180,7 @@ export default function LatestSearchAlertForm({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          criteria: selected.criteria,
+          criteria,
           channel,
           email: email.trim(),
           phone: phone.trim() || null,
@@ -172,10 +197,10 @@ export default function LatestSearchAlertForm({
       }
       setMessage(
         (cadence === "immediate"
-          ? "Alert saved — we'll email you when a new listing matches (checked every ~30 minutes)."
+          ? `Alert saved — we'll email you when ${notifyWhat} match (checked every ~30 minutes).`
           : cadence === "daily"
-            ? `Alert saved — daily digest at ${dailyTime} ET when there are new matches.`
-            : `Alert saved — weekly digest ${WEEKDAYS.find((d) => d.value === weeklyDay)?.label} at ${weeklyTime} ET when there are new matches.`) +
+            ? `Alert saved — daily digest at ${dailyTime} ET when ${notifyWhat} match.`
+            : `Alert saved — weekly digest ${WEEKDAYS.find((d) => d.value === weeklyDay)?.label} at ${weeklyTime} ET when ${notifyWhat} match.`) +
           " Confirmation emailed to you; Timothy was notified too.",
       );
     } catch (err) {
@@ -207,6 +232,11 @@ export default function LatestSearchAlertForm({
     saving,
     message,
     error,
+    includeListings,
+    onIncludeListingsChange: setIncludeListings,
+    includeOpenHouses,
+    onIncludeOpenHousesChange: setIncludeOpenHouses,
+    variant,
     onSubmit: () => void submit(),
   } as const;
 
@@ -228,16 +258,21 @@ export default function LatestSearchAlertForm({
           <path d="M8.5 1.2 L2.8 6 L8.5 10.8 Z" />
         </svg>
         <span className={LINK_BTN_LABEL}>
-          Listing alerts{open ? " · close" : ""}
+          {triggerLabel}
+          {open ? " · close" : ""}
         </span>
         {/* The open panel says what it wants; the nudge would only crowd it. */}
         {open ? null : (
           <>
             <span aria-hidden>-</span>
             <span className="normal-case italic text-navy/55">
-              {usedFallback
-                ? "town, home type, and price"
-                : "choose from a previous search"}
+              {isOpenHouses
+                ? usedFallback
+                  ? "town, home type, and price"
+                  : "when a matching home schedules a showing"
+                : usedFallback
+                  ? "town, home type, and price"
+                  : "choose from a previous search"}
             </span>
           </>
         )}
@@ -248,7 +283,7 @@ export default function LatestSearchAlertForm({
         <div
           id={`${triggerId}-panel`}
           role="dialog"
-          aria-label="Listing alerts"
+          aria-label={dialogLabel}
           className="absolute left-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_32px_rgba(28,42,58,0.18)]"
         >
           <div className="space-y-3 px-3.5 py-3">
@@ -261,8 +296,8 @@ export default function LatestSearchAlertForm({
       <IntelTownStatsDrawer
         open={open && isNarrow}
         onClose={() => setOpen(false)}
-        title="Listing alerts"
-        ariaLabel="Listing alerts"
+        title={dialogLabel}
+        ariaLabel={dialogLabel}
       >
         <AlertFormFields {...formProps} />
       </IntelTownStatsDrawer>
@@ -292,6 +327,11 @@ function AlertFormFields({
   saving,
   message,
   error,
+  includeListings,
+  onIncludeListingsChange,
+  includeOpenHouses,
+  onIncludeOpenHousesChange,
+  variant,
   onSubmit,
 }: {
   searches: VisitorSearchProfileEntry[];
@@ -315,14 +355,24 @@ function AlertFormFields({
   saving: boolean;
   message: string | null;
   error: string | null;
+  includeListings: boolean;
+  onIncludeListingsChange: (v: boolean) => void;
+  includeOpenHouses: boolean;
+  onIncludeOpenHousesChange: (v: boolean) => void;
+  variant: SearchAlertVariant;
   onSubmit: () => void;
 }) {
+  const isOpenHouses = variant === "open-houses";
   return (
     <>
       <p className="text-xs text-slate leading-snug">
-        {usedFallback
-          ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching."
-          : "Alert from a search you've already run. Email when a new home matches — text coming later."}
+        {isOpenHouses
+          ? usedFallback
+            ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching. We'll email when a matching home schedules an open house."
+            : "Email when a matching home schedules an open house. A new listing may not have one yet — add listing alerts if you want those too."
+          : usedFallback
+            ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching."
+            : "Alert from a search you've already run. A new listing may not have an open house yet — add open house alerts to hear when one is scheduled."}
       </p>
 
       {searches.length === 0 ? (
@@ -366,6 +416,29 @@ function AlertFormFields({
       )}
 
       <div className="grid gap-3">
+        <fieldset className="space-y-1.5">
+          <legend className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
+            Notify for
+          </legend>
+          <div className="flex flex-wrap gap-1.5">
+            <ChannelChip
+              active={includeOpenHouses}
+              onClick={() => onIncludeOpenHousesChange(!includeOpenHouses)}
+              label="Open houses"
+            />
+            <ChannelChip
+              active={includeListings}
+              onClick={() => onIncludeListingsChange(!includeListings)}
+              label="New listings"
+            />
+          </div>
+          <p className="text-[11px] text-slate leading-snug">
+            {isOpenHouses
+              ? "Open houses are on by default. New listings is optional — a home may list before it has a showing."
+              : "New listings are on by default. Open houses fire later, when a matching home first schedules a showing."}
+          </p>
+        </fieldset>
+
         <fieldset className="space-y-1.5">
           <legend className="font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/50">
             Notify by
@@ -493,7 +566,12 @@ function AlertFormFields({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={saving || searches.length === 0 || channel === "sms"}
+          disabled={
+            saving ||
+            searches.length === 0 ||
+            channel === "sms" ||
+            (!includeListings && !includeOpenHouses)
+          }
           className="rounded-md border border-navy/30 bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-navy disabled:pointer-events-none disabled:opacity-40"
         >
           {saving ? "Saving…" : "Save alert"}

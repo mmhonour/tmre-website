@@ -31,6 +31,16 @@ export type VisitorSearchCriteria = {
   /** Intelligence price band; null = no floor / no cap. */
   minPrice: number | null
   maxPrice: number | null
+  /**
+   * Email when a new Active listing matches. Default true when omitted
+   * (existing Latest alerts). Open House signup can turn this off.
+   */
+  alertOnNewListing?: boolean
+  /**
+   * Email when a matching listing first gets a public open house.
+   * Default false when omitted.
+   */
+  alertOnOpenHouse?: boolean
 }
 
 export type VisitorSearchProfileEntry = {
@@ -117,6 +127,8 @@ export function normalizeVisitorSearchCriteria(
     boardStatus: raw.boardStatus ?? null,
     minPrice: normalizePrice(raw.minPrice),
     maxPrice: normalizePrice(raw.maxPrice),
+    alertOnNewListing: raw.alertOnNewListing === false ? false : true,
+    alertOnOpenHouse: raw.alertOnOpenHouse === true,
   }
 }
 
@@ -137,6 +149,8 @@ export function fingerprintCriteria(c: VisitorSearchCriteria): string {
     c.boardStatus ?? '*',
     c.minPrice ?? '*',
     c.maxPrice ?? '*',
+    criteriaWantsListingAlerts(c) ? '1' : '0',
+    criteriaWantsOpenHouseAlerts(c) ? '1' : '0',
   ]
   return parts.join('|')
 }
@@ -164,7 +178,32 @@ export function labelCriteria(c: VisitorSearchCriteria): string {
   if (c.boardStatus && c.boardStatus !== 'all') bits.push(c.boardStatus)
   const price = formatCriteriaPriceRange(c.minPrice, c.maxPrice)
   if (price) bits.push(price)
+  if (criteriaWantsOpenHouseAlerts(c)) {
+    bits.push(
+      criteriaWantsListingAlerts(c)
+        ? 'listings + open houses'
+        : 'open houses',
+    )
+  }
   return bits.join(' · ')
+}
+
+/** Default true — omitted / legacy criteria still mean listing alerts. */
+export function criteriaWantsListingAlerts(c: VisitorSearchCriteria): boolean {
+  return c.alertOnNewListing !== false
+}
+
+export function criteriaWantsOpenHouseAlerts(c: VisitorSearchCriteria): boolean {
+  return c.alertOnOpenHouse === true
+}
+
+/** Phrase for confirmation / success copy. */
+export function criteriaNotifySummary(c: VisitorSearchCriteria): string {
+  const listing = criteriaWantsListingAlerts(c)
+  const openHouse = criteriaWantsOpenHouseAlerts(c)
+  if (listing && openHouse) return 'new listings and open houses'
+  if (openHouse) return 'open houses'
+  return 'new listings'
 }
 
 /** True when criteria is too empty to be a useful alert. */

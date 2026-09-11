@@ -75,7 +75,7 @@ function groupAlerts(alerts: AdminListingAlertRow[]): UserGroup[] {
 }
 
 /**
- * End-user listing alerts from /latest → saved_search_alerts.
+ * End-user listing / open-house alerts from /latest and /open-houses.
  * Manage: activate / disable / delete; grouped by email with duplicate flags.
  */
 export default function AdminListingAlertsPanel({
