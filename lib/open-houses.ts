@@ -44,6 +44,21 @@ export type OpenHouseListing = {
   weekOpenHouseCount: number
 }
 
+export type OpenHousesPageData = {
+  listings: OpenHouseListing[]
+  generatedAt: string
+  source: 'db'
+  syncedAt: string | null
+  window: { start: string; end: string }
+  windowLabel: string
+  eventsFound: number
+  listingsMatched: number
+}
+
+export type OpenHousesPageLoad =
+  | { ok: true; data: OpenHousesPageData }
+  | { ok: false; error: string; window: { start: string; end: string } }
+
 /** Calendar date (YYYY-MM-DD) in America/New_York. */
 export function etCalendarDate(from = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(from)
