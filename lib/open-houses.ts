@@ -40,7 +40,24 @@ export type OpenHouseListing = {
   pastCount: number
   /** Public events on file with OHDate today or later (ET), not only this week. */
   upcomingCount: number
+  /** Remaining public OH events today through Sunday this week (ET). */
+  weekOpenHouseCount: number
 }
+
+export type OpenHousesPageData = {
+  listings: OpenHouseListing[]
+  generatedAt: string
+  source: 'db'
+  syncedAt: string | null
+  window: { start: string; end: string }
+  windowLabel: string
+  eventsFound: number
+  listingsMatched: number
+}
+
+export type OpenHousesPageLoad =
+  | { ok: true; data: OpenHousesPageData }
+  | { ok: false; error: string; window: { start: string; end: string } }
 
 /** Calendar date (YYYY-MM-DD) in America/New_York. */
 export function etCalendarDate(from = new Date()): string {
@@ -66,6 +83,58 @@ export function openHouseDateWindow(from = new Date()): { start: string; end: st
   const start = etCalendarDate(from)
   return { start, end: addCalendarDays(start, 6) }
 }
+
+/** Monday of the calendar week that contains `isoDate` (YYYY-MM-DD). */
+export function mondayOfContainingWeek(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const jsSunday0 = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  const mondayOffset = jsSunday0 === 0 ? 6 : jsSunday0 - 1
+  return addCalendarDays(isoDate, -mondayOffset)
+}
+
+/** Monday–Sunday of the ET week that contains `from` (inclusive). */
+export function openHouseWeekWindow(from = new Date()): { start: string; end: string } {
+  const start = mondayOfContainingWeek(etCalendarDate(from))
+  return { start, end: addCalendarDays(start, 6) }
+}
+
+/**
+ * The page is forward-looking: today through Sunday of this ET week.
+ * Homes whose last open house was yesterday or earlier are out of scope.
+ */
+export function openHouseRemainingWeekWindow(from = new Date()): {
+  start: string
+  end: string
+} {
+  const week = openHouseWeekWindow(from)
+  const today = etCalendarDate(from)
+  return { start: today > week.start ? today : week.start, end: week.end }
+}
+
+export function openHouseRemainingWeekLabel(window: {
+  start: string
+  end: string
+}): string {
+  return `Today through Sunday · ${window.start} through ${window.end} (ET)`
+}
+
+/** First event on or after today. Nothing if the series already ended. */
+export function pickNextOpenHouse(
+  events: readonly OpenHouseEvent[],
+  today: string,
+): OpenHouseEvent | undefined {
+  if (events.length === 0) return undefined
+  const sorted = [...events].sort((a, b) => {
+    const dateCmp = a.date.localeCompare(b.date)
+    if (dateCmp !== 0) return dateCmp
+    return (a.startDateTime ?? '').localeCompare(b.startDateTime ?? '')
+  })
+  return sorted.find((event) => event.date >= today)
+}
+
+export const OPEN_HOUSES_LOAD_ERROR_TITLE = 'Open houses could not be loaded'
+export const OPEN_HOUSES_LOAD_ERROR_BODY =
+  'The week list failed to load. Refresh the page. This is not an empty calendar.'
 
 /** Yesterday back through the lookback horizon (empty when lookback is 0). */
 export function openHouseLookbackWindow(from = new Date()): { start: string; end: string } {
@@ -100,10 +169,33 @@ export function splitDateWindow(
   return chunks
 }
 
+/** One stored OpenHouse row on a listing History panel. `upcoming` is set upstream. */
+export type ListingOpenHouse = OpenHouseEvent & {
+  upcoming: boolean
+}
+
+export function markOpenHouseUpcoming(
+  event: OpenHouseEvent,
+  today: string,
+): ListingOpenHouse {
+  return { ...event, upcoming: event.date >= today }
+}
+
+/** SmartMLS OHType `O` is a public open house. */
+export function formatOpenHouseType(type: string | null | undefined): string {
+  const raw = type?.trim()
+  if (!raw || raw === 'O') return 'Public'
+  return raw
+}
+
 export function formatOpenHouseHistory(past: number, upcoming: number): string {
   const pastLabel = past === 1 ? '1 past' : `${past} past`
   const upcomingLabel = upcoming === 1 ? '1 upcoming' : `${upcoming} upcoming`
   return `${pastLabel} · ${upcomingLabel}`
+}
+
+export function formatOpenHouseWeekCount(count: number): string {
+  return count === 1 ? '1 this week' : `${count} this week`
 }
 
 export function isDateInOpenHouseWindow(
@@ -119,6 +211,38 @@ function formatTime12(hhmm: string): string {
   const suffix = h >= 12 ? 'PM' : 'AM'
   const hour12 = h % 12 || 12
   return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
+/** Calendar day from an OHDate string, no timezone shift. */
+export function formatOpenHouseDate(iso: string): string {
+  const [y, mo, d] = iso.split('-').map(Number)
+  if (!y || !mo || !d) return iso
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, mo - 1, d)))
+}
+
+/** Corner / compact badge: weekday + times, no month. */
+export function formatOpenHouseWhenShort(event: OpenHouseEvent): string {
+  const [y, mo, d] = event.date.split('-').map(Number)
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, mo - 1, d)))
+
+  const start = event.startDateTime?.includes('T')
+    ? event.startDateTime.slice(11, 16)
+    : event.startDateTime?.slice(0, 5) ?? null
+  const end = event.endDateTime?.includes('T')
+    ? event.endDateTime.slice(11, 16)
+    : event.endDateTime?.slice(0, 5) ?? null
+
+  if (start && end) return `${weekday} · ${formatTime12(start)}–${formatTime12(end)}`
+  if (start) return `${weekday} · ${formatTime12(start)}`
+  return weekday
 }
 
 /** Human label for an open house slot (naive MLS datetimes treated as ET). */

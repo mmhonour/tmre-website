@@ -120,4 +120,18 @@ describe('formatVisionMailingAddress', () => {
       'WESTPORT, CT',
     ])
   })
+
+  it('keeps VGSI last-first when the mailing name is first-last', () => {
+    const block = formatVisionMailingAddress({
+      mailing: 'JOHN SMITH, 9 PINE ST, WESTPORT, CT',
+      residenceStreet: '5 Locust Ln',
+      town: 'Westport',
+      ownerName: 'SMITH JOHN',
+    })
+    assert.deepEqual(block.letterLines, [
+      'SMITH JOHN',
+      '9 PINE ST',
+      'WESTPORT, CT',
+    ])
+  })
 })

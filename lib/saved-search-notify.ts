@@ -28,6 +28,8 @@ export type SavedSearchMatchListing = {
   href: string
   /** Absolute thumbnail URL when available. */
   photoUrl?: string | null
+  matchKind?: 'listing' | 'open_house'
+  openHouseWhen?: string | null
 }
 
 function formatPrice(n: number | null): string {
@@ -71,10 +73,16 @@ export async function notifySavedSearchByEmail(opts: {
 
   const from = resendFrom('TMRE Alerts')
 
+  const ohCount = opts.listings.filter((l) => l.matchKind === 'open_house').length
+  const listingCount = opts.listings.length - ohCount
   const subject =
     opts.listings.length === 1
-      ? `New match — ${opts.listings[0].address ?? opts.listings[0].mlsId}`
-      : `${opts.listings.length} new matches — ${opts.criteriaLabel}`
+      ? `${opts.listings[0].matchKind === 'open_house' ? 'Open house' : 'New match'} — ${opts.listings[0].address ?? opts.listings[0].mlsId}`
+      : ohCount > 0 && listingCount === 0
+        ? `${opts.listings.length} open houses — ${opts.criteriaLabel}`
+        : ohCount > 0
+          ? `${opts.listings.length} listing and open-house matches — ${opts.criteriaLabel}`
+          : `${opts.listings.length} new matches — ${opts.criteriaLabel}`
 
   const [theme, brokerage] = await Promise.all([
     getMarketPulseThemeFresh(),
@@ -83,13 +91,19 @@ export async function notifySavedSearchByEmail(opts: {
   const searchUrl = absHref(opts.searchHref)
 
   const lines = [
-    `Your TMRE saved search “${opts.criteriaLabel}” has new listing${opts.listings.length === 1 ? '' : 's'}.`,
+    `Your TMRE saved search “${opts.criteriaLabel}” has ${
+      ohCount > 0 && listingCount === 0
+        ? `open house${opts.listings.length === 1 ? '' : 's'}`
+        : ohCount > 0
+          ? 'new matches'
+          : `new listing${opts.listings.length === 1 ? '' : 's'}`
+    }.`,
     `Cadence: ${opts.cadence}`,
     `Search: ${searchUrl}`,
     '',
     ...opts.listings.flatMap((l, i) => [
-      `${i + 1}. ${l.address ?? 'Address TBD'}${l.town ? ` · ${l.town}` : ''}`,
-      `   ${formatPrice(l.price)}${l.beds != null ? ` · ${l.beds} bd` : ''}${l.baths != null ? ` · ${l.baths} ba` : ''}`,
+      `${i + 1}. ${l.matchKind === 'open_house' ? 'Open house · ' : ''}${l.address ?? 'Address TBD'}${l.town ? ` · ${l.town}` : ''}`,
+      `   ${formatPrice(l.price)}${l.beds != null ? ` · ${l.beds} bd` : ''}${l.baths != null ? ` · ${l.baths} ba` : ''}${l.openHouseWhen ? ` · ${l.openHouseWhen}` : ''}`,
       `   MLS #${l.mlsId}`,
       `   ${absHref(l.href)}`,
       '',
@@ -145,6 +159,7 @@ export async function notifySavedSearchConfirmation(opts: {
   criteriaLabel: string
   cadenceLabel: string
   searchHref: string
+  notifySummary?: string
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) return false
@@ -157,7 +172,7 @@ export async function notifySavedSearchConfirmation(opts: {
   const searchUrl = absHref(opts.searchHref)
 
   const text = [
-    `You're set. We'll email you when new listings match:`,
+    `You're set. We'll email you when ${opts.notifySummary ?? 'new listings'} match:`,
     '',
     `Search: ${opts.criteriaLabel}`,
     searchUrl,
@@ -174,6 +189,7 @@ export async function notifySavedSearchConfirmation(opts: {
     criteriaLabel: opts.criteriaLabel,
     cadenceLabel: opts.cadenceLabel,
     searchHref: searchUrl,
+    notifySummary: opts.notifySummary,
   })
 
   const controller = new AbortController()
@@ -229,9 +245,9 @@ export async function notifySavedSearchCreatedAdmin(opts: {
         from,
         to: [to],
         reply_to: opts.visitorEmail,
-        subject: `New listing alert — ${opts.criteriaLabel}`,
+        subject: `New search alert — ${opts.criteriaLabel}`,
         text: [
-          'A visitor created a listing alert on Latest.',
+          'A visitor created a listing / open-house alert.',
           '',
           `Email: ${opts.visitorEmail}`,
           `Search: ${opts.criteriaLabel}`,

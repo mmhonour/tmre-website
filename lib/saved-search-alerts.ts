@@ -10,9 +10,15 @@ import {
 import { isValidEmail } from '@/lib/contact-notify-config'
 import { intelligenceSearchHrefFromCriteria } from '@/lib/intelligence-search-url'
 import { listingPhotoProxyUrl, listingShareHref } from '@/lib/listing-url'
+import { etCalendarDate } from '@/lib/open-houses'
+import { ensureOpenHousesTable } from '@/lib/db/open-houses-repo'
 import {
+  criteriaNotifySummary,
+  criteriaWantsListingAlerts,
+  criteriaWantsOpenHouseAlerts,
   fingerprintCriteria,
   labelCriteria,
+  normalizeVisitorSearchCriteria,
   townsForCriteria,
   type VisitorSearchCriteria,
 } from '@/lib/visitor-search-profile'
@@ -74,14 +80,28 @@ export async function ensureSavedSearchAlertTables(): Promise<void> {
       alert_id   text NOT NULL REFERENCES saved_search_alerts(id) ON DELETE CASCADE,
       listing_id text NOT NULL,
       channel    text NOT NULL,
+      event_kind text NOT NULL DEFAULT 'listing',
       sent_at    timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (alert_id, listing_id)
+      PRIMARY KEY (alert_id, listing_id, event_kind)
     )
+  `)
+  await query(`
+    ALTER TABLE saved_search_alert_deliveries
+      ADD COLUMN IF NOT EXISTS event_kind text NOT NULL DEFAULT 'listing'
+  `)
+  await query(`
+    ALTER TABLE saved_search_alert_deliveries
+      DROP CONSTRAINT IF EXISTS saved_search_alert_deliveries_pkey
+  `)
+  await query(`
+    ALTER TABLE saved_search_alert_deliveries
+      ADD CONSTRAINT saved_search_alert_deliveries_pkey
+      PRIMARY KEY (alert_id, listing_id, event_kind)
   `)
   await query(`
     CREATE INDEX IF NOT EXISTS idx_saved_search_alerts_active_cadence
       ON saved_search_alerts (active, cadence)
-      WHERE active = true
+    WHERE active = true
   `)
   ensured = true
 }
@@ -136,7 +156,13 @@ export async function createSavedSearchAlert(
     }
   }
 
-  const criteria = input.criteria
+  const criteria = normalizeVisitorSearchCriteria(input.criteria)
+  if (
+    !criteriaWantsListingAlerts(criteria) &&
+    !criteriaWantsOpenHouseAlerts(criteria)
+  ) {
+    throw new Error('Choose listing alerts, open house alerts, or both')
+  }
   const id = randomUUID()
   const fingerprint = fingerprintCriteria(criteria)
   const label = labelCriteria(criteria)
@@ -169,17 +195,49 @@ export async function createSavedSearchAlert(
     ],
   )
 
+  const notifyWhat = criteriaNotifySummary(criteria)
   const cadenceLabel =
     input.cadence === 'immediate'
-      ? 'As soon as a new match appears (checked every ~30 minutes)'
+      ? `As soon as ${notifyWhat} match (checked every ~30 minutes)`
       : input.cadence === 'daily'
-        ? `Once a day at ${dailyTime} ET`
-        : `Once a week (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weeklyDay!]}) at ${weeklyTime} ET`
+        ? `Once a day at ${dailyTime} ET when ${notifyWhat} match`
+        : `Once a week (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weeklyDay!]}) at ${weeklyTime} ET when ${notifyWhat} match`
+
+  if (criteriaWantsOpenHouseAlerts(criteria)) {
+    try {
+      const seedAlert: SavedSearchAlert = {
+        id,
+        visitorId: input.visitorId?.trim() || null,
+        criteria,
+        criteriaFingerprint: fingerprint,
+        criteriaLabel: label,
+        channel: 'email',
+        email,
+        phone: null,
+        cadence: input.cadence,
+        dailyTimeEt: dailyTime,
+        weeklyDay,
+        weeklyTimeEt: weeklyTime,
+        active: true,
+        lastNotifiedAt: null,
+        createdAt: new Date().toISOString(),
+      }
+      const alreadyOpen = await findMatchingOpenHouseListings(seedAlert, {
+        ignoreDeliveries: true,
+      })
+      await markDelivered(id, alreadyOpen, 'email', 'open_house', {
+        touchLastNotified: false,
+      })
+    } catch (err) {
+      console.warn('[saved-search-alerts] seed existing open houses failed', err)
+    }
+  }
 
   void notifySavedSearchConfirmation({
     to: email,
     criteriaLabel: label,
     cadenceLabel,
+    notifySummary: notifyWhat,
     searchHref: absoluteUrl(intelligenceSearchHrefFromCriteria(criteria)),
   }).catch((err) => {
     console.warn('[saved-search-alerts] confirmation email failed', err)
@@ -249,10 +307,11 @@ type AlertRow = {
 }
 
 function mapRow(row: AlertRow): SavedSearchAlert {
-  const criteria =
+  const parsed =
     typeof row.criteria === 'string'
       ? (JSON.parse(row.criteria) as VisitorSearchCriteria)
       : row.criteria
+  const criteria = normalizeVisitorSearchCriteria(parsed)
   return {
     id: row.id,
     visitorId: row.visitor_id,
@@ -410,9 +469,15 @@ type ListingMatchRow = {
   beds: string | number | null
   baths: string | number | null
   photo_count: string | number | null
+  next_oh?: string | null
 }
 
-function toMatchListing(row: ListingMatchRow): SavedSearchMatchListing {
+export type AlertDeliveryKind = 'listing' | 'open_house'
+
+function toMatchListing(
+  row: ListingMatchRow,
+  matchKind: AlertDeliveryKind = 'listing',
+): SavedSearchMatchListing {
   const mlsId = row.mls_id.trim()
   const photoCount =
     row.photo_count != null ? Number(row.photo_count) : 0
@@ -430,38 +495,16 @@ function toMatchListing(row: ListingMatchRow): SavedSearchMatchListing {
       Number.isFinite(photoCount) && photoCount > 0
         ? absoluteUrl(listingPhotoProxyUrl(mlsId, 0))
         : null,
+    matchKind,
+    openHouseWhen: row.next_oh?.trim() || null,
   }
 }
 
-/**
- * Find Active listings matching criteria that look "new" since `sinceIso`
- * and have not already been delivered for this alert.
- *
- * "New" = list_date after since, OR DOM ≤ 7 with modification after since.
- */
-export async function findMatchingNewListings(
-  alert: SavedSearchAlert,
-  sinceIso: string,
-  limit = 25,
-): Promise<SavedSearchMatchListing[]> {
-  const c = alert.criteria
-  const params: unknown[] = [alert.id, sinceIso]
-  const conditions: string[] = [
-    `l.status_bucket = 'Active'`,
-    `(
-       (l.list_date IS NOT NULL AND l.list_date > $2::timestamptz)
-       OR (
-         l.dom IS NOT NULL AND l.dom <= 7
-         AND l.modification_timestamp IS NOT NULL
-         AND l.modification_timestamp > $2::timestamptz
-       )
-     )`,
-    `NOT EXISTS (
-       SELECT 1 FROM saved_search_alert_deliveries d
-       WHERE d.alert_id = $1 AND d.listing_id = l.id
-     )`,
-  ]
-
+function appendListingCriteria(
+  c: VisitorSearchCriteria,
+  params: unknown[],
+  conditions: string[],
+): void {
   const towns = townsForCriteria(c)
   if (towns.length > 0) {
     params.push(towns)
@@ -502,6 +545,46 @@ export async function findMatchingNewListings(
         OR l.year_built IS NOT NULL AND l.year_built >= EXTRACT(YEAR FROM CURRENT_DATE) - 2)`,
     )
   }
+  if (c.minPrice != null && c.minPrice > 0) {
+    params.push(c.minPrice)
+    conditions.push(`l.price IS NOT NULL AND l.price >= $${params.length}`)
+  }
+  if (c.maxPrice != null && c.maxPrice > 0) {
+    params.push(c.maxPrice)
+    conditions.push(`l.price IS NOT NULL AND l.price <= $${params.length}`)
+  }
+}
+
+/**
+ * Find Active listings matching criteria that look "new" since `sinceIso`
+ * and have not already been delivered as a listing match for this alert.
+ *
+ * "New" = list_date after since, OR DOM ≤ 7 with modification after since.
+ */
+export async function findMatchingNewListings(
+  alert: SavedSearchAlert,
+  sinceIso: string,
+  limit = 25,
+): Promise<SavedSearchMatchListing[]> {
+  const c = alert.criteria
+  const params: unknown[] = [alert.id, sinceIso]
+  const conditions: string[] = [
+    `l.status_bucket = 'Active'`,
+    `(
+       (l.list_date IS NOT NULL AND l.list_date > $2::timestamptz)
+       OR (
+         l.dom IS NOT NULL AND l.dom <= 7
+         AND l.modification_timestamp IS NOT NULL
+         AND l.modification_timestamp > $2::timestamptz
+       )
+     )`,
+    `NOT EXISTS (
+       SELECT 1 FROM saved_search_alert_deliveries d
+       WHERE d.alert_id = $1 AND d.listing_id = l.id
+         AND COALESCE(d.event_kind, 'listing') = 'listing'
+     )`,
+  ]
+  appendListingCriteria(c, params, conditions)
 
   params.push(limit)
   const sql = `
@@ -513,7 +596,63 @@ export async function findMatchingNewListings(
     LIMIT $${params.length}
   `
   const rows = await query<ListingMatchRow>(sql, params)
-  return rows.map(toMatchListing)
+  return rows.map((row) => toMatchListing(row, 'listing'))
+}
+
+/**
+ * Matching Active listings that have an upcoming public open house and have
+ * not yet been delivered as an open-house event for this alert.
+ */
+export async function findMatchingOpenHouseListings(
+  alert: SavedSearchAlert,
+  opts?: { ignoreDeliveries?: boolean; limit?: number },
+): Promise<SavedSearchMatchListing[]> {
+  await ensureOpenHousesTable()
+  const c = alert.criteria
+  const today = etCalendarDate()
+  const params: unknown[] = [alert.id, today]
+  const conditions: string[] = [
+    `l.status_bucket = 'Active'`,
+    `EXISTS (
+       SELECT 1 FROM open_houses oh
+       WHERE oh.oh_date >= $2::date
+         AND (
+           (oh.listing_id IS NOT NULL AND oh.listing_id = l.mls_id)
+           OR (oh.listing_key IS NOT NULL AND oh.listing_key = l.listing_key)
+         )
+     )`,
+  ]
+  if (!opts?.ignoreDeliveries) {
+    conditions.push(`NOT EXISTS (
+       SELECT 1 FROM saved_search_alert_deliveries d
+       WHERE d.alert_id = $1 AND d.listing_id = l.id
+         AND d.event_kind = 'open_house'
+     )`)
+  }
+  appendListingCriteria(c, params, conditions)
+  params.push(opts?.limit ?? 25)
+  const sql = `
+    SELECT l.id, l.mls_id, l.address_full, l.address_street, l.town,
+           l.price, l.beds, l.baths, l.photo_count,
+           (
+             SELECT oh2.oh_date::text ||
+                    COALESCE(' · ' || LEFT(oh2.start_datetime, 5), '')
+             FROM open_houses oh2
+             WHERE oh2.oh_date >= $2::date
+               AND (
+                 (oh2.listing_id IS NOT NULL AND oh2.listing_id = l.mls_id)
+                 OR (oh2.listing_key IS NOT NULL AND oh2.listing_key = l.listing_key)
+               )
+             ORDER BY oh2.oh_date ASC, oh2.start_datetime ASC NULLS LAST
+             LIMIT 1
+           ) AS next_oh
+    FROM listings l
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY l.town ASC NULLS LAST, l.address_street ASC NULLS LAST
+    LIMIT $${params.length}
+  `
+  const rows = await query<ListingMatchRow>(sql, params)
+  return rows.map((row) => toMatchListing(row, 'open_house'))
 }
 
 function etParts(d = new Date()): {
@@ -652,15 +791,18 @@ async function markDelivered(
   alertId: string,
   listings: SavedSearchMatchListing[],
   channel: AlertChannel,
+  eventKind: AlertDeliveryKind,
+  opts?: { touchLastNotified?: boolean },
 ): Promise<void> {
   for (const listing of listings) {
     await query(
-      `INSERT INTO saved_search_alert_deliveries (alert_id, listing_id, channel)
-       VALUES ($1, $2, $3)
+      `INSERT INTO saved_search_alert_deliveries (alert_id, listing_id, channel, event_kind)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT DO NOTHING`,
-      [alertId, listing.id, channel],
+      [alertId, listing.id, channel, eventKind],
     )
   }
+  if (opts?.touchLastNotified === false) return
   await query(
     `UPDATE saved_search_alerts
      SET last_notified_at = now(), updated_at = now()
@@ -669,10 +811,33 @@ async function markDelivered(
   )
 }
 
+function mergeAlertMatches(
+  listings: SavedSearchMatchListing[],
+  openHouses: SavedSearchMatchListing[],
+): SavedSearchMatchListing[] {
+  const byId = new Map<string, SavedSearchMatchListing>()
+  for (const row of listings) byId.set(row.id, row)
+  for (const row of openHouses) {
+    const existing = byId.get(row.id)
+    if (!existing) {
+      byId.set(row.id, row)
+      continue
+    }
+    byId.set(row.id, {
+      ...existing,
+      matchKind: 'open_house',
+      openHouseWhen: row.openHouseWhen ?? existing.openHouseWhen,
+    })
+  }
+  return [...byId.values()]
+}
+
 async function deliverAlert(
   alert: SavedSearchAlert,
-  listings: SavedSearchMatchListing[],
+  listingMatches: SavedSearchMatchListing[],
+  openHouseMatches: SavedSearchMatchListing[],
 ): Promise<number> {
+  const listings = mergeAlertMatches(listingMatches, openHouseMatches)
   if (!alert.email || listings.length === 0) return 0
   const ok = await notifySavedSearchByEmail({
     to: alert.email,
@@ -684,13 +849,25 @@ async function deliverAlert(
     listings,
   })
   if (!ok) return 0
-  await markDelivered(alert.id, listings, 'email')
+  if (listingMatches.length > 0) {
+    await markDelivered(alert.id, listingMatches, 'email', 'listing', {
+      touchLastNotified: false,
+    })
+  }
+  if (openHouseMatches.length > 0) {
+    await markDelivered(alert.id, openHouseMatches, 'email', 'open_house', {
+      touchLastNotified: false,
+    })
+  }
+  await markDelivered(alert.id, [], 'email', 'listing', {
+    touchLastNotified: true,
+  })
   return listings.length
 }
 
 /**
- * Process due alerts after an MLS incremental (or Admin Process now).
- * - immediate: any new matches since last notify / created
+ * Process due alerts after an MLS incremental, open-houses sync, or Admin Process now.
+ * - immediate: any new listing / newly detected open house since last notify
  * - daily / weekly: due once the ET send time has passed this day / week
  *   (catch-up — no longer a 30-minute window that Incremental can miss)
  */
@@ -722,9 +899,14 @@ export async function processDueSavedSearchAlerts(opts?: {
         alert.lastNotifiedAt ||
         alert.createdAt ||
         new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      const matches = await findMatchingNewListings(alert, since)
-      if (matches.length === 0) continue
-      const n = await deliverAlert(alert, matches)
+      const listingMatches = criteriaWantsListingAlerts(alert.criteria)
+        ? await findMatchingNewListings(alert, since)
+        : []
+      const openHouseMatches = criteriaWantsOpenHouseAlerts(alert.criteria)
+        ? await findMatchingOpenHouseListings(alert)
+        : []
+      if (listingMatches.length === 0 && openHouseMatches.length === 0) continue
+      const n = await deliverAlert(alert, listingMatches, openHouseMatches)
       if (n > 0) {
         sent += 1
         listingCount += n

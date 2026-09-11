@@ -284,6 +284,18 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Neon table of official VGSI street names per town (db/migrations/0024_vision_streets.sql). Each Vision chunk starts by fetching any missing Streets.aspx?Letter= pages into this table (fillMissingVisionStreetIndex) — that does not move the parcel crawl cursor. Entering a letter during the parcel walk also replaces that letter. One row per town + street name. A letter is replaced wholesale only after that letter page parsed successfully, so a fetch fault cannot empty the index. Admin-only page `/streets` (password gate, not in the public menu) reads this table. House numbers live in `vision_street_parcels`. `vision_addresses.street_name` is only streets whose Field Cards have been ingested so far. Distinct from `town_property_addresses` (List With Me).',
   },
   {
+    term: 'vision_owner_keys',
+    category: 'sync-admin',
+    definition:
+      'Neon table of join fingerprints extracted from a Vision Field Card (db/migrations/0031_vision_owner_clusters.sql). `vision_pid` is the card, not the owner. Each row is a mailing key (`12 main st|westport`) or a name key (`castillo|edward`) with a role (warranty / quitclaim / of-record). Written on Vision upsert, Field Card persist, and Find parcel load. FK `(town, vision_pid)` → `vision_addresses`. See vision_owner_cluster_members.',
+  },
+  {
+    term: 'vision_owner_cluster_members',
+    category: 'sync-admin',
+    definition:
+      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). Name keys come from every warranty and quitclaim owner on the Field Card, not only the current stack, so a landlord who later quitclaimed still clusters (PENNA DENISE / Denise Penna). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes. Admin ranking: `/streets/owners` (also linked from Find and Streets as Landlord / owners). Rebuilt when a parcel’s keys change. CLI: `npm run sync:owner-clusters`. See vision_owner_keys.',
+  },
+  {
     term: 'vision_street_parcels',
     category: 'sync-admin',
     definition:
@@ -395,7 +407,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Saved search / listing alert',
     category: 'product',
     definition:
-      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest; email via Resend; cadence immediate / daily / weekly ET. Railway Incremental runs processDueSavedSearchAlerts after the Neon write; Netlify Lane 3 also runs it. Daily/weekly catch up after the scheduled ET time (not a 30-minute window). SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries. Manage in Admin → Communications → Listing alerts (Process now, group by email, activate/disable/delete; duplicate = same email + same criteria fingerprint).',
+      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest (new listings, optional open houses) and /open-houses (open houses, optional new listings). A new listing may not have a showing yet — open-house notify fires when the first upcoming public OH is detected. Email via Resend; cadence immediate / daily / weekly ET. Railway Incremental runs processDueSavedSearchAlerts after the Neon write; open-houses sync runs it after a successful pull. Netlify Lane 3 also runs it. Daily/weekly catch up after the scheduled ET time (not a 30-minute window). SMS not wired yet (Twilio + A2P planned). Tables: saved_search_alerts + deliveries (event_kind listing | open_house). Manage in Admin → Communications → Listing alerts (Process now, group by email, activate/disable/delete; duplicate = same email + same criteria fingerprint).',
   },
 
   // —— Sync / admin ——
@@ -469,7 +481,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'open_houses',
     category: 'sync-admin',
     definition:
-      'Neon table of public SmartMLS OpenHouse events (db/migrations/0023_open_houses.sql). /open-houses reads this table only — no RETS on the page. The hourly queue job replaces today through +90 days (so a cancelled showing disappears) and upserts the prior year (so MLS dropping an old row cannot erase a past count). Rows older than the lookback horizon are pruned. The page still lists homes with a showing in the next 7 days, and each card shows past / upcoming counts from everything stored. MLS times stay text, not timestamps, so 11am stays 11am in Connecticut.',
+      'Neon table of public SmartMLS OpenHouse events (db/migrations/0023_open_houses.sql). /open-houses reads this table only — no RETS on the page. The hourly queue job replaces today through +90 days (so a cancelled showing disappears), stamps open_houses_synced_at, then upserts lookback in newest-first 14-day slices under an 8-minute budget so a long history pull cannot hide a finished upcoming write. Rows older than the lookback horizon are pruned. The page lists homes with a showing today through Sunday this week; past / upcoming counts document earlier and later showings on those same homes, not series that already ended. The listing History panel lists stored OpenHouse rows for this MLS id and prior listings at the address. Most open houses = top 3 historical hosts per town (ties stay). First showing = 0 past. Those two filters are mutually exclusive. Sale / rental and town pills sit in the navy hero and dock into the sticky cream bar on scroll. Open house alerts sit left of the view glyphs. MLS times stay text, not timestamps, so 11am stays 11am in Connecticut. Town sections start collapsed; drag ⋮⋮ to reorder (cookie tmre_oh_town_order).',
   },
   {
     term: 'sync_queue',

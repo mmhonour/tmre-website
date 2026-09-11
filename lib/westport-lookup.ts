@@ -7,10 +7,16 @@ import {
   searchVisionAddresses,
   type VisionAddressRecord,
 } from '@/lib/db/vision-addresses-repo'
+import {
+  listVisionOwnerClusterMates,
+  refreshVisionOwnerKeysSafe,
+  type VisionOwnerClusterMate,
+} from '@/lib/db/vision-owner-clusters-repo'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { query, queryOne } from '@/lib/db/postgres'
 import { buildListingPhotoProxyUrls } from '@/lib/listing-photos-cache'
 import { listingDetailHref } from '@/lib/listing-url'
+import { findAddressDivergence } from '@/lib/find-address-divergence'
 import {
   normalizePropertyAddress,
   normalizeStreetLine,
@@ -42,6 +48,10 @@ import {
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
 import { formatVisionMailingAddress } from '@/lib/vision-mailing-address'
+import {
+  formatVisionOwnerDisplay,
+  formatVisionOwnerDisplayLines,
+} from '@/lib/vision-owner-display'
 
 export const WESTPORT_LOOKUP_TOWN = 'Westport'
 
@@ -81,10 +91,18 @@ export type WestportMergedProperty = {
   visionPid: string
   addressFull: string
   street: string
+  /** VGSI site line (`2A STONY PT RD`). */
+  visionStreet: string
+  /** MLS street when a listing is linked. */
+  mlsStreet: string | null
+  /** True when the two display lines are not the same spelling. */
+  addressesDiverge: boolean
   mblu: string | null
   parcelUrl: string | null
   fieldCard: WestportFieldCard
   siblings: WestportLookupHit[]
+  /** Other Vision cards in the same owner mailing/name cluster. */
+  otherHomes: VisionOwnerClusterMate[]
   /** True when this request pulled the row from RETS into listings. */
   listingIngested: boolean
   listing: {
@@ -595,21 +613,34 @@ export async function mergeWestportProperty(
     fieldCard.fields,
     vision.ownerName ?? listing?.ownerName,
   )
+  await refreshVisionOwnerKeysSafe(WESTPORT_LOOKUP_TOWN, vision.visionPid)
+  const otherHomes = await listVisionOwnerClusterMates(
+    WESTPORT_LOOKUP_TOWN,
+    vision.visionPid,
+  ).catch(() => [])
+
   const compiledOwner = compileVisionOwnerParts(
     fieldCard.ownership ?? [],
     cardOwner,
   )
-  const ownerDisplayName = compiledOwner.displayName ?? cardOwner
-  const ownerDisplayLines =
+  const rawOwnerName = compiledOwner.displayName ?? cardOwner
+  const ownerDisplayName = formatVisionOwnerDisplay(rawOwnerName)
+  const ownerDisplayLines = formatVisionOwnerDisplayLines(
     compiledOwner.displayLines.length > 0
       ? compiledOwner.displayLines
-      : ownerDisplayName
-        ? [ownerDisplayName]
-        : []
+      : rawOwnerName
+        ? [rawOwnerName]
+        : [],
+  )
   const ownerMailingAddress =
     ownerMailingAddressFromFields(fieldCard.fields) ??
     vision.ownerMailingAddress
-  const residenceStreet = listing?.address.street || streetLine(vision)
+  const visionStreet = streetLine(vision)
+  const mlsStreet = listing
+    ? (listing.address.street || listing.address.full || '').trim() || null
+    : null
+  const addressLines = findAddressDivergence(visionStreet, mlsStreet)
+  const residenceStreet = listing?.address.street || visionStreet
   const mailing = formatVisionMailingAddress({
     mailing: ownerMailingAddress,
     residenceStreet,
@@ -623,12 +654,16 @@ export async function mergeWestportProperty(
     addressFull:
       listing?.address.full ||
       vision.addressFull ||
-      `${streetLine(vision)}, Westport, CT`,
+      `${visionStreet}, Westport, CT`,
     street: residenceStreet,
+    visionStreet: addressLines.visionStreet,
+    mlsStreet: addressLines.mlsStreet,
+    addressesDiverge: addressLines.diverge,
     mblu: vision.mblu,
     parcelUrl: vision.parcelUrl,
     fieldCard,
     siblings,
+    otherHomes,
     listingIngested,
     listing: listing
       ? {
@@ -676,7 +711,12 @@ export async function mergeWestportProperty(
       ownership: fieldCard.ownership,
     }),
     quitclaimCount: countVisionQuitclaims(fieldCard.ownership),
-    deedHistory: visionDeedDisplayRows(fieldCard.ownership, ownerDisplayName),
+    deedHistory: visionDeedDisplayRows(fieldCard.ownership, rawOwnerName).map(
+      (row) => ({
+        ...row,
+        owner: formatVisionOwnerDisplay(row.owner) ?? row.owner,
+      }),
+    ),
     assessedValue: visionFill(listing?.assessedValue, vision.assessedValue),
     appraisalValue: visionFill(null, vision.appraisalValue),
     lastSalePrice: visionFill(null, vision.lastSalePrice),

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FindAddressDivergenceNote } from "@/components/FindAddressDivergenceNote";
+import { FindListingIngestStatus } from "@/components/FindListingIngestStatus";
 import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
 import { westportFieldCardHref, westportParcelHref } from "@/lib/listing-url";
@@ -160,7 +162,7 @@ export default async function WestportParcelPage({
   params: Promise<{ pid: string }>;
 }) {
   const { pid } = await params;
-  const property = await mergeWestportProperty(pid.trim());
+  const property = await mergeWestportProperty(pid.trim(), { ingest: false });
   if (!property) notFound();
   const streetRow = await getVisionStreetParcelByPid(
     property.town,
@@ -210,18 +212,22 @@ export default async function WestportParcelPage({
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-24 lg:pb-10 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
-          {property.listingIngested && property.listing ? (
+          {property.listing ? (
             <div className="mb-5 rounded-xl border border-gold/45 bg-gold/15 px-4 py-3">
               <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-gold">
                 Listing is available
               </p>
               <p className="mt-1 text-sm text-white/80">
-                Pulled from RETS and stored in listings · MLS #
-                {property.listing.mlsId}
+                Stored in listings · MLS #{property.listing.mlsId}
                 {property.listing.status ? ` · ${property.listing.status}` : ""}.
               </p>
             </div>
-          ) : null}
+          ) : (
+            <FindListingIngestStatus
+              visionPid={property.visionPid}
+              hasListing={false}
+            />
+          )}
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
             <Link href="/find" className="hover:text-white transition-colors">
               Find · Westport
@@ -245,6 +251,13 @@ export default async function WestportParcelPage({
           <p className="mt-3 font-mono text-sm text-white/70">
             {property.addressFull}
           </p>
+          {property.addressesDiverge && property.mlsStreet ? (
+            <FindAddressDivergenceNote
+              visionStreet={property.visionStreet}
+              mlsStreet={property.mlsStreet}
+              tone="dark"
+            />
+          ) : null}
           <div className="mt-6 max-w-xl rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-4">
             <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
               Owner of record
@@ -252,6 +265,25 @@ export default async function WestportParcelPage({
             <p className="mt-1 font-serif text-xl sm:text-2xl text-white leading-snug whitespace-pre-line">
               {ownerBlock}
             </p>
+            {property.otherHomes.length > 0 ? (
+              <div className="mt-3">
+                <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">
+                  Other homes
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {property.otherHomes.map((home) => (
+                    <li key={`${home.town}:${home.visionPid}`}>
+                      <Link
+                        href={westportParcelHref(home.visionPid)}
+                        className="font-mono text-sm text-gold hover:text-white"
+                      >
+                        {home.siteAddress}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
                 <dt className="font-mono text-[10px] tracking-[0.12em] uppercase text-white/45">

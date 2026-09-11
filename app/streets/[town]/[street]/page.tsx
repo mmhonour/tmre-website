@@ -15,6 +15,7 @@ import {
   resolveStreetName,
   resolveStreetTown,
   townToStreetSlug,
+  visionOwnersPageHref,
   visionParcelFindHref,
 } from '@/lib/vision-streets-page'
 
@@ -79,6 +80,13 @@ export default async function StreetsStreetPage({
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3">
             Admin · Streets
+            {' · '}
+            <Link
+              href={visionOwnersPageHref(town, streetName)}
+              className="hover:text-white transition-colors"
+            >
+              Landlords on this street
+            </Link>
           </p>
           <p className="text-sm text-white/60 mb-3">
             <Link href={townHref} className="hover:text-white">

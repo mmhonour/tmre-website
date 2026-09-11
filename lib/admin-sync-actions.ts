@@ -1344,12 +1344,14 @@ async function runAdminSyncActionImpl(
         durationMs: result.durationMs || Date.now() - t0,
         recordsFetched: result.eventsFetched,
         message: result.ok
-          ? `${result.written} upcoming · ${result.historyWritten} past for ${result.window.start} → ${result.window.end}`
+          ? `${result.written} upcoming · ${result.historyWritten} past for ${result.window.start} → ${result.window.end}${
+              result.lookbackIncomplete ? ' · lookback continues next hour' : ''
+            }`
           : `Open house sync failed: ${result.error ?? 'unknown'}`,
         detail: result.ok
-          ? `Replaced upcoming ${result.window.start}–${result.window.end} (${result.removed} removed, ${result.written} written) · upserted ${result.historyWritten} lookback${
-              result.pruned > 0 ? ` · pruned ${result.pruned} older than lookback` : ''
-            }`
+          ? `Replaced upcoming ${result.window.start}–${result.window.end} (${result.removed} removed, ${result.written} written) · upserted ${result.historyWritten} lookback (${result.lookbackChunks} chunks)${
+              result.lookbackIncomplete ? ' · more history next hour' : ''
+            }${result.pruned > 0 ? ` · pruned ${result.pruned} older than lookback` : ''}`
           : result.error,
       }
     }

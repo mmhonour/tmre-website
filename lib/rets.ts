@@ -121,6 +121,10 @@ export type SearchParams = {
   modifiedAfter?: string
   /** Space-separated tokens matched with wildcards on UnparsedAddress (live RETS). */
   addressContains?: string
+  /** StreetNumber, may end with `*` so Vision `2A` hits MLS `2A-A`. */
+  streetNumber?: string
+  /** Space-separated tokens matched with wildcards on StreetName. */
+  streetNameContains?: string
 }
 
 export type MarketStats = {
@@ -398,6 +402,19 @@ function buildDmql(params: SearchParams): string {
       clauses.push(`(UnparsedAddress=*${tokens.join('*')}*)`)
     }
   }
+  if (params.streetNumber?.trim()) {
+    clauses.push(`(StreetNumber=${escapeDmqlValue(params.streetNumber.trim())})`)
+  }
+  if (params.streetNameContains) {
+    const tokens = params.streetNameContains
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(escapeDmqlValue)
+    if (tokens.length > 0) {
+      clauses.push(`(StreetName=*${tokens.join('*')}*)`)
+    }
+  }
   if (clauses.length === 0) clauses.push('(ModificationTimestamp=1900-01-01+)')
   return clauses.join(',')
 }
@@ -513,6 +530,19 @@ function isRetsNoRecordsError(err: unknown): boolean {
   const code = String((err as { replyCode?: string }).replyCode ?? '')
   const tag = String((err as { replyTag?: string }).replyTag ?? '')
   return code === '20201' || tag === 'NO_RECORDS_FOUND'
+}
+
+/** StreetNumber + StreetName=*token*token* is 20206 on SmartMLS. */
+export function isRetsInvalidQueryError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = String((err as { replyCode?: string }).replyCode ?? '')
+  const tag = String((err as { replyTag?: string }).replyTag ?? '')
+  const message = err instanceof Error ? err.message : String(err)
+  return (
+    code === '20206' ||
+    tag === 'INVALID_QUERY_SYNTAX' ||
+    /INVALID_QUERY_SYNTAX/i.test(message)
+  )
 }
 
 /**

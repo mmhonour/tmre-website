@@ -520,6 +520,8 @@ type CriteriaLike = {
   maxBaths: number | null
   zip: string | null
   newConstruction: boolean | null
+  minPrice?: number | null
+  maxPrice?: number | null
 }
 
 function asShareProperty(
@@ -542,6 +544,8 @@ export function intelligenceSearchHrefFromCriteria(c: CriteriaLike): string {
     bathsMin: c.minBaths ?? undefined,
     bathsMax: c.maxBaths ?? undefined,
     newConstruction: c.newConstruction,
+    minPrice: c.minPrice ?? undefined,
+    maxPrice: c.maxPrice ?? undefined,
     resetMinor: true,
   })
 }
