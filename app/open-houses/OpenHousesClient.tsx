@@ -861,12 +861,9 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
           className={`relative ${PHOTO_PREVIEW_ROWS} shrink-0 self-stretch overflow-hidden bg-cream`}
         >
           <ListingPhoto listing={l} photo={photo} alignTop />
-          <span className="absolute top-1.5 right-1.5 z-10 max-w-[90%]">
-            <OpenHouseBadge label={meta.ohShort} compact />
-          </span>
         </div>
-        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center gap-3 p-3">
-          <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 flex flex-col sm:flex-row sm:items-start gap-3 p-3">
+          <div className="min-w-0 flex-1 sm:pr-2">
             {meta.detailHref ? (
               <Link
                 href={meta.detailHref}
@@ -884,14 +881,17 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
             <p className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</p>
             <OpenHouseSchedule events={l.openHouses} />
           </div>
-          <div className="shrink-0 sm:text-right sm:min-w-[7.5rem]">
-            <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60">
-              {meta.priceLabel}
-            </p>
-            <p className="font-mono text-sm tabular-nums text-navy font-medium">{meta.priceValue}</p>
-            <p className="font-mono text-[9px] text-slate/55 mt-1 truncate max-w-[10rem] sm:max-w-none">
-              {ownerDisplay}
-            </p>
+          <div className="shrink-0 flex flex-col items-end gap-2 sm:min-w-[8.5rem] sm:pt-0">
+            <OpenHouseBadge label={meta.ohShort} />
+            <div className="text-right">
+              <p className="font-mono text-[9px] tracking-[0.12em] uppercase text-slate/60">
+                {meta.priceLabel}
+              </p>
+              <p className="font-mono text-sm tabular-nums text-navy font-medium">{meta.priceValue}</p>
+              <p className="font-mono text-[9px] text-slate/55 mt-1 truncate max-w-[10rem] sm:max-w-none">
+                {ownerDisplay}
+              </p>
+            </div>
           </div>
         </div>
       </article>

@@ -129,7 +129,7 @@ export function OpenHousesNextOhPreview() {
 
       <section>
         <h2 className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
-          Rows — next OH upper right, photo matches row height
+          Rows — next OH upper right of the panel, photo matches row height
         </h2>
         <ListingCollection listings={LISTINGS} view="rows" />
       </section>
