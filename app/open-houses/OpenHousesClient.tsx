@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOpenHouseTownOrder } from "@/hooks/useOpenHouseTownOrder";
+import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import {
   formatTownList,
   listingInTmreCoverage,
@@ -41,7 +41,6 @@ import {
   openHouseListingTown,
   type OpenHouseTownGroup,
 } from "@/lib/open-houses-groups";
-import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import {
   compareOpenHousePastCountDesc,
   exclusiveOpenHouseFocus,
@@ -196,8 +195,6 @@ function OhStickyFilters({
   allTownsExpanded,
   onCloseAllTowns,
   onExpandAllTowns,
-  customOrder,
-  onResetOrder,
   showTownChrome,
   alertFallback,
 }: {
@@ -222,8 +219,6 @@ function OhStickyFilters({
   allTownsExpanded: boolean;
   onCloseAllTowns: () => void;
   onExpandAllTowns: () => void;
-  customOrder: boolean;
-  onResetOrder: () => void;
   showTownChrome: boolean;
   alertFallback: ReturnType<typeof fallbackCriteriaFromPage>;
 }) {
@@ -322,15 +317,6 @@ function OhStickyFilters({
             >
               Expand all towns
             </button>
-            {customOrder ? (
-              <button
-                type="button"
-                onClick={onResetOrder}
-                className={creamChipClass(false)}
-              >
-                Reset town order
-              </button>
-            ) : null}
           </>
         ) : null}
       </div>
@@ -409,11 +395,8 @@ export default function OpenHousesClient({
     setMostPref(next.most ? "on" : "off");
     setFirstPref(next.first ? "on" : "off");
   };
-  const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
-    useOpenHouseTownOrder(TOWN_NAMES);
+  const orderedTowns = usePersonalizedTowns(TOWN_NAMES);
   const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
-  const [dragTown, setDragTown] = useState<string | null>(null);
-  const [dragOverTown, setDragOverTown] = useState<string | null>(null);
   const [placeFiltersDocked, setPlaceFiltersDocked] = useState(false);
   const placeFiltersSentinelRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => etCalendarDate(), []);
@@ -661,8 +644,6 @@ export default function OpenHousesClient({
               }
               onCloseAllTowns={collapseAllTowns}
               onExpandAllTowns={expandAllTowns}
-              customOrder={customOrder}
-              onResetOrder={resetOrder}
               showTownChrome={loadState === "ready" && listings.length > 0}
               alertFallback={alertFallback}
             />
@@ -704,8 +685,7 @@ export default function OpenHousesClient({
                 Past / upcoming counts document earlier and later public
                 showings for homes that still have a date today or later. Most
                 is the top 3 of those hosts in each town (ties stay). First
-                showing means zero past showings. Towns start collapsed — drag
-                ⋮⋮ to set your order.
+                showing means zero past showings. Towns start collapsed.
               </p>
               <div className="space-y-10">
                 {townSections.map((townGroup) => (
@@ -715,39 +695,6 @@ export default function OpenHousesClient({
                     propertyCount={townGroup.propertyCount}
                     open={openTowns.has(townGroup.town)}
                     onOpenChange={(next) => toggleTownOpen(townGroup.town, next)}
-                    organize={
-                      townSections.length > 1
-                        ? {
-                            dragging: dragTown === townGroup.town,
-                            dragOver:
-                              dragOverTown === townGroup.town && dragTown !== townGroup.town,
-                            onDragStart: () => setDragTown(townGroup.town),
-                            onDragOver: () => setDragOverTown(townGroup.town),
-                            onDragLeave: () =>
-                              setDragOverTown((current) =>
-                                current === townGroup.town ? null : current,
-                              ),
-                            onDrop: () => {
-                              if (dragTown && dragTown !== townGroup.town) {
-                                setPreferredOrder(
-                                  placeTownNextTo(
-                                    orderedTowns,
-                                    dragTown,
-                                    townGroup.town,
-                                    "before",
-                                  ),
-                                );
-                              }
-                              setDragTown(null);
-                              setDragOverTown(null);
-                            },
-                            onDragEnd: () => {
-                              setDragTown(null);
-                              setDragOverTown(null);
-                            },
-                          }
-                        : undefined
-                    }
                   >
                     {townGroup.propertyCount === 0 ? (
                       <p className="font-mono text-xs text-slate">
