@@ -26,6 +26,34 @@ const BHHS_AGENT_PROFILE_URL = "https://timothymarks.bhhsneproperties.com";
 const BHHS_LOGO_URL =
   "https://cdn-cws.datafloat.com/BNE/images/company/BNE/logo/logo.png";
 
+/** Full document load for Open Houses — RSC client navigation was failing in Chrome/Edge. */
+function NavHref({
+  href,
+  className,
+  onClick,
+  children,
+  role,
+}: {
+  href: string;
+  className?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+  role?: string;
+}) {
+  if (href === "/open-houses") {
+    return (
+      <a href={href} className={className} onClick={onClick} role={role}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className={className} onClick={onClick} role={role}>
+      {children}
+    </Link>
+  );
+}
+
 function BhhsAgentProfileLink({ brokerageName }: { brokerageName: string }) {
   return (
     <a
@@ -202,7 +230,7 @@ function ExploreMenu({
                   {group.title}
                 </p>
                 {group.links.map((link) => (
-                  <Link
+                  <NavHref
                     key={link.href}
                     href={link.href}
                     onClick={onNavigate}
@@ -213,7 +241,7 @@ function ExploreMenu({
                     }`}
                   >
                     {link.label}
-                  </Link>
+                  </NavHref>
                 ))}
               </div>
             ))}
@@ -261,7 +289,7 @@ function ExploreMenu({
                 {group.title}
               </p>
               {group.links.map((link) => (
-                <Link
+                <NavHref
                   key={link.href}
                   href={link.href}
                   role="menuitem"
@@ -273,7 +301,7 @@ function ExploreMenu({
                   }`}
                 >
                   {link.label}
-                </Link>
+                </NavHref>
               ))}
             </div>
           ))}

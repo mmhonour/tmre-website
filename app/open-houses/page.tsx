@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
 import OpenHousesClient from "./OpenHousesClient";
-import { getActiveCoverageTownsLabel } from "@/lib/ct-coverage";
-import { loadOpenHousesPageData } from "@/lib/open-houses-page-data";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const townsLabel = await getActiveCoverageTownsLabel();
-  return {
-    title: "Open Houses — TMRE",
-    description: `Upcoming open houses across ${townsLabel}, CT — public showings remaining this week.`,
-  };
-}
+export const metadata: Metadata = {
+  title: "Open Houses — TMRE",
+  description:
+    "Upcoming public open houses remaining this week across our coverage towns.",
+};
 
-export default async function OpenHousesPage() {
-  const initial = await loadOpenHousesPageData();
-  return <OpenHousesClient initial={initial} />;
+/**
+ * Do not load the week list here. Awaiting that query on the document is what
+ * 502’d Chrome/Edge while `/api/listings/open-houses` still answered 200.
+ * The client fetches the API (the request that already works).
+ */
+export default function OpenHousesPage() {
+  return <OpenHousesClient />;
 }
