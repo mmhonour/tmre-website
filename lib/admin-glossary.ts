@@ -481,7 +481,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'open_houses',
     category: 'sync-admin',
     definition:
-      'Neon table of public SmartMLS OpenHouse events (db/migrations/0023_open_houses.sql). /open-houses reads this table only — no RETS on the page. The hourly queue job replaces today through +90 days (so a cancelled showing disappears) and upserts the prior year (so MLS dropping an old row cannot erase a past count). Rows older than the lookback horizon are pruned. The page still lists homes with a showing in the next 7 days, and each card shows past / upcoming counts from everything stored. MLS times stay text, not timestamps, so 11am stays 11am in Connecticut.',
+      'Neon table of public SmartMLS OpenHouse events (db/migrations/0023_open_houses.sql). /open-houses reads this table only — no RETS on the page. The hourly queue job replaces today through +90 days (so a cancelled showing disappears) and upserts the prior year (so MLS dropping an old row cannot erase a past count). Rows older than the lookback horizon are pruned. The page still lists homes with a showing in the next 7 days, and each card shows past / upcoming counts from everything stored. MLS times stay text, not timestamps, so 11am stays 11am in Connecticut. Town sections start collapsed (− All). Visitors reorder towns with ↑↓ or drag; order is cookie tmre_oh_town_order.',
   },
   {
     term: 'sync_queue',

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
+import { useOpenHouseTownOrder } from "@/hooks/useOpenHouseTownOrder";
 import {
   formatTownList,
   listingInTmreCoverage,
@@ -35,7 +35,11 @@ import {
   type OpenHouseEvent,
   type OpenHouseListing,
 } from "@/lib/open-houses";
-import { groupOpenHousesByTownAndDay } from "@/lib/open-houses-groups";
+import {
+  groupOpenHousesByTownAndDay,
+  type OpenHouseTownGroup,
+} from "@/lib/open-houses-groups";
+import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import {
   compareOpenHouseWeekCountDesc,
   filterOpenHouseFocus,
@@ -218,7 +222,11 @@ export default function OpenHousesClient() {
     () => ({ most: mostOpenHouses, first: firstShowing }),
     [mostOpenHouses, firstShowing],
   );
-  const orderedTowns = usePersonalizedTowns(TOWN_NAMES);
+  const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
+    useOpenHouseTownOrder(TOWN_NAMES);
+  const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
+  const [dragTown, setDragTown] = useState<string | null>(null);
+  const [dragOverTown, setDragOverTown] = useState<string | null>(null);
   const today = useMemo(() => etCalendarDate(), []);
 
   useEffect(() => {
@@ -301,6 +309,36 @@ export default function OpenHousesClient() {
       }),
     [displayListings, today, groupMode, orderedTowns],
   );
+
+  const townSections = useMemo(() => {
+    if (townFilter !== "All") return groupedListings;
+    const byTown = new Map(groupedListings.map((group) => [group.town, group]));
+    return orderedTowns.map(
+      (town): OpenHouseTownGroup =>
+        byTown.get(town) ?? { town, propertyCount: 0, days: [] },
+    );
+  }, [groupedListings, orderedTowns, townFilter]);
+
+  const allTownsCollapsed =
+    townSections.length > 0 && townSections.every((group) => !openTowns.has(group.town));
+
+  const toggleTownOpen = (town: string, next: boolean) => {
+    setOpenTowns((current) => {
+      const copy = new Set(current);
+      if (next) copy.add(town);
+      else copy.delete(town);
+      return copy;
+    });
+  };
+
+  const collapseAllTowns = () => setOpenTowns(new Set());
+  const expandAllTowns = () =>
+    setOpenTowns(new Set(townSections.map((group) => group.town)));
+
+  const moveVisibleTown = (town: string, neighbor: string | undefined, side: "before" | "after") => {
+    if (!neighbor) return;
+    setPreferredOrder(placeTownNextTo(orderedTowns, town, neighbor, side));
+  };
 
   const townCounts = useMemo(() => {
     let pool = allListings.filter((l) =>
@@ -479,29 +517,126 @@ export default function OpenHousesClient() {
                       </span>
                     ) : null}
                   </button>
+                  <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
+                    Towns
+                  </span>
+                  <button
+                    type="button"
+                    onClick={collapseAllTowns}
+                    aria-pressed={allTownsCollapsed}
+                    title="Collapse all towns"
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
+                      allTownsCollapsed
+                        ? "border-gold/50 bg-gold/10 text-navy"
+                        : "border-charcoal/[0.08] bg-white text-navy hover:border-gold/40"
+                    }`}
+                  >
+                    − All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={expandAllTowns}
+                    aria-pressed={!allTownsCollapsed && openTowns.size === townSections.length}
+                    title="Expand all towns"
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
+                      !allTownsCollapsed && openTowns.size === townSections.length
+                        ? "border-gold/50 bg-gold/10 text-navy"
+                        : "border-charcoal/[0.08] bg-white text-navy hover:border-gold/40"
+                    }`}
+                  >
+                    + All
+                  </button>
+                  {customOrder ? (
+                    <button
+                      type="button"
+                      onClick={resetOrder}
+                      className="inline-flex items-center gap-1 rounded-full border border-charcoal/[0.08] bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-gold/40"
+                    >
+                      Reset town order
+                    </button>
+                  ) : null}
                 </div>
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
 
+              <p className="mb-4 font-mono text-[10px] text-slate/60">
+                Towns start collapsed. Use ↑↓ or drag ⋮⋮ to set your order — saved
+                in this browser.
+              </p>
               <div className="space-y-10">
-                {groupedListings.map((townGroup) => (
+                {townSections.map((townGroup, index) => (
                   <OpenHouseTownSection
                     key={townGroup.town}
                     town={townGroup.town}
                     propertyCount={townGroup.propertyCount}
+                    open={openTowns.has(townGroup.town)}
+                    onOpenChange={(next) => toggleTownOpen(townGroup.town, next)}
+                    organize={
+                      townSections.length > 1
+                        ? {
+                            canMoveUp: index > 0,
+                            canMoveDown: index < townSections.length - 1,
+                            onMoveUp: () =>
+                              moveVisibleTown(
+                                townGroup.town,
+                                townSections[index - 1]?.town,
+                                "before",
+                              ),
+                            onMoveDown: () =>
+                              moveVisibleTown(
+                                townGroup.town,
+                                townSections[index + 1]?.town,
+                                "after",
+                              ),
+                            dragging: dragTown === townGroup.town,
+                            dragOver:
+                              dragOverTown === townGroup.town && dragTown !== townGroup.town,
+                            onDragStart: () => setDragTown(townGroup.town),
+                            onDragOver: () => setDragOverTown(townGroup.town),
+                            onDragLeave: () =>
+                              setDragOverTown((current) =>
+                                current === townGroup.town ? null : current,
+                              ),
+                            onDrop: () => {
+                              if (dragTown && dragTown !== townGroup.town) {
+                                setPreferredOrder(
+                                  placeTownNextTo(
+                                    orderedTowns,
+                                    dragTown,
+                                    townGroup.town,
+                                    "before",
+                                  ),
+                                );
+                              }
+                              setDragTown(null);
+                              setDragOverTown(null);
+                            },
+                            onDragEnd: () => {
+                              setDragTown(null);
+                              setDragOverTown(null);
+                            },
+                          }
+                        : undefined
+                    }
                   >
-                    <div className="space-y-6">
-                      {townGroup.days.map((day) => (
-                        <div key={day.date || townGroup.town}>
-                          {day.label ? (
-                            <h4 className="mb-3 font-mono text-[11px] tracking-[0.14em] uppercase text-slate">
-                              {day.label}
-                            </h4>
-                          ) : null}
-                          <ListingCollection listings={day.listings} view={viewMode} />
-                        </div>
-                      ))}
-                    </div>
+                    {townGroup.propertyCount === 0 ? (
+                      <p className="font-mono text-xs text-slate">
+                        No open houses this week.
+                      </p>
+                    ) : (
+                      <div className="space-y-6">
+                        {townGroup.days.map((day) => (
+                          <div key={day.date || townGroup.town}>
+                            {day.label ? (
+                              <h4 className="mb-3 font-mono text-[11px] tracking-[0.14em] uppercase text-slate">
+                                {day.label}
+                              </h4>
+                            ) : null}
+                            <ListingCollection listings={day.listings} view={viewMode} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </OpenHouseTownSection>
                 ))}
               </div>
