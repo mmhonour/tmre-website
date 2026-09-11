@@ -362,7 +362,7 @@ export default function OpenHousesClient({
     () => (initial?.ok ? initial.data.syncedAt : null),
   );
   const [loadState, setLoadState] = useState<LoadState>(() =>
-    initial?.ok ? "ready" : initial ? "error" : "loading",
+    initial?.ok ? "ready" : initial && !initial.ok ? "error" : "loading",
   );
   const [townFilter, setTownFilter] = usePersistedFilter<TownFilter>(
     "tmre_oh_town",
@@ -431,8 +431,13 @@ export default function OpenHousesClient({
 
   useEffect(() => {
     if (initial?.ok) return;
+    if (allListings.length > 0) return;
     let cancelled = false;
-    fetch("/api/listings/open-houses")
+    const fetchJson = globalThis.fetch.bind(globalThis);
+    fetchJson("/api/listings/open-houses", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<ApiResponse>;
@@ -446,13 +451,12 @@ export default function OpenHousesClient({
       })
       .catch(() => {
         if (cancelled) return;
-        setAllListings([]);
-        setLoadState("error");
+        setLoadState((state) => (state === "ready" ? state : "error"));
       });
     return () => {
       cancelled = true;
     };
-  }, [initial]);
+  }, [initial, allListings.length]);
 
   const listings = useMemo(() => {
     let result = allListings.filter((l) =>
