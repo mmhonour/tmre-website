@@ -11,6 +11,7 @@ const DIVERGE = findAddressDivergence(
   "2A-A Stony Point Road",
 );
 const SAME = findAddressDivergence("16 Sea Spray Rd", "16 Sea Spray Rd");
+const LOCUST = findAddressDivergence("5 LOCUST LN", "5 Locust Lane");
 const NO_MLS = findAddressDivergence("2A STONY PT RD", null);
 
 export default function FindAddressDivergePreviewPage() {
@@ -47,6 +48,29 @@ export default function FindAddressDivergePreviewPage() {
               tone="dark"
             />
           ) : null}
+        </section>
+
+        <section className="mb-8 rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
+            Ln / Lane — same street, no note
+          </p>
+          <h2 className="mt-2 font-serif text-2xl text-navy">
+            {LOCUST.visionStreet}
+          </h2>
+          <p className="mt-1 font-mono text-sm text-slate/70">
+            MLS {LOCUST.mlsStreet}. Case and Ln↔Lane are not a mismatch.
+          </p>
+          {LOCUST.diverge && LOCUST.mlsStreet ? (
+            <FindAddressDivergenceNote
+              visionStreet={LOCUST.visionStreet}
+              mlsStreet={LOCUST.mlsStreet}
+              tone="light"
+            />
+          ) : (
+            <p className="mt-3 font-mono text-sm text-slate/70">
+              Note hidden. Vision 5 LOCUST LN is MLS 5 Locust Lane.
+            </p>
+          )}
         </section>
 
         <section className="mb-8 rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-6">

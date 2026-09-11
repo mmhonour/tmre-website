@@ -70,7 +70,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "find-address-diverge",
     title: "Vision vs MLS address",
     summary:
-      "FYI on the Find parcel page when the assessor street and the MLS street are not the same spelling.",
+      "FYI when assessor and MLS streets really differ (2A vs 2A-A). 5 LOCUST LN and 5 Locust Lane are the same street — no note.",
   },
   {
     slug: "find-stony-rets",

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   compareAddressLabels,
   streetNameToSlug,
+  resolveStreetName,
   visionOwnersPageHref,
   visionParcelFindHref,
   visionStreetPageHref,
@@ -54,6 +55,16 @@ describe('streetNameToSlug', () => {
   it('slugifies assessor street names', () => {
     assert.equal(streetNameToSlug('SEA SPRAY RD'), 'sea-spray-rd')
     assert.equal(streetNameToSlug('Locust Ln'), 'locust-ln')
+  })
+})
+
+describe('resolveStreetName', () => {
+  it('opens Locust Ln from locust-lane or locust-ln', () => {
+    const streets = ['Locust Ln', 'SEA SPRAY RD']
+    assert.equal(resolveStreetName('locust-ln', streets), 'Locust Ln')
+    assert.equal(resolveStreetName('locust-lane', streets), 'Locust Ln')
+    assert.equal(resolveStreetName('LOCUST-LANE', streets), 'Locust Ln')
+    assert.equal(resolveStreetName('sea-spray-road', streets), 'SEA SPRAY RD')
   })
 })
 

@@ -1,7 +1,10 @@
+import { normalizeStreetLine } from '@/lib/property-address'
+
 /**
  * Vision site line vs MLS street, already on the Find payload.
  * Same parcel can spell the house/street differently (`2A STONY PT RD`
- * vs `2A-A Stony Point Road`). The page only displays the flag.
+ * vs `2A-A Stony Point Road`). Ln↔Lane / Rd↔Road is the same street —
+ * case is ignored. The page only displays the flag.
  */
 export type FindAddressDivergence = {
   visionStreet: string
@@ -20,7 +23,8 @@ export function findAddressLinesDiverge(
   const vision = normalizeFindAddressLine(visionStreet)
   const mls = normalizeFindAddressLine(mlsStreet ?? '')
   if (!vision || !mls) return false
-  return vision !== mls
+  if (vision === mls) return false
+  return normalizeStreetLine(visionStreet) !== normalizeStreetLine(mlsStreet ?? '')
 }
 
 export function findAddressDivergence(

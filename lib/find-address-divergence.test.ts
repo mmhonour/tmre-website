@@ -17,6 +17,17 @@ describe('findAddressLinesDiverge', () => {
     )
   })
 
+  it('treats Ln/Lane and case as the same street', () => {
+    assert.equal(
+      findAddressLinesDiverge('5 LOCUST LN', '5 Locust Lane'),
+      false,
+    )
+    assert.equal(
+      findAddressLinesDiverge('5 Locust Ln', '5 LOCUST LANE'),
+      false,
+    )
+  })
+
   it('flags 2A Stony Pt vs MLS 2A-A Stony Point', () => {
     assert.equal(
       findAddressLinesDiverge('2A STONY PT RD', '2A-A Stony Point Road'),

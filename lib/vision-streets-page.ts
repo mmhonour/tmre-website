@@ -1,3 +1,5 @@
+import { normalizeStreetLine } from '@/lib/property-address'
+
 /** Client-safe helpers for the Admin /streets page. */
 
 export function townToStreetSlug(town: string): string {
@@ -60,10 +62,22 @@ export function visionParcelFindHref(
   return q ? `/find?q=${encodeURIComponent(q)}` : '/find'
 }
 
+/** `locust-lane` and `Locust Ln` both key to `locust-ln`. Case ignored. */
+export function streetNameMatchSlug(streetName: string): string {
+  return streetNameToSlug(normalizeStreetLine(streetName.replace(/-/g, ' ')))
+}
+
 export function resolveStreetName(
   slug: string,
   knownStreets: readonly string[],
 ): string | null {
+  const canon = streetNameMatchSlug(slug)
+  if (canon) {
+    const byAbbrev = knownStreets.find(
+      (name) => streetNameMatchSlug(name) === canon,
+    )
+    if (byAbbrev) return byAbbrev
+  }
   const needle = streetNameToSlug(slug)
   if (!needle) return null
   return (
