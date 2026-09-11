@@ -16,7 +16,7 @@ export default function OpenHousesFocusPreviewPage() {
           Most open houses / first showing
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Most = two or more public slots this week. First showing = zero
+          Most = two or more public slots this week. Newest — first showing = zero
           public open houses on file before today. Toggles stack. Production:
           /open-houses.
         </p>

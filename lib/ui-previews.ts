@@ -28,13 +28,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-town-order",
     title: "Open houses — collapsed towns + order",
     summary:
-      "Towns start collapsed. ↑↓ or drag to set a preferred order, stored in tmre_oh_town_order.",
+      "Towns start collapsed. Close all towns / Expand all towns. ↑↓ or drag to set a preferred order, stored in tmre_oh_town_order.",
   },
   {
     slug: "open-houses-focus",
     title: "Open houses — most / first showing",
     summary:
-      "Toggle Most open houses (2+ this week) and First showing (zero prior public OH). Pills stack.",
+      "Toggle Most open houses (2+ this week) and Newest — first showing (zero prior public OH). Pills stack.",
   },
   {
     slug: "open-house-alerts",

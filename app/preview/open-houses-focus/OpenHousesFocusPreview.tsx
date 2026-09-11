@@ -128,7 +128,7 @@ export function OpenHousesFocusPreview() {
           aria-pressed={first}
           className={filterPillIndependentButtonClass(first, "compact", "light")}
         >
-          First showing
+          Newest — first showing
         </button>
       </div>
 

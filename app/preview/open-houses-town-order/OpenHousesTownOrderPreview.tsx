@@ -117,14 +117,19 @@ export function OpenHousesTownOrderPreview() {
               : "border-charcoal/[0.08] bg-white text-navy"
           }`}
         >
-          − All
+          Close all towns
         </button>
         <button
           type="button"
+          aria-pressed={!allCollapsed && openTowns.size === sections.length}
           onClick={() => setOpenTowns(new Set(sections.map((section) => section.town)))}
-          className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-navy"
+          className={`inline-flex items-center rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] ${
+            !allCollapsed && openTowns.size === sections.length
+              ? "border-gold/50 bg-gold/10 text-navy"
+              : "border-charcoal/[0.08] bg-white text-navy"
+          }`}
         >
-          + All
+          Expand all towns
         </button>
         {customOrder ? (
           <button

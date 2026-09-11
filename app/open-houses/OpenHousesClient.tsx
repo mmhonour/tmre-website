@@ -96,6 +96,16 @@ const PHOTO_PREVIEW_ROWS = "w-[10.5rem] min-h-[7.5rem]";
 const PHOTO_PREVIEW_LINE = "h-[2.7rem] w-[3.6rem]";
 const LINE_OH_COL = "shrink-0 w-[10.5rem] text-right";
 const LINE_PRICE_COL = "shrink-0 w-[5.25rem] text-right";
+const MOST_OH_LABEL = "Most open houses";
+const FIRST_OH_LABEL = "Newest — first showing";
+
+function creamChipClass(active: boolean): string {
+  return `inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
+    active
+      ? "border-gold/50 bg-gold/10 text-navy"
+      : "border-charcoal/[0.08] bg-white text-navy hover:border-gold/40"
+  }`;
+}
 
 function OhFilterBar({
   theme,
@@ -142,23 +152,34 @@ function OhFilterBar({
         ))}
       </div>
 
-      <div className={filterPillIndependentContainerClass("compact")}>
-        <button
-          type="button"
-          onClick={() => setMostOpenHouses(!mostOpenHouses)}
-          aria-pressed={mostOpenHouses}
-          className={filterPillIndependentButtonClass(mostOpenHouses, "compact", theme)}
+      <div>
+        <p
+          className={`mb-1.5 font-mono text-[10px] tracking-[0.14em] uppercase ${
+            theme === "light" ? "text-slate" : "text-white/45"
+          }`}
         >
-          Most open houses
-        </button>
-        <button
-          type="button"
-          onClick={() => setFirstShowing(!firstShowing)}
-          aria-pressed={firstShowing}
-          className={filterPillIndependentButtonClass(firstShowing, "compact", theme)}
-        >
-          First showing
-        </button>
+          Focus
+        </p>
+        <div className={filterPillIndependentContainerClass("compact")}>
+          <button
+            type="button"
+            onClick={() => setMostOpenHouses(!mostOpenHouses)}
+            aria-pressed={mostOpenHouses}
+            title="Homes with two or more public open houses this week"
+            className={filterPillIndependentButtonClass(mostOpenHouses, "compact", theme)}
+          >
+            {MOST_OH_LABEL}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFirstShowing(!firstShowing)}
+            aria-pressed={firstShowing}
+            title="Homes with zero public open houses on file before today"
+            className={filterPillIndependentButtonClass(firstShowing, "compact", theme)}
+          >
+            {FIRST_OH_LABEL}
+          </button>
+        </div>
       </div>
 
       <TownFilterPills
@@ -413,7 +434,7 @@ export default function OpenHousesClient() {
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-2">
                 Open Houses{townFilter !== "All" ? ` · ${townFilter}` : ""}
                 {focus.most ? " · most this week" : ""}
-                {focus.first ? " · first showing" : ""}
+                {focus.first ? " · newest — first showing" : ""}
               </p>
               <h2 className="font-serif text-2xl sm:text-3xl text-white">
                 {listings.length}{" "}
@@ -439,6 +460,24 @@ export default function OpenHousesClient() {
             </div>
           ) : listings.length === 0 ? (
             <div className="text-center py-24">
+              <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMostPref(mostOpenHouses ? "off" : "on")}
+                  aria-pressed={mostOpenHouses}
+                  className={creamChipClass(mostOpenHouses)}
+                >
+                  {MOST_OH_LABEL}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFirstPref(firstShowing ? "off" : "on")}
+                  aria-pressed={firstShowing}
+                  className={creamChipClass(firstShowing)}
+                >
+                  {FIRST_OH_LABEL}
+                </button>
+              </div>
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-3">
                 No open houses found
               </p>
@@ -460,7 +499,7 @@ export default function OpenHousesClient() {
                   ? " Most open houses means two or more public slots this Monday–Sunday week."
                   : ""}
                 {focus.first
-                  ? " First showing means zero public open houses on file before today."
+                  ? " Newest — first showing means zero public open houses on file before today."
                   : ""}
               </p>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -470,6 +509,24 @@ export default function OpenHousesClient() {
                     fallbackCriteria={alertFallback}
                     triggerId="open-house-alerts"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setMostPref(mostOpenHouses ? "off" : "on")}
+                    aria-pressed={mostOpenHouses}
+                    title="Homes with two or more public open houses this week"
+                    className={creamChipClass(mostOpenHouses)}
+                  >
+                    {MOST_OH_LABEL}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFirstPref(firstShowing ? "off" : "on")}
+                    aria-pressed={firstShowing}
+                    title="Homes with zero public open houses on file before today"
+                    className={creamChipClass(firstShowing)}
+                  >
+                    {FIRST_OH_LABEL}
+                  </button>
                   <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
                     Sort by
                   </span>
@@ -517,48 +574,41 @@ export default function OpenHousesClient() {
                       </span>
                     ) : null}
                   </button>
-                  <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-slate">
-                    Towns
-                  </span>
-                  <button
-                    type="button"
-                    onClick={collapseAllTowns}
-                    aria-pressed={allTownsCollapsed}
-                    title="Collapse all towns"
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
-                      allTownsCollapsed
-                        ? "border-gold/50 bg-gold/10 text-navy"
-                        : "border-charcoal/[0.08] bg-white text-navy hover:border-gold/40"
-                    }`}
-                  >
-                    − All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={expandAllTowns}
-                    aria-pressed={!allTownsCollapsed && openTowns.size === townSections.length}
-                    title="Expand all towns"
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors ${
-                      !allTownsCollapsed && openTowns.size === townSections.length
-                        ? "border-gold/50 bg-gold/10 text-navy"
-                        : "border-charcoal/[0.08] bg-white text-navy hover:border-gold/40"
-                    }`}
-                  >
-                    + All
-                  </button>
-                  {customOrder ? (
-                    <button
-                      type="button"
-                      onClick={resetOrder}
-                      className="inline-flex items-center gap-1 rounded-full border border-charcoal/[0.08] bg-white px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy transition-colors hover:border-gold/40"
-                    >
-                      Reset town order
-                    </button>
-                  ) : null}
                 </div>
                 <ViewModeToggle value={viewMode} onChange={setViewMode} />
               </div>
 
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={collapseAllTowns}
+                  aria-pressed={allTownsCollapsed}
+                  className={creamChipClass(allTownsCollapsed)}
+                >
+                  Close all towns
+                </button>
+                <button
+                  type="button"
+                  onClick={expandAllTowns}
+                  aria-pressed={
+                    !allTownsCollapsed && openTowns.size === townSections.length
+                  }
+                  className={creamChipClass(
+                    !allTownsCollapsed && openTowns.size === townSections.length,
+                  )}
+                >
+                  Expand all towns
+                </button>
+                {customOrder ? (
+                  <button
+                    type="button"
+                    onClick={resetOrder}
+                    className={creamChipClass(false)}
+                  >
+                    Reset town order
+                  </button>
+                ) : null}
+              </div>
               <p className="mb-4 font-mono text-[10px] text-slate/60">
                 Towns start collapsed. Use ↑↓ or drag ⋮⋮ to set your order — saved
                 in this browser.
