@@ -1,52 +1,95 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  compareOpenHouseWeekCountDesc,
+  compareOpenHousePastCountDesc,
   filterOpenHouseFocus,
   isFirstOpenHouse,
-  isMostOpenHouses,
-  listingMatchesOpenHouseFocus,
+  listingsWithMostHistoricalShowings,
+  mostHistoricalCutoff,
   openHouseFocusEmptyCopy,
 } from './open-houses-focus'
 
-const row = (past: number, week: number) => ({
+const row = (past: number, town = 'Westport') => ({
   pastCount: past,
-  weekOpenHouseCount: week,
+  weekOpenHouseCount: 1,
+  town,
 })
 
-describe('open house focus filters', () => {
+describe('first showing', () => {
   it('treats pastCount 0 as a first showing', () => {
-    assert.equal(isFirstOpenHouse(row(0, 1)), true)
-    assert.equal(isFirstOpenHouse(row(2, 1)), false)
+    assert.equal(isFirstOpenHouse(row(0)), true)
+    assert.equal(isFirstOpenHouse(row(2)), false)
     assert.equal(isFirstOpenHouse({}), true)
   })
+})
 
-  it('treats 2+ this week as most open houses', () => {
-    assert.equal(isMostOpenHouses(row(0, 1)), false)
-    assert.equal(isMostOpenHouses(row(0, 2)), true)
-    assert.equal(isMostOpenHouses(row(4, 3)), true)
-  })
-
-  it('stacks most and first independently', () => {
-    const sea = row(1, 3)
-    const debut = row(0, 1)
-    const both = row(0, 2)
-    const neither = row(2, 1)
-    assert.equal(listingMatchesOpenHouseFocus(sea, { most: true, first: false }), true)
-    assert.equal(listingMatchesOpenHouseFocus(debut, { most: false, first: true }), true)
-    assert.equal(listingMatchesOpenHouseFocus(both, { most: true, first: true }), true)
-    assert.equal(listingMatchesOpenHouseFocus(neither, { most: true, first: true }), false)
+describe('most historical showings', () => {
+  it('uses the 3rd-highest past count as the cutoff and keeps ties', () => {
+    assert.equal(mostHistoricalCutoff([10, 8, 8, 5, 1]), 8)
     assert.deepEqual(
-      filterOpenHouseFocus([sea, debut, both, neither], { most: true, first: true }),
-      [both],
+      listingsWithMostHistoricalShowings([
+        row(10),
+        row(8),
+        row(8),
+        row(5),
+        row(1),
+      ]).map((r) => r.pastCount),
+      [10, 8, 8],
     )
   })
 
-  it('sorts busiest week counts first', () => {
-    const list = [row(0, 1), row(0, 3), row(1, 2)]
+  it('keeps every home tied at the cutoff even if that exceeds 3', () => {
     assert.deepEqual(
-      [...list].sort(compareOpenHouseWeekCountDesc).map((r) => r.weekOpenHouseCount),
-      [3, 2, 1],
+      listingsWithMostHistoricalShowings([
+        row(9),
+        row(4),
+        row(4),
+        row(4),
+      ]).map((r) => r.pastCount),
+      [9, 4, 4, 4],
+    )
+  })
+
+  it('ignores homes with zero past showings', () => {
+    assert.equal(mostHistoricalCutoff([0, 0, 5]), 5)
+    assert.deepEqual(
+      listingsWithMostHistoricalShowings([row(5), row(0), row(0)]).map(
+        (r) => r.pastCount,
+      ),
+      [5],
+    )
+    assert.deepEqual(listingsWithMostHistoricalShowings([row(0), row(0)]), [])
+  })
+
+  it('ranks Most per town, not across the whole page', () => {
+    const westport = [row(12, 'Westport'), row(3, 'Westport'), row(1, 'Westport')]
+    const wilton = [row(2, 'Wilton'), row(0, 'Wilton')]
+    const kept = filterOpenHouseFocus(
+      [...westport, ...wilton],
+      { most: true, first: false },
+      (listing) => listing.town,
+    )
+    assert.deepEqual(
+      kept.map((r) => `${r.town}:${r.pastCount}`).sort(),
+      ['Westport:1', 'Westport:12', 'Westport:3', 'Wilton:2'],
+    )
+  })
+})
+
+describe('stacked focus filters', () => {
+  it('Most ∩ First is empty because first means zero past', () => {
+    const list = [row(4), row(0), row(2)]
+    assert.deepEqual(
+      filterOpenHouseFocus(list, { most: true, first: true }),
+      [],
+    )
+  })
+
+  it('sorts historical counts descending', () => {
+    const list = [row(1), row(8), row(3)]
+    assert.deepEqual(
+      [...list].sort(compareOpenHousePastCountDesc).map((r) => r.pastCount),
+      [8, 3, 1],
     )
   })
 

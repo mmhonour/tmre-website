@@ -1,11 +1,11 @@
-import { OpenHousesTownDayPreview } from "./OpenHousesTownDayPreview";
+import { OpenHousesTownOrderPreview } from "./OpenHousesTownOrderPreview";
 
 export const metadata = {
-  title: "Preview — Open houses by town and day — TMRE",
+  title: "Preview — Open houses town order — TMRE",
   robots: { index: false, follow: false },
 };
 
-export default function OpenHousesTownDayPreviewPage() {
+export default function OpenHousesTownOrderPreviewPage() {
   return (
     <div className="min-h-screen bg-cream">
       <div className="mx-auto max-w-3xl px-4 pb-12 pt-28 sm:px-6">
@@ -13,14 +13,14 @@ export default function OpenHousesTownDayPreviewPage() {
           UI preview
         </p>
         <h1 className="mb-2 font-serif text-3xl text-navy">
-          Open houses by town and day
+          Collapsed towns + your order
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture week of 10 Sep 2026 (Mon 7–Sun 13).           Town count is unique
-          homes; 16 Sea Spray has three open houses this week. Towns start
-          collapsed (+). Production: /open-houses.
+          Towns start collapsed (Close all towns engaged). ↑↓ or drag ⋮⋮ to reorder;
+          the order is cookie tmre_oh_town_order (same as /open-houses). Reset
+          clears it. Fixture week of 10 Sep 2026.
         </p>
-        <OpenHousesTownDayPreview />
+        <OpenHousesTownOrderPreview />
       </div>
     </div>
   );

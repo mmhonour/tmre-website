@@ -25,10 +25,16 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Town +/− with a unique-home count for the Monday–Sunday week. Cards list every open house that home has this week.",
   },
   {
+    slug: "open-houses-town-order",
+    title: "Open houses — collapsed towns + order",
+    summary:
+      "Towns start collapsed. Close all towns / Expand all towns. ↑↓ or drag to set a preferred order, stored in tmre_oh_town_order.",
+  },
+  {
     slug: "open-houses-focus",
     title: "Open houses — most / first showing",
     summary:
-      "Toggle Most open houses (2+ this week) and First showing (zero prior public OH). Pills stack.",
+      "Toggle Most open houses (top 3 historical hosts per town, ties stay) and First showing (zero past). Sticky bar on /open-houses.",
   },
   {
     slug: "open-house-alerts",
