@@ -98,8 +98,9 @@ export function townCenterOverlayShapes(
 }
 
 /**
- * Painted coastal cells. Squares whose center sits inside a town-center
- * radius are dropped — that disk overrides the grid.
+ * Painted coastal cells for the public / listing overlay. Squares whose
+ * center sits inside a town-center radius are dropped — that disk still
+ * wins valuation. The admin map shows the coastal number under the disk.
  */
 export function paintedGridOverlayRings(
   cells: ZipGridCells,

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { closeFieldsFromListing, coalesceListingStatus, streetsMatch } from '@/lib/listing-history'
+import { normalizeParcelNumber } from '@/lib/property-address'
 import {
   applyListingPropertyTax,
   parcelNumberFromRaw,
@@ -1463,12 +1464,14 @@ export async function searchListingsInDbByQuery(
   return out
 }
 
-/** Other MLS records at the same street address within a town. */
+/** Other MLS records at the same street address or parcel within a town. */
 export async function readAddressListingsFromDb(
   town: string,
   street: string,
   excludeMlsId?: string,
+  parcelNumber?: string | null,
 ): Promise<Listing[]> {
+  const subjectParcel = normalizeParcelNumber(parcelNumber)
   const rows = await query<ListingJsonRow>(
     'SELECT data, raw FROM listings WHERE town = $1',
     [town],
@@ -1477,8 +1480,12 @@ export async function readAddressListingsFromDb(
     .map((row) => rowToListing(row))
     .filter((listing) => {
       if (excludeMlsId && listing.mlsId === excludeMlsId) return false
+      if (subjectParcel) {
+        const listingParcel = normalizeParcelNumber(parcelNumberFromRaw(listing.raw))
+        if (listingParcel && listingParcel === subjectParcel) return true
+      }
       const addr = listing.address.street?.trim() || listing.address.full?.trim() || ''
-      return streetsMatch(street, addr)
+      return Boolean(street.trim()) && streetsMatch(street, addr)
     })
 }
 

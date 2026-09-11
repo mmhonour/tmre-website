@@ -74,6 +74,7 @@ export default function ListingIfClient({
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     vision,
     state,
   } =
@@ -160,6 +161,7 @@ export default function ListingIfClient({
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
       marketBandLabel,
+      locationEstimate,
     },
   );
 

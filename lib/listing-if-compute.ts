@@ -1,15 +1,22 @@
 import 'server-only'
 
 import {
+  buildComparableListing,
   findComparableRentals,
   findComparables,
+  stampComparableLocation,
+  subjectComparablesCriteria,
 } from '@/lib/listing-comparables'
 import { readCachedComparables } from '@/lib/listing-comparables-cache'
 import {
   COMPARABLES_MATCH_LIMIT,
+  COMPARABLES_SOLD_SUPERSET_LIMIT,
   soldWithinLookback,
+  withinLookbackMonths,
+  type ComparableListing,
   type ComparablesResult,
 } from '@/lib/listing-comparables-shared'
+import { resolveListingCondition } from '@/lib/listing-condition'
 import {
   buildIfMatchParams,
   estimateFromComparables,
@@ -18,7 +25,22 @@ import {
   type IfScenario,
   type ListingIfPayload,
 } from '@/lib/listing-if-estimates'
+import {
+  listStripSearchEligible,
+  selectStripSearchPool,
+  stripSearchRingLabel,
+  usesCoastalStripWhatIf,
+} from '@/lib/listing-if-strip-search'
+import { resolveListingCoastalStrip } from '@/lib/listing-coastal-strip'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
+import { coastalStripLabel } from '@/lib/location-estimate-zip-grid-shared'
+import { getLocationEstimateTownCentersFresh } from '@/lib/location-estimate-town-centers-config'
+import {
+  townCenterOwningAt,
+  type TownCenterPlacements,
+} from '@/lib/location-estimate-town-centers-shared'
+import { getLocationEstimateZipGridFresh } from '@/lib/location-estimate-zip-grid-config'
+import type { ZipGridCells } from '@/lib/location-estimate-zip-grid-shared'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
   getPricingMatchingConfig,
@@ -41,13 +63,13 @@ import {
   writeStatsCacheRow,
 } from '@/lib/db/stats-cache-repo'
 import { getSyncMeta, setSyncMeta } from '@/lib/db/sync-meta-store'
-import { isClosedListing } from '@/lib/listings-store'
+import { isClosedListing, isUnderContractListing } from '@/lib/listings-store'
 import type { Listing } from '@/lib/rets'
 import { closedSalePrice } from '@/lib/stats-listing-rows'
 import { TMRE_TOWNS, normalizeZip, townForZip } from '@/lib/tmre-towns'
 
 /** Bump when valuation / payload shape changes so stale caches are ignored. */
-export const IF_ESTIMATES_ALGO_VERSION = 13
+export const IF_ESTIMATES_ALGO_VERSION = 21
 
 const IF_DETAIL_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -76,6 +98,236 @@ function vintageLabel(id: VintageBucketId): string | null {
   return VINTAGE_BUCKETS.find((b) => b.id === id)?.label ?? null
 }
 
+async function loadWhatIfLocationCells(): Promise<ZipGridCells | undefined> {
+  try {
+    const grid = await getLocationEstimateZipGridFresh()
+    return grid.cells
+  } catch {
+    return undefined
+  }
+}
+
+async function loadTownCenterPlacements(): Promise<TownCenterPlacements> {
+  try {
+    const payload = await getLocationEstimateTownCentersFresh()
+    return payload.placements
+  } catch {
+    return {}
+  }
+}
+
+function listingInTownCenter(
+  listing: Pick<Listing, 'latitude' | 'longitude'>,
+  placements: TownCenterPlacements,
+): boolean {
+  if (listing.latitude == null || listing.longitude == null) return false
+  return townCenterOwningAt(listing.latitude, listing.longitude, placements) != null
+}
+
+function locationPremiumForListing(
+  listing: Listing,
+  cells: ZipGridCells | undefined,
+  inTownCenter: boolean,
+): ReturnType<typeof computeLocationPremium> {
+  const computed = computeLocationPremium(
+    listing.latitude,
+    listing.longitude,
+    listing.address.postalCode,
+    listing.address.city,
+    { cells: inTownCenter ? undefined : cells },
+  )
+  const strip = resolveListingCoastalStrip(listing.mlsId, computed.coastalStrip)
+  if (strip === computed.coastalStrip) return computed
+  if (strip == null) {
+    return { ...computed, coastalStrip: null }
+  }
+  const labels = [
+    coastalStripLabel(strip),
+    ...computed.labels.filter((label) => !label.includes('strip') && label !== '1 Coast'),
+  ]
+  return { ...computed, coastalStrip: strip, labels }
+}
+
+function buildStripSearchCandidates(
+  soldPool: Listing[],
+  activePool: Listing[],
+  lookbackMonths: number,
+  cells?: ZipGridCells,
+): { sold: ComparableListing[]; underAgreement: ComparableListing[] } {
+  const sold = soldPool
+    .filter((listing) => !isRentalListing(listing) && isClosedListing(listing))
+    .map((listing) => buildComparableListing(listing, { cells }))
+    .filter((comp) => withinLookbackMonths(comp.closeDate, lookbackMonths))
+  const underAgreement = activePool
+    .filter(
+      (listing) =>
+        !isRentalListing(listing) && isUnderContractListing(listing),
+    )
+    .map((listing) => ({
+      ...buildComparableListing(listing, { cells }),
+      underAgreement: true,
+    }))
+  return { sold, underAgreement }
+}
+
+function paintedSaleScenario(
+  subject: Listing,
+  soldPool: Listing[],
+  activePool: Listing[],
+  match: PricingMatchingConfig,
+  estimateContext: {
+    subjectVintage: ReturnType<typeof subjectVintageFromYear>
+    locationPremium: ReturnType<typeof computeLocationPremium>
+    subjectCondition: ReturnType<typeof resolveListingCondition>
+  },
+  cells: ZipGridCells | undefined,
+  townCenters: TownCenterPlacements,
+): IfScenario {
+  const subjectStrip = estimateContext.locationPremium.coastalStrip
+  const lookbackMonths = match.defaultLookbackMonths
+  const { sold, underAgreement } = buildStripSearchCandidates(
+    soldPool,
+    activePool,
+    lookbackMonths,
+    cells,
+  )
+  const stripArgs =
+    subjectStrip != null
+      ? {
+          subjectStrip,
+          subject: {
+            beds: subject.beds,
+            baths: subject.baths,
+            sqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+            conditionGrade: estimateContext.subjectCondition,
+            mlsId: subject.mlsId,
+            listingKey: subject.listingKey,
+          },
+          sold,
+          underAgreement,
+          match,
+          lookbackMonths,
+          townCenterPlacements: townCenters,
+        }
+      : null
+  const selected = stripArgs ? selectStripSearchPool(stripArgs) : null
+  const eligible = stripArgs ? listStripSearchEligible(stripArgs) : []
+  const pickIds = new Set(selected?.comps.map((comp) => comp.mlsId) ?? [])
+  const display = eligible.map((comp) => ({
+    ...comp,
+    stripSearchPick: pickIds.has(comp.mlsId),
+  }))
+  const { criteria } = subjectComparablesCriteria(subject, match)
+  const params = buildIfMatchParams('sale', criteria, lookbackMonths, match)
+  const sqft = subject.sqft != null && subject.sqft > 0 ? subject.sqft : null
+  return estimateFromComparables(
+    selected?.sold ?? [],
+    selected?.underAgreement ?? [],
+    sqft,
+    subjectMarketPrice(subject),
+    {
+      ...estimateContext,
+      useStripSearchBasis: true,
+      stripSearch:
+        subjectStrip != null
+          ? {
+              subjectStrip,
+              basisRing: selected?.ring ?? subjectStrip,
+              basisLabel:
+                selected?.ringLabel ?? stripSearchRingLabel(subjectStrip),
+              foundCount: selected?.comps.length ?? 0,
+            }
+          : null,
+      displaySold: display.filter((comp) => !comp.underAgreement),
+      displayActive: display.filter((comp) => Boolean(comp.underAgreement)),
+    },
+    'sale',
+    params,
+    selected?.sold.length ?? 0,
+    selected?.underAgreement.length ?? 0,
+  )
+}
+
+/**
+ * Pin the coastal What-if start-set of 3 at the top of Comps sold (and any
+ * UAG picks on active). Vintage-ranked rows stay below. No-op when the
+ * subject is unpainted or inside a town-center disk.
+ */
+export async function overlayCoastalStripSaleComps(
+  subject: Listing,
+  result: ComparablesResult,
+): Promise<ComparablesResult> {
+  const match = await getPricingMatchingConfigFresh()
+  const [cells, townCenters] = await Promise.all([
+    loadWhatIfLocationCells(),
+    loadTownCenterPlacements(),
+  ])
+  const inTownCenter = listingInTownCenter(subject, townCenters)
+  const locationPremium = locationPremiumForListing(
+    subject,
+    cells,
+    inTownCenter,
+  )
+  const subjectStrip = locationPremium.coastalStrip
+  if (
+    subjectStrip == null ||
+    !usesCoastalStripWhatIf(subjectStrip, inTownCenter)
+  ) {
+    return result
+  }
+
+  const { soldPool, activePool } = await compPoolsForListing(subject)
+  const lookbackMonths = match.defaultLookbackMonths
+  const { sold, underAgreement } = buildStripSearchCandidates(
+    soldPool,
+    activePool,
+    lookbackMonths,
+    cells,
+  )
+  const selected = selectStripSearchPool({
+    subjectStrip,
+    subject: {
+      beds: subject.beds,
+      baths: subject.baths,
+      sqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
+      conditionGrade: resolveListingCondition(subject),
+      mlsId: subject.mlsId,
+      listingKey: subject.listingKey,
+    },
+    sold,
+    underAgreement,
+    match,
+    lookbackMonths,
+    townCenterPlacements: townCenters,
+  })
+  if (!selected || selected.comps.length === 0) return result
+
+  const pickedIds = new Set(selected.comps.map((comp) => comp.mlsId))
+  return {
+    ...result,
+    sold: [
+      ...selected.sold,
+      ...result.sold.filter((comp) => !pickedIds.has(comp.mlsId)),
+    ],
+    active: [
+      ...selected.underAgreement,
+      ...result.active.filter((comp) => !pickedIds.has(comp.mlsId)),
+    ],
+  }
+}
+
+function applyGridToComparables(
+  comps: ComparablesResult,
+  cells: ZipGridCells | undefined,
+): ComparablesResult {
+  if (!cells) return comps
+  return {
+    ...comps,
+    sold: comps.sold.map((comp) => stampComparableLocation(comp, cells)),
+    active: comps.active.map((comp) => stampComparableLocation(comp, cells)),
+  }
+}
+
 function isFresh(iso: string | null | undefined, ttlMs: number): boolean {
   if (!iso) return false
   const t = Date.parse(iso)
@@ -94,12 +346,16 @@ function scenarioFromComparablesResult(
   },
 ): IfScenario {
   const lookbackMonths = match.defaultLookbackMonths
+  const painted = estimateContext.locationPremium.coastalStrip != null
   const sold = soldWithinLookback(
     comps.sold,
     lookbackMonths,
-    COMPARABLES_MATCH_LIMIT,
+    painted ? COMPARABLES_SOLD_SUPERSET_LIMIT : COMPARABLES_MATCH_LIMIT,
   )
-  const active = comps.active.slice(0, COMPARABLES_MATCH_LIMIT)
+  const active = comps.active.slice(
+    0,
+    painted ? COMPARABLES_SOLD_SUPERSET_LIMIT : COMPARABLES_MATCH_LIMIT,
+  )
   const params = buildIfMatchParams(
     kind,
     comps.criteria,
@@ -125,40 +381,50 @@ function scenariosFromComparablesResults(
   saleComps: ComparablesResult,
   rentComps: ComparablesResult,
   match: PricingMatchingConfig,
+  cells?: ZipGridCells,
+  townCenters: TownCenterPlacements = {},
 ): {
   sale: IfScenario
   rent: IfScenario
   locationLabel: string | null
   locationPremiumLabels: string[]
   subjectVintageLabel: string | null
+  subjectCondition: ReturnType<typeof resolveListingCondition>
 } {
   const locationLabel = ifLocationLabel(
     subject.address.city,
     normalizeZip(subject.address.postalCode),
   )
+  const inTownCenter = listingInTownCenter(subject, townCenters)
+  const locationCells = inTownCenter ? undefined : cells
   const locationPremium = computeLocationPremium(
     subject.latitude,
     subject.longitude,
     subject.address.postalCode,
     subject.address.city,
+    { cells: locationCells },
   )
   const subjectVintage = subjectVintageFromYear(subject.yearBuilt)
+  const subjectCondition = resolveListingCondition(subject)
   const estimateContext = {
     subjectVintage,
     locationPremium,
+    subjectCondition,
   }
+  const sale = applyGridToComparables(saleComps, locationCells)
+  const rent = applyGridToComparables(rentComps, locationCells)
 
   return {
     sale: scenarioFromComparablesResult(
       'sale',
-      saleComps,
+      sale,
       subject,
       match,
       estimateContext,
     ),
     rent: scenarioFromComparablesResult(
       'rent',
-      rentComps,
+      rent,
       subject,
       match,
       estimateContext,
@@ -166,6 +432,7 @@ function scenariosFromComparablesResults(
     locationLabel,
     locationPremiumLabels: locationPremium.labels,
     subjectVintageLabel: vintageLabel(subjectVintage),
+    subjectCondition,
   }
 }
 
@@ -174,15 +441,70 @@ function computeIfEstimates(
   soldPool: Listing[],
   activePool: Listing[],
   match: PricingMatchingConfig,
+  cells?: ZipGridCells,
+  townCenters: TownCenterPlacements = {},
 ): {
   sale: IfScenario
   rent: IfScenario
   locationLabel: string | null
   locationPremiumLabels: string[]
   subjectVintageLabel: string | null
+  subjectCondition: ReturnType<typeof resolveListingCondition>
 } {
   const lookbackMonths = match.defaultLookbackMonths
-  const rankOpts = { soldLookbackMonths: lookbackMonths, match }
+  const locationLabel = ifLocationLabel(
+    subject.address.city,
+    normalizeZip(subject.address.postalCode),
+  )
+  const inTownCenter = listingInTownCenter(subject, townCenters)
+  const locationPremium = locationPremiumForListing(
+    subject,
+    cells,
+    inTownCenter,
+  )
+  const subjectVintage = subjectVintageFromYear(subject.yearBuilt)
+  const subjectCondition = resolveListingCondition(subject)
+  const estimateContext = {
+    subjectVintage,
+    locationPremium,
+    subjectCondition,
+  }
+  const rankOpts = {
+    soldLookbackMonths: lookbackMonths,
+    match,
+    locationCells: inTownCenter ? undefined : cells,
+  }
+  const rentComps = applyGridToComparables(
+    findComparableRentals(subject, soldPool, activePool, rankOpts),
+    inTownCenter ? undefined : cells,
+  )
+  const rent = scenarioFromComparablesResult(
+    'rent',
+    rentComps,
+    subject,
+    match,
+    estimateContext,
+  )
+
+  if (usesCoastalStripWhatIf(locationPremium.coastalStrip, inTownCenter)) {
+    return {
+      sale: paintedSaleScenario(
+        subject,
+        soldPool,
+        activePool,
+        match,
+        estimateContext,
+        cells,
+        townCenters,
+      ),
+      rent,
+      locationLabel,
+      locationPremiumLabels: locationPremium.labels,
+      subjectVintageLabel: vintageLabel(subjectVintage),
+      subjectCondition,
+    }
+  }
+
   const saleComps = findComparables(
     subject,
     soldPool,
@@ -190,13 +512,20 @@ function computeIfEstimates(
     'sale',
     rankOpts,
   )
-  const rentComps = findComparableRentals(
-    subject,
-    soldPool,
-    activePool,
-    rankOpts,
-  )
-  return scenariosFromComparablesResults(subject, saleComps, rentComps, match)
+  return {
+    sale: scenarioFromComparablesResult(
+      'sale',
+      applyGridToComparables(saleComps, cells),
+      subject,
+      match,
+      estimateContext,
+    ),
+    rent,
+    locationLabel,
+    locationPremiumLabels: locationPremium.labels,
+    subjectVintageLabel: vintageLabel(subjectVintage),
+    subjectCondition,
+  }
 }
 
 export async function cacheIfEstimatesForListing(
@@ -206,8 +535,25 @@ export async function cacheIfEstimatesForListing(
 ): Promise<ListingIfPayload> {
   const id = listingRowId(subject)
   const match = await getPricingMatchingConfigFresh()
-  const { sale, rent, locationLabel, locationPremiumLabels, subjectVintageLabel } =
-    computeIfEstimates(subject, soldPool, activePool, match)
+  const [cells, townCenters] = await Promise.all([
+    loadWhatIfLocationCells(),
+    loadTownCenterPlacements(),
+  ])
+  const {
+    sale,
+    rent,
+    locationLabel,
+    locationPremiumLabels,
+    subjectVintageLabel,
+    subjectCondition,
+  } = computeIfEstimates(
+    subject,
+    soldPool,
+    activePool,
+    match,
+    cells,
+    townCenters,
+  )
   const computedAt = new Date().toISOString()
 
   if (id) {
@@ -238,6 +584,7 @@ export async function cacheIfEstimatesForListing(
     subjectVintageLabel,
     subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
     subjectIsRental: isRentalListing(subject),
+    subjectCondition,
   }
 
   if (id) {
@@ -289,6 +636,10 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
   const match =
     (await getPricingMatchingConfigFresh().catch(() => null)) ??
     getPricingMatchingConfig()
+  const [cells, townCenters] = await Promise.all([
+    loadWhatIfLocationCells(),
+    loadTownCenterPlacements(),
+  ])
 
   for (const town of TMRE_TOWNS) {
     const soldPool = await readAllListingsFromDb([town], 'Closed')
@@ -297,11 +648,13 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
     for (const subject of activePool) {
       const id = listingRowId(subject)
       if (!id) continue
-      const { sale, rent } = computeIfEstimates(
+      const { sale, rent, subjectCondition } = computeIfEstimates(
         subject,
         soldPool,
         activePool,
         match,
+        cells,
+        townCenters,
       )
       await upsertListingIfEstimate({
         listingId: id,
@@ -332,10 +685,12 @@ export async function rebuildListingIfEstimates(): Promise<{ count: number }> {
           subject.longitude,
           subject.address.postalCode,
           subject.address.city,
+          { cells },
         ).labels,
         subjectVintageLabel: vintageLabel(subjectVintageFromYear(subject.yearBuilt)),
         subjectSqft: subject.sqft != null && subject.sqft > 0 ? subject.sqft : null,
         subjectIsRental: isRentalListing(subject),
+        subjectCondition,
       }
       await writeStatsCacheRow(ifDetailCacheKey(id, match), payload).catch(
         () => undefined,
@@ -372,6 +727,7 @@ async function persistIfPayload(
     locationLabel: string | null
     locationPremiumLabels: string[]
     subjectVintageLabel: string | null
+    subjectCondition?: ReturnType<typeof resolveListingCondition>
   },
 ): Promise<ListingIfPayload> {
   const computedAt = new Date().toISOString()
@@ -387,6 +743,7 @@ async function persistIfPayload(
     subjectVintageLabel: parts.subjectVintageLabel,
     subjectSqft: listing.sqft != null && listing.sqft > 0 ? listing.sqft : null,
     subjectIsRental: isRentalListing(listing),
+    subjectCondition: parts.subjectCondition ?? resolveListingCondition(listing),
   }
   if (id) {
     await upsertListingIfEstimate({
@@ -423,17 +780,37 @@ export async function resolveListingIfPayload(
 
   // Prefer warm Sales/Rentals edges — avoids loading every Closed+Active row
   // for the town when the matcher already ranked comps for this subject.
+  // Painted coastal subjects skip those edges: strip search needs the full
+  // town sold + UAG pool, not the vintage-ranked Sales tab set.
   const match = await getPricingMatchingConfigFresh()
-  const [saleCached, rentCached] = await Promise.all([
+  const [saleCached, rentCached, cells, townCenters] = await Promise.all([
     readCachedComparables(listing, 'sale'),
     readCachedComparables(listing, 'rental'),
+    loadWhatIfLocationCells(),
+    loadTownCenterPlacements(),
   ])
+  const inTownCenter = listingInTownCenter(listing, townCenters)
+  const painted = usesCoastalStripWhatIf(
+    locationPremiumForListing(listing, cells, inTownCenter).coastalStrip,
+    inTownCenter,
+  )
+  if (painted) {
+    const { soldPool, activePool } = await compPoolsForListing(listing)
+    return cacheIfEstimatesForListing(listing, soldPool, activePool)
+  }
 
   if (saleCached && rentCached) {
     return persistIfPayload(
       listing,
       match,
-      scenariosFromComparablesResults(listing, saleCached, rentCached, match),
+      scenariosFromComparablesResults(
+        listing,
+        saleCached,
+        rentCached,
+        match,
+        cells,
+        townCenters,
+      ),
     )
   }
 
@@ -441,7 +818,11 @@ export async function resolveListingIfPayload(
   if (saleCached || rentCached) {
     const { soldPool, activePool } = await compPoolsForListing(listing)
     const lookbackMonths = match.defaultLookbackMonths
-    const rankOpts = { soldLookbackMonths: lookbackMonths, match }
+    const rankOpts = {
+      soldLookbackMonths: lookbackMonths,
+      match,
+      locationCells: inTownCenter ? undefined : cells,
+    }
     const saleComps =
       saleCached ??
       findComparables(listing, soldPool, activePool, 'sale', rankOpts)
@@ -451,7 +832,14 @@ export async function resolveListingIfPayload(
     return persistIfPayload(
       listing,
       match,
-      scenariosFromComparablesResults(listing, saleComps, rentComps, match),
+      scenariosFromComparablesResults(
+        listing,
+        saleComps,
+        rentComps,
+        match,
+        cells,
+        townCenters,
+      ),
     )
   }
 

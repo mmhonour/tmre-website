@@ -152,7 +152,7 @@ function zipLabel(code: string): string {
 
 /**
  * Intelligence / showcase street tiles (OSM via /api/map/tile) with TIGER
- * ZCTA outlines on top. Zoom a town to paint; a second click erases.
+ * ZCTA outlines on top. Zoom a town to paint; each click cycles 1–4 then off.
  */
 export default function CtCoverageTownsMap({
   activeTownNames,
@@ -697,6 +697,11 @@ export default function CtCoverageTownsMap({
               ))}
             </select>
           </label>
+          <p className="w-full font-mono text-[9px] uppercase tracking-[0.12em] text-charcoal/45">
+            Empty square takes the selected strip. Click again to cycle 1–4, then
+            empty. Erase still clears. Town-center disks keep a coastal number
+            underneath.
+          </p>
           <div className="flex flex-wrap gap-1">
             {(
               [
@@ -952,25 +957,23 @@ export default function CtCoverageTownsMap({
                   <path
                     d={d}
                     fill={
-                      overridden
-                        ? "rgba(74, 141, 183, 0.14)"
-                        : strip != null
-                          ? STRIP_FILL[strip]
+                      strip != null
+                        ? STRIP_FILL[strip]
+                        : overridden
+                          ? "rgba(74, 141, 183, 0.14)"
                           : "rgba(26, 39, 68, 0.04)"
                     }
                     stroke={
-                      overridden
-                        ? "rgba(74, 141, 183, 0.45)"
-                        : strip != null
-                          ? "rgba(232, 93, 58, 0.9)"
+                      strip != null
+                        ? "rgba(232, 93, 58, 0.9)"
+                        : overridden
+                          ? "rgba(74, 141, 183, 0.45)"
                           : "rgba(26, 39, 68, 0.22)"
                     }
                     strokeWidth={0.9}
-                    strokeDasharray={
-                      strip != null && !overridden ? "4 3" : undefined
-                    }
+                    strokeDasharray={strip != null ? "4 3" : undefined}
                   />
-                  {strip != null && !overridden ? (
+                  {strip != null ? (
                     <StripMark
                       lon={c.lon}
                       lat={c.lat}
@@ -990,8 +993,6 @@ export default function CtCoverageTownsMap({
                   const parsed = parseCellKey(key);
                   if (!parsed) return null;
                   const c = cellCenter(parsed.i, parsed.j);
-                  if (townCenterOwningAt(c.lat, c.lon, livePlacements))
-                    return null;
                   const d = ringToMapPath(
                     cellRing(parsed.i, parsed.j),
                     viewport,

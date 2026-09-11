@@ -75,22 +75,35 @@ export default function AdminLocationEstimateOverlayPanel() {
               What if on listing / showcase
             </p>
             <p className="mt-1 text-[12px] leading-snug text-slate">
-              Painting a square does not change What if today. Those numbers
-              use distance to hardcoded water-access points, then weight comps
-              by how close that multiplier is to the subject.
+              What if searches the subject strip first, then only outward
+              (2 → 3 → 4 → rest of town). It starts with three sold or
+              under-agreement comps in 12 months: keep a short ring and fill
+              from the next inland ring (same condition before Fair). Inland
+              rings get a temporary boost (33% / 50% / 75% / 100%).
+              Town-center comps are excluded. Search never runs seaward.
+              Unpainted houses and houses inside a town-center radius keep
+              the production What if (vintage + pins / village / golf). A
+              coastal number under a town disk is stored, not used as the
+              sale basis.
             </p>
             <ul className="mt-2 space-y-1">
-              {LOCATION_PREMIUM_WATER_TIERS.map((tier) => (
-                <li
-                  key={tier.label}
-                  className="flex justify-between gap-3 font-mono text-[11px] text-navy"
-                >
-                  <span>≤ {tier.maxMiles} mi · {tier.label}</span>
-                  <span className="shrink-0 tabular-nums text-charcoal/60">
-                    {formatLocationPremiumBoost(tier.boost)}
-                  </span>
-                </li>
-              ))}
+              {([0, 1, 2, 3] as const).map((strip) => {
+                const row = COASTAL_STRIP_LEGEND[strip]
+                const tier = LOCATION_PREMIUM_WATER_TIERS[strip]
+                return (
+                  <li
+                    key={row.mark}
+                    className="flex justify-between gap-3 font-mono text-[11px] text-navy"
+                  >
+                    <span>
+                      {row.mark} {row.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-charcoal/60">
+                      {formatLocationPremiumBoost(tier.boost)}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
             <p className="mt-2 font-mono text-[10px] leading-snug text-charcoal/45">
               Village-center and golf stack on top; combined cap is +22%.

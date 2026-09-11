@@ -8,6 +8,7 @@ import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { resolveListingTown } from '@/lib/tmre-towns'
 import { isAdminAuthorizedFromCookies } from '@/lib/admin-auth'
 import { listingMlsDates } from '@/lib/listing-mls-dates'
+import { parcelNumberFromRaw } from '@/lib/listing-property-tax'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,12 +37,15 @@ export async function GET(
     const town =
       (townHint && resolveListingTown(townHint)) ||
       resolveListingTown(listing.address.city)
+    const parcelNumber = parcelNumberFromRaw(listing.raw)
 
     const events = buildCurrentListingEvents(listing)
 
     let priorListings: ReturnType<typeof summarizePriorListing>[] = []
-    if (town && street) {
-      priorListings = (await readAddressListingsFromDb(town, street, listing.mlsId))
+    if (town && (street || parcelNumber)) {
+      priorListings = (
+        await readAddressListingsFromDb(town, street, listing.mlsId, parcelNumber)
+      )
         .map(summarizePriorListing)
         .sort(
           (a, b) =>

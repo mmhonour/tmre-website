@@ -72,6 +72,17 @@ export function coastalStripLabel(strip: CoastalStripIndex): string {
   return `${row.mark} ${row.name}`
 }
 
+/** Admin Details field — painted strip, town-center disk, or unpainted. */
+export function adminCoastalStripFieldLabel(input?: {
+  kind?: string | null
+  coastalStrip?: { index?: number | null } | null
+} | null): string {
+  const index = input?.coastalStrip?.index
+  if (isCoastalStripIndex(index)) return coastalStripLabel(index)
+  if (input?.kind === 'town_center') return 'Town center'
+  return 'Unpainted'
+}
+
 export function parseZipGridPayload(raw: string | null | undefined): ZipGridPayload {
   if (!raw) return emptyZipGrid()
   try {
@@ -292,14 +303,18 @@ export function suggestCoastalStrips(
   return cells
 }
 
-/** Second click on a square that already has this brush erases it. */
+/**
+ * Empty square takes the selected brush. A painted square cycles
+ * Coast → 2nd → 3rd → 4th → empty. Erase still clears.
+ */
 export function nextCellAction(
   current: CoastalStripIndex | undefined,
   brush: CoastalStripIndex | 'erase',
 ): CoastalStripIndex | 'erase' {
   if (brush === 'erase') return 'erase'
-  if (current === brush) return 'erase'
-  return brush
+  if (current == null) return brush
+  if (current >= COASTAL_STRIP_MAX_INDEX) return 'erase'
+  return (current + 1) as CoastalStripIndex
 }
 
 export function mergeZipGridPatch(

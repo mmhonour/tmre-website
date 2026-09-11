@@ -203,6 +203,7 @@ export default function ListingDetailClient({
       listingPricePerSqft: data.pricePerSqft,
       medianPpsfBand: data.medianPpsfBand,
       marketBandLabel: data.marketBandLabel,
+      locationEstimate: data.locationEstimate,
     },
   );
   const isClosed = details.isClosed;

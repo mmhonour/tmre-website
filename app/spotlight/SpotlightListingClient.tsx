@@ -26,6 +26,7 @@ export default function SpotlightListingClient() {
     pricePerSqft,
     medianPpsfBand,
     marketBandLabel,
+    locationEstimate,
     propertyTab,
     presentation,
   } = useSpotlightListing();
@@ -51,6 +52,7 @@ export default function SpotlightListingClient() {
       listingPricePerSqft: pricePerSqft,
       medianPpsfBand,
       marketBandLabel,
+      locationEstimate,
     },
   );
   const isClosed = details.isClosed;

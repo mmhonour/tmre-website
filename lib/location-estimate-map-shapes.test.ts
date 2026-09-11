@@ -12,6 +12,7 @@ import {
   lonLatToCell,
   milesBetween,
   nextCellAction,
+  adminCoastalStripFieldLabel,
   coastalStripLabel,
   coastalStripMark,
   countSuggestedOverwrite,
@@ -86,6 +87,18 @@ describe('zip grid', () => {
     assert.equal(coastalStripLabel(3), '4 4th strip')
   })
 
+  it('formats the admin Details coastal-strip field', () => {
+    assert.equal(
+      adminCoastalStripFieldLabel({ coastalStrip: { index: 1 } }),
+      '2 2nd strip',
+    )
+    assert.equal(
+      adminCoastalStripFieldLabel({ kind: 'town_center' }),
+      'Town center',
+    )
+    assert.equal(adminCoastalStripFieldLabel(null), 'Unpainted')
+  })
+
   it('paints four strips north from the south-facing town edge', () => {
     const occupied = [
       { i: 10, j: 20 },
@@ -134,10 +147,13 @@ describe('zip grid', () => {
     assert.equal(countSuggestedOverwrite({ '1,1': 2, '1,2': 1 }, suggested), 1)
   })
 
-  it('toggles a painted square off when clicked with the same brush', () => {
-    assert.equal(nextCellAction(0, 0), 'erase')
+  it('paints an empty square with the selected brush, then cycles', () => {
+    assert.equal(nextCellAction(undefined, 1), 1)
     assert.equal(nextCellAction(undefined, 0), 0)
-    assert.equal(nextCellAction(1, 0), 0)
+    assert.equal(nextCellAction(0, 2), 1)
+    assert.equal(nextCellAction(1, 0), 2)
+    assert.equal(nextCellAction(2, 3), 3)
+    assert.equal(nextCellAction(3, 1), 'erase')
     assert.equal(nextCellAction(2, 'erase'), 'erase')
   })
 

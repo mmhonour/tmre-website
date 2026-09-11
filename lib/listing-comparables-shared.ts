@@ -1,5 +1,7 @@
+import type { ListingConditionGrade } from '@/lib/listing-condition'
 import type { ListingFurnished } from '@/lib/listing-furnished'
 import { formatLotAcresLabel } from '@/lib/listing-lot-acres'
+import type { CoastalStripIndex } from '@/lib/location-estimate-zip-grid-shared'
 import { VINTAGE_BUCKETS, type VintageBucketId } from '@/lib/vintage-buckets'
 
 export type ComparableListing = {
@@ -8,6 +10,8 @@ export type ComparableListing = {
   address: string
   city: string | null
   zip: string | null
+  /** MLS ParcelNumber when present — same-house sold vs UAG / re-list key. */
+  parcelNumber?: string | null
   price: number | null
   closePrice: number | null
   closeDate: string | null
@@ -27,6 +31,20 @@ export type ComparableListing = {
   longitude: number | null
   /** Location premium multiplier (water, center, golf) for If weighting. */
   locationPremiumMultiplier: number
+  /** Painted zip-grid strip (0 = Coast … 3 = 4th). Null/omitted when unpainted. */
+  coastalStrip?: CoastalStripIndex | null
+  /** Excellent/Good/Fair/Poor when graded (new construction = Excellent). */
+  conditionGrade?: ListingConditionGrade | null
+  /** True when the listing sits inside a painted town-center disk. */
+  inTownCenter?: boolean
+  /** Under-agreement (under contract) — counts toward coastal strip search. */
+  underAgreement?: boolean
+  /** Temporary inland PPSF boost (0.33 / 0.50 / 0.75 / 1.00) from strip search. */
+  stripBoostPct?: number
+  /** Exact vs similar beds/baths/sqft/condition vs the subject. */
+  matchFit?: 'exact' | 'similar'
+  /** True when this row is one of the coastal What-if start-set of 3. */
+  stripSearchPick?: boolean
   /** Goldilocks composite (0–100), same model as Intelligence. */
   goldilocksScore?: number | null
   /** Weekly metadata edge score (0–100), comparable across listings. */
@@ -61,6 +79,10 @@ export type ComparablesCriteria = {
    * the same furnish status unless the session expands to any.
    */
   furnished?: ListingFurnished
+  /** MLS `raw.DirectWaterfrontYN` — Criteria shows Waterfront (Y/N). */
+  waterfrontYn?: 'Y' | 'N' | null
+  /** MLS `raw.WaterfrontDescription` — shown in Criteria when present. */
+  waterfrontDescription?: string | null
 }
 
 /**

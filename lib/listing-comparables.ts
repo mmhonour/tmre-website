@@ -1,11 +1,14 @@
 import 'server-only'
 
 import { parseLotAcres } from '@/lib/fixer-listings'
+import { resolveListingCondition } from '@/lib/listing-condition'
 import {
   listingFurnished,
   subjectHasFurnishedCriteria,
 } from '@/lib/listing-furnished'
+import { isUnderContractListing } from '@/lib/listings-store'
 import { computeLocationPremium } from '@/lib/listing-location-premium'
+import type { ZipGridCells } from '@/lib/location-estimate-zip-grid-shared'
 import { isRentalListing } from '@/lib/listing-kind'
 import {
   COMPARABLES_MATCH_LIMIT,
@@ -14,6 +17,12 @@ import {
   type ComparablesResult,
 } from '@/lib/listing-comparables-shared'
 import { closeFieldsFromListing, compactHistoryEvents } from '@/lib/listing-history'
+import { parcelNumberFromRaw } from '@/lib/listing-property-tax'
+import {
+  waterfrontDescriptionFromRaw,
+  waterfrontYnFromRaw,
+} from '@/lib/listing-waterfront'
+import { normalizeParcelNumber } from '@/lib/property-address'
 import { isClosedListing, isMarketListing } from '@/lib/listings-store'
 import {
   DEFAULT_PRICING_MATCHING_CONFIG,
@@ -86,6 +95,8 @@ export type ComparablesRankOptions = {
    * session allowed-zip set). Used for the interactive wide pool only.
    */
   relaxZip?: boolean
+  /** Painted zip-grid cells so comps pick up the same coastal-strip cues as What if. */
+  locationCells?: ZipGridCells | null
 }
 
 function applyRankLimit<T>(rows: T[], limit: number | undefined): T[] {
@@ -182,7 +193,10 @@ function resolveMatchConfig(
   return options?.match ?? DEFAULT_PRICING_MATCHING_CONFIG
 }
 
-export function buildComparableListing(l: Listing): ComparableListing {
+export function buildComparableListing(
+  l: Listing,
+  ctx?: { cells?: ZipGridCells | null },
+): ComparableListing {
   const { closeDate, closePrice } = closeFieldsFromListing(l)
   const lotAcres = parseLotAcres(l)
   const vintageBucket = classifyYearBuilt(l.yearBuilt)
@@ -204,6 +218,7 @@ export function buildComparableListing(l: Listing): ComparableListing {
     l.longitude,
     l.address.postalCode,
     l.address.city,
+    { cells: ctx?.cells },
   )
 
   return {
@@ -212,6 +227,7 @@ export function buildComparableListing(l: Listing): ComparableListing {
     address: street,
     city: l.address.city?.trim() || null,
     zip: normalizeZip(l.address.postalCode),
+    parcelNumber: normalizeParcelNumber(parcelNumberFromRaw(l.raw)),
     price: l.price != null && l.price > 0 ? l.price : null,
     closePrice: closePrice != null && closePrice > 0 ? closePrice : null,
     closeDate: closeDate ?? null,
@@ -228,6 +244,28 @@ export function buildComparableListing(l: Listing): ComparableListing {
     photoCount: l.photoCount,
     latitude: l.latitude,
     longitude: l.longitude,
+    locationPremiumMultiplier: locationPremium.combinedMultiplier,
+    coastalStrip: locationPremium.coastalStrip,
+    conditionGrade: resolveListingCondition(l),
+    underAgreement: isUnderContractListing(l),
+  }
+}
+
+/** Re-apply painted-strip / pin premium onto an already-built comp (cached edges). */
+export function stampComparableLocation(
+  comp: ComparableListing,
+  cells?: ZipGridCells | null,
+): ComparableListing {
+  const locationPremium = computeLocationPremium(
+    comp.latitude,
+    comp.longitude,
+    comp.zip,
+    comp.city,
+    { cells },
+  )
+  return {
+    ...comp,
+    coastalStrip: locationPremium.coastalStrip,
     locationPremiumMultiplier: locationPremium.combinedMultiplier,
   }
 }
@@ -270,6 +308,8 @@ export function subjectComparablesCriteria(
       ...(subjectHasFurnishedCriteria(subjectFurnished)
         ? { furnished: subjectFurnished }
         : {}),
+      waterfrontYn: waterfrontYnFromRaw(subject.raw),
+      waterfrontDescription: waterfrontDescriptionFromRaw(subject.raw),
     },
     missingCriteria: [],
   }
@@ -429,7 +469,7 @@ function rankSoldComps(
     })
 
   return applyRankLimit(ranked, limit).map(({ listing, fitDistance }, index) => ({
-    listing: buildComparableListing(listing),
+    listing: buildComparableListing(listing, { cells: options?.locationCells }),
     fitDistance,
     rank: index + 1,
   }))
@@ -463,7 +503,7 @@ function rankActiveComps(
     })
 
   return applyRankLimit(ranked, limit).map(({ listing, fitDistance }, index) => ({
-    listing: buildComparableListing(listing),
+    listing: buildComparableListing(listing, { cells: options?.locationCells }),
     fitDistance,
     rank: index + 1,
   }))

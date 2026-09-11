@@ -1,5 +1,13 @@
 import { haversineMiles, minDistanceMiles } from '@/lib/geo-distance'
 import {
+  cellKey,
+  coastalStripLabel,
+  isCoastalStripIndex,
+  lonLatToCell,
+  type CoastalStripIndex,
+  type ZipGridCells,
+} from '@/lib/location-estimate-zip-grid-shared'
+import {
   GOLF_AMENITIES,
   TOWN_CENTERS,
   WATER_ACCESS_POINTS,
@@ -12,6 +20,8 @@ export type LocationPremiumFactors = {
   waterMiles: number | null
   townCenterMiles: number | null
   golfMiles: number | null
+  /** Painted zip-grid strip (0 = Coast … 3 = 4th). Null when unpainted. */
+  coastalStrip: CoastalStripIndex | null
   /** Multiplicative boost from water proximity (1.0 = none). */
   waterMultiplier: number
   /** Multiplicative boost from town/zip center proximity. */
@@ -20,8 +30,13 @@ export type LocationPremiumFactors = {
   golfMultiplier: number
   /** Combined multiplier applied to the If estimate. */
   combinedMultiplier: number
-  /** Short labels for UI copy (e.g. "Near Long Island Sound"). */
+  /** Short labels for UI copy (e.g. "1 Coast", "Near Long Island Sound"). */
   labels: string[]
+}
+
+export type LocationPremiumContext = {
+  /** Painted ¼-mile zip-grid cells. A hit replaces the water-access-pin tier. */
+  cells?: ZipGridCells | null
 }
 
 const MAX_COMBINED_MULTIPLIER = 1.22
@@ -61,15 +76,50 @@ function townCenterPoint(
   return null
 }
 
+/** Water-tier multiplier for a painted strip (Coast +10% … 4th +1.5%). */
+export function coastalStripWaterMultiplier(
+  strip: CoastalStripIndex,
+): number {
+  return 1 + LOCATION_PREMIUM_WATER_TIERS[strip].boost
+}
+
+function paintedCoastalStrip(
+  lat: number,
+  lon: number,
+  cells: ZipGridCells | null | undefined,
+): CoastalStripIndex | null {
+  if (!cells) return null
+  const { i, j } = lonLatToCell(lat, lon)
+  const strip = cells[cellKey(i, j)]
+  return isCoastalStripIndex(strip) ? strip : null
+}
+
+function emptyLocationPremium(): LocationPremiumFactors {
+  return {
+    waterMiles: null,
+    townCenterMiles: null,
+    golfMiles: null,
+    coastalStrip: null,
+    waterMultiplier: 1,
+    centerMultiplier: 1,
+    golfMultiplier: 1,
+    combinedMultiplier: 1,
+    labels: [],
+  }
+}
+
 /**
- * Location premium for a property based on proximity to water, town/zip center,
- * and golf or country club amenities.
+ * Location premium for a property. Painted coastal strips (1–4) replace the
+ * water-access-pin tier so What-if can weight / scale against the same grid
+ * Admin paints. Unpainted points still use pin distance. Village and golf
+ * stack either way.
  */
 export function computeLocationPremium(
   latitude: number | null | undefined,
   longitude: number | null | undefined,
   postalCode?: string | null,
   city?: string | null,
+  ctx?: LocationPremiumContext,
 ): LocationPremiumFactors {
   const lat = latitude != null ? Number(latitude) : null
   const lon = longitude != null ? Number(longitude) : null
@@ -80,16 +130,7 @@ export function computeLocationPremium(
     !Number.isFinite(lat) ||
     !Number.isFinite(lon)
   ) {
-    return {
-      waterMiles: null,
-      townCenterMiles: null,
-      golfMiles: null,
-      waterMultiplier: 1,
-      centerMultiplier: 1,
-      golfMultiplier: 1,
-      combinedMultiplier: 1,
-      labels: [],
-    }
+    return emptyLocationPremium()
   }
 
   const zip = postalCode?.trim().slice(0, 5) ?? null
@@ -107,7 +148,14 @@ export function computeLocationPremium(
     if (golfMiles == null || d < golfMiles) golfMiles = d
   }
 
-  const water = tierBoost(waterMiles, LOCATION_PREMIUM_WATER_TIERS)
+  const coastalStrip = paintedCoastalStrip(lat, lon, ctx?.cells)
+  const water =
+    coastalStrip != null
+      ? {
+          multiplier: coastalStripWaterMultiplier(coastalStrip),
+          label: coastalStripLabel(coastalStrip),
+        }
+      : tierBoost(waterMiles, LOCATION_PREMIUM_WATER_TIERS)
 
   const centerBoost = tierBoost(townCenterMiles, [
     { maxMiles: 0.6, boost: 0.035, label: 'Central village location' },
@@ -133,6 +181,7 @@ export function computeLocationPremium(
     waterMiles,
     townCenterMiles,
     golfMiles,
+    coastalStrip,
     waterMultiplier: water.multiplier,
     centerMultiplier: centerBoost.multiplier,
     golfMultiplier: golf.multiplier,
