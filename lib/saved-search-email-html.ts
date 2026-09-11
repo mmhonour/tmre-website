@@ -26,6 +26,8 @@ export type SavedSearchEmailListing = {
   baths: number | null
   href: string
   photoUrl?: string | null
+  matchKind?: 'listing' | 'open_house'
+  openHouseWhen?: string | null
 }
 
 function escapeHtml(value: string): string {
@@ -124,7 +126,14 @@ function listingRow(
   const href = absHref(listing.href)
   const title = listing.address ?? 'Address TBD'
   const place = listing.town ? ` · ${listing.town}` : ''
+  const kind =
+    listing.matchKind === 'open_house'
+      ? listing.openHouseWhen
+        ? `Open house · ${listing.openHouseWhen}`
+        : 'Open house'
+      : null
   const meta = [
+    kind,
     formatPrice(listing.price),
     listing.beds != null ? `${listing.beds} bd` : null,
     listing.baths != null ? `${listing.baths} ba` : null,
@@ -198,7 +207,15 @@ export function formatSavedSearchMatchesHtml(opts: {
           <tr>
             <td style="padding:22px 22px 8px 22px;">
               <p style="margin:0 0 8px 0;font-family:${heading};font-size:22px;line-height:1.25;color:${theme.text};">
-                ${opts.listings.length === 1 ? 'New match for your search' : `${opts.listings.length} new matches for your search`}
+                ${
+                  opts.listings.every((l) => l.matchKind === 'open_house')
+                    ? opts.listings.length === 1
+                      ? 'Open house for your search'
+                      : `${opts.listings.length} open houses for your search`
+                    : opts.listings.length === 1
+                      ? 'New match for your search'
+                      : `${opts.listings.length} new matches for your search`
+                }
               </p>
               <p style="margin:0 0 6px 0;font-family:${body};font-size:14px;line-height:1.45;color:${theme.mutedText};">
                 <a href="${escapeHtml(searchUrl)}" style="color:${theme.text};font-weight:600;text-decoration:underline;">${escapeHtml(opts.criteriaLabel)}</a>
@@ -232,6 +249,7 @@ export function formatSavedSearchConfirmationHtml(opts: {
   criteriaLabel: string
   cadenceLabel: string
   searchHref: string
+  notifySummary?: string
 }): string {
   const theme = opts.theme
   const heading = emailFontStack(theme.headingFont)
@@ -257,7 +275,7 @@ export function formatSavedSearchConfirmationHtml(opts: {
             <td style="padding:22px;">
               <p style="margin:0 0 10px 0;font-family:${heading};font-size:22px;line-height:1.25;color:${theme.text};">You&rsquo;re set</p>
               <p style="margin:0 0 14px 0;font-family:${body};font-size:14px;line-height:1.5;color:${theme.mutedText};">
-                We&rsquo;ll email you when new listings match your search.
+                We&rsquo;ll email you when ${escapeHtml(opts.notifySummary ?? 'new listings')} match your search.
               </p>
               <p style="margin:0 0 6px 0;font-family:${mono};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${theme.accent};">Search</p>
               <p style="margin:0 0 14px 0;font-family:${body};font-size:15px;color:${theme.text};">

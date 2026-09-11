@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  criteriaNotifySummary,
+  criteriaWantsListingAlerts,
+  criteriaWantsOpenHouseAlerts,
   fingerprintCriteria,
   formatCriteriaPriceRange,
   isMeaningfulCriteria,
@@ -41,6 +44,42 @@ describe('labelCriteria', () => {
   it('appends the price band after town and home type', () => {
     const c = { ...base(), minPrice: 800_000, maxPrice: 2_000_000 }
     assert.equal(labelCriteria(c), 'Westport · for sale · homes · $800K–$2M')
+  })
+
+  it('names open-house-only and combined notify', () => {
+    assert.equal(
+      labelCriteria({
+        ...base(),
+        alertOnNewListing: false,
+        alertOnOpenHouse: true,
+      }),
+      'Westport · for sale · homes · open houses',
+    )
+    assert.equal(
+      labelCriteria({
+        ...base(),
+        alertOnNewListing: true,
+        alertOnOpenHouse: true,
+      }),
+      'Westport · for sale · homes · listings + open houses',
+    )
+  })
+})
+
+describe('alert notify flags', () => {
+  it('defaults to listing alerts only', () => {
+    const c = base()
+    assert.equal(criteriaWantsListingAlerts(c), true)
+    assert.equal(criteriaWantsOpenHouseAlerts(c), false)
+    assert.equal(criteriaNotifySummary(c), 'new listings')
+  })
+
+  it('can be open-house only', () => {
+    const c = { ...base(), alertOnNewListing: false, alertOnOpenHouse: true }
+    assert.equal(criteriaWantsListingAlerts(c), false)
+    assert.equal(criteriaWantsOpenHouseAlerts(c), true)
+    assert.equal(criteriaNotifySummary(c), 'open houses')
+    assert.notEqual(fingerprintCriteria(c), fingerprintCriteria(base()))
   })
 })
 

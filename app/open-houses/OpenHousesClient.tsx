@@ -350,6 +350,7 @@ export default function OpenHousesClient() {
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3 min-h-8">
                   <LatestSearchAlertForm
+                    variant="open-houses"
                     fallbackCriteria={alertFallback}
                     triggerId="open-house-alerts"
                   />
