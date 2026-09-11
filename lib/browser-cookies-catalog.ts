@@ -183,10 +183,6 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
   tmre_oh_sort: pref("Open houses — sort", "open-houses"),
   tmre_oh_view: pref("Open houses — view mode", "open-houses"),
   tmre_oh_group: pref("Open houses — group by day or town", "open-houses"),
-  tmre_oh_town_order: pref(
-    "Open houses — preferred town section order",
-    "open-houses",
-  ),
   tmre_oh_most: pref(
     "Open houses — most historical showings (top 3 per town, ties stay)",
     "open-houses",

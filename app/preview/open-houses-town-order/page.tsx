@@ -13,12 +13,11 @@ export default function OpenHousesTownOrderPreviewPage() {
           UI preview
         </p>
         <h1 className="mb-2 font-serif text-3xl text-navy">
-          Collapsed towns + your order
+          Collapsed towns
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Towns start collapsed (Close all towns engaged). Drag ⋮⋮ to reorder;
-          the order is cookie tmre_oh_town_order (same as /open-houses). Reset
-          clears it. Fixture week of 10 Sep 2026.
+          Towns start collapsed (Close all towns engaged). Expand / collapse
+          with +/− or the chips. No drag reorder. Fixture week of 10 Sep 2026.
         </p>
         <OpenHousesTownOrderPreview />
       </div>

@@ -32,9 +32,9 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   },
   {
     slug: "open-houses-town-order",
-    title: "Open houses — collapsed towns + order",
+    title: "Open houses — collapsed towns",
     summary:
-      "Towns start collapsed. Close all towns / Expand all towns. Drag ⋮⋮ to set a preferred order, stored in tmre_oh_town_order.",
+      "Towns start collapsed. Close all towns / Expand all towns. No drag reorder.",
   },
   {
     slug: "open-houses-filter-bar",

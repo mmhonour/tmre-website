@@ -2,9 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
-import { useOpenHouseTownOrder } from "@/hooks/useOpenHouseTownOrder";
+import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
 import { groupOpenHousesByTownAndDay } from "@/lib/open-houses-groups";
-import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import {
   formatOpenHouseWhen,
@@ -75,11 +74,8 @@ const LISTINGS: OpenHouseListing[] = [
 ];
 
 export function OpenHousesTownOrderPreview() {
-  const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
-    useOpenHouseTownOrder(TMRE_TOWNS);
+  const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
   const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
-  const [dragTown, setDragTown] = useState<string | null>(null);
-  const [dragOverTown, setDragOverTown] = useState<string | null>(null);
 
   const grouped = useMemo(
     () =>
@@ -131,18 +127,9 @@ export function OpenHousesTownOrderPreview() {
         >
           Expand all towns
         </button>
-        {customOrder ? (
-          <button
-            type="button"
-            onClick={resetOrder}
-            className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-navy"
-          >
-            Reset town order
-          </button>
-        ) : null}
       </div>
       <div className="space-y-8">
-        {sections.map((section, index) => (
+        {sections.map((section) => (
           <OpenHouseTownSection
             key={section.town}
             town={section.town}
@@ -156,27 +143,6 @@ export function OpenHousesTownOrderPreview() {
                 return copy;
               })
             }
-            organize={{
-              dragging: dragTown === section.town,
-              dragOver: dragOverTown === section.town && dragTown !== section.town,
-              onDragStart: () => setDragTown(section.town),
-              onDragOver: () => setDragOverTown(section.town),
-              onDragLeave: () =>
-                setDragOverTown((current) => (current === section.town ? null : current)),
-              onDrop: () => {
-                if (dragTown && dragTown !== section.town) {
-                  setPreferredOrder(
-                    placeTownNextTo(orderedTowns, dragTown, section.town, "before"),
-                  );
-                }
-                setDragTown(null);
-                setDragOverTown(null);
-              },
-              onDragEnd: () => {
-                setDragTown(null);
-                setDragOverTown(null);
-              },
-            }}
           >
             {section.listings.length === 0 ? (
               <p className="font-mono text-xs text-slate">No open houses this week.</p>
