@@ -9,6 +9,10 @@ import {
 } from '@/lib/db/vision-streets-repo'
 import { StreetParcelMlsRow } from '@/components/StreetParcelMlsRow'
 import { loadStreetListingCards } from '@/lib/street-listing-ingest'
+import {
+  listingFitsVisionParcel,
+  paidSaleFromVision,
+} from '@/lib/vision-listing-sale-match'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import {
   compareAddressLabels,
@@ -151,7 +155,25 @@ export default async function StreetsStreetPage({
                     row.visionPid,
                     row.addressLabel,
                   )}
-                  listing={listings.get(row.visionPid) ?? null}
+                  listing={(() => {
+                    const card = listings.get(row.visionPid) ?? null
+                    if (!card) return null
+                    const paid = paidSaleFromVision({
+                      lastSaleDate: row.purchaseDate,
+                      lastSalePrice: row.lastPaidPrice,
+                    })
+                    return listingFitsVisionParcel(
+                      {
+                        status: card.status,
+                        price: card.price,
+                        closePrice: card.closePrice,
+                        closeDate: card.closeDate,
+                      },
+                      paid,
+                    )
+                      ? card
+                      : null
+                  })()}
                 />
               ))}
             </ul>

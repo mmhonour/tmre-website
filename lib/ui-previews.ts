@@ -73,6 +73,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Next-open mark (black on white) on grid (photo upper right), rows (panel upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
   },
   {
+    slug: "find-deed-vs-prior",
+    title: "Vision deed vs prior MLS ask",
+    summary:
+      "VGSI parcel page uses the last paid assessor sale. A Closed land ask from the year before is not the page price.",
+  },
+  {
     slug: "find-address-diverge",
     title: "Vision vs MLS address",
     summary:
