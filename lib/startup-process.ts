@@ -597,9 +597,18 @@ export function describeStartupProcess(): {
         title: "Hourly OpenHouse window replace",
         timing: "10-min sweep → hourly (Configure)",
         detail:
-          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the page reads Neon only. Upcoming (today .. +90d ET) is replaced wholesale so a cancelled showing disappears, then open_houses_synced_at is stamped so a long lookback cannot hide a finished pull. History is upserted newest-first in 14-day slices under an 8-minute budget (continues next hour). A RETS fault cannot empty a window. After a successful pull, processDueSavedSearchAlerts() emails visitors who opted into open-house notify. /open-houses joins the next 7 days to listings and shows past / upcoming counts from the stored rows. Pause/Run/Reset on Admin → Syncs.",
+          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the page reads Neon only. Upcoming (today .. +90d ET) is replaced wholesale so a cancelled showing disappears, then open_houses_synced_at is stamped. History is a separate catalogue pass (npm run backfill:open-houses / scripts/backfill-open-houses.ps1) so a year-long RETS walk cannot share the hourly budget. A RETS fault cannot empty a window. After a successful pull, processDueSavedSearchAlerts() emails visitors who opted into open-house notify. /open-houses joins the next 7 days to listings and shows past / upcoming counts from the stored rows. Pause/Run/Reset on Admin → Syncs.",
         status: "scheduled",
         statusLabel: "Cron",
+      },
+      {
+        id: "open-houses-history-backfill",
+        title: "History catalogue (operator CLI)",
+        timing: "on demand — not the hourly job",
+        detail:
+          "backfillOpenHouseHistory() via npm run backfill:open-houses or scripts/backfill-open-houses.ps1. Newest-first 14-day upserts of the prior year into open_houses. Does not replace the upcoming window and does not share the hourly Railway budget. Stamps open_houses_lookback_at. Re-runs are safe.",
+        status: "info",
+        statusLabel: "CLI",
       },
     ],
   });
