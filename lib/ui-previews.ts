@@ -28,7 +28,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-next-oh",
     title: "Open houses — next OH + alerts",
     summary:
-      "Next open-house gold mark on grid (upper right), rows (upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
+      "Next-open mark (black on white) on grid (upper right), rows (upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
   },
   {
     slug: "find-address-diverge",

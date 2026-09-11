@@ -16,8 +16,9 @@ export default function OpenHousesNextOhPreviewPage() {
           Next open house + listing alerts
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Gold next-OH mark: grid upper-right, rows upper-right, compact
-          right-aligned. Rows hero stretches to the row height. Alerts use
+          Next-OH mark (black on white): grid upper-right, rows upper-right,
+          compact right-aligned. Rows hero stretches to the row height. Alerts
+          use
           recent Intelligence searches, or town + home type + price when none
           exist. Production: /open-houses.
         </p>
