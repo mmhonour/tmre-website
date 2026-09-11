@@ -40,7 +40,7 @@ export type OpenHouseListing = {
   pastCount: number
   /** Public events on file with OHDate today or later (ET), not only this week. */
   upcomingCount: number
-  /** Public OH events this Monday–Sunday week (ET). One listing, many slots. */
+  /** Remaining public OH events today through Sunday this week (ET). */
   weekOpenHouseCount: number
 }
 
@@ -83,7 +83,27 @@ export function openHouseWeekWindow(from = new Date()): { start: string; end: st
   return { start, end: addCalendarDays(start, 6) }
 }
 
-/** First event on or after today; otherwise the last event this week. */
+/**
+ * The page is forward-looking: today through Sunday of this ET week.
+ * Homes whose last open house was yesterday or earlier are out of scope.
+ */
+export function openHouseRemainingWeekWindow(from = new Date()): {
+  start: string
+  end: string
+} {
+  const week = openHouseWeekWindow(from)
+  const today = etCalendarDate(from)
+  return { start: today > week.start ? today : week.start, end: week.end }
+}
+
+export function openHouseRemainingWeekLabel(window: {
+  start: string
+  end: string
+}): string {
+  return `Today through Sunday · ${window.start} through ${window.end} (ET)`
+}
+
+/** First event on or after today. Nothing if the series already ended. */
 export function pickNextOpenHouse(
   events: readonly OpenHouseEvent[],
   today: string,
@@ -94,8 +114,12 @@ export function pickNextOpenHouse(
     if (dateCmp !== 0) return dateCmp
     return (a.startDateTime ?? '').localeCompare(b.startDateTime ?? '')
   })
-  return sorted.find((event) => event.date >= today) ?? sorted[sorted.length - 1]
+  return sorted.find((event) => event.date >= today)
 }
+
+export const OPEN_HOUSES_LOAD_ERROR_TITLE = 'Open houses could not be loaded'
+export const OPEN_HOUSES_LOAD_ERROR_BODY =
+  'The week list failed to load. Refresh the page. This is not an empty calendar.'
 
 /** Yesterday back through the lookback horizon (empty when lookback is 0). */
 export function openHouseLookbackWindow(from = new Date()): { start: string; end: string } {

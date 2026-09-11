@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server'
-import { query } from '@/lib/db/postgres'
 import {
   ensureOpenHousesTable,
   readOpenHouseCountsForListings,
+  readOpenHousesJoinedToActiveListings,
 } from '@/lib/db/open-houses-repo'
 import { OPEN_HOUSES_SYNCED_AT_KEY } from '@/lib/open-houses-sync'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import {
   etCalendarDate,
-  openHouseWeekWindow,
+  openHouseRemainingWeekLabel,
+  openHouseRemainingWeekWindow,
   pickNextOpenHouse,
   type OpenHouseEvent,
   type OpenHouseListing,
@@ -20,33 +21,12 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Open houses for this Monday–Sunday week (ET), joined to listings in Postgres.
+ * Forward-looking open houses: today through Sunday (ET), joined to Active
+ * listings. History is not the page dataset — it is pastCount on homes that
+ * still have a date today or later (Most / First / a later relist).
  *
- * This route used to query RETS on every request — a login, then a per-listing
- * lookup that fell back to RETS again for anything not already stored, twelve
- * at a time. In a serverless function with seconds to spend that reliably timed
- * out, which is how a shipped page ended up answering 502. The events are
- * synced into `open_houses` now and this is one query.
- *
- * The listing comes back as the `data` jsonb rather than a column list, because
- * that column *is* the serialized Listing — unit, state and owner have no
- * columns of their own, and picking columns here would silently drop them.
+ * Homes whose last open house was yesterday or earlier are out of scope.
  */
-
-type Row = {
-  oh_id: string
-  listing_key: string | null
-  listing_id: string | null
-  oh_date: Date | string
-  start_datetime: string | null
-  end_datetime: string | null
-  oh_type: string | null
-  comment: string | null
-  mls_id: string
-  listing_json: unknown
-  mls_status: string | null
-  dom: number | null
-}
 
 function isoDate(value: Date | string): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
@@ -69,38 +49,13 @@ function sortEvents(events: OpenHouseEvent[]): OpenHouseEvent[] {
 }
 
 export async function GET() {
-  const window = openHouseWeekWindow()
+  const window = openHouseRemainingWeekWindow()
   try {
     await ensureOpenHousesTable()
 
-    // Inner join: an event whose listing we do not hold has nothing to show.
-    // Either key matches, because SmartMLS populates OHListingId reliably and
-    // OHListingKey only most of the time.
-    const rows = await query<Row>(
-      `SELECT oh.id         AS oh_id,
-              oh.listing_key,
-              oh.listing_id,
-              oh.oh_date,
-              oh.start_datetime,
-              oh.end_datetime,
-              oh.oh_type,
-              oh.comment,
-              l.mls_id,
-              l.data        AS listing_json,
-              l.mls_status,
-              l.dom
-         FROM open_houses oh
-         JOIN listings l
-           ON (oh.listing_id IS NOT NULL AND oh.listing_id = l.mls_id)
-           OR (oh.listing_key IS NOT NULL AND oh.listing_key = l.listing_key)
-        WHERE oh.oh_date BETWEEN $1::date AND $2::date
-          AND l.status_bucket = 'Active'
-          AND l.price IS NOT NULL AND l.price > 0
-        ORDER BY oh.oh_date ASC, oh.start_datetime ASC NULLS LAST`,
-      [window.start, window.end],
-    )
+    const rows = await readOpenHousesJoinedToActiveListings(window.start, window.end)
 
-    // One listing can hold several slots across the week.
+    // One listing can hold several remaining slots this week.
     const byMls = new Map<
       string,
       { listing: Listing; events: Map<string, OpenHouseEvent>; dom: number | null }
@@ -194,7 +149,7 @@ export async function GET() {
         source: 'db',
         syncedAt,
         window,
-        windowLabel: `Monday–Sunday this week · ${window.start} through ${window.end} (ET)`,
+        windowLabel: openHouseRemainingWeekLabel(window),
         eventsFound: rows.length,
         listingsMatched: listings.length,
       },

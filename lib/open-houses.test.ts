@@ -7,6 +7,7 @@ import {
   formatOpenHouseWhenShort,
   openHouseHorizonWindow,
   openHouseLookbackWindow,
+  openHouseRemainingWeekWindow,
   openHouseWeekWindow,
   pickNextOpenHouse,
   splitDateWindow,
@@ -65,6 +66,22 @@ describe('openHouseWeekWindow', () => {
   })
 })
 
+describe('openHouseRemainingWeekWindow', () => {
+  it('starts today when Monday has already passed', () => {
+    assert.deepEqual(
+      openHouseRemainingWeekWindow(new Date('2026-09-10T20:00:00Z')),
+      { start: '2026-09-10', end: '2026-09-13' },
+    )
+  })
+
+  it('is the full week on Monday', () => {
+    assert.deepEqual(
+      openHouseRemainingWeekWindow(new Date('2026-09-14T12:00:00Z')),
+      { start: '2026-09-14', end: '2026-09-20' },
+    )
+  })
+})
+
 describe('pickNextOpenHouse', () => {
   const slot = (date: string): OpenHouseEvent => ({
     id: date,
@@ -77,11 +94,11 @@ describe('pickNextOpenHouse', () => {
     comment: null,
   })
 
-  it('skips earlier days this week and keeps the last past slot when none remain', () => {
+  it('keeps today-or-later slots and drops a series that already ended', () => {
     const mon = slot('2026-09-07')
     const sat = slot('2026-09-12')
     assert.equal(pickNextOpenHouse([sat, mon], '2026-09-10')?.date, '2026-09-12')
-    assert.equal(pickNextOpenHouse([mon], '2026-09-10')?.date, '2026-09-07')
+    assert.equal(pickNextOpenHouse([mon], '2026-09-10'), undefined)
   })
 })
 

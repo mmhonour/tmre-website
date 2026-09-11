@@ -30,6 +30,8 @@ import {
   formatOpenHouseWeekCount,
   formatOpenHouseWhen,
   formatOpenHouseWhenShort,
+  OPEN_HOUSES_LOAD_ERROR_BODY,
+  OPEN_HOUSES_LOAD_ERROR_TITLE,
   type OpenHouseEvent,
   type OpenHouseListing,
 } from "@/lib/open-houses";
@@ -72,7 +74,7 @@ type ApiResponse = {
   windowLabel: string;
 };
 
-type LoadState = "loading" | "ready";
+type LoadState = "loading" | "ready" | "error";
 
 const TOWN_NAMES = TMRE_TOWNS;
 
@@ -431,7 +433,7 @@ export default function OpenHousesClient() {
       .catch(() => {
         if (cancelled) return;
         setAllListings([]);
-        setLoadState("ready");
+        setLoadState("error");
       });
     return () => {
       cancelled = true;
@@ -553,9 +555,10 @@ export default function OpenHousesClient() {
             <span className="italic gold-shimmer">this week.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Public open houses across {formatTownList(TOWN_NAMES)} this
-            Monday–Sunday week. Town counts are unique homes. Each card shows
-            this week’s slots plus past / upcoming showings we have stored.
+            Public open houses across {formatTownList(TOWN_NAMES)} from today
+            through Sunday. Town counts are unique homes still hosting. Past
+            counts document earlier showings on those same homes — we do not
+            list a series that already ended.
           </p>
 
           <OhPlaceFilters
@@ -576,13 +579,17 @@ export default function OpenHousesClient() {
               className={`w-1.5 h-1.5 rounded-full ${
                 loadState === "loading"
                   ? "bg-gold animate-pulse-dot"
-                  : "bg-sage animate-pulse-dot"
+                  : loadState === "error"
+                    ? "bg-red-400"
+                    : "bg-sage animate-pulse-dot"
               }`}
             />
             <span className="text-white/50">
               {loadState === "loading"
                 ? "Loading open houses…"
-                : `${allListings.length} homes · ${windowLabel || "Monday–Sunday this week (ET)"}`}
+                : loadState === "error"
+                  ? OPEN_HOUSES_LOAD_ERROR_TITLE
+                  : `${allListings.length} homes · ${windowLabel || "Today through Sunday (ET)"}`}
               {loadState === "ready" && formatOhSyncAge(syncedAt)
                 ? ` · ${formatOhSyncAge(syncedAt)}`
                 : ""}
@@ -653,6 +660,13 @@ export default function OpenHousesClient() {
                 />
               ))}
             </div>
+          ) : loadState === "error" ? (
+            <div className="text-center py-24">
+              <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-3">
+                {OPEN_HOUSES_LOAD_ERROR_TITLE}
+              </p>
+              <p className="text-charcoal/70">{OPEN_HOUSES_LOAD_ERROR_BODY}</p>
+            </div>
           ) : listings.length === 0 ? (
             <div className="text-center py-24">
               <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-slate mb-3">
@@ -669,10 +683,11 @@ export default function OpenHousesClient() {
           ) : (
             <>
               <p className="mb-4 font-mono text-[10px] text-slate/60 max-w-2xl">
-                Past / upcoming counts are public SmartMLS open houses stored in
-                our database. Most open houses is the top 3 historical hosts in
-                each town (ties stay). First showing means zero past showings.
-                Towns start collapsed — drag ⋮⋮ to set your order.
+                Past / upcoming counts document earlier and later public
+                showings for homes that still have a date today or later. Most
+                is the top 3 of those hosts in each town (ties stay). First
+                showing means zero past showings. Towns start collapsed — drag
+                ⋮⋮ to set your order.
               </p>
               <div className="space-y-10">
                 {townSections.map((townGroup) => (

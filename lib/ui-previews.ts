@@ -43,6 +43,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Most open houses and First showing are mutually exclusive (top 3 historical hosts per town vs zero past).",
   },
   {
+    slug: "open-houses-forward",
+    title: "Open houses — remaining week + load error",
+    summary:
+      "Page lists today-through-Sunday only. A series that ended yesterday is out. Load failure is not an empty week.",
+  },
+  {
     slug: "open-house-alerts",
     title: "Open house + listing alerts",
     summary:

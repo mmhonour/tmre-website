@@ -40,6 +40,14 @@ export async function ensureOpenHousesTable(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_open_houses_listing_key
          ON open_houses (listing_key) WHERE listing_key IS NOT NULL`,
     )
+    await execute(
+      `CREATE INDEX IF NOT EXISTS idx_open_houses_listing_id_date
+         ON open_houses (listing_id, oh_date) WHERE listing_id IS NOT NULL`,
+    )
+    await execute(
+      `CREATE INDEX IF NOT EXISTS idx_open_houses_listing_key_date
+         ON open_houses (listing_key, oh_date) WHERE listing_key IS NOT NULL`,
+    )
   })().catch((err) => {
     ensured = null
     throw err
@@ -190,9 +198,12 @@ export type OpenHouseListingCounts = {
 }
 
 /**
- * Past = OHDate before today; upcoming = today or later. Counted by unique
- * event id, then attributed to every listing token that matches so the page
- * can look up by mlsId or listingKey without double-counting one home.
+ * Past / upcoming counts for homes that still have a today-or-later showing.
+ * History is documentation (Most / First / relist), not a page of ended series.
+ *
+ * Two equality aggregates — never `OR` across listing_id / listing_key, which
+ * the planner cannot use once `open_houses` holds a year of rows. Prefer the
+ * mlsId tally; fall back to listingKey only when that listing has no id rows.
  */
 export async function readOpenHouseCountsForListings(
   listings: readonly { mlsId?: string | null; listingKey?: string | null }[],
@@ -214,45 +225,133 @@ export async function readOpenHouseCountsForListings(
   const counts = new Map<string, OpenHouseListingCounts>()
   if (ids.length === 0 && keys.length === 0) return counts
 
-  const rows = await query<{
-    id: string
-    listing_id: string | null
-    listing_key: string | null
-    oh_date: Date | string
-  }>(
-    `SELECT id, listing_id, listing_key, oh_date
-       FROM open_houses
-      WHERE (listing_id IS NOT NULL AND listing_id = ANY($1::text[]))
-         OR (listing_key IS NOT NULL AND listing_key = ANY($2::text[]))`,
-    [ids, keys],
+  type CountRow = { token: string; past: number; upcoming: number }
+  const [byId, byKey] = await Promise.all([
+    ids.length === 0
+      ? Promise.resolve([] as CountRow[])
+      : query<CountRow>(
+          `SELECT listing_id AS token,
+                  COUNT(*) FILTER (WHERE oh_date < $2::date)::int AS past,
+                  COUNT(*) FILTER (WHERE oh_date >= $2::date)::int AS upcoming
+             FROM open_houses
+            WHERE listing_id = ANY($1::text[])
+            GROUP BY listing_id`,
+          [ids, today],
+        ),
+    keys.length === 0
+      ? Promise.resolve([] as CountRow[])
+      : query<CountRow>(
+          `SELECT listing_key AS token,
+                  COUNT(*) FILTER (WHERE oh_date < $2::date)::int AS past,
+                  COUNT(*) FILTER (WHERE oh_date >= $2::date)::int AS upcoming
+             FROM open_houses
+            WHERE listing_key = ANY($1::text[])
+            GROUP BY listing_key`,
+          [keys, today],
+        ),
+  ])
+
+  const idCounts = new Map(
+    byId.map((row) => [
+      row.token,
+      { past: Number(row.past), upcoming: Number(row.upcoming) },
+    ]),
   )
-
-  const tally = (token: string | null | undefined, date: string) => {
-    const id = token?.trim()
-    if (!id) return
-    const prev = counts.get(id) ?? { past: 0, upcoming: 0 }
-    if (date < today) prev.past += 1
-    else prev.upcoming += 1
-    counts.set(id, prev)
-  }
-
-  for (const row of rows) {
-    const date = isoDate(row.oh_date)
-    tally(row.listing_id, date)
-    // One event, one increment. Prefer listing_id; fall back to listing_key
-    // when the MLS row has no listing_id.
-    if (!row.listing_id) tally(row.listing_key, date)
-  }
+  const keyCounts = new Map(
+    byKey.map((row) => [
+      row.token,
+      { past: Number(row.past), upcoming: Number(row.upcoming) },
+    ]),
+  )
 
   for (const listing of listings) {
     const mlsId = listing.mlsId?.trim()
     const listingKey = listing.listingKey?.trim()
-    if (mlsId && listingKey && counts.has(mlsId) && !counts.has(listingKey)) {
-      counts.set(listingKey, counts.get(mlsId)!)
-    }
+    const chosen =
+      (mlsId ? idCounts.get(mlsId) : undefined) ??
+      (listingKey ? keyCounts.get(listingKey) : undefined)
+    if (!chosen) continue
+    if (mlsId) counts.set(mlsId, chosen)
+    if (listingKey) counts.set(listingKey, chosen)
   }
 
   return counts
+}
+
+export type OpenHouseJoinedRow = {
+  oh_id: string
+  listing_key: string | null
+  listing_id: string | null
+  oh_date: Date | string
+  start_datetime: string | null
+  end_datetime: string | null
+  oh_type: string | null
+  comment: string | null
+  mls_id: string
+  listing_json: unknown
+  mls_status: string | null
+  dom: number | null
+}
+
+const JOINED_OH_SELECT = `
+              oh.id         AS oh_id,
+              oh.listing_key,
+              oh.listing_id,
+              oh.oh_date,
+              oh.start_datetime,
+              oh.end_datetime,
+              oh.oh_type,
+              oh.comment,
+              l.mls_id,
+              l.data        AS listing_json,
+              l.mls_status,
+              l.dom`
+
+const ACTIVE_PRICED_LISTING = `
+          l.status_bucket = 'Active'
+          AND l.price IS NOT NULL AND l.price > 0`
+
+/**
+ * Remaining-week (or any date window) events joined to Active listings.
+ * Equality joins only — listing_id first, listing_key when that path misses.
+ */
+export async function readOpenHousesJoinedToActiveListings(
+  start: string,
+  end: string,
+): Promise<OpenHouseJoinedRow[]> {
+  await ensureOpenHousesTable()
+  if (start > end) return []
+
+  const [byId, byKey] = await Promise.all([
+    query<OpenHouseJoinedRow>(
+      `SELECT ${JOINED_OH_SELECT}
+         FROM open_houses oh
+         JOIN listings l ON l.mls_id = oh.listing_id
+        WHERE oh.oh_date BETWEEN $1::date AND $2::date
+          AND oh.listing_id IS NOT NULL
+          AND ${ACTIVE_PRICED_LISTING}
+        ORDER BY oh.oh_date ASC, oh.start_datetime ASC NULLS LAST`,
+      [start, end],
+    ),
+    query<OpenHouseJoinedRow>(
+      `SELECT ${JOINED_OH_SELECT}
+         FROM open_houses oh
+         JOIN listings l ON l.listing_key = oh.listing_key
+        WHERE oh.oh_date BETWEEN $1::date AND $2::date
+          AND oh.listing_key IS NOT NULL
+          AND (oh.listing_id IS NULL OR NOT EXISTS (
+                SELECT 1 FROM listings x
+                 WHERE x.mls_id = oh.listing_id
+                   AND x.status_bucket = 'Active'
+                   AND x.price IS NOT NULL AND x.price > 0
+              ))
+          AND ${ACTIVE_PRICED_LISTING}
+        ORDER BY oh.oh_date ASC, oh.start_datetime ASC NULLS LAST`,
+      [start, end],
+    ),
+  ])
+
+  return [...byId, ...byKey]
 }
 
 export async function readOpenHousesInWindow(

@@ -13,10 +13,10 @@ import {
   readOpenHouseCountsForListings,
   readOpenHouseStats,
   readOpenHousesInWindow,
+  readOpenHousesJoinedToActiveListings,
   replaceOpenHouseWindow,
   upsertOpenHouses,
 } from '../lib/db/open-houses-repo'
-import { query } from '../lib/db/postgres'
 
 const WINDOW = { start: '2099-01-01', end: '2099-01-07' }
 
@@ -115,17 +115,15 @@ async function main() {
   assert(pruned >= 1, 'expected prune of the aged-out history row')
   console.log('PASS  prune drops dates before the lookback horizon')
 
-  const joinRows = await query<{ oh_id: string }>(
-    `SELECT oh.id AS oh_id
-       FROM open_houses oh
-       LEFT JOIN listings l
-         ON (oh.listing_id IS NOT NULL AND oh.listing_id = l.mls_id)
-         OR (oh.listing_key IS NOT NULL AND oh.listing_key = l.listing_key)
-      WHERE oh.oh_date BETWEEN $1::date AND $2::date`,
-    [WINDOW.start, WINDOW.end],
+  const joinRows = await readOpenHousesJoinedToActiveListings(
+    WINDOW.start,
+    WINDOW.end,
   )
-  assert(joinRows.length === 1, `join probe expected 1, got ${joinRows.length}`)
-  console.log('PASS  listings join shape parses')
+  assert(
+    Array.isArray(joinRows) && joinRows.length === 0,
+    `join helper expected 0 Active listings in the smoke window, got ${joinRows.length}`,
+  )
+  console.log('PASS  listings join helper runs')
 
   await replaceOpenHouseWindow(WINDOW, [])
   await replaceOpenHouseWindow({ start: '2098-12-01', end: '2098-12-31' }, [])
