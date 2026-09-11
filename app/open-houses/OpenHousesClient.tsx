@@ -421,10 +421,17 @@ export default function OpenHousesClient({
   useEffect(() => {
     const el = placeFiltersSentinelRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
-      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
-    );
+    let observer: IntersectionObserver;
+    try {
+      observer = new IntersectionObserver(
+        ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
+        // Chrome/Edge reject `rem` in rootMargin (SyntaxError on construct).
+        // 96px = 6rem at the 16px root — same offset as sticky `top-24`.
+        { rootMargin: "-96px 0px 0px 0px", threshold: 0 },
+      );
+    } catch {
+      return;
+    }
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
