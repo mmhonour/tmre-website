@@ -34,6 +34,7 @@ import {
   OPEN_HOUSES_LOAD_ERROR_TITLE,
   type OpenHouseEvent,
   type OpenHouseListing,
+  type OpenHousesPageLoad,
 } from "@/lib/open-houses";
 import {
   groupOpenHousesByTownAndDay,
@@ -346,11 +347,23 @@ function OhStickyFilters({
   );
 }
 
-export default function OpenHousesClient() {
-  const [allListings, setAllListings] = useState<OpenHouseListing[]>([]);
-  const [windowLabel, setWindowLabel] = useState("");
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
-  const [loadState, setLoadState] = useState<LoadState>("loading");
+export default function OpenHousesClient({
+  initial,
+}: {
+  initial?: OpenHousesPageLoad | null;
+} = {}) {
+  const [allListings, setAllListings] = useState<OpenHouseListing[]>(
+    () => (initial?.ok ? initial.data.listings : []),
+  );
+  const [windowLabel, setWindowLabel] = useState(
+    () => (initial?.ok ? initial.data.windowLabel : ""),
+  );
+  const [syncedAt, setSyncedAt] = useState<string | null>(
+    () => (initial?.ok ? initial.data.syncedAt : null),
+  );
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    initial?.ok ? "ready" : initial ? "error" : "loading",
+  );
   const [townFilter, setTownFilter] = usePersistedFilter<TownFilter>(
     "tmre_oh_town",
     "All",
@@ -417,6 +430,7 @@ export default function OpenHousesClient() {
   }, []);
 
   useEffect(() => {
+    if (initial?.ok) return;
     let cancelled = false;
     fetch("/api/listings/open-houses")
       .then((r) => {
@@ -438,7 +452,7 @@ export default function OpenHousesClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initial]);
 
   const listings = useMemo(() => {
     let result = allListings.filter((l) =>
