@@ -154,6 +154,25 @@ export function splitDateWindow(
   return chunks
 }
 
+/** One stored OpenHouse row on a listing History panel. `upcoming` is set upstream. */
+export type ListingOpenHouse = OpenHouseEvent & {
+  upcoming: boolean
+}
+
+export function markOpenHouseUpcoming(
+  event: OpenHouseEvent,
+  today: string,
+): ListingOpenHouse {
+  return { ...event, upcoming: event.date >= today }
+}
+
+/** SmartMLS OHType `O` is a public open house. */
+export function formatOpenHouseType(type: string | null | undefined): string {
+  const raw = type?.trim()
+  if (!raw || raw === 'O') return 'Public'
+  return raw
+}
+
 export function formatOpenHouseHistory(past: number, upcoming: number): string {
   const pastLabel = past === 1 ? '1 past' : `${past} past`
   const upcomingLabel = upcoming === 1 ? '1 upcoming' : `${upcoming} upcoming`
@@ -177,6 +196,18 @@ function formatTime12(hhmm: string): string {
   const suffix = h >= 12 ? 'PM' : 'AM'
   const hour12 = h % 12 || 12
   return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
+/** Calendar day from an OHDate string, no timezone shift. */
+export function formatOpenHouseDate(iso: string): string {
+  const [y, mo, d] = iso.split('-').map(Number)
+  if (!y || !mo || !d) return iso
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, mo - 1, d)))
 }
 
 /** Corner / compact badge: weekday + times, no month. */

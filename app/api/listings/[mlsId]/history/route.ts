@@ -4,10 +4,12 @@ import {
   summarizePriorListing,
 } from '@/lib/listing-history'
 import { readAddressListingsFromDb } from '@/lib/db/listings-repo'
+import { readOpenHousesForListings } from '@/lib/db/open-houses-repo'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { resolveListingTown } from '@/lib/tmre-towns'
 import { isAdminAuthorizedFromCookies } from '@/lib/admin-auth'
 import { listingMlsDates } from '@/lib/listing-mls-dates'
+import { etCalendarDate, markOpenHouseUpcoming } from '@/lib/open-houses'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,9 +56,18 @@ export async function GET(
     // session, and the public body keeps the key off entirely.
     const isAdmin = await isAdminAuthorizedFromCookies()
 
+    const today = etCalendarDate()
+    const openHouses = (
+      await readOpenHousesForListings([
+        { mlsId: listing.mlsId, listingKey: listing.listingKey },
+        ...priorListings.map((row) => ({ mlsId: row.mlsId })),
+      ])
+    ).map((event) => markOpenHouseUpcoming(event, today))
+
     return NextResponse.json({
       events,
       priorListings,
+      openHouses,
       mlsId: listing.mlsId,
       town,
       ...(isAdmin ? { mlsDates: listingMlsDates(listing.raw) } : {}),

@@ -3,8 +3,10 @@ import { describe, it } from 'node:test'
 import {
   addCalendarDays,
   formatOpenHouseHistory,
+  formatOpenHouseType,
   formatOpenHouseWeekCount,
   formatOpenHouseWhenShort,
+  markOpenHouseUpcoming,
   openHouseHorizonWindow,
   openHouseLookbackWindow,
   openHouseRemainingWeekWindow,
@@ -46,6 +48,25 @@ describe('formatOpenHouseHistory', () => {
   it('uses singular and plural labels', () => {
     assert.equal(formatOpenHouseHistory(1, 1), '1 past · 1 upcoming')
     assert.equal(formatOpenHouseHistory(0, 3), '0 past · 3 upcoming')
+  })
+})
+
+describe('listing open house rows', () => {
+  it('marks upcoming from the server today stamp', () => {
+    const event = {
+      id: '1',
+      listingKey: 'k',
+      listingId: 'MLS-1',
+      date: '2026-09-12',
+      startDateTime: '2026-09-12T11:00:00',
+      endDateTime: '2026-09-12T13:00:00',
+      type: 'O',
+      comment: null,
+    }
+    assert.equal(markOpenHouseUpcoming(event, '2026-09-11').upcoming, true)
+    assert.equal(markOpenHouseUpcoming(event, '2026-09-13').upcoming, false)
+    assert.equal(formatOpenHouseType('O'), 'Public')
+    assert.equal(formatOpenHouseType('Broker'), 'Broker')
   })
 })
 

@@ -354,6 +354,66 @@ export async function readOpenHousesJoinedToActiveListings(
   return [...byId, ...byKey]
 }
 
+/**
+ * Stored OpenHouse rows for one property (this MLS id / key, plus prior
+ * listings at the address). Equality lookups only — never OR across tokens.
+ */
+export async function readOpenHousesForListings(
+  listings: readonly { mlsId?: string | null; listingKey?: string | null }[],
+): Promise<OpenHouseEvent[]> {
+  await ensureOpenHousesTable()
+  const ids = [
+    ...new Set(
+      listings.map((row) => row.mlsId?.trim()).filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  const keys = [
+    ...new Set(
+      listings
+        .map((row) => row.listingKey?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  if (ids.length === 0 && keys.length === 0) return []
+
+  const [byId, byKey] = await Promise.all([
+    ids.length === 0
+      ? Promise.resolve([] as OpenHouseRow[])
+      : query<OpenHouseRow>(
+          `SELECT id, listing_key, listing_id, oh_date, start_datetime,
+                  end_datetime, oh_type, comment
+             FROM open_houses
+            WHERE listing_id = ANY($1::text[])
+            ORDER BY oh_date DESC, start_datetime DESC NULLS LAST`,
+          [ids],
+        ),
+    keys.length === 0
+      ? Promise.resolve([] as OpenHouseRow[])
+      : query<OpenHouseRow>(
+          `SELECT id, listing_key, listing_id, oh_date, start_datetime,
+                  end_datetime, oh_type, comment
+             FROM open_houses
+            WHERE listing_key = ANY($1::text[])
+            ORDER BY oh_date DESC, start_datetime DESC NULLS LAST`,
+          [keys],
+        ),
+  ])
+
+  const seen = new Set<string>()
+  const events: OpenHouseEvent[] = []
+  for (const row of [...byId, ...byKey]) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    events.push(mapRow(row))
+  }
+  events.sort((a, b) => {
+    const dateCmp = b.date.localeCompare(a.date)
+    if (dateCmp !== 0) return dateCmp
+    return (b.startDateTime ?? '').localeCompare(a.startDateTime ?? '')
+  })
+  return events
+}
+
 export async function readOpenHousesInWindow(
   window = openHouseDateWindow(),
 ): Promise<OpenHouseEvent[]> {

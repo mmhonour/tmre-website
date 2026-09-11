@@ -12,6 +12,7 @@ import {
   pruneOpenHousesBefore,
   readOpenHouseCountsForListings,
   readOpenHouseStats,
+  readOpenHousesForListings,
   readOpenHousesInWindow,
   readOpenHousesJoinedToActiveListings,
   replaceOpenHouseWindow,
@@ -110,6 +111,13 @@ async function main() {
   assert(smoke.past === 1, `expected 1 past, got ${smoke.past}`)
   assert(smoke.upcoming === 1, `expected 1 upcoming, got ${smoke.upcoming}`)
   console.log('PASS  past / upcoming counts')
+
+  const forListing = await readOpenHousesForListings([
+    { mlsId: 'MLS-SMOKE-1', listingKey: 'KEY-SMOKE-1' },
+  ])
+  assert(forListing.length === 2, `expected 2 listing events, got ${forListing.length}`)
+  assert(forListing[0]?.date === '2099-01-02', `newest-first expected 2099-01-02, got ${forListing[0]?.date}`)
+  console.log('PASS  per-listing history read')
 
   const pruned = await pruneOpenHousesBefore('2098-12-20')
   assert(pruned >= 1, 'expected prune of the aged-out history row')
