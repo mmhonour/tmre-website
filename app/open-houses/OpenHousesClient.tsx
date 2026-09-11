@@ -697,7 +697,7 @@ function OpenHouseBadge({
 }) {
   return (
     <span
-      className={`inline-flex max-w-full items-center justify-end rounded-full border border-gold bg-gold font-mono font-medium tabular-nums leading-tight text-navy shadow-sm ${
+      className={`inline-flex max-w-full items-center justify-end rounded-full border border-charcoal/20 bg-white font-mono font-medium tabular-nums leading-tight text-navy shadow-sm ${
         compact ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-0.5 text-[9px]"
       }`}
     >
@@ -841,8 +841,8 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
           <span className="font-mono text-[9px] tabular-nums text-navy">{meta.weekLabel}</span>
           <span className="font-mono text-[9px] text-slate/60">{meta.historyLabel}</span>
         </div>
-        <span className={`${LINE_OH_COL} font-mono text-[9px] font-medium tabular-nums text-gold-dark`}>
-          {meta.ohShort}
+        <span className={`${LINE_OH_COL}`}>
+          <OpenHouseBadge label={meta.ohShort} compact />
         </span>
         <span className={`${LINE_PRICE_COL} font-mono text-[10px] font-medium tabular-nums text-navy`}>
           {meta.priceValue}
@@ -931,7 +931,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
         </div>
 
         <div className="mt-auto space-y-1.5 pt-3 border-t border-charcoal/[0.06]">
-          <Row label="Next open" value={meta.ohLabel} accent compact />
+          <Row label="Next open" value={meta.ohLabel} compact />
           <Row label="This week" value={meta.weekLabel} compact />
           <OpenHouseSchedule events={l.openHouses} />
           <Row label="Showings" value={meta.historyLabel} compact />
