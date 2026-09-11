@@ -82,10 +82,15 @@ export function OpenHousesFilterBarPreview() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setDocked(!entry.isIntersecting),
-      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
-    );
+    let observer: IntersectionObserver;
+    try {
+      observer = new IntersectionObserver(
+        ([entry]) => setDocked(!entry.isIntersecting),
+        { rootMargin: "-96px 0px 0px 0px", threshold: 0 },
+      );
+    } catch {
+      return;
+    }
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
