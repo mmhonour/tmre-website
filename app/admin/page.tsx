@@ -582,7 +582,7 @@ export default async function AdminPage() {
       finishedAt: openHousesSyncedAt,
       sortMs: timestampSortMs(openHousesSyncedAt),
       detail:
-        "SmartMLS OpenHouse → open_houses (90-day upcoming + 1-year lookback) for /open-houses counts (hourly)",
+        "SmartMLS OpenHouse → open_houses (90-day upcoming replace). History: npm run backfill:open-houses",
       actionId: "open-houses",
       nextRunAt: nextRuns["open-houses"],
     },

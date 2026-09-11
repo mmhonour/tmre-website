@@ -798,10 +798,10 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     category: 'sync-control',
     medium: 'postgres',
     location: 'open_houses',
-    keyPattern: 'table rows (90-day upcoming + 1-year lookback)',
+    keyPattern: 'table rows (90-day upcoming; history via CLI backfill)',
     owner: 'lib/open-houses-sync.ts',
     notes:
-      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today .. +90d) is replaced so cancellations disappear, then open_houses_synced_at is stamped. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. /open-houses joins the next 7 days to listings and reads past / upcoming counts from this table. A failed RETS pull must not empty a window.',
+      'SmartMLS OpenHouse resource. The hourly queue job replaces today .. +90d so cancellations disappear, then stamps open_houses_synced_at. It does not catalogue the prior year — that is npm run backfill:open-houses / scripts/backfill-open-houses.ps1 (newest-first 14-day upserts, no Railway budget). /open-houses joins the next 7 days to listings and reads past / upcoming counts from this table. A failed RETS pull must not empty a window.',
     live: { kind: 'postgres_table', table: 'open_houses' },
   },
   {

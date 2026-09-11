@@ -24,6 +24,7 @@
     "import:khe-pta": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/import-khe-pta-directory.ts",
     "merge:pta": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/merge-pta-directory.ts",
     "backfill:closed-years": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/backfill-closed-year-windows.ts",
+    "backfill:open-houses": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/backfill-open-houses.ts",
     "warm:associated-closed-photos": "tsx --require ./scripts/stub-server-only.cjs scripts/warm-associated-closed-photos.ts",
     "discover:rets": "node --env-file=.env.local --import tsx scripts/discover-rets.ts",
     "discover:rets:history": "node --env-file=.env.local --import tsx scripts/discover-rets-history.ts",
