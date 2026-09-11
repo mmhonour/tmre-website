@@ -421,10 +421,16 @@ export default function OpenHousesClient({
   useEffect(() => {
     const el = placeFiltersSentinelRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
-      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
-    );
+    let observer: IntersectionObserver;
+    try {
+      // rootMargin only accepts px or % — rem throws and kills the page.
+      observer = new IntersectionObserver(
+        ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
+        { rootMargin: "-96px 0px 0px 0px", threshold: 0 },
+      );
+    } catch {
+      return;
+    }
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
