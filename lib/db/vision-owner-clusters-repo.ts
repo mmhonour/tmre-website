@@ -5,13 +5,20 @@ import { formatVisionOwnerDisplay } from '@/lib/vision-owner-display'
 import {
   clusterKindFromId,
   extractVisionOwnerKeys,
+  isIncompletePersonNameKey,
+  keepParcelsOnCurrentWarrantyName,
   ownerPortfolioRelationship,
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   type VisionOwnerKey,
   type VisionOwnerPortfolio,
+  type VisionOwnerPortfolioDraft,
 } from '@/lib/vision-owner-keys'
-import type { VisionFieldCardJson, VisionOwnershipRow } from '@/lib/vision-gis-parse'
+import {
+  visionPaidSaleFields,
+  type VisionFieldCardJson,
+  type VisionOwnershipRow,
+} from '@/lib/vision-gis-parse'
 
 let ownerClustersReady = false
 let ownerClustersPromise: Promise<void> | null = null
@@ -32,6 +39,8 @@ type AddressOwnerRow = {
   address_full: string | null
   street_no: string | null
   street_name: string | null
+  last_sale_date: string | null
+  last_sale_price: number | string | null
   field_card: VisionFieldCardJson | null
 }
 
@@ -39,6 +48,29 @@ function siteAddressFromRow(row: AddressOwnerRow): string {
   const full = row.address_full?.trim()
   if (full) return full
   return [row.street_no, row.street_name].filter(Boolean).join(' ').trim()
+}
+
+function lastPaidFromAddress(row: AddressOwnerRow | undefined): {
+  lastPaidPrice: number | null
+  lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
+} {
+  if (!row) {
+    return {
+      lastPaidPrice: null,
+      lastPaidPriceLabel: null,
+      lastPaidSaleDate: null,
+    }
+  }
+  const raw = row.last_sale_price
+  const lastSalePrice = raw == null || raw === '' ? null : Number(raw)
+  const paidPrice =
+    lastSalePrice != null && Number.isFinite(lastSalePrice) ? lastSalePrice : null
+  return visionPaidSaleFields({
+    lastSaleDate: row.last_sale_date,
+    lastSalePrice: paidPrice,
+    ownership: ownershipFromCard(row.field_card),
+  })
 }
 
 function ownershipFromCard(
@@ -111,11 +143,40 @@ async function loadAddressOwnerRow(
 ): Promise<AddressOwnerRow | null> {
   return queryOne<AddressOwnerRow>(
     `SELECT town, vision_pid, owner_name, owner_mailing_address,
-            address_full, street_no, street_name, field_card
+            address_full, street_no, street_name, last_sale_date,
+            last_sale_price, field_card
        FROM vision_addresses
       WHERE town = $1 AND vision_pid = $2`,
     [town, visionPid],
   )
+}
+
+async function loadAddressOwnerRows(
+  pairs: readonly { town: string; visionPid: string }[],
+): Promise<Map<string, AddressOwnerRow>> {
+  const byTown = new Map<string, string[]>()
+  for (const pair of pairs) {
+    const list = byTown.get(pair.town) ?? []
+    list.push(pair.visionPid)
+    byTown.set(pair.town, list)
+  }
+  const out = new Map<string, AddressOwnerRow>()
+  for (const [town, pids] of byTown) {
+    const unique = [...new Set(pids)]
+    if (unique.length === 0) continue
+    const rows = await query<AddressOwnerRow>(
+      `SELECT town, vision_pid, owner_name, owner_mailing_address,
+              address_full, street_no, street_name, last_sale_date,
+              last_sale_price, field_card
+         FROM vision_addresses
+        WHERE town = $1 AND vision_pid = ANY($2::text[])`,
+      [town, unique],
+    )
+    for (const row of rows) {
+      out.set(`${row.town}:${row.vision_pid}`, row)
+    }
+  }
+  return out
 }
 
 async function listKeyStamps(
@@ -272,7 +333,29 @@ export async function listVisionOwnerClusterMates(
                m2.cluster_id`,
     [town, visionPid],
   )
-  return rows.map((row) => ({
+  const subjectRow = await loadAddressOwnerRow(town, visionPid)
+  const subjectKeys = subjectRow ? keysFromAddressRow(subjectRow) : null
+  const cards = await loadAddressOwnerRows(
+    rows.map((row) => ({ town: row.town, visionPid: row.vision_pid })),
+  )
+  return rows
+    .filter((row) => {
+      if (!row.cluster_id.startsWith('name:')) return true
+      const keyNorm = row.cluster_id.slice('name:'.length)
+      if (isIncompletePersonNameKey(keyNorm)) return false
+      if (
+        subjectKeys &&
+        !subjectKeys.some((key) => key.keyKind === 'name' && key.keyNorm === keyNorm)
+      ) {
+        return false
+      }
+      const mate = cards.get(`${row.town}:${row.vision_pid}`)
+      if (!mate) return true
+      return keysFromAddressRow(mate).some(
+        (key) => key.keyKind === 'name' && key.keyNorm === keyNorm,
+      )
+    })
+    .map((row) => ({
     town: row.town,
     visionPid: row.vision_pid,
     siteAddress: row.site_address?.trim() || row.vision_pid,
@@ -366,12 +449,40 @@ export async function listVisionOwnerPortfolios(opts: {
         [town, minParcels],
       )
 
-  const portfolios: VisionOwnerPortfolio[] = []
+  const addressPairs: { town: string; visionPid: string }[] = []
+  for (const row of rows) {
+    for (const parcel of row.parcels ?? []) {
+      addressPairs.push({ town: parcel.town, visionPid: parcel.visionPid })
+    }
+  }
+  const cards = await loadAddressOwnerRows(addressPairs)
+
+  const portfolios: VisionOwnerPortfolioDraft[] = []
   for (const row of rows) {
     const kind = clusterKindFromId(row.cluster_id)
     if (!kind) continue
-    const parcelCount = Number(row.parcel_count)
-    if (!Number.isFinite(parcelCount) || parcelCount < minParcels) continue
+    if (
+      kind === 'name' &&
+      isIncompletePersonNameKey(row.cluster_id.slice('name:'.length))
+    ) {
+      continue
+    }
+    const rawParcels = (row.parcels ?? []).map((parcel) => ({
+      town: parcel.town,
+      visionPid: parcel.visionPid,
+      siteAddress: parcel.siteAddress?.trim() || parcel.visionPid,
+      ...lastPaidFromAddress(
+        cards.get(`${parcel.town}:${parcel.visionPid}`),
+      ),
+    }))
+    const parcels =
+      kind === 'name'
+        ? keepParcelsOnCurrentWarrantyName(row.cluster_id, rawParcels, (parcel) => {
+            const card = cards.get(`${parcel.town}:${parcel.visionPid}`)
+            return card ? keysFromAddressRow(card) : null
+          })
+        : rawParcels
+    if (parcels.length < minParcels) continue
     const mailingLabel =
       kind === 'mailing'
         ? row.cluster_id.slice('mailing:'.length).replace(/\|/g, ', ')
@@ -388,12 +499,8 @@ export async function listVisionOwnerPortfolios(opts: {
       town: row.town,
       displayName,
       mailingLabel,
-      parcelCount,
-      parcels: (row.parcels ?? []).map((parcel) => ({
-        town: parcel.town,
-        visionPid: parcel.visionPid,
-        siteAddress: parcel.siteAddress?.trim() || parcel.visionPid,
-      })),
+      parcelCount: parcels.length,
+      parcels,
     })
   }
   return pickUniqueOwnerPortfolios(portfolios)
@@ -437,4 +544,84 @@ export async function fillMissingVisionOwnerKeys(opts: {
     if (result.keys > 0) keyed += 1
   }
   return { scanned: rows.length, keyed }
+}
+
+/**
+ * Re-key the oldest stored parcels so name keys catch up to the
+ * current-warranty rule. First-name leftovers are a subset; this also
+ * drops superseded warranty sellers (Grimaldi on 38 Ferry).
+ */
+export async function refreshOldestVisionOwnerKeys(opts: {
+  town?: string
+  limit?: number
+}): Promise<{ scanned: number; refreshed: number }> {
+  await ensureVisionOwnerClusterTables()
+  const limit = Math.max(1, Math.min(opts.limit ?? 80, 400))
+  const town = opts.town?.trim()
+  const rows = town
+    ? await query<{ town: string; vision_pid: string }>(
+        `SELECT town, vision_pid
+           FROM (
+             SELECT town, vision_pid, MIN(updated_at) AS oldest
+               FROM vision_owner_keys
+              WHERE town = $1
+              GROUP BY town, vision_pid
+           ) t
+          ORDER BY oldest ASC, town, vision_pid
+          LIMIT $2`,
+        [town, limit],
+      )
+    : await query<{ town: string; vision_pid: string }>(
+        `SELECT town, vision_pid
+           FROM (
+             SELECT town, vision_pid, MIN(updated_at) AS oldest
+               FROM vision_owner_keys
+              GROUP BY town, vision_pid
+           ) t
+          ORDER BY oldest ASC, town, vision_pid
+          LIMIT $1`,
+        [limit],
+      )
+
+  let refreshed = 0
+  for (const row of rows) {
+    await refreshVisionOwnerKeysForParcel(row.town, row.vision_pid)
+    refreshed += 1
+  }
+  return { scanned: rows.length, refreshed }
+}
+
+/** Re-key parcels that still carry a first-name-only landlord key. */
+export async function refreshIncompleteVisionOwnerNameKeys(opts: {
+  town?: string
+  limit?: number
+}): Promise<{ scanned: number; refreshed: number }> {
+  await ensureVisionOwnerClusterTables()
+  const limit = Math.max(1, Math.min(opts.limit ?? 80, 400))
+  const town = opts.town?.trim()
+  const rows = town
+    ? await query<{ town: string; vision_pid: string; key_norm: string }>(
+        `SELECT k.town, k.vision_pid, k.key_norm
+           FROM vision_owner_keys k
+          WHERE k.town = $1 AND k.key_kind = 'name'`,
+        [town],
+      )
+    : await query<{ town: string; vision_pid: string; key_norm: string }>(
+        `SELECT k.town, k.vision_pid, k.key_norm
+           FROM vision_owner_keys k
+          WHERE k.key_kind = 'name'`,
+      )
+
+  const seen = new Set<string>()
+  let refreshed = 0
+  for (const row of rows) {
+    if (!isIncompletePersonNameKey(row.key_norm)) continue
+    const stamp = `${row.town}:${row.vision_pid}`
+    if (seen.has(stamp)) continue
+    seen.add(stamp)
+    await refreshVisionOwnerKeysForParcel(row.town, row.vision_pid)
+    refreshed += 1
+    if (refreshed >= limit) break
+  }
+  return { scanned: rows.length, refreshed }
 }

@@ -9,8 +9,9 @@ import {
   VISION_OWNER_ENTITY_RE,
 } from '@/lib/vision-owner-display'
 import {
-  isVisionQuitclaim,
+  formatVisionMoney,
   normalizeVisionOwnerLine,
+  visionCurrentWarrantyOwnerLine,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
 
@@ -44,6 +45,47 @@ export function splitVisionOwnerPeople(line: string): string[] {
     .filter(Boolean)
 }
 
+/**
+ * Tokens that are given names, not surnames. A key made only of these
+ * (Pamela, Ann Lou, A Elizabeth) is not a landlord — VGSI couples often
+ * leave the spouse as a bare given name.
+ */
+const GIVEN_NAME_TOKENS = new Set([
+  'adrianne',
+  'ann',
+  'anne',
+  'elizabeth',
+  'jane',
+  'john',
+  'karin',
+  'linda',
+  'lou',
+  'mary',
+  'melissa',
+  'pamela',
+  'patricia',
+  'peter',
+  'susan',
+  'william',
+])
+
+export function isIncompletePersonNameKey(keyNorm: string): boolean {
+  if (!keyNorm.trim()) return true
+  const parts = keyNorm
+    .toLowerCase()
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length === 0) return true
+  if (VISION_OWNER_ENTITY_RE.test(parts.join(' '))) return false
+  if (parts.length < 2) return true
+  /** `A Elizabeth` — initial + given, no surname. Not `Al W III King`. */
+  if (parts.length === 2 && parts.some((part) => part.length === 1)) return true
+  return parts.every(
+    (part) => part.length === 1 || GIVEN_NAME_TOKENS.has(part),
+  )
+}
+
 export function visionOwnerNameKeyNorm(person: string): string {
   const tokens = person
     .toLowerCase()
@@ -56,7 +98,9 @@ export function visionOwnerNameKeyNorm(person: string): string {
   }
   /** A given name alone is not a landlord key (`Adrianne` ≠ Adrianne Tharp). */
   if (tokens.length < 2) return ''
-  return [...tokens].sort().join('|')
+  const keyNorm = [...tokens].sort().join('|')
+  if (isIncompletePersonNameKey(keyNorm)) return ''
+  return keyNorm
 }
 
 export function visionOwnerMailingKeyNorm(
@@ -119,33 +163,98 @@ export function extractVisionOwnerKeys(input: {
     })
   }
 
-  for (const row of input.ownership ?? []) {
-    const role: VisionOwnerKeyRole = isVisionQuitclaim(row)
-      ? 'quitclaim_grantee'
-      : 'warranty_buyer'
-    pushNameKeys(out, seen, row.owner, role)
+  const warrantyLine = visionCurrentWarrantyOwnerLine(
+    input.ownership,
+    input.ownerName,
+  )
+  if (warrantyLine) {
+    pushNameKeys(out, seen, warrantyLine, 'warranty_buyer')
+  } else if (!input.ownership?.length) {
+    pushNameKeys(out, seen, input.ownerName, 'owner_of_record')
   }
-  pushNameKeys(out, seen, input.ownerName, 'owner_of_record')
 
   return out
+}
+
+/** True when `keyNorm` is on this parcel’s current (non-superseded) warranty. */
+export function hasCurrentWarrantyNameKey(
+  input: Parameters<typeof extractVisionOwnerKeys>[0],
+  keyNorm: string,
+): boolean {
+  return extractVisionOwnerKeys(input).some(
+    (key) => key.keyKind === 'name' && key.keyNorm === keyNorm,
+  )
+}
+
+/**
+ * Drop name-cluster members whose current warranty no longer includes
+ * that person. Unknown parcels (`keysForParcel` → null) stay until a
+ * Field Card can prove they sold.
+ */
+export function keepParcelsOnCurrentWarrantyName<
+  T extends { town: string; visionPid: string },
+>(
+  clusterId: string,
+  parcels: readonly T[],
+  keysForParcel: (parcel: T) => readonly VisionOwnerKey[] | null,
+): T[] {
+  if (!clusterId.startsWith('name:')) return [...parcels]
+  const keyNorm = clusterId.slice('name:'.length)
+  return parcels.filter((parcel) => {
+    const keys = keysForParcel(parcel)
+    if (keys == null) return true
+    return keys.some((key) => key.keyKind === 'name' && key.keyNorm === keyNorm)
+  })
 }
 
 export type VisionOwnerPortfolioParcel = {
   town: string
   visionPid: string
   siteAddress: string
+  lastPaidPrice: number | null
+  lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
 }
 
 export type VisionOwnerPortfolio = {
   clusterId: string
   clusterKind: VisionOwnerKeyKind
-  /** Name from deed history (2+ homes) vs same mailbox. */
+  /** Current warranty name on 2+ homes vs same mailbox. */
   relationship: 'landlord' | 'owner'
   town: string
   displayName: string
   mailingLabel: string | null
   parcelCount: number
   parcels: VisionOwnerPortfolioParcel[]
+  /** Sum of last paid purchases on the homes in this panel. */
+  lastPaidTotal: number | null
+  lastPaidTotalLabel: string | null
+}
+
+export type VisionOwnerPortfolioDraft = Omit<
+  VisionOwnerPortfolio,
+  'lastPaidTotal' | 'lastPaidTotalLabel'
+>
+
+/** Sum last paid purchases already on the parcel list (not quitclaim $0). */
+export function ownerPortfolioPurchaseTotal(
+  parcels: readonly Pick<VisionOwnerPortfolioParcel, 'lastPaidPrice'>[],
+): { lastPaidTotal: number | null; lastPaidTotalLabel: string | null } {
+  let total = 0
+  let counted = 0
+  for (const parcel of parcels) {
+    const price = parcel.lastPaidPrice
+    if (price == null || !(price > 0)) continue
+    total += price
+    counted += 1
+  }
+  if (counted === 0) {
+    return { lastPaidTotal: null, lastPaidTotalLabel: null }
+  }
+  return {
+    lastPaidTotal: total,
+    lastPaidTotalLabel: formatVisionMoney(total),
+  }
 }
 
 export function clusterKindFromId(
@@ -161,7 +270,7 @@ export function clusterKindFromId(
  * when counts tie, and skip a cluster whose cards already appeared.
  */
 export function pickUniqueOwnerPortfolios(
-  rows: readonly VisionOwnerPortfolio[],
+  rows: readonly VisionOwnerPortfolioDraft[],
 ): VisionOwnerPortfolio[] {
   const ranked = [...rows].sort((a, b) => {
     if (b.parcelCount !== a.parcelCount) return b.parcelCount - a.parcelCount
@@ -176,7 +285,10 @@ export function pickUniqueOwnerPortfolios(
     const keys = row.parcels.map((p) => `${p.town}:${p.visionPid}`)
     if (keys.length === 0 || keys.every((key) => seen.has(key))) continue
     for (const key of keys) seen.add(key)
-    out.push(row)
+    out.push({
+      ...row,
+      ...ownerPortfolioPurchaseTotal(row.parcels),
+    })
   }
   return out
 }

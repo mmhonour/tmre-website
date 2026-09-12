@@ -7,7 +7,7 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
-import { westportParcelHref } from '@/lib/listing-url'
+import { OwnerPortfolioHomes } from '@/components/OwnerPortfolioHomes'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import type { VisionOwnerPortfolio } from '@/lib/vision-owner-keys'
 import {
@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 export const metadata = {
   title: 'Owners with 2+ homes — Streets — TMRE',
   description:
-    'Admin: landlords (same name on warranty or quitclaim history) and owners who share a mailing — two or more homes, largest first.',
+    'Admin: landlords (same current warranty name on two or more homes) and owners who share a mailing — largest first.',
   robots: { index: false, follow: false },
 }
 
@@ -125,8 +125,11 @@ export default async function StreetsOwnersPage({
               : `Landlords and owners with two or more homes`}
           </h1>
           <p className="mt-3 max-w-xl font-mono text-sm text-white/70">
-            Admin only. Largest first. A landlord is the same person on two
-            warranty or quitclaim rows. An owner cluster is the same mailbox.
+            Admin only. Largest first. A landlord is the same person on the
+            current (non-superseded) warranty of two or more homes. A later
+            warranty replaces the prior buyer; a later quitclaim does not.
+            An owner cluster is the same mailbox. Last paid sale sits on
+            the right; purchase total at the bottom of the panel.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}
@@ -176,18 +179,10 @@ export default async function StreetsOwnersPage({
                       {row.mailingLabel}
                     </p>
                   ) : null}
-                  <ul className="mt-3 space-y-1">
-                    {row.parcels.map((parcel) => (
-                      <li key={`${parcel.town}:${parcel.visionPid}`}>
-                        <Link
-                          href={westportParcelHref(parcel.visionPid)}
-                          className="font-mono text-sm text-navy hover:underline"
-                        >
-                          {parcel.siteAddress}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
+                  <OwnerPortfolioHomes
+                    parcels={row.parcels}
+                    purchaseTotalLabel={row.lastPaidTotalLabel}
+                  />
                 </li>
               ))}
             </ol>

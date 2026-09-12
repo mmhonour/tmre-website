@@ -297,6 +297,28 @@ export function visionPurchaseDate(opts: {
   return visionLastPaidSale(opts)?.date ?? null
 }
 
+/** Last paid sale fields for landlord / street lists (not a $0 quitclaim). */
+export function visionPaidSaleFields(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[] | null
+}): {
+  lastPaidPrice: number | null
+  lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
+} {
+  const paid = visionLastPaidSale({
+    lastSaleDate: opts.lastSaleDate,
+    lastSalePrice: opts.lastSalePrice,
+    ownership: opts.ownership ?? undefined,
+  })
+  return {
+    lastPaidPrice: paid?.price ?? null,
+    lastPaidPriceLabel: formatVisionMoney(paid?.price ?? null),
+    lastPaidSaleDate: paid?.date ?? null,
+  }
+}
+
 /** Year from {@link visionPurchaseDate}, when a paid purchase exists. */
 export function visionPurchaseYear(opts: {
   lastSaleDate?: string | null
@@ -540,6 +562,27 @@ export function compileVisionOwnerFromDeeds(
   currentOwner?: string | null,
 ): string | null {
   return compileVisionOwnerParts(ownership, currentOwner).displayName
+}
+
+/**
+ * Latest non-quitclaim / warranty buyers. A later warranty supersedes
+ * the prior one (Grimaldi 1993 on 38 Ferry is not current after King 2020).
+ * A later quitclaim does not supersede the warranty.
+ * When the of-record line is the same people (typo / AND vs &), use it.
+ */
+export function visionCurrentWarrantyOwnerLine(
+  ownership: readonly VisionOwnershipRow[] | null | undefined,
+  currentOwner?: string | null,
+): string | null {
+  const sorted = sortVisionOwnershipDesc(ownership ?? [])
+  const row = sorted.find((entry) => !isVisionQuitclaim(entry))
+  if (!row) return null
+  const raw = completeDanglingDeedOwner(row.owner, currentOwner)
+  const warranty = raw === '—' || !raw ? null : raw
+  if (!warranty) return null
+  const current = currentOwner?.replace(/\s+/g, ' ').trim() || null
+  if (current && visionOwnerLinesMirror(warranty, current)) return current
+  return warranty
 }
 
 export function visionDeedPriceLabel(row: VisionOwnershipRow): string {

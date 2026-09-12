@@ -287,13 +287,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'vision_owner_keys',
     category: 'sync-admin',
     definition:
-      'Neon table of join fingerprints extracted from a Vision Field Card (db/migrations/0031_vision_owner_clusters.sql). `vision_pid` is the card, not the owner. Each row is a mailing key (`12 main st|westport`) or a name key (`castillo|edward`) with a role (warranty / quitclaim / of-record). Written on Vision upsert, Field Card persist, and Find parcel load. FK `(town, vision_pid)` → `vision_addresses`. See vision_owner_cluster_members.',
+      'Neon table of join fingerprints extracted from a Vision Field Card (db/migrations/0031_vision_owner_clusters.sql). `vision_pid` is the card, not the owner. Each row is a mailing key (`12 main st|westport`) or a name key (`grimaldi|richard`) from the current (non-superseded) warranty buyer — not every historical deed. A later warranty replaces the prior buyer (King 2020 on 38 Ferry drops Grimaldi 1993). A later quitclaim does not replace the warranty (Denise Penna). Role is `warranty_buyer`, or `owner_of_record` when there is no deed stack. Written on Vision upsert, Field Card persist, Find parcel load, and `sync:owner-clusters`. FK `(town, vision_pid)` → `vision_addresses`. See vision_owner_cluster_members.',
   },
   {
     term: 'vision_owner_cluster_members',
     category: 'sync-admin',
     definition:
-      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). Name keys come from every warranty and quitclaim owner on the Field Card, not only the current stack, so a landlord who later quitclaimed still clusters (PENNA DENISE / Denise Penna). `cluster_id` is `key_kind:key_norm`. Find `/find/westport/{pid}` lists other members under Other homes. Admin ranking: `/streets/owners` (also linked from Find and Streets as Landlord / owners). Rebuilt when a parcel’s keys change. CLI: `npm run sync:owner-clusters`. See vision_owner_keys.',
+      'Lookup of Vision cards that share a mailing or name key (2+ parcels only). A name cluster is a landlord only when the same person is the current warranty buyer on two or more parcels. Historical / superseded warranties do not count. `/streets/owners` and Find Other homes also drop members whose stored key is stale until `sync:owner-clusters` re-keys. `cluster_id` is `key_kind:key_norm`. Admin ranking: `/streets/owners` (also linked from Find and Streets as Landlord / owners). Rebuilt when a parcel’s keys change. CLI: `npm run sync:owner-clusters`. See vision_owner_keys.',
   },
   {
     term: 'vision_street_parcels',
