@@ -1,4 +1,7 @@
 import type { OpenHouseEvent, OpenHouseListing, OpenHousesPageLoad } from "@/lib/open-houses";
+import { TMRE_TOWNS } from "@/lib/tmre-towns";
+import type { DealBoardCardView } from "@/lib/deal-board-view";
+import { DEAL_BOARD_CARD_VIEW_VALUES } from "@/lib/deal-board-view";
 
 const TODAY = "2026-09-12";
 const SUNDAY = "2026-09-13";
@@ -68,6 +71,10 @@ const LOCUST = event("5 Locust Ln", SUNDAY);
 const RIDGE = event("12 Ridgefield Rd", TODAY);
 const SILVER = event("71 Silvermine Avenue", TODAY);
 const FOREST = event("176 Forest Street", SUNDAY);
+const HUNYADI = event("211 Hunyadi Avenue", TODAY, "13:00", "15:00");
+const NEWTON = event("261 Newtown Turnpike", SUNDAY, "11:00", "13:00");
+const SHADOW = event("138 Shadow Lake Road", TODAY, "15:00", "17:00");
+const GLEN = event("35 Glen Ridge", SUNDAY, "12:00", "14:00");
 
 const LISTINGS: OpenHouseListing[] = [
   fixture("Westport", "06880", "2 Main St", [MAIN], { pastCount: 12 }),
@@ -94,6 +101,7 @@ const LISTINGS: OpenHouseListing[] = [
     price: 1_050_000,
     pastCount: 0,
   }),
+  fixture("Wilton", "06897", "35 Glen Ridge", [GLEN], { price: 980_000 }),
   fixture("Norwalk", "06850", "71 Silvermine Avenue", [SILVER], {
     price: 725_000,
     pastCount: 4,
@@ -101,6 +109,18 @@ const LISTINGS: OpenHouseListing[] = [
   fixture("New Canaan", "06840", "176 Forest Street", [FOREST], {
     price: 1_875_000,
     pastCount: 1,
+  }),
+  fixture("Fairfield", "06824", "211 Hunyadi Avenue", [HUNYADI], {
+    price: 1_125_000,
+    pastCount: 6,
+  }),
+  fixture("Weston", "06883", "261 Newtown Turnpike", [NEWTON], {
+    price: 1_450_000,
+    pastCount: 2,
+  }),
+  fixture("Ridgefield", "06877", "138 Shadow Lake Road", [SHADOW], {
+    price: 1_310_000,
+    pastCount: 7,
   }),
 ];
 
@@ -118,4 +138,17 @@ export const OPEN_HOUSES_VIEW_GLYPHS_FIXTURE: OpenHousesPageLoad = {
   },
 };
 
-export const OPEN_HOUSES_VIEW_GLYPHS_OPEN_TOWNS = ["Westport"] as const;
+export const OPEN_HOUSES_VIEW_GLYPHS_OPEN_TOWNS = TMRE_TOWNS;
+
+export function parseOpenHousesPreviewView(
+  raw: string | string[] | undefined,
+): DealBoardCardView {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (
+    value &&
+    (DEAL_BOARD_CARD_VIEW_VALUES as readonly string[]).includes(value)
+  ) {
+    return value as DealBoardCardView;
+  }
+  return "large";
+}

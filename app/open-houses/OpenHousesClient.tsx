@@ -310,14 +310,37 @@ function OhStickyFilters({
   );
 }
 
+function useMaybePersistedFilter<T extends string>(
+  isolate: boolean,
+  key: string,
+  defaultValue: T,
+  validValues: readonly T[],
+  resolveDefault?: () => T,
+): [T, (value: T) => void] {
+  const persisted = usePersistedFilter(
+    key,
+    defaultValue,
+    validValues,
+    false,
+    resolveDefault,
+  );
+  const [local, setLocal] = useState<T>(defaultValue);
+  return isolate ? [local, setLocal] : persisted;
+}
+
 export default function OpenHousesClient({
   initial,
   defaultOpenTowns,
   previewBanner,
+  isolatePrefs = false,
+  initialView,
 }: {
   initial?: OpenHousesPageLoad | null;
   defaultOpenTowns?: readonly string[];
   previewBanner?: string;
+  /** Preview pages: ignore saved OH cookies so Grid is not stuck on. */
+  isolatePrefs?: boolean;
+  initialView?: ViewMode;
 } = {}) {
   const [allListings, setAllListings] = useState<OpenHouseListing[]>(
     () => (initial?.ok ? initial.data.listings : []),
@@ -331,38 +354,42 @@ export default function OpenHousesClient({
   const [loadState, setLoadState] = useState<LoadState>(() =>
     initial?.ok ? "ready" : initial && !initial.ok ? "error" : "loading",
   );
-  const [townFilter, setTownFilter] = usePersistedFilter<TownFilter>(
+  const [townFilter, setTownFilter] = useMaybePersistedFilter<TownFilter>(
+    isolatePrefs,
     "tmre_oh_town",
     "All",
     OH_TOWN_VALUES,
   );
-  const [txFilter, setTxFilter] = usePersistedFilter<TxFilter>(
+  const [txFilter, setTxFilter] = useMaybePersistedFilter<TxFilter>(
+    isolatePrefs,
     "tmre_oh_tx",
     "all",
     OH_TX_VALUES,
   );
-  const [sortMode, setSortMode] = usePersistedFilter<SortMode>(
+  const [sortMode, setSortMode] = useMaybePersistedFilter<SortMode>(
+    isolatePrefs,
     "tmre_oh_sort",
     "date",
     OH_SORT_VALUES,
   );
-  const [viewMode, setViewMode] = usePersistedFilter<ViewMode>(
+  const [viewMode, setViewMode] = useMaybePersistedFilter<ViewMode>(
+    isolatePrefs,
     "tmre_oh_view",
-    "grid",
+    initialView ?? "grid",
     OH_VIEW_VALUES,
-    false,
     () => (readClientPref("tmre_oh_view") === "rows" ? "large" : "grid"),
   );
-  const [groupMode, setGroupMode] = usePersistedFilter<GroupMode>(
+  const [groupMode, setGroupMode] = useMaybePersistedFilter<GroupMode>(
+    isolatePrefs,
     "tmre_oh_group",
     "day",
     OH_GROUP_VALUES,
   );
-  const [showBy, setShowBy] = usePersistedFilter<OpenHouseShowBy>(
+  const [showBy, setShowBy] = useMaybePersistedFilter<OpenHouseShowBy>(
+    isolatePrefs,
     "tmre_oh_show_by",
     "off",
     OPEN_HOUSE_SHOW_BY_VALUES,
-    false,
     () => {
       if (readClientPref("tmre_oh_first") === "on") return "first";
       if (readClientPref("tmre_oh_most") === "on") return "most";

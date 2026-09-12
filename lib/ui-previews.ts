@@ -28,7 +28,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-view-glyphs",
     title: "Open houses — Large / Grid / Line",
     summary:
-      "Full Open Houses page with fixture homes. Click Large, Grid, or Line — same glyphs as Intelligence.",
+      "Full website Open Houses page (nav + footer). All towns open. ?view=large|grid|line. Same glyphs as Intelligence.",
   },
   {
     slug: "open-houses-one-per-town",
