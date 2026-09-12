@@ -136,7 +136,7 @@ export function OpenHousesFocusPreview() {
       </ul>
 
       {shown.length > 0 ? (
-        <ListingCollection listings={shown} view="rows" />
+        <ListingCollection listings={shown} view="large" />
       ) : null}
     </div>
   );

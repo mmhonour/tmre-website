@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
+import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import TownFilterPills from "@/components/TownFilterPills";
+import type { DealBoardCardView } from "@/lib/deal-board-view";
 import type { OpenHouseShowBy } from "@/lib/open-houses-focus";
 import {
   filterPillButtonClass,
@@ -74,6 +76,7 @@ export function OpenHousesFilterBarPreview() {
   const [tx, setTx] = useState<(typeof TX)[number]["value"]>("all");
   const [town, setTown] = useState<"All" | (typeof TMRE_TOWNS)[number]>("All");
   const [showBy, setShowBy] = useState<OpenHouseShowBy>("off");
+  const [view, setView] = useState<DealBoardCardView>("grid");
   const [docked, setDocked] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -147,22 +150,7 @@ export function OpenHousesFilterBarPreview() {
                 value={showBy}
                 onChange={setShowBy}
               />
-              <div
-                className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
-                role="group"
-                aria-label="Listing layout"
-              >
-                {["Grid", "Rows", "Line"].map((label, i) => (
-                  <span
-                    key={label}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-mono text-[9px] ${
-                      i === 0 ? "bg-navy text-white" : "text-navy/55"
-                    }`}
-                  >
-                    {label[0]}
-                  </span>
-                ))}
-              </div>
+              <DealBoardViewPicker view={view} onChange={setView} />
               <div
                 className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
                 role="group"

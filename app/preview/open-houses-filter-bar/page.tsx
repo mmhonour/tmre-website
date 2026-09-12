@@ -18,8 +18,9 @@ export default function OpenHousesFilterBarPreviewPage() {
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Sale / rental and towns start in the navy hero. Scroll until they
           dock into the cream bar. Open house alerts sits right of Date /
-          By day / Price. Show by sits on the glyph line. The first town
-          sits just under the sticky bar. Production: /open-houses.
+          By day / Price. Show by sits on the glyph line with Intelligence
+          Large / Grid / Line. The first town sits just under the sticky
+          bar. Production: /open-houses.
         </p>
       </div>
       <OpenHousesFilterBarPreview />

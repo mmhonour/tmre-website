@@ -16,11 +16,10 @@ export default function OpenHousesNextOhPreviewPage() {
           Next open house + listing alerts
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Next-OH mark (black on white): grid upper-right on the photo, rows
-          upper-right of the text panel (not the hero), compact right-aligned.
-          Rows hero stretches to the row height. Alerts use
-          recent Intelligence searches, or town + home type + price when none
-          exist. Production: /open-houses.
+          Next-OH mark (black on white): Grid upper-right on the photo, Large
+          upper-right of the text panel, Line right-aligned. Large photo
+          stretches to the row height. View glyphs match Intelligence.
+          Production: /open-houses.
         </p>
         <OpenHousesNextOhPreview />
       </div>

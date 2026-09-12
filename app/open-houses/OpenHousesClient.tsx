@@ -52,17 +52,22 @@ import {
 } from "@/lib/open-houses-focus";
 import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
+import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import { readClientPref } from "@/lib/client-prefs";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import { fallbackCriteriaFromPage } from "@/lib/visitor-search-profile";
+import {
+  DEAL_BOARD_CARD_VIEW_VALUES,
+  type DealBoardCardView,
+} from "@/lib/deal-board-view";
 
 const OH_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const OH_TX_VALUES = ["all", "sale", "rental"] as const;
-const OH_VIEW_VALUES = ["grid", "rows", "line"] as const;
+const OH_VIEW_VALUES = DEAL_BOARD_CARD_VIEW_VALUES;
 const OH_SORT_VALUES = ["date", "price-asc", "price-desc"] as const;
 const OH_GROUP_VALUES = ["day", "town"] as const;
 
-type ViewMode = (typeof OH_VIEW_VALUES)[number];
+type ViewMode = DealBoardCardView;
 type TxFilter = "all" | "sale" | "rental";
 type SortMode = (typeof OH_SORT_VALUES)[number];
 type GroupMode = (typeof OH_GROUP_VALUES)[number];
@@ -289,7 +294,7 @@ function OhStickyFilters({
 
       <div className="flex min-h-8 flex-wrap items-center justify-end gap-1.5">
         <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
-        <ViewModeToggle value={viewMode} onChange={setViewMode} />
+        <DealBoardViewPicker view={viewMode} onChange={setViewMode} />
         {showTownChrome ? (
           <TownFoldGlyphs
             allTownsCollapsed={allTownsCollapsed}
@@ -341,6 +346,8 @@ export default function OpenHousesClient({
     "tmre_oh_view",
     "grid",
     OH_VIEW_VALUES,
+    false,
+    () => (readClientPref("tmre_oh_view") === "rows" ? "large" : "grid"),
   );
   const [groupMode, setGroupMode] = usePersistedFilter<GroupMode>(
     "tmre_oh_group",
@@ -1015,95 +1022,6 @@ function ResetTownOrderIcon() {
   );
 }
 
-function ViewModeToggle({
-  value,
-  onChange,
-}: {
-  value: ViewMode;
-  onChange: (mode: ViewMode) => void;
-}) {
-  const btn =
-    "inline-flex h-8 w-8 items-center justify-center transition-colors disabled:opacity-40";
-  const active = "bg-navy text-white";
-  const idle = "text-navy/55 hover:text-navy hover:bg-charcoal/[0.04]";
-
-  return (
-    <div
-      className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
-      role="group"
-      aria-label="Listing layout"
-    >
-      <button
-        type="button"
-        aria-label="Grid view"
-        aria-pressed={value === "grid"}
-        title="Grid"
-        onClick={() => onChange("grid")}
-        className={`${btn} rounded-full ${value === "grid" ? active : idle}`}
-      >
-        <GridViewIcon />
-      </button>
-      <button
-        type="button"
-        aria-label="Row view"
-        aria-pressed={value === "rows"}
-        title="Rows"
-        onClick={() => onChange("rows")}
-        className={`${btn} rounded-full ${value === "rows" ? active : idle}`}
-      >
-        <RowsViewIcon />
-      </button>
-      <button
-        type="button"
-        aria-label="Compact list view"
-        aria-pressed={value === "line"}
-        title="Compact list"
-        onClick={() => onChange("line")}
-        className={`${btn} rounded-full ${value === "line" ? active : idle}`}
-      >
-        <LineViewIcon />
-      </button>
-    </div>
-  );
-}
-
-function GridViewIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="1" y="1" width="6" height="6" rx="1" />
-      <rect x="9" y="1" width="6" height="6" rx="1" />
-      <rect x="1" y="9" width="6" height="6" rx="1" />
-      <rect x="9" y="9" width="6" height="6" rx="1" />
-    </svg>
-  );
-}
-
-function RowsViewIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="1" y="2" width="5" height="4" rx="0.75" />
-      <rect x="7" y="2.5" width="8" height="1.25" rx="0.5" />
-      <rect x="7" y="4.25" width="6" height="1" rx="0.5" opacity="0.55" />
-      <rect x="1" y="8" width="5" height="4" rx="0.75" />
-      <rect x="7" y="8.5" width="8" height="1.25" rx="0.5" />
-      <rect x="7" y="10.25" width="6" height="1" rx="0.5" opacity="0.55" />
-    </svg>
-  );
-}
-
-function LineViewIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="1" y="3" width="2" height="2" rx="0.4" />
-      <rect x="4" y="3.35" width="11" height="1.3" rx="0.5" />
-      <rect x="1" y="7" width="2" height="2" rx="0.4" />
-      <rect x="4" y="7.35" width="11" height="1.3" rx="0.5" />
-      <rect x="1" y="11" width="2" height="2" rx="0.4" />
-      <rect x="4" y="11.35" width="11" height="1.3" rx="0.5" />
-    </svg>
-  );
-}
-
 function OpenHouseSchedule({ events }: { events: OpenHouseEvent[] }) {
   if (events.length <= 1) return null;
   return (
@@ -1160,7 +1078,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
     );
   }
 
-  if (view === "rows") {
+  if (view === "large") {
     return (
       <article
         {...listingHoverHandlers(l.mlsId)}

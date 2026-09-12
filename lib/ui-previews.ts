@@ -46,7 +46,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
-      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Open house alerts sits right of Date / By day / Price. Show by sits on the glyph line.",
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Open house alerts sits right of Date / By day / Price. View glyphs match Intelligence: Large, Grid, Line.",
   },
   {
     slug: "open-houses-focus",
@@ -76,7 +76,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-next-oh",
     title: "Open houses — next OH + alerts",
     summary:
-      "Next-open mark (black on white) on grid (photo upper right), rows (panel upper right), and compact (right-aligned). Rows photo stretches to the row height. Listing alerts reuse Intelligence searches, or town + home type + price.",
+      "Next-open mark (black on white) on Grid (photo upper right), Large (panel upper right), and Line (right-aligned). Large photo stretches to the row height.",
   },
   {
     slug: "find-address-diverge",
