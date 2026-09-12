@@ -128,8 +128,9 @@ export default async function StreetsOwnersPage({
             Admin only. Largest first. A landlord is the same person on the
             current (non-superseded) warranty of two or more homes. A later
             warranty replaces the prior buyer; a later quitclaim does not.
-            An owner cluster is the same mailbox. Last paid sale sits on
-            the right; purchase total at the bottom of the panel.
+            An owner cluster is the same mailbox. Last paid close date
+            then price sit on the right; purchase total at the bottom of
+            the panel.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}

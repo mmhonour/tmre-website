@@ -113,9 +113,10 @@ export default function OwnerPortfoliosPreviewPage() {
           warranty name on two or more homes is a landlord (Denise
           Penna). A later warranty replaces the prior buyer; a later
           quitclaim does not. Same mailbox is an owner cluster. Last
-          paid sale sits on the right; purchase total at the bottom of
-          the panel. Production (admin): /streets/owners or Find →
-          Landlord / owners.
+          paid close date sits to the left of the price on the right
+          side of each row; purchase total at the bottom of the panel.
+          Production (admin): /streets/owners or Find → Landlord /
+          owners.
         </p>
         <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Find · Westport · Landlord / owners
