@@ -24,15 +24,15 @@ export function OwnerPortfolioHomes({
               {parcel.siteAddress}
             </Link>
             {parcel.lastPaidPriceLabel ? (
-              <p className="shrink-0 text-right">
-                <span className="block font-mono text-sm tabular-nums text-charcoal/90">
-                  {parcel.lastPaidPriceLabel}
-                </span>
+              <p className="flex shrink-0 items-baseline justify-end gap-3 text-right">
                 {parcel.lastPaidSaleDate ? (
-                  <span className="mt-0.5 block font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
+                  <span className="font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
                     {parcel.lastPaidSaleDate}
                   </span>
                 ) : null}
+                <span className="font-mono text-sm tabular-nums text-charcoal/90">
+                  {parcel.lastPaidPriceLabel}
+                </span>
               </p>
             ) : null}
           </li>
