@@ -772,6 +772,7 @@ export default function ListingHeroPanels({
 
   const headerShared = {
     ...header,
+    vision,
     privacyMode: header.privacyMode ?? false,
     hideMarketMeta: header.hideMarketMeta ?? isSpotlight,
     // Insight renders in the Property Details right panel, not above the photos.

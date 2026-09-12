@@ -49,3 +49,34 @@ export type ListingVisionLink = {
    */
   danglingPid: string | null
 }
+
+function findSearchHref(query: string): string {
+  return `/find?q=${encodeURIComponent(query)}`
+}
+
+/**
+ * Admin-only click target for a listing street: stamped / single-candidate
+ * parcel page, else Find search so you can see whether VGSI has a card.
+ */
+export function listingVisionAddressHref(
+  vision: ListingVisionLink | null | undefined,
+  addressQuery?: string | null,
+): string | null {
+  const query = addressQuery?.trim() ?? ''
+  const parcelHref = vision?.parcel?.parcelHref?.trim()
+  if (parcelHref) return parcelHref
+  const dangling = vision?.danglingPid?.trim()
+  if (dangling) {
+    return `/find/westport/${encodeURIComponent(dangling)}`
+  }
+  if (vision?.candidates.length === 1) {
+    const only = vision.candidates[0]
+    const candidateHref = only?.parcelHref?.trim()
+    if (candidateHref) return candidateHref
+    const pid = only?.visionPid?.trim()
+    if (pid && vision.town.trim().toLowerCase() === 'westport') {
+      return `/find/westport/${encodeURIComponent(pid)}`
+    }
+  }
+  return query ? findSearchHref(query) : null
+}

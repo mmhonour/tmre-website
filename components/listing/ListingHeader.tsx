@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
+import { ListingVisionAddressLink } from "@/components/listing/ListingVisionAddressLink";
 import ListingScoreBreakdownModal from "@/components/ListingScoreBreakdownModal";
 import ListingShareButton from "@/components/listing/ListingShareButton";
 import ListingPropertyFacts from "@/components/listing/ListingPropertyFacts";
@@ -9,6 +10,10 @@ import ListingValueScoreBadge from "@/components/listing/ListingValueScoreBadge"
 import { ListingInsightCopy } from "@/components/listing/ListingInsightCopy";
 import type { ScoreBreakdown } from "@/lib/goldilocks-score-info";
 import { formatListingHeaderPrice } from "@/lib/listing-header-price";
+import {
+  listingVisionAddressHref,
+  type ListingVisionLink,
+} from "@/lib/listing-vision-link-shared";
 import { abbreviateUsState } from "@/lib/us-states";
 
 type ListingHeaderProps = {
@@ -80,6 +85,8 @@ type ListingHeaderProps = {
     state?: string;
     postalCode?: string;
   } | null;
+  /** VGSI pairing — unlocked visitors can click the street to the Vision card. */
+  vision?: ListingVisionLink | null;
 };
 
 /**
@@ -119,11 +126,16 @@ export default function ListingHeader({
   shareHref = null,
   hideFactsOnMobile = false,
   adminAddress = null,
+  vision = null,
 }: ListingHeaderProps & { className?: string; compact?: boolean }) {
   const siteUnlocked = useSiteUnlocked();
   const [scoreOpen, setScoreOpen] = useState(false);
 
   const title = address.street || address.full;
+  const visionHref =
+    siteUnlocked && !privacyMode
+      ? listingVisionAddressHref(vision, title)
+      : null;
   const showScore = goldilocksScore != null && goldilocksScore > 0;
   const priceLabel =
     price != null && price > 0 ? formatListingHeaderPrice(price) : null;
@@ -162,7 +174,13 @@ export default function ListingHeader({
                 compact ? "text-2xl lg:text-3xl" : "text-3xl lg:text-4xl"
               }`}
             >
-              {title}
+              {visionHref ? (
+                <ListingVisionAddressLink href={visionHref}>
+                  {title}
+                </ListingVisionAddressLink>
+              ) : (
+                title
+              )}
             </h1>
             {locationText || showMls || shareHref ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">

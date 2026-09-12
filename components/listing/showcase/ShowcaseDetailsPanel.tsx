@@ -150,7 +150,7 @@ export default function ShowcaseDetailsPanel({
   photoCount: number;
   /** Built once by the host so the hero rail and this deck cannot drift. */
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
-  /** VGSI parcel pairing — Admin deck card only. */
+  /** VGSI parcel pairing — Admin deck card + unlocked address click. */
   vision?: ListingVisionLink | null;
   /** Sends the hero back to a chosen photo — keeps Photos on this page. */
   onSelectPhoto: (index: number) => void;
@@ -477,6 +477,7 @@ export default function ShowcaseDetailsPanel({
                   mlsId={listing.mlsId}
                   status={listing.status}
                   address={host.headerAddress}
+                  vision={vision}
                   propertyType={listing.propertyType}
                   style={listing.style}
                   beds={listing.beds}
