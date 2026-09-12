@@ -13,6 +13,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Admin-only: click the street to the VGSI / Find parcel page. Locked visitors see plain text.",
   },
   {
+    slug: "listing-admin-mobile",
+    title: "Listing Admin on mobile",
+    summary:
+      "Admin tab scrolls to the contacting-agent / Vision block under the map. No desktop deck on a phone.",
+  },
+  {
     slug: "listing-card-photo",
     title: "Listing card photos — mid vs full",
     summary:
