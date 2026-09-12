@@ -280,9 +280,30 @@ describe('pickUniqueOwnerPortfolios', () => {
       mailingLabel: 'PO BOX 88',
       parcelCount: 3,
       parcels: [
-        { town: 'Westport', visionPid: '1', siteAddress: '1 Main' },
-        { town: 'Westport', visionPid: '2', siteAddress: '2 Main' },
-        { town: 'Westport', visionPid: '3', siteAddress: '3 Main' },
+        {
+          town: 'Westport',
+          visionPid: '1',
+          siteAddress: '1 Main',
+          lastPaidPrice: 800_000,
+          lastPaidPriceLabel: '$800,000',
+          lastPaidSaleDate: '11/18/2020',
+        },
+        {
+          town: 'Westport',
+          visionPid: '2',
+          siteAddress: '2 Main',
+          lastPaidPrice: 1_200_000,
+          lastPaidPriceLabel: '$1,200,000',
+          lastPaidSaleDate: '06/01/2018',
+        },
+        {
+          town: 'Westport',
+          visionPid: '3',
+          siteAddress: '3 Main',
+          lastPaidPrice: 950_000,
+          lastPaidPriceLabel: '$950,000',
+          lastPaidSaleDate: '03/15/2015',
+        },
       ],
     }
     const name: VisionOwnerPortfolio = {
@@ -294,8 +315,22 @@ describe('pickUniqueOwnerPortfolios', () => {
       mailingLabel: null,
       parcelCount: 2,
       parcels: [
-        { town: 'Westport', visionPid: '1', siteAddress: '1 Main' },
-        { town: 'Westport', visionPid: '2', siteAddress: '2 Main' },
+        {
+          town: 'Westport',
+          visionPid: '1',
+          siteAddress: '1 Main',
+          lastPaidPrice: 800_000,
+          lastPaidPriceLabel: '$800,000',
+          lastPaidSaleDate: '11/18/2020',
+        },
+        {
+          town: 'Westport',
+          visionPid: '2',
+          siteAddress: '2 Main',
+          lastPaidPrice: 1_200_000,
+          lastPaidPriceLabel: '$1,200,000',
+          lastPaidSaleDate: '06/01/2018',
+        },
       ],
     }
     const picked = pickUniqueOwnerPortfolios([name, mailing])

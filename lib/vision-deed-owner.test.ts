@@ -9,6 +9,7 @@ import {
   visionDeedDisplayRows,
   visionLastPaidSale,
   visionOwnerLinesMirror,
+  visionPaidSaleFields,
 } from './vision-gis-parse'
 
 describe('completeDanglingDeedOwner', () => {
@@ -134,6 +135,34 @@ describe('visionLastPaidSale', () => {
     assert.equal(paid?.price, 1575000)
     assert.equal(formatVisionMoney(paid?.price), '$1,575,000')
     assert.equal(paid?.date, '09/28/2018')
+  })
+
+  it('formats the current warranty sale for the landlord list (38 Ferry / King)', () => {
+    const sale = visionPaidSaleFields({
+      lastSaleDate: '11/18/2020',
+      lastSalePrice: 800_000,
+      ownership: [
+        {
+          owner: 'KING AL W III',
+          date: '11/18/2020',
+          price: '800000',
+          bookPage: '4065/0297',
+          qualified: 'Q',
+          instrument: '00',
+        },
+        {
+          owner: 'GRIMALDI RICHARD',
+          date: '10/18/1993',
+          price: '165000',
+          bookPage: '1270/0069',
+          qualified: 'Q',
+          instrument: '—',
+        },
+      ],
+    })
+    assert.equal(sale.lastPaidPrice, 800_000)
+    assert.equal(sale.lastPaidPriceLabel, '$800,000')
+    assert.equal(sale.lastPaidSaleDate, '11/18/2020')
   })
 })
 

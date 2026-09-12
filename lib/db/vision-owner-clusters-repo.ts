@@ -13,7 +13,11 @@ import {
   type VisionOwnerKey,
   type VisionOwnerPortfolio,
 } from '@/lib/vision-owner-keys'
-import type { VisionFieldCardJson, VisionOwnershipRow } from '@/lib/vision-gis-parse'
+import {
+  visionPaidSaleFields,
+  type VisionFieldCardJson,
+  type VisionOwnershipRow,
+} from '@/lib/vision-gis-parse'
 
 let ownerClustersReady = false
 let ownerClustersPromise: Promise<void> | null = null
@@ -34,6 +38,8 @@ type AddressOwnerRow = {
   address_full: string | null
   street_no: string | null
   street_name: string | null
+  last_sale_date: string | null
+  last_sale_price: number | string | null
   field_card: VisionFieldCardJson | null
 }
 
@@ -41,6 +47,29 @@ function siteAddressFromRow(row: AddressOwnerRow): string {
   const full = row.address_full?.trim()
   if (full) return full
   return [row.street_no, row.street_name].filter(Boolean).join(' ').trim()
+}
+
+function lastPaidFromAddress(row: AddressOwnerRow | undefined): {
+  lastPaidPrice: number | null
+  lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
+} {
+  if (!row) {
+    return {
+      lastPaidPrice: null,
+      lastPaidPriceLabel: null,
+      lastPaidSaleDate: null,
+    }
+  }
+  const raw = row.last_sale_price
+  const lastSalePrice = raw == null || raw === '' ? null : Number(raw)
+  const paidPrice =
+    lastSalePrice != null && Number.isFinite(lastSalePrice) ? lastSalePrice : null
+  return visionPaidSaleFields({
+    lastSaleDate: row.last_sale_date,
+    lastSalePrice: paidPrice,
+    ownership: ownershipFromCard(row.field_card),
+  })
 }
 
 function ownershipFromCard(
@@ -113,7 +142,8 @@ async function loadAddressOwnerRow(
 ): Promise<AddressOwnerRow | null> {
   return queryOne<AddressOwnerRow>(
     `SELECT town, vision_pid, owner_name, owner_mailing_address,
-            address_full, street_no, street_name, field_card
+            address_full, street_no, street_name, last_sale_date,
+            last_sale_price, field_card
        FROM vision_addresses
       WHERE town = $1 AND vision_pid = $2`,
     [town, visionPid],
@@ -135,7 +165,8 @@ async function loadAddressOwnerRows(
     if (unique.length === 0) continue
     const rows = await query<AddressOwnerRow>(
       `SELECT town, vision_pid, owner_name, owner_mailing_address,
-              address_full, street_no, street_name, field_card
+              address_full, street_no, street_name, last_sale_date,
+              last_sale_price, field_card
          FROM vision_addresses
         WHERE town = $1 AND vision_pid = ANY($2::text[])`,
       [town, unique],
@@ -417,14 +448,13 @@ export async function listVisionOwnerPortfolios(opts: {
         [town, minParcels],
       )
 
-  const nameParcels: { town: string; visionPid: string }[] = []
+  const addressPairs: { town: string; visionPid: string }[] = []
   for (const row of rows) {
-    if (clusterKindFromId(row.cluster_id) !== 'name') continue
     for (const parcel of row.parcels ?? []) {
-      nameParcels.push({ town: parcel.town, visionPid: parcel.visionPid })
+      addressPairs.push({ town: parcel.town, visionPid: parcel.visionPid })
     }
   }
-  const cards = await loadAddressOwnerRows(nameParcels)
+  const cards = await loadAddressOwnerRows(addressPairs)
 
   const portfolios: VisionOwnerPortfolio[] = []
   for (const row of rows) {
@@ -440,6 +470,9 @@ export async function listVisionOwnerPortfolios(opts: {
       town: parcel.town,
       visionPid: parcel.visionPid,
       siteAddress: parcel.siteAddress?.trim() || parcel.visionPid,
+      ...lastPaidFromAddress(
+        cards.get(`${parcel.town}:${parcel.visionPid}`),
+      ),
     }))
     const parcels =
       kind === 'name'

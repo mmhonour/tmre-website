@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { westportParcelHref } from "@/lib/listing-url";
+import { OwnerPortfolioHomes } from "@/components/OwnerPortfolioHomes";
 import { pickUniqueOwnerPortfolios } from "@/lib/vision-owner-keys";
 
 export const metadata = {
@@ -17,9 +16,30 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
     mailingLabel: "po box 88, westport",
     parcelCount: 3,
     parcels: [
-      { town: "Westport", visionPid: "1565", siteAddress: "12 Main St" },
-      { town: "Westport", visionPid: "200", siteAddress: "40 Compo Rd" },
-      { town: "Westport", visionPid: "201", siteAddress: "8 Beachside Ave" },
+      {
+        town: "Westport",
+        visionPid: "1565",
+        siteAddress: "12 Main St",
+        lastPaidPrice: 2_150_000,
+        lastPaidPriceLabel: "$2,150,000",
+        lastPaidSaleDate: "04/12/2019",
+      },
+      {
+        town: "Westport",
+        visionPid: "200",
+        siteAddress: "40 Compo Rd",
+        lastPaidPrice: 1_875_000,
+        lastPaidPriceLabel: "$1,875,000",
+        lastPaidSaleDate: "09/03/2016",
+      },
+      {
+        town: "Westport",
+        visionPid: "201",
+        siteAddress: "8 Beachside Ave",
+        lastPaidPrice: 3_400_000,
+        lastPaidPriceLabel: "$3,400,000",
+        lastPaidSaleDate: "07/22/2021",
+      },
     ],
   },
   {
@@ -31,8 +51,22 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
     mailingLabel: null,
     parcelCount: 2,
     parcels: [
-      { town: "Westport", visionPid: "1565", siteAddress: "12 Main St" },
-      { town: "Westport", visionPid: "200", siteAddress: "40 Compo Rd" },
+      {
+        town: "Westport",
+        visionPid: "1565",
+        siteAddress: "12 Main St",
+        lastPaidPrice: 2_150_000,
+        lastPaidPriceLabel: "$2,150,000",
+        lastPaidSaleDate: "04/12/2019",
+      },
+      {
+        town: "Westport",
+        visionPid: "200",
+        siteAddress: "40 Compo Rd",
+        lastPaidPrice: 1_875_000,
+        lastPaidPriceLabel: "$1,875,000",
+        lastPaidSaleDate: "09/03/2016",
+      },
     ],
   },
   {
@@ -44,8 +78,22 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
     mailingLabel: null,
     parcelCount: 2,
     parcels: [
-      { town: "Westport", visionPid: "4100", siteAddress: "12 Compo Rd S" },
-      { town: "Westport", visionPid: "4101", siteAddress: "88 Hillspoint Rd" },
+      {
+        town: "Westport",
+        visionPid: "4100",
+        siteAddress: "12 Compo Rd S",
+        lastPaidPrice: 850_000,
+        lastPaidPriceLabel: "$850,000",
+        lastPaidSaleDate: "03/15/2012",
+      },
+      {
+        town: "Westport",
+        visionPid: "4101",
+        siteAddress: "88 Hillspoint Rd",
+        lastPaidPrice: 1_200_000,
+        lastPaidPriceLabel: "$1,200,000",
+        lastPaidSaleDate: "08/01/2018",
+      },
     ],
   },
 ]);
@@ -64,9 +112,9 @@ export default function OwnerPortfoliosPreviewPage() {
           Fixture list — largest first. The current (non-superseded)
           warranty name on two or more homes is a landlord (Denise
           Penna). A later warranty replaces the prior buyer; a later
-          quitclaim does not. Same mailbox is an owner cluster.
-          Production (admin): /streets/owners or Find → Landlord /
-          owners.
+          quitclaim does not. Same mailbox is an owner cluster. Last
+          paid sale sits on the right. Production (admin):
+          /streets/owners or Find → Landlord / owners.
         </p>
         <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Find · Westport · Landlord / owners
@@ -89,18 +137,7 @@ export default function OwnerPortfoliosPreviewPage() {
                     : " · same mailing"}
                 </p>
               </div>
-              <ul className="mt-3 space-y-1">
-                {row.parcels.map((parcel) => (
-                  <li key={parcel.visionPid}>
-                    <Link
-                      href={westportParcelHref(parcel.visionPid)}
-                      className="font-mono text-sm text-navy hover:underline"
-                    >
-                      {parcel.siteAddress}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <OwnerPortfolioHomes parcels={row.parcels} />
             </li>
           ))}
         </ol>
@@ -122,11 +159,17 @@ export default function OwnerPortfoliosPreviewPage() {
                   town: "Westport",
                   visionPid: "5384",
                   siteAddress: "2A STONY PT RD",
+                  lastPaidPrice: 1_530_000,
+                  lastPaidPriceLabel: "$1,530,000",
+                  lastPaidSaleDate: "11/03/2014",
                 },
                 {
                   town: "Westport",
                   visionPid: "5385",
                   siteAddress: "2B STONY PT RD",
+                  lastPaidPrice: 1_275_000,
+                  lastPaidPriceLabel: "$1,275,000",
+                  lastPaidSaleDate: "05/20/2015",
                 },
               ],
             },
@@ -141,18 +184,7 @@ export default function OwnerPortfoliosPreviewPage() {
                   {row.parcelCount} homes on this street
                 </p>
               </div>
-              <ul className="mt-3 space-y-1">
-                {row.parcels.map((parcel) => (
-                  <li key={parcel.visionPid}>
-                    <Link
-                      href={westportParcelHref(parcel.visionPid)}
-                      className="font-mono text-sm text-navy hover:underline"
-                    >
-                      {parcel.siteAddress}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <OwnerPortfolioHomes parcels={row.parcels} />
             </li>
           ))}
         </ol>

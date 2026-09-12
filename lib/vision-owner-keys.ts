@@ -210,6 +210,9 @@ export type VisionOwnerPortfolioParcel = {
   town: string
   visionPid: string
   siteAddress: string
+  lastPaidPrice: number | null
+  lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
 }
 
 export type VisionOwnerPortfolio = {

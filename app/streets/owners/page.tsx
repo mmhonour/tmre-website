@@ -7,7 +7,7 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
-import { westportParcelHref } from '@/lib/listing-url'
+import { OwnerPortfolioHomes } from '@/components/OwnerPortfolioHomes'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import type { VisionOwnerPortfolio } from '@/lib/vision-owner-keys'
 import {
@@ -128,7 +128,8 @@ export default async function StreetsOwnersPage({
             Admin only. Largest first. A landlord is the same person on the
             current (non-superseded) warranty of two or more homes. A later
             warranty replaces the prior buyer; a later quitclaim does not.
-            An owner cluster is the same mailbox.
+            An owner cluster is the same mailbox. Last paid sale sits on
+            the right.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}
@@ -178,18 +179,7 @@ export default async function StreetsOwnersPage({
                       {row.mailingLabel}
                     </p>
                   ) : null}
-                  <ul className="mt-3 space-y-1">
-                    {row.parcels.map((parcel) => (
-                      <li key={`${parcel.town}:${parcel.visionPid}`}>
-                        <Link
-                          href={westportParcelHref(parcel.visionPid)}
-                          className="font-mono text-sm text-navy hover:underline"
-                        >
-                          {parcel.siteAddress}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
+                  <OwnerPortfolioHomes parcels={row.parcels} />
                 </li>
               ))}
             </ol>

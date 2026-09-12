@@ -297,6 +297,28 @@ export function visionPurchaseDate(opts: {
   return visionLastPaidSale(opts)?.date ?? null
 }
 
+/** Last paid sale fields for landlord / street lists (not a $0 quitclaim). */
+export function visionPaidSaleFields(opts: {
+  lastSaleDate?: string | null
+  lastSalePrice?: number | null
+  ownership?: readonly VisionOwnershipRow[] | null
+}): {
+  lastPaidPrice: number | null
+  lastPaidPriceLabel: string | null
+  lastPaidSaleDate: string | null
+} {
+  const paid = visionLastPaidSale({
+    lastSaleDate: opts.lastSaleDate,
+    lastSalePrice: opts.lastSalePrice,
+    ownership: opts.ownership ?? undefined,
+  })
+  return {
+    lastPaidPrice: paid?.price ?? null,
+    lastPaidPriceLabel: formatVisionMoney(paid?.price ?? null),
+    lastPaidSaleDate: paid?.date ?? null,
+  }
+}
+
 /** Year from {@link visionPurchaseDate}, when a paid purchase exists. */
 export function visionPurchaseYear(opts: {
   lastSaleDate?: string | null
