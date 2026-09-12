@@ -96,6 +96,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Letter index hashes clear the fixed site header so the letter heading stays visible — not one or two streets too low.",
   },
+  {
+    slug: "list-with-me",
+    title: "List With Me",
+    summary:
+      "Seller intake writes to Neon contacts, not data/contacts.json. Address autocomplete still uses the property directory.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {

@@ -67,7 +67,9 @@ const TABLE_PURPOSE: Record<(typeof POSTGRES_KNOWN_TABLES)[number], string> = {
   people:
     'CRM people records (contacts distinct from site_users).',
   leads:
-    'Inbound lead records from public forms.',
+    'Inbound lead records from public forms (home CTA / Monday brief).',
+  contacts:
+    'Contact and List With Me inquiries (replaces data/contacts.json).',
   site_users:
     'Signed-in site accounts (magic-link users).',
   site_user_magic_links:
