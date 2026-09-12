@@ -25,6 +25,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Admin landlord / owner aggregation: same name on warranty or quitclaim history, or the same mailbox. Find (admin) links here.",
   },
   {
+    slug: "open-houses-one-per-town",
+    title: "Open houses — one listing per town",
+    summary:
+      "Test cap: one fixture home in each town so /open-houses can load. Towns start collapsed.",
+  },
+  {
     slug: "open-houses-town-day",
     title: "Open houses by town and day",
     summary:
