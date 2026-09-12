@@ -423,7 +423,7 @@ export default function OpenHousesClient({
     if (!el || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
-      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
+      { rootMargin: "-96px 0px 0px 0px", threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
