@@ -1094,6 +1094,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Gallery / full-view photo proxy flag. Serves full MediaURL from the MLS CDN (not RETS Thumbnail objects) and refuses undersized thumb cache hits.',
   },
   {
+    term: '?size=mid',
+    category: 'photos-cdn',
+    definition:
+      'Default card / list-thumb photo proxy flag. Serves MLS MediaMidsizeURL and stores it under a separate __card cache id so it never overwrites gallery full. A 3MB MediaURL smash-down into a Grid/Large box is what stripes roofs and siding.',
+  },
+  {
     term: 'listing-photos.db',
     category: 'photos-cdn',
     definition:

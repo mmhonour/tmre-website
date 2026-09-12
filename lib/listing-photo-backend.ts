@@ -18,6 +18,7 @@ import {
   readListingPhotoBlob as sqliteReadBlob,
   upsertListingPhotoBlob as sqliteUpsertBlob,
 } from '@/lib/listing-photos-db'
+import { listingPhotoCardCacheId } from '@/lib/listing-photo-quality'
 import {
   deleteR2ListingPhotos,
   getR2ListingPhoto,
@@ -152,10 +153,13 @@ export async function countFreshListingPhotosAsync(
 }
 
 export async function deleteListingPhotosAsync(cacheId: string): Promise<void> {
-  if (photoBackendUsesR2()) {
-    await deleteR2ListingPhotos(cacheId)
-    await deleteListingPhotoIndexRows(cacheId)
-    return
+  const ids = [...new Set([cacheId, listingPhotoCardCacheId(cacheId)].filter(Boolean))]
+  for (const id of ids) {
+    if (photoBackendUsesR2()) {
+      await deleteR2ListingPhotos(id)
+      await deleteListingPhotoIndexRows(id)
+    } else {
+      sqliteDelete(id)
+    }
   }
-  sqliteDelete(cacheId)
 }

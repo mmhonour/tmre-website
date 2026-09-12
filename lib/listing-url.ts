@@ -141,20 +141,23 @@ export function listingSectionHref(
   return qs ? `${path}?${qs}` : path;
 }
 
+/** Card / list thumbs default to MLS mid-size. Pass `{ size: "full" }` for gallery. */
 export function listingPhotoProxyUrl(
   mlsId: string,
   index: number,
-  opts?: { size?: "full" },
+  opts?: { size?: "full" | "mid" },
 ): string {
   const base = `/api/listings/${encodeURIComponent(mlsId)}/photos/${index}`;
   if (opts?.size === "full") return `${base}?size=full`;
-  return base;
+  return `${base}?size=mid`;
 }
 
 /** Ensure a photo-proxy URL requests full CDN MediaURL quality (gallery / full-view). */
 export function listingPhotoProxyUrlAsFull(url: string): string {
   if (!url.includes("/photos/")) return url;
   if (/(?:^|[?&])size=full(?:&|$)/.test(url)) return url;
+  const replaced = url.replace(/([?&])size=[^&]*/g, "$1size=full");
+  if (replaced !== url) return replaced;
   return url.includes("?") ? `${url}&size=full` : `${url}?size=full`;
 }
 
@@ -184,7 +187,7 @@ export function listingPhotoProxyUrlsFromCount(
   mlsId: string,
   count: number,
   cap = 60,
-  opts?: { size?: "full" },
+  opts?: { size?: "full" | "mid" },
 ): string[] {
   const id = mlsId.trim();
   const n = Math.min(Math.max(0, Math.floor(count)), cap);

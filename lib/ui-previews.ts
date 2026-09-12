@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "listing-card-photo",
+    title: "Listing card photos — mid vs full",
+    summary:
+      "Grid / Large / Line boxes for MLS 24201214. Left is MediaMidsizeURL (?size=mid), right is the old full smash-down.",
+  },
+  {
     slug: "stats-town-deck",
     title: "Stats town snapshot deck",
     summary:
