@@ -246,8 +246,8 @@ function OhStickyFilters({
         />
       ) : null}
 
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="grid min-h-8 grid-cols-1 items-center gap-2 min-[860px]:grid-cols-[1fr_auto_1fr]">
+        <div className="flex flex-wrap items-center justify-start gap-2">
           <button
             type="button"
             onClick={() => setSortMode("date")}
@@ -284,27 +284,28 @@ function OhStickyFilters({
             ) : null}
           </button>
         </div>
-        <LatestSearchAlertForm
-          variant="open-houses"
-          fallbackCriteria={alertFallback}
-          triggerId="open-house-alerts"
-          panelAlign="end"
-        />
-      </div>
-
-      <div className="flex min-h-8 flex-wrap items-center justify-end gap-1.5">
-        <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
-        <DealBoardViewPicker view={viewMode} onChange={setViewMode} />
-        {showTownChrome ? (
-          <TownFoldGlyphs
-            allTownsCollapsed={allTownsCollapsed}
-            allTownsExpanded={allTownsExpanded}
-            onCloseAllTowns={onCloseAllTowns}
-            onExpandAllTowns={onExpandAllTowns}
-            customOrder={customOrder}
-            onResetOrder={onResetOrder}
+        <div className="justify-self-center">
+          <LatestSearchAlertForm
+            variant="open-houses"
+            fallbackCriteria={alertFallback}
+            triggerId="open-house-alerts"
+            panelAlign="center"
           />
-        ) : null}
+        </div>
+        <div className="flex flex-wrap items-center justify-start gap-1.5 min-[860px]:justify-end">
+          <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
+          <DealBoardViewPicker view={viewMode} onChange={setViewMode} />
+          {showTownChrome ? (
+            <TownFoldGlyphs
+              allTownsCollapsed={allTownsCollapsed}
+              allTownsExpanded={allTownsExpanded}
+              onCloseAllTowns={onCloseAllTowns}
+              onExpandAllTowns={onExpandAllTowns}
+              customOrder={customOrder}
+              onResetOrder={onResetOrder}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

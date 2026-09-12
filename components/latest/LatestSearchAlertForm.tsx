@@ -54,8 +54,8 @@ export default function LatestSearchAlertForm({
   triggerId?: string;
   /** Open Houses page: OH alerts first, optional listing alerts. */
   variant?: SearchAlertVariant;
-  /** Right-aligned triggers open the desktop panel toward the left. */
-  panelAlign?: "start" | "end";
+  /** Centered / right-aligned triggers keep the desktop panel on screen. */
+  panelAlign?: "start" | "center" | "end";
 } = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -283,7 +283,11 @@ export default function LatestSearchAlertForm({
           role="dialog"
           aria-label={dialogLabel}
           className={`absolute top-full z-30 mt-2 w-[min(22rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_32px_rgba(28,42,58,0.18)] ${
-            panelAlign === "end" ? "right-0" : "left-0"
+            panelAlign === "end"
+              ? "right-0"
+              : panelAlign === "center"
+                ? "left-1/2 -translate-x-1/2"
+                : "left-0"
           }`}
         >
           <div className="space-y-3 px-3.5 py-3">

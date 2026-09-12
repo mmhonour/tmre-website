@@ -52,7 +52,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
-      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Open house alerts sits right of Date / By day / Price. View glyphs match Intelligence: Large, Grid, Line.",
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. One row: Date / By day / Price left, Open house alerts centered, Intelligence Large / Grid / Line right.",
   },
   {
     slug: "open-houses-focus",

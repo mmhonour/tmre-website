@@ -101,8 +101,8 @@ export function OpenHousesFilterBarPreview() {
           Sale / rental and towns live in the hero.
         </h2>
         <p className="mt-3 max-w-lg text-sm text-white/70">
-          Scroll down — they dock into the cream bar. Show by sits on the
-          same line as the view glyphs.
+          Scroll down — they dock into the cream bar. Date / By day / Price
+          left, Open house alerts centered, view glyphs right.
         </p>
         <div className="mt-5">
           <PlaceRow
@@ -127,24 +127,24 @@ export function OpenHousesFilterBarPreview() {
               setTown={setTown}
             />
           ) : null}
-          <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="grid min-h-8 grid-cols-1 items-center gap-2 min-[860px]:grid-cols-[1fr_auto_1fr]">
+            <div className="flex flex-wrap items-center justify-start gap-2">
               <span className={creamChipClass(true)}>Date</span>
               <span className={creamChipClass(false)}>By day</span>
               <span className={creamChipClass(false)}>Price</span>
             </div>
-            <LatestSearchAlertForm
-              variant="open-houses"
-              fallbackCriteria={fallbackCriteriaFromPage({
-                town: town === "All" ? null : town,
-                tx,
-              })}
-              triggerId="preview-open-house-alerts"
-              panelAlign="end"
-            />
-          </div>
-          <div className="flex min-h-8 flex-wrap items-center justify-end gap-1.5">
-            <div className="flex items-center gap-1.5">
+            <div className="justify-self-center">
+              <LatestSearchAlertForm
+                variant="open-houses"
+                fallbackCriteria={fallbackCriteriaFromPage({
+                  town: town === "All" ? null : town,
+                  tx,
+                })}
+                triggerId="preview-open-house-alerts"
+                panelAlign="center"
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-start gap-1.5 min-[860px]:justify-end">
               <OpenHouseShowBySelect
                 id="preview-oh-show-by-bar"
                 value={showBy}
