@@ -8,13 +8,17 @@ import {
   formatOpenHouseWhenShort,
   markOpenHouseUpcoming,
   openHouseHorizonWindow,
+  openHouseInventoryLabel,
   openHouseLookbackWindow,
+  openHouseRemainingWeekLabel,
   openHouseRemainingWeekWindow,
   openHousesPageCacheMatchesWindow,
   openHouseWeekWindow,
   pickNextOpenHouse,
+  projectOpenHousesPageToDisplayWindow,
   splitDateWindow,
   type OpenHouseEvent,
+  type OpenHousesPageData,
 } from './open-houses'
 
 describe('splitDateWindow', () => {
@@ -41,7 +45,7 @@ describe('lookback / horizon windows', () => {
     assert.equal(lookback.end, addCalendarDays(today, -1))
     assert.equal(horizon.start, today)
     assert.ok(lookback.start < lookback.end)
-    assert.ok(horizon.end > horizon.start)
+    assert.equal(horizon.end, addCalendarDays(today, 6))
   })
 })
 
@@ -101,6 +105,86 @@ describe('openHouseRemainingWeekWindow', () => {
       openHouseRemainingWeekWindow(new Date('2026-09-14T12:00:00Z')),
       { start: '2026-09-14', end: '2026-09-20' },
     )
+  })
+
+  it('resets Sunday at midnight ET to Sunday through Saturday', () => {
+    const sundayMidnightEt = new Date('2026-09-13T04:00:00Z')
+    assert.deepEqual(openHouseRemainingWeekWindow(sundayMidnightEt), {
+      start: '2026-09-13',
+      end: '2026-09-19',
+    })
+    assert.equal(
+      openHouseRemainingWeekLabel(openHouseRemainingWeekWindow(sundayMidnightEt)),
+      'Sunday through Saturday · 2026-09-13 through 2026-09-19 (ET)',
+    )
+  })
+})
+
+describe('projectOpenHousesPageToDisplayWindow', () => {
+  it('drops inventory days that sit after this week’s Sunday', () => {
+    const sat: OpenHouseEvent = {
+      id: 'sat',
+      listingKey: 'k',
+      listingId: '1',
+      date: '2026-09-12',
+      startDateTime: '2026-09-12T11:00:00',
+      endDateTime: '2026-09-12T13:00:00',
+      type: 'Public',
+      comment: null,
+    }
+    const nextMon: OpenHouseEvent = {
+      ...sat,
+      id: 'mon',
+      date: '2026-09-14',
+      startDateTime: '2026-09-14T11:00:00',
+      endDateTime: '2026-09-14T13:00:00',
+    }
+    const inventory: OpenHousesPageData = {
+      listings: [
+        {
+          mlsId: '1',
+          propertyType: 'SF',
+          style: '',
+          address: {
+            street: '1 Main',
+            unit: '',
+            city: 'Westport',
+            state: 'CT',
+            postalCode: '06880',
+            full: '1 Main',
+          },
+          price: 1,
+          beds: 3,
+          baths: 2,
+          sqft: 1000,
+          yearBuilt: 1990,
+          dom: 1,
+          photoCount: 1,
+          status: 'ACT',
+          ownerName: null,
+          openHouses: [sat, nextMon],
+          nextOpenHouse: sat,
+          pastCount: 0,
+          upcomingCount: 2,
+          weekOpenHouseCount: 2,
+        },
+      ],
+      generatedAt: '2026-09-10T16:00:00.000Z',
+      source: 'db',
+      syncedAt: null,
+      window: { start: '2026-09-10', end: '2026-09-16' },
+      windowLabel: openHouseInventoryLabel({ start: '2026-09-10', end: '2026-09-16' }),
+      eventsFound: 2,
+      listingsMatched: 1,
+    }
+    const page = projectOpenHousesPageToDisplayWindow(inventory, {
+      start: '2026-09-10',
+      end: '2026-09-13',
+    })
+    assert.deepEqual(page.window, { start: '2026-09-10', end: '2026-09-13' })
+    assert.equal(page.listings[0]?.openHouses.length, 1)
+    assert.equal(page.listings[0]?.openHouses[0]?.date, '2026-09-12')
+    assert.equal(page.eventsFound, 1)
   })
 })
 

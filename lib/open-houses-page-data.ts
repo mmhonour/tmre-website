@@ -15,10 +15,12 @@ import {
 import {
   etCalendarDate,
   OPEN_HOUSES_PAGE_CACHE_KEY,
-  openHouseRemainingWeekLabel,
+  openHouseHorizonWindow,
+  openHouseInventoryLabel,
   openHouseRemainingWeekWindow,
   openHousesPageCacheMatchesWindow,
   pickNextOpenHouse,
+  projectOpenHousesPageToDisplayWindow,
   type OpenHouseEvent,
   type OpenHouseListing,
   type OpenHousesPageData,
@@ -136,10 +138,17 @@ async function writeCachedOpenHousesPage(data: OpenHousesPageData): Promise<void
  */
 export async function peekOpenHousesPageCache(): Promise<OpenHousesPageLoad | null> {
   try {
-    const window = openHouseRemainingWeekWindow()
-    const cached = await readCachedOpenHousesPage(window)
+    const inventory = openHouseHorizonWindow()
+    const display = openHouseRemainingWeekWindow()
+    const cached = await readCachedOpenHousesPage(inventory)
     if (!cached) return null
-    return { ok: true, data: { ...cached, source: 'db' } }
+    return {
+      ok: true,
+      data: projectOpenHousesPageToDisplayWindow(
+        { ...cached, source: 'db' },
+        display,
+      ),
+    }
   } catch (err) {
     console.warn('[open-houses] page cache peek failed', err)
     return null
@@ -147,17 +156,25 @@ export async function peekOpenHousesPageCache(): Promise<OpenHousesPageLoad | nu
 }
 
 /**
- * Remaining-week open houses for the page and `/api/listings/open-houses`.
- * Prefer the precomputed week payload; assemble from Neon only on a miss.
+ * t+6 inventory for the page and `/api/listings/open-houses`.
+ * Prefer the precomputed cache row; assemble from Neon only on a miss.
+ * Callers receive the page display window (Sunday reset / remaining week).
  */
 export async function loadOpenHousesPageData(
   options: { forceRefresh?: boolean } = {},
 ): Promise<OpenHousesPageLoad> {
-  const window = openHouseRemainingWeekWindow()
+  const inventory = openHouseHorizonWindow()
+  const display = openHouseRemainingWeekWindow()
   if (!options.forceRefresh) {
-    const cached = await readCachedOpenHousesPage(window)
+    const cached = await readCachedOpenHousesPage(inventory)
     if (cached) {
-      return { ok: true, data: { ...cached, source: 'db' } }
+      return {
+        ok: true,
+        data: projectOpenHousesPageToDisplayWindow(
+          { ...cached, source: 'db' },
+          display,
+        ),
+      }
     }
   }
 
@@ -166,10 +183,13 @@ export async function loadOpenHousesPageData(
       return {
         ok: false,
         error: 'open_houses table is not ready',
-        window,
+        window: display,
       }
     }
-    const rows = await readOpenHousesJoinedToActiveListings(window.start, window.end)
+    const rows = await readOpenHousesJoinedToActiveListings(
+      inventory.start,
+      inventory.end,
+    )
 
     const byMls = new Map<
       string,
@@ -266,26 +286,29 @@ export async function loadOpenHousesPageData(
       generatedAt: new Date().toISOString(),
       source: 'db',
       syncedAt,
-      window,
-      windowLabel: openHouseRemainingWeekLabel(window),
+      window: inventory,
+      windowLabel: openHouseInventoryLabel(inventory),
       eventsFound: rows.length,
       listingsMatched: listings.length,
     }
     await writeCachedOpenHousesPage(data).catch((err) => {
       console.warn('[open-houses] week cache write failed', err)
     })
-    return { ok: true, data }
+    return {
+      ok: true,
+      data: projectOpenHousesPageToDisplayWindow(data, display),
+    }
   } catch (err) {
     console.error('[open-houses] load error', err)
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
-      window,
+      window: display,
     }
   }
 }
 
-/** Rebuild the remaining-week payload after an upcoming OH write. */
+/** Rebuild the t+6 inventory payload after an upcoming OH write. */
 export async function refreshOpenHousesPageCache(): Promise<void> {
   const result = await loadOpenHousesPageData({ forceRefresh: true })
   if (!result.ok) {

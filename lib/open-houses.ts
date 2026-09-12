@@ -40,7 +40,7 @@ export type OpenHouseListing = {
   pastCount: number
   /** Public events on file with OHDate today or later (ET), not only this week. */
   upcomingCount: number
-  /** Remaining public OH events today through Sunday this week (ET). */
+  /** Remaining public OH events in the page display window (ET). */
   weekOpenHouseCount: number
 }
 
@@ -75,13 +75,18 @@ export function addCalendarDays(isoDate: string, days: number): string {
 
 /** How far back a sync asks RETS for events the MLS still holds. */
 export const OPEN_HOUSE_LOOKBACK_DAYS = 365
-/** How far ahead a sync stores scheduled events for the upcoming count. */
-export const OPEN_HOUSE_LOOKAHEAD_DAYS = 90
+/** Inclusive offset: today through today+6 is seven calendar days (t+6). */
+export const OPEN_HOUSE_LOOKAHEAD_DAYS = 6
 
-/** Today through +6 days in ET — 7 calendar days inclusive. */
+function weekdaySunday0(isoDate: string): number {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+}
+
+/** Today through today+6 in ET — seven calendar days of inventory. */
 export function openHouseDateWindow(from = new Date()): { start: string; end: string } {
   const start = etCalendarDate(from)
-  return { start, end: addCalendarDays(start, 6) }
+  return { start, end: addCalendarDays(start, OPEN_HOUSE_LOOKAHEAD_DAYS) }
 }
 
 /** Monday of the calendar week that contains `isoDate` (YYYY-MM-DD). */
@@ -99,15 +104,20 @@ export function openHouseWeekWindow(from = new Date()): { start: string; end: st
 }
 
 /**
- * The page is forward-looking: today through Sunday of this ET week.
- * Homes whose last open house was yesterday or earlier are out of scope.
+ * What /open-houses lists. ET midnight (12:00 AM America/New_York):
+ * Sunday → Sunday through Saturday (the 7-day reset)
+ * Monday → Monday through Sunday
+ * Tuesday–Saturday → remaining days through Sunday
  */
 export function openHouseRemainingWeekWindow(from = new Date()): {
   start: string
   end: string
 } {
-  const week = openHouseWeekWindow(from)
   const today = etCalendarDate(from)
+  if (weekdaySunday0(today) === 0) {
+    return openHouseDateWindow(from)
+  }
+  const week = openHouseWeekWindow(from)
   return { start: today > week.start ? today : week.start, end: week.end }
 }
 
@@ -115,7 +125,46 @@ export function openHouseRemainingWeekLabel(window: {
   start: string
   end: string
 }): string {
+  if (weekdaySunday0(window.start) === 0) {
+    return `Sunday through Saturday · ${window.start} through ${window.end} (ET)`
+  }
   return `Today through Sunday · ${window.start} through ${window.end} (ET)`
+}
+
+export function openHouseInventoryLabel(window: {
+  start: string
+  end: string
+}): string {
+  return `Today through +6 days · ${window.start} through ${window.end} (ET)`
+}
+
+/** Keep homes that still have a public OH in the page display window. */
+export function projectOpenHousesPageToDisplayWindow(
+  data: OpenHousesPageData,
+  display: { start: string; end: string },
+): OpenHousesPageData {
+  const listings: OpenHouseListing[] = []
+  for (const listing of data.listings) {
+    const openHouses = listing.openHouses.filter((event) =>
+      isDateInOpenHouseWindow(event.date, display),
+    )
+    const next = pickNextOpenHouse(openHouses, display.start)
+    if (!next) continue
+    listings.push({
+      ...listing,
+      openHouses,
+      nextOpenHouse: next,
+      weekOpenHouseCount: openHouses.length,
+    })
+  }
+  return {
+    ...data,
+    listings,
+    window: display,
+    windowLabel: openHouseRemainingWeekLabel(display),
+    eventsFound: listings.reduce((n, listing) => n + listing.openHouses.length, 0),
+    listingsMatched: listings.length,
+  }
 }
 
 /** First event on or after today. Nothing if the series already ended. */
@@ -156,10 +205,9 @@ export function openHouseLookbackWindow(from = new Date()): { start: string; end
   }
 }
 
-/** Today through the lookahead horizon. */
+/** Today through the t+6 inventory horizon — same window the hourly job pulls. */
 export function openHouseHorizonWindow(from = new Date()): { start: string; end: string } {
-  const start = etCalendarDate(from)
-  return { start, end: addCalendarDays(start, OPEN_HOUSE_LOOKAHEAD_DAYS) }
+  return openHouseDateWindow(from)
 }
 
 /** Split an inclusive date window into chunks so a RETS range stays small. */

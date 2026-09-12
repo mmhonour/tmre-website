@@ -204,6 +204,12 @@ export async function pruneOpenHousesBefore(isoDay: string): Promise<number> {
   return execute(`DELETE FROM open_houses WHERE oh_date < $1::date`, [isoDay])
 }
 
+/** Drop dates after the t+6 inventory horizon (a prior 90-day pull). */
+export async function pruneOpenHousesAfter(isoDay: string): Promise<number> {
+  await ensureOpenHousesTable()
+  return execute(`DELETE FROM open_houses WHERE oh_date > $1::date`, [isoDay])
+}
+
 export type OpenHouseListingCounts = {
   past: number
   upcoming: number

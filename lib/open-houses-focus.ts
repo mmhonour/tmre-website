@@ -136,5 +136,5 @@ export function openHouseFocusEmptyCopy(opts: {
   if (opts.focus.first) {
     return `No first-time open houses this week${place} — every home here already has a prior showing in our history.`
   }
-  return `No public open houses scheduled today through Sunday${place}.`
+  return `No public open houses scheduled this week${place}.`
 }

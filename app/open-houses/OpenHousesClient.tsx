@@ -586,10 +586,10 @@ export default function OpenHousesClient({
             <span className="italic gold-shimmer">this week.</span>
           </h1>
           <p className="mt-3 text-sm lg:text-base text-white/70 max-w-xl leading-relaxed animate-fade-up-delay-1">
-            Public open houses across {formatTownList(TOWN_NAMES)} from today
-            through Sunday. Town counts are unique homes still hosting. Past
-            counts document earlier showings on those same homes — we do not
-            list a series that already ended.
+            Public open houses across {formatTownList(TOWN_NAMES)} this week.
+            Town counts are unique homes still hosting. Past counts document
+            earlier showings on those same homes — we do not list a series
+            that already ended.
           </p>
 
           <OhPlaceFilters

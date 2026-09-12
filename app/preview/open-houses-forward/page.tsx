@@ -16,10 +16,12 @@ export default function OpenHousesForwardPreviewPage() {
           Remaining week + load error
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          The page lists homes with an open house today or later this week.
-          Past counts document earlier showings on those homes. A series that
-          ended yesterday is out. A failed load is not an empty week —
-          Try again retries the week list. Production: /open-houses.
+          Sunday 12:00 AM ET resets the page to Sunday–Saturday. Monday is
+          Monday–Sunday; the rest of the week is today through Sunday. The
+          hourly job still inventories today through today+6 for Admin and
+          the page cache. A series that ended yesterday is out. A failed
+          load is not an empty week — Try again retries. Production:
+          /open-houses.
         </p>
         <OpenHousesForwardPreview />
       </div>
