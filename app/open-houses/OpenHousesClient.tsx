@@ -312,8 +312,12 @@ function OhStickyFilters({
 
 export default function OpenHousesClient({
   initial,
+  defaultOpenTowns,
+  previewBanner,
 }: {
   initial?: OpenHousesPageLoad | null;
+  defaultOpenTowns?: readonly string[];
+  previewBanner?: string;
 } = {}) {
   const [allListings, setAllListings] = useState<OpenHouseListing[]>(
     () => (initial?.ok ? initial.data.listings : []),
@@ -368,7 +372,9 @@ export default function OpenHousesClient({
   const focus = useMemo(() => showByToFocus(showBy), [showBy]);
   const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
     useOpenHouseTownOrder(TOWN_NAMES);
-  const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
+  const [openTowns, setOpenTowns] = useState<Set<string>>(
+    () => new Set(defaultOpenTowns ?? []),
+  );
   const [dragTown, setDragTown] = useState<string | null>(null);
   const [dragOverTown, setDragOverTown] = useState<string | null>(null);
   const [placeFiltersDocked, setPlaceFiltersDocked] = useState(false);
@@ -522,6 +528,11 @@ export default function OpenHousesClient({
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
+          {previewBanner ? (
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-gold/80">
+              {previewBanner}
+            </p>
+          ) : null}
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Open Houses
           </p>

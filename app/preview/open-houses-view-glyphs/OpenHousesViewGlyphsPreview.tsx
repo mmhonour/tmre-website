@@ -1,13 +1,7 @@
-"use client";
+import type { OpenHouseEvent, OpenHouseListing, OpenHousesPageLoad } from "@/lib/open-houses";
 
-import { useState } from "react";
-import { ListingCollection } from "@/app/open-houses/OpenHousesClient";
-import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
-import {
-  DEAL_BOARD_VIEW_LABELS,
-  type DealBoardCardView,
-} from "@/lib/deal-board-view";
-import type { OpenHouseEvent, OpenHouseListing } from "@/lib/open-houses";
+const TODAY = "2026-09-12";
+const SUNDAY = "2026-09-13";
 
 function event(
   street: string,
@@ -31,9 +25,10 @@ function fixture(
   city: string,
   zip: string,
   street: string,
-  next: OpenHouseEvent,
+  events: OpenHouseEvent[],
   extra?: Partial<OpenHouseListing>,
 ): OpenHouseListing {
+  const next = events[0];
   return {
     mlsId: street,
     propertyType: "Single Family For Sale",
@@ -55,49 +50,72 @@ function fixture(
     photoCount: 0,
     status: "Active",
     ownerName: "Jane Owner",
-    openHouses: [next],
+    openHouses: events,
     nextOpenHouse: next,
-    pastCount: 1,
-    upcomingCount: 1,
-    weekOpenHouseCount: 1,
+    pastCount: 2,
+    upcomingCount: events.length,
+    weekOpenHouseCount: events.length,
     ...extra,
   };
 }
 
-const MAIN = event("2 Main St", "2026-09-12");
-const SEA = event("16 Sea Spray Rd", "2026-09-12", "12:00", "14:00");
-const LOCUST = event("5 Locust Ln", "2026-09-13");
-const HARBOR = event("8 Harbor Rd", "2026-09-13", "10:00", "12:00");
+const MAIN = event("2 Main St", TODAY);
+const SEA = event("16 Sea Spray Rd", TODAY, "12:00", "14:00");
+const SEA_SUN = event("16 Sea Spray Rd", SUNDAY, "13:00", "15:00");
+const HARBOR = event("8 Harbor Rd", SUNDAY, "10:00", "12:00");
+const COMPO = event("21 Compo Beach Rd", TODAY, "14:00", "16:00");
+const LOCUST = event("5 Locust Ln", SUNDAY);
+const RIDGE = event("12 Ridgefield Rd", TODAY);
+const SILVER = event("71 Silvermine Avenue", TODAY);
+const FOREST = event("176 Forest Street", SUNDAY);
 
 const LISTINGS: OpenHouseListing[] = [
-  fixture("Westport", "06880", "2 Main St", MAIN),
-  fixture("Westport", "06880", "16 Sea Spray Rd", SEA, {
+  fixture("Westport", "06880", "2 Main St", [MAIN], { pastCount: 12 }),
+  fixture("Westport", "06880", "16 Sea Spray Rd", [SEA, SEA_SUN], {
     price: 2_195_000,
     beds: 5,
     baths: 4,
+    pastCount: 8,
+    weekOpenHouseCount: 2,
   }),
-  fixture("Wilton", "06897", "5 Locust Ln", LOCUST, { price: 875_000 }),
-  fixture("Westport", "06880", "8 Harbor Rd", HARBOR, { price: 1_595_000 }),
+  fixture("Westport", "06880", "8 Harbor Rd", [HARBOR], {
+    price: 1_595_000,
+    pastCount: 5,
+  }),
+  fixture("Westport", "06880", "21 Compo Beach Rd", [COMPO], {
+    price: 3_200_000,
+    pastCount: 0,
+  }),
+  fixture("Wilton", "06897", "5 Locust Ln", [LOCUST], {
+    price: 875_000,
+    pastCount: 3,
+  }),
+  fixture("Wilton", "06897", "12 Ridgefield Rd", [RIDGE], {
+    price: 1_050_000,
+    pastCount: 0,
+  }),
+  fixture("Norwalk", "06850", "71 Silvermine Avenue", [SILVER], {
+    price: 725_000,
+    pastCount: 4,
+  }),
+  fixture("New Canaan", "06840", "176 Forest Street", [FOREST], {
+    price: 1_875_000,
+    pastCount: 1,
+  }),
 ];
 
-export function OpenHousesViewGlyphsPreview() {
-  const [view, setView] = useState<DealBoardCardView>("grid");
+export const OPEN_HOUSES_VIEW_GLYPHS_FIXTURE: OpenHousesPageLoad = {
+  ok: true,
+  data: {
+    listings: LISTINGS,
+    generatedAt: `${TODAY}T12:00:00.000Z`,
+    source: "db",
+    syncedAt: `${TODAY}T11:00:00.000Z`,
+    window: { start: TODAY, end: SUNDAY },
+    windowLabel: "Saturday–Sunday (ET)",
+    eventsFound: LISTINGS.reduce((sum, row) => sum + row.openHouses.length, 0),
+    listingsMatched: LISTINGS.length,
+  },
+};
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-charcoal/[0.08] bg-white px-4 py-3">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
-            Same picker as Intelligence
-          </p>
-          <p className="mt-1 font-serif text-2xl text-navy">
-            {DEAL_BOARD_VIEW_LABELS[view]}
-          </p>
-        </div>
-        <DealBoardViewPicker view={view} onChange={setView} />
-      </div>
-
-      <ListingCollection listings={LISTINGS} view={view} />
-    </div>
-  );
-}
+export const OPEN_HOUSES_VIEW_GLYPHS_OPEN_TOWNS = ["Westport"] as const;
