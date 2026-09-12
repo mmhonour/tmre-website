@@ -566,13 +566,22 @@ function isPhotoMedia(record: RawRetsRecord): boolean {
 function mediaPhotoUrl(
   record: RawRetsRecord,
   size: 'full' | 'mid' | 'thumb' = 'full',
+  opts?: { allowFallback?: boolean },
 ): string | null {
   const full = str(record.MediaURL)
   const mid = str(record.MediaMidsizeURL)
   const thumb = str(record.MediaThumbnailURL)
-  if (size === 'thumb') return thumb || mid || full || null
-  if (size === 'mid') return mid || full || thumb || null
-  return full || mid || thumb || null
+  const allowFallback = opts?.allowFallback !== false
+  if (size === 'thumb') {
+    if (thumb) return thumb
+    return allowFallback ? mid || full || null : null
+  }
+  if (size === 'mid') {
+    if (mid) return mid
+    return allowFallback ? full || thumb || null : null
+  }
+  if (full) return full
+  return allowFallback ? mid || thumb || null : null
 }
 
 function sortMediaRecords(records: RawRetsRecord[]): RawRetsRecord[] {
@@ -833,13 +842,14 @@ export async function fetchMediaPhotoUrlForIndex(
   mlsId: string | null | undefined,
   index: number,
   size: 'full' | 'mid' | 'thumb' = 'full',
+  opts?: { allowFallback?: boolean },
 ): Promise<string | null> {
   if (index < 0) return null
   const limit = Math.min(Math.max(index + 1, 12), 250)
   const media = await fetchMediaRecordsForListing(listingKey.trim(), mlsId, limit)
   if (media.length === 0) return null
   const record = sortMediaRecords(media)[index]
-  return record ? mediaPhotoUrl(record, size) : null
+  return record ? mediaPhotoUrl(record, size, opts) : null
 }
 
 /** Up to maxPhotos JPEG buffers - SQLite first, then media/RETS with persist. */

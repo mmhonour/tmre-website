@@ -17,6 +17,7 @@ import {
  *   photos/{cacheId}/{photoIndex}
  *
  * where cacheId = listingKey || mlsId — the same id the sync writes under.
+ * Card mid-size lives under `{cacheId}__card` so it never overwrites full.
  *
  * Egress from R2 to the Lambda is free; keeping the existing proxy route means
  * the public URL surface is unchanged. This retires the SQLite-file-on-Blobs

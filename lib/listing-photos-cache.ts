@@ -15,12 +15,12 @@ import { discoverListingPhotoCount } from '@/lib/rets'
 export function buildListingPhotoProxyUrls(
   mlsId: string,
   count: number,
-  opts?: { size?: 'full' },
+  opts?: { size?: 'full' | 'mid' },
 ): string[] {
   const id = mlsId.trim()
   if (!id || count <= 0) return []
   const capped = Math.min(count, 250)
-  const qs = opts?.size === 'full' ? '?size=full' : ''
+  const qs = opts?.size === 'full' ? '?size=full' : '?size=mid'
   return Array.from(
     { length: capped },
     (_, i) => `/api/listings/${encodeURIComponent(id)}/photos/${i}${qs}`,
@@ -31,11 +31,11 @@ export function buildListingPhotoProxyUrls(
 export function buildListingPhotoProxyUrlsForIndices(
   mlsId: string,
   indices: readonly number[],
-  opts?: { size?: 'full' },
+  opts?: { size?: 'full' | 'mid' },
 ): string[] {
   const id = mlsId.trim()
   if (!id || indices.length === 0) return []
-  const qs = opts?.size === 'full' ? '?size=full' : ''
+  const qs = opts?.size === 'full' ? '?size=full' : '?size=mid'
   return indices
     .filter((index) => Number.isFinite(index) && index >= 0)
     .slice(0, 250)
@@ -62,8 +62,8 @@ export async function resolveListingPhotoUrls(
   options: {
     forceRefresh?: boolean
     sqliteOnly?: boolean
-    /** Gallery / Photos tab — full CDN MediaURL via `?size=full`. */
-    size?: 'full'
+    /** Gallery / Photos tab — full CDN MediaURL via `?size=full`. Cards default mid. */
+    size?: 'full' | 'mid'
   } = {},
 ): Promise<{ photos: string[]; cacheHit: boolean }> {
   const id = mlsId.trim()

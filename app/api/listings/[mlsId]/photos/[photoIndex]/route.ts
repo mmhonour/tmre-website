@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { readListingByIdFromDb } from '@/lib/db/listings-repo'
 import { photoBackendUsesR2, readListingPhotoBytes } from '@/lib/listing-photo-backend'
 import { recordPhotoProxyOutcome } from '@/lib/listing-photo-health'
+import { listingPhotoQualityFromSizeParam } from '@/lib/listing-photo-quality'
 import { resolveListingPhotoBuffer } from '@/lib/listing-photo-store'
 import { isR2PhotoStoreConfigured } from '@/lib/r2-photo-store'
 
@@ -15,7 +16,7 @@ const PHOTO_HIT_CACHE_CONTROL =
  * Netlify CDN ignores query strings in the cache key unless Netlify-Vary says
  * otherwise. Without this, a cache-only 404 for `/photos/0` is reused for
  * `/photos/0?fetch=1` and ListingThumbImage's CDN retry never reaches origin.
- * `size` must vary too so full-res gallery URLs are not served thumb bytes.
+ * `size` must vary too so full-res gallery URLs are not served card mid bytes.
  */
 const PHOTO_VARY = 'query=fetch|size'
 
@@ -26,8 +27,9 @@ export async function GET(
   const { mlsId, photoIndex } = await ctx.params
   const url = new URL(req.url)
   const allowFetch = url.searchParams.get('fetch') === '1'
-  const quality =
-    url.searchParams.get('size') === 'full' ? ('full' as const) : ('display' as const)
+  const quality = listingPhotoQualityFromSizeParam(
+    url.searchParams.get('size'),
+  )
   const id = (mlsId ?? '').trim()
   const index = parseInt(photoIndex ?? '0', 10)
 

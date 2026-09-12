@@ -14,7 +14,14 @@ import {
   listingPhotoSyncedAfter,
 } from '@/lib/listing-photo-ttl'
 import { getListingPhotoTtlMs } from '@/lib/listing-photo-ttl-config'
+import {
+  cacheSatisfiesQuality,
+  listingPhotoCardCacheId,
+  type ListingPhotoQuality,
+} from '@/lib/listing-photo-quality'
 import { fetchMediaPhotoUrlForIndex, withRetsClient } from '@/lib/rets'
+
+export type { ListingPhotoQuality }
 
 export { LISTING_PHOTO_TTL_MS, isListingPhotoFresh }
 
@@ -95,14 +102,30 @@ async function fetchAndPersistPhotoBuffer(
   return { ...source, cacheHit: false }
 }
 
-export type ListingPhotoQuality = 'display' | 'full'
-
 async function fetchPhotoFromSources(
   id: string,
   listingKey: string,
   photoIndex: number,
   quality: ListingPhotoQuality = 'display',
 ): Promise<{ data: Buffer; contentType: string } | null> {
+  // Cards / list thumbs: MediaMidsizeURL only. Never persist this over full.
+  if (quality === 'mid') {
+    const midUrl = await fetchMediaPhotoUrlForIndex(
+      listingKey,
+      id,
+      photoIndex,
+      'mid',
+      { allowFallback: false },
+    )
+    if (midUrl) {
+      const fromMid = await fetchListingPhotoBufferFromUrl(midUrl)
+      if (fromMid && cacheSatisfiesQuality(fromMid.data.length, 'mid')) {
+        return fromMid
+      }
+    }
+    return null
+  }
+
   // Gallery / full-view: MLS Media CDN only (MediaURL). Never RETS object digests.
   if (quality === 'full') {
     const fullUrl = await fetchMediaPhotoUrlForIndex(
@@ -159,12 +182,6 @@ async function fetchPhotoFromSources(
   })
 }
 
-/**
- * Cached thumbs for index > 0 are often ~10–60KB. Full CDN MediaURL JPEGs are
- * typically much larger — use this floor so `size=full` does not reuse a thumb.
- */
-const FULL_QUALITY_MIN_BYTES = 80_000
-
 export type ResolveListingPhotoOptions = {
   mlsId: string
   listingKey: string
@@ -175,7 +192,9 @@ export type ResolveListingPhotoOptions = {
   sqliteOnly?: boolean
   /**
    * `full` — gallery / full-view: prefer CDN MediaURL and refuse undersized
-   * thumb cache hits. `display` — hero/deck thumbs (index > 0 may be Thumbnail).
+   * thumb cache hits. `mid` — card / list thumbs from MediaMidsizeURL, stored
+   * under a separate `__card` cache id so they never overwrite full. `display`
+   * — hero/deck thumbs (index > 0 may be Thumbnail).
    */
   quality?: ListingPhotoQuality
   /** Extra cache ids to probe (e.g. MLS id when primary key is listingKey). */
@@ -193,12 +212,19 @@ function asPhotoResult(
   }
 }
 
-function cacheSatisfiesQuality(
-  row: PhotoBytes,
+function photoLookupIds(
+  primaryId: string,
   quality: ListingPhotoQuality,
-): boolean {
-  if (quality !== 'full') return true
-  return row.data.length >= FULL_QUALITY_MIN_BYTES
+  alternateCacheIds?: readonly string[],
+): { primaryId: string; alternateCacheIds: string[] } {
+  const alts = (alternateCacheIds ?? []).map((v) => v.trim()).filter(Boolean)
+  if (quality !== 'mid') {
+    return { primaryId, alternateCacheIds: alts }
+  }
+  return {
+    primaryId: listingPhotoCardCacheId(primaryId),
+    alternateCacheIds: alts.map((id) => listingPhotoCardCacheId(id)),
+  }
 }
 
 async function readCachedPhotoAcrossIds(
@@ -230,25 +256,27 @@ export async function resolveListingPhotoBuffer(
   const quality: ListingPhotoQuality = options.quality ?? 'display'
   if (!id || photoIndex < 0) return null
 
+  const lookup = photoLookupIds(id, quality, options.alternateCacheIds)
   const cachedHit = await readCachedPhotoAcrossIds(
-    id,
+    lookup.primaryId,
     photoIndex,
-    options.alternateCacheIds,
+    lookup.alternateCacheIds,
   )
   const cached = cachedHit?.row ?? null
   const cacheFresh =
     cached != null &&
     isListingPhotoFresh(cached.syncedAt, getListingPhotoTtlMs()) &&
     !options.forceRefresh &&
-    cacheSatisfiesQuality(cached, quality)
+    cacheSatisfiesQuality(cached.data.length, quality)
 
   if (cacheFresh && cached) {
     return asPhotoResult(cached, true)
   }
 
   if (options.sqliteOnly) {
-    // Do not hand gallery a fresh-but-tiny thumb as if it were full-res.
-    if (cached && cacheSatisfiesQuality(cached, quality)) {
+    // Do not hand gallery a fresh-but-tiny thumb as if it were full-res,
+    // and do not hand cards a 3MB MediaURL smash-down.
+    if (cached && cacheSatisfiesQuality(cached.data.length, quality)) {
       return asPhotoResult(cached, true)
     }
     return null
@@ -256,14 +284,26 @@ export async function resolveListingPhotoBuffer(
 
   const fetched = await fetchPhotoFromSources(id, listingKey, photoIndex, quality)
   if (fetched) {
-    return fetchAndPersistPhotoBuffer(id, photoIndex, fetched)
+    return fetchAndPersistPhotoBuffer(lookup.primaryId, photoIndex, fetched)
   }
 
   // Empty RETS/media slots stay missing — galleries omit them instead of
   // fabricating a duplicate from a neighboring index.
-  // Last resort for display only: serve a stale/undersized cache hit.
-  if (cached && quality === 'display') {
+  // Last resort: serve a stale cache hit for display, or a cached mid that
+  // failed the size check after a failed refetch. Never persist mid over full.
+  if (cached && (quality === 'display' || quality === 'mid')) {
     return asPhotoResult(cached, true)
+  }
+
+  if (quality === 'mid') {
+    const primary = await readCachedPhotoAcrossIds(
+      id,
+      photoIndex,
+      options.alternateCacheIds,
+    )
+    if (primary) return asPhotoResult(primary.row, true)
+    const full = await fetchPhotoFromSources(id, listingKey, photoIndex, 'full')
+    if (full) return fetchAndPersistPhotoBuffer(id, photoIndex, full)
   }
 
   return null
