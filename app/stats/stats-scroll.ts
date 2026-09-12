@@ -1,22 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { headerScrollOffsetPx } from "@/lib/header-scroll-offset";
 
-/** Breathing room between the header's bottom edge and whatever we scroll to. */
-const GUTTER_PX = 12;
-/** Used before the header can be measured, and as the CSS fallback. */
-const FALLBACK_PX = 112;
-
-/**
- * The site header is fixed with no spacer beneath it, and its height changes
- * with the signed-in chrome, so a fixed scroll-margin cannot reliably clear it.
- * Measure the live header instead.
- */
 export function statsScrollOffsetPx(): number {
-  if (typeof document === "undefined") return FALLBACK_PX;
-  const header = document.querySelector("header");
-  const bottom = header?.getBoundingClientRect().bottom ?? 0;
-  return (bottom > 0 ? bottom : FALLBACK_PX) + GUTTER_PX;
+  return headerScrollOffsetPx();
 }
 
 /**
