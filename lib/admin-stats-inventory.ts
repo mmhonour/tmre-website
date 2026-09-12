@@ -863,14 +863,16 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     live: { kind: 'postgres_table', table: 'leads' },
   },
   {
-    id: 'contacts-json',
-    name: 'Contact form leads',
+    id: 'contacts-postgres',
+    name: 'Contact / List With Me inquiries',
     category: 'site-data',
-    medium: 'file',
-    location: 'data/contacts.json',
-    keyPattern: 'data/contacts.json',
-    owner: 'app/api/contact/route.ts',
-    live: { kind: 'none' },
+    medium: 'postgres',
+    location: 'contacts',
+    keyPattern: 'contacts.id',
+    owner: 'lib/contacts-store.ts',
+    notes:
+      'Replaces data/contacts.json — durable on Netlify serverless. List With Me, nav contact, listing interest.',
+    live: { kind: 'postgres_table', table: 'contacts' },
   },
 
   // —— Ephemeral ——

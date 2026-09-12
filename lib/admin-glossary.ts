@@ -1268,6 +1268,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Minimum Viable Product — smallest shippable loop (listings sync → browse → lead email → operable Admin).',
   },
   {
+    term: 'contacts',
+    category: 'sync-admin',
+    definition:
+      'Neon table of List With Me / nav contact / I\'m interested inquiries (db/migrations/0034_contacts.sql). Replaces data/contacts.json, which cannot persist on Netlify Functions and made POST /api/contact return 500. Created on first request via ensureContactsTable(). Distinct from leads (home CTA / Monday brief ZIP form). CLI is not required; the contact route writes the row then emails via Resend.',
+  },
+  {
     term: 'Resend',
     category: 'product',
     definition:
