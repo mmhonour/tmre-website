@@ -212,6 +212,8 @@ export type VisionStreetParcel = {
   lastSaleDate: string | null
   /** Last paid purchase date when Field Card / last sale price shows consideration. */
   purchaseDate: string | null
+  /** Last non-quitclaim consideration. */
+  lastPaidPrice: number | null
   /** Last non-quitclaim consideration, formatted for the street list. */
   lastPaidPriceLabel: string | null
   /** True when the most recent VGSI deed is a $0 / instrument 29 quitclaim. */
@@ -397,6 +399,12 @@ export async function listVisionStreetParcels(
         lastSalePrice: paidPrice,
         ownership,
       }),
+      lastPaidPrice:
+        visionLastPaidSale({
+          lastSaleDate: row.last_sale_date,
+          lastSalePrice: paidPrice,
+          ownership,
+        })?.price ?? null,
       lastPaidPriceLabel: formatVisionMoney(
         visionLastPaidSale({
           lastSaleDate: row.last_sale_date,

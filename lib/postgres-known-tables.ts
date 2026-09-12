@@ -40,6 +40,7 @@ export const POSTGRES_KNOWN_TABLES = [
   'khe_pta_households',
   'people',
   'leads',
+  'contacts',
   'site_users',
   'site_user_magic_links',
   'site_user_sessions',

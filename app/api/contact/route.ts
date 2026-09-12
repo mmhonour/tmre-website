@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { SITE_VISITOR_COOKIE } from '@/lib/browser-cookies-catalog'
+import {
+  insertContact,
+  listContacts,
+  type ContactRecord,
+} from '@/lib/contacts-store'
 import { notifyContactByEmail } from '@/lib/contact-notify'
 import { validateContactFields } from '@/lib/contact-form-validation'
 import { notifyInterestConfirmation } from '@/lib/interest-notify'
@@ -14,31 +18,6 @@ import {
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-const DATA_DIR = path.join(process.cwd(), 'data')
-const CONTACTS_FILE = path.join(DATA_DIR, 'contacts.json')
-
-type Contact = {
-  id: string
-  name: string
-  phone: string | null
-  email: string
-  source: string
-  listingInfo: string | null
-  address: string | null
-  createdAt: string
-}
-
-async function readContacts(): Promise<Contact[]> {
-  try {
-    const raw = await fs.readFile(CONTACTS_FILE, 'utf8')
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as Contact[]) : []
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
-    throw err
-  }
-}
 
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>
@@ -75,7 +54,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message, fieldErrors }, { status: 400 })
   }
 
-  const contact: Contact = {
+  const contact: ContactRecord = {
     id: randomUUID(),
     name,
     phone: phone || null,
@@ -86,10 +65,12 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   }
 
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  const contacts = await readContacts()
-  contacts.push(contact)
-  await fs.writeFile(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8')
+  try {
+    await insertContact(contact)
+  } catch (err) {
+    console.error('[/api/contact] write failed', err)
+    return NextResponse.json({ error: 'Failed to store inquiry' }, { status: 500 })
+  }
 
   const visitorId = req.cookies.get(SITE_VISITOR_COOKIE)?.value?.trim() || null
   const sessionUser = await getSessionUserFromCookies()
@@ -172,4 +153,17 @@ export async function POST(req: NextRequest) {
     },
     { status: 201 },
   )
+}
+
+export async function GET(req: NextRequest) {
+  if (!isAdminAuthorizedRequest(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  try {
+    const contacts = await listContacts()
+    return NextResponse.json({ count: contacts.length, contacts })
+  } catch (err) {
+    console.error('[/api/contact] read failed', err)
+    return NextResponse.json({ error: 'Failed to read inquiries' }, { status: 500 })
+  }
 }

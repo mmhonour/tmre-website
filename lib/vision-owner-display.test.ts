@@ -40,4 +40,26 @@ describe('formatVisionOwnerDisplay', () => {
   it('leaves a one-token line as title case', () => {
     assert.equal(formatVisionOwnerDisplay('WESTPORT'), 'Westport')
   })
+
+  it('puts both given names before a shared last name', () => {
+    assert.equal(
+      formatVisionOwnerDisplay('THARP CHARLES & ADRIANNE'),
+      'Charles & Adrianne Tharp',
+    )
+    assert.equal(
+      formatVisionOwnerDisplay('THARP CHARLES & THARP ADRIANNE'),
+      'Charles & Adrianne Tharp',
+    )
+    assert.equal(
+      formatVisionOwnerDisplay('FEYGIN IRINA & YURY'),
+      'Irina & Yury Feygin',
+    )
+  })
+
+  it('keeps different last names as First Last and First Last', () => {
+    assert.equal(
+      formatVisionOwnerDisplay('MARKS TIMOTHY AND HONOUR MELISSA'),
+      'Timothy Marks and Melissa Honour',
+    )
+  })
 })

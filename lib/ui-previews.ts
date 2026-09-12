@@ -85,6 +85,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Next-open mark (black on white) on Grid (photo upper right), Large (panel upper right), and Line (right-aligned). Large photo stretches to the row height.",
   },
   {
+    slug: "find-deed-vs-prior",
+    title: "Vision deed vs prior MLS ask",
+    summary:
+      "VGSI parcel page uses the last paid assessor sale. A Closed land ask from the year before is not the page price.",
+  },
+  {
     slug: "find-address-diverge",
     title: "Vision vs MLS address",
     summary:
@@ -100,7 +106,19 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "vision-owner-first-last",
     title: "Owner First Last",
     summary:
-      "VGSI LAST FIRST becomes First Last for people; LLC and trust lines stay as filed.",
+      "VGSI LAST FIRST becomes First Last. A couple with one last name is First1 & First2 Last — not First Last and First. A first name alone is not a landlord key.",
+  },
+  {
+    slug: "streets-letter-scroll",
+    title: "Streets letter jump",
+    summary:
+      "Letter index hashes clear the fixed site header so the letter heading stays visible — not one or two streets too low.",
+  },
+  {
+    slug: "list-with-me",
+    title: "List With Me",
+    summary:
+      "Seller intake writes to Neon contacts, not data/contacts.json. Address autocomplete still uses the property directory.",
   },
 ];
 

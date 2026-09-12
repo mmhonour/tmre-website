@@ -19,6 +19,22 @@ const CASES = [
     raw: "SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE",
   },
   {
+    label: "Shared last — 3 Acorn Ln",
+    raw: "THARP CHARLES & ADRIANNE",
+  },
+  {
+    label: "Shared last written twice",
+    raw: "THARP CHARLES & THARP ADRIANNE",
+  },
+  {
+    label: "Shared last — Irina & Yury",
+    raw: "FEYGIN IRINA & YURY",
+  },
+  {
+    label: "Different last names",
+    raw: "MARKS TIMOTHY AND HONOUR MELISSA",
+  },
+  {
     label: "LLC — no flip",
     raw: "ACME HOLDINGS LLC",
   },
@@ -40,8 +56,9 @@ export default function VisionOwnerFirstLastPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           VGSI stores LAST FIRST. Find and Streets show First Last for
-          people. LLC / trust lines stay in assessor order. Production:
-          /find/westport/5384.
+          people. A shared last name is First1 & First2 Last — never
+          First Last and First. A first name alone is not a landlord.
+          LLC / trust lines stay in assessor order.
         </p>
         <ul className="space-y-4">
           {CASES.map((row) => (

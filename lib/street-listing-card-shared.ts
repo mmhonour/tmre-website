@@ -5,6 +5,8 @@ export type StreetListingCard = {
   mlsId: string | null
   status: string
   price: number | null
+  closePrice?: number | null
+  closeDate?: string | null
   street: string
   town: string
 }

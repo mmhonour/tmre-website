@@ -18,6 +18,11 @@ import { buildListingPhotoProxyUrls } from '@/lib/listing-photos-cache'
 import { listingDetailHref } from '@/lib/listing-url'
 import { findAddressDivergence } from '@/lib/find-address-divergence'
 import {
+  listingFitsVisionParcel,
+  paidSaleFromVision,
+  visionParcelMlsPrice,
+} from '@/lib/vision-listing-sale-match'
+import {
   normalizePropertyAddress,
   normalizeStreetLine,
   streetSearchVariants,
@@ -290,9 +295,11 @@ async function listingSnippetsForVisionHits(
     vision_pid: string
     status_bucket: string | null
     price: number | string | null
+    close_price: number | string | null
+    close_date: string | Date | null
   }>(
     `SELECT DISTINCT ON (vision_pid)
-        vision_pid, status_bucket, price
+        vision_pid, status_bucket, price, close_price, close_date
        FROM listings
       WHERE lower(town) = lower($1)
         AND vision_pid = ANY($2::text[])
@@ -307,12 +314,41 @@ async function listingSnippetsForVisionHits(
         modification_timestamp DESC NULLS LAST`,
     [WESTPORT_LOOKUP_TOWN, pids],
   )
+  const visionByPid = new Map(hits.map((hit) => [hit.visionPid, hit]))
   for (const row of rows) {
     const priceNum =
       row.price == null || row.price === '' ? null : Number(row.price)
+    const closeNum =
+      row.close_price == null || row.close_price === ''
+        ? null
+        : Number(row.close_price)
+    const closeDate =
+      row.close_date instanceof Date
+        ? row.close_date.toISOString().slice(0, 10)
+        : row.close_date?.toString().slice(0, 10) || null
+    const vision = visionByPid.get(row.vision_pid)
+    const paid = vision ? paidSaleFromVision(vision) : null
+    const price = visionParcelMlsPrice(
+      {
+        status: row.status_bucket,
+        price: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+        closePrice: closeNum != null && Number.isFinite(closeNum) ? closeNum : null,
+        closeDate,
+      },
+      paid,
+    )
+    const fits = listingFitsVisionParcel(
+      {
+        status: row.status_bucket,
+        price: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+        closePrice: closeNum != null && Number.isFinite(closeNum) ? closeNum : null,
+        closeDate,
+      },
+      paid,
+    )
     out.set(row.vision_pid, {
-      status: row.status_bucket,
-      price: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+      status: fits ? row.status_bucket : null,
+      price,
     })
   }
   return out
@@ -321,6 +357,9 @@ async function listingSnippetsForVisionHits(
 async function listingForVision(
   v: VisionAddressRecord,
 ): Promise<Listing | null> {
+  const paid = paidSaleFromVision(v)
+  const accept = (listing: Listing | null): Listing | null =>
+    listing && listingFitsVisionParcel(listing, paid) ? listing : null
   const byPid = await queryOne<{ id: string }>(
     `SELECT id FROM listings
       WHERE vision_pid = $1 AND lower(town) = lower($2)
@@ -336,15 +375,15 @@ async function listingForVision(
     [v.visionPid, v.town],
   )
   if (byPid?.id) {
-    const listing = await readListingByIdFromDb(byPid.id)
+    const listing = accept(await readListingByIdFromDb(byPid.id))
     if (listing) return listing
   }
   if (v.listingId) {
-    const byId = await readListingByIdFromDb(v.listingId)
+    const byId = accept(await readListingByIdFromDb(v.listingId))
     if (byId) return byId
   }
   if (v.mlsId) {
-    const byMls = await readListingByIdFromDb(v.mlsId)
+    const byMls = accept(await readListingByIdFromDb(v.mlsId))
     if (byMls) return byMls
   }
   const { findListingInDbByVisionAddress, stampVisionListingLink } = await import(
@@ -640,7 +679,20 @@ export async function mergeWestportProperty(
     ? (listing.address.street || listing.address.full || '').trim() || null
     : null
   const addressLines = findAddressDivergence(visionStreet, mlsStreet)
-  const residenceStreet = listing?.address.street || visionStreet
+  const lastSoldPrice =
+    visionLastPaidSale({
+      lastSaleDate: vision.lastSaleDate,
+      lastSalePrice: vision.lastSalePrice,
+      ownership: fieldCard.ownership,
+    })?.price ?? null
+  const paid = paidSaleFromVision({
+    lastSaleDate: vision.lastSaleDate,
+    lastSalePrice: vision.lastSalePrice,
+    fieldCard,
+  })
+  const pageListing =
+    listing && listingFitsVisionParcel(listing, paid) ? listing : null
+  const residenceStreet = pageListing?.address.street || visionStreet
   const mailing = formatVisionMailingAddress({
     mailing: ownerMailingAddress,
     residenceStreet,
@@ -652,7 +704,7 @@ export async function mergeWestportProperty(
     town: WESTPORT_LOOKUP_TOWN,
     visionPid: vision.visionPid,
     addressFull:
-      listing?.address.full ||
+      pageListing?.address.full ||
       vision.addressFull ||
       `${visionStreet}, Westport, CT`,
     street: residenceStreet,
@@ -665,20 +717,23 @@ export async function mergeWestportProperty(
     siblings,
     otherHomes,
     listingIngested,
-    listing: listing
+    listing: pageListing
       ? {
-          mlsId: listing.mlsId,
-          listingKey: listing.listingKey ?? listing.mlsId,
+          mlsId: pageListing.mlsId,
+          listingKey: pageListing.listingKey ?? pageListing.mlsId,
           href: listingHref!,
-          status: listing.status,
-          photoCount: listing.photoCount,
+          status: pageListing.status,
+          photoCount: pageListing.photoCount,
         }
       : null,
     photos,
-    price: listingWins(listing?.price, null),
-    status: listingWins(listing?.status, 'Off market'),
-    dom: listingWins(listing?.dom, null),
-    remarks: listingWins(listing?.remarks, null),
+    price: listingWins(
+      pageListing ? visionParcelMlsPrice(pageListing, paid) : null,
+      lastSoldPrice,
+    ),
+    status: listingWins(pageListing?.status, 'Off market'),
+    dom: listingWins(pageListing?.dom, null),
+    remarks: listingWins(pageListing?.remarks, null),
     beds: visionFill(listing?.beds, vision.beds),
     baths: visionFill(listing?.baths, bathsFromVision(vision)),
     sqft: visionFill(listing?.sqft, vision.livingAreaSqft),
@@ -699,12 +754,7 @@ export async function mergeWestportProperty(
       lastSalePrice: vision.lastSalePrice,
       ownership: fieldCard.ownership,
     }),
-    lastSoldPrice:
-      visionLastPaidSale({
-        lastSaleDate: vision.lastSaleDate,
-        lastSalePrice: vision.lastSalePrice,
-        ownership: fieldCard.ownership,
-      })?.price ?? null,
+    lastSoldPrice,
     purchaseYear: visionPurchaseYear({
       lastSaleDate: vision.lastSaleDate,
       lastSalePrice: vision.lastSalePrice,

@@ -15,8 +15,13 @@ import {
   type FindListingIngestPhase,
 } from '@/lib/find-listing-ingest'
 import { listingIngestTown } from '@/lib/find-listing-ingest-shared'
+import { closeFieldsFromListing, primaryListingPrice } from '@/lib/listing-history'
 import { normalizePropertyAddress } from '@/lib/property-address'
 import type { Listing } from '@/lib/rets'
+import {
+  listingFitsVisionParcel,
+  paidSaleFromVision,
+} from '@/lib/vision-listing-sale-match'
 import type { StreetListingCard } from '@/lib/street-listing-card-shared'
 import { writeStreetListingIngestProgress } from '@/lib/street-listing-ingest-progress'
 import type { StreetListingIngestPhase } from '@/lib/street-listing-ingest-progress-shared'
@@ -34,11 +39,14 @@ export function streetListingCardFromListing(
 ): StreetListingCard | null {
   const id = listingRowId(listing) || listing.mlsId?.trim()
   if (!id) return null
+  const { closeDate, closePrice } = closeFieldsFromListing(listing)
   return {
     id,
     mlsId: listing.mlsId?.trim() || null,
     status: listing.status?.trim() || 'MLS',
-    price: listing.price,
+    price: primaryListingPrice(listing),
+    closePrice,
+    closeDate,
     street: listing.address.street || listing.address.full || '',
     town: listing.address.city?.trim() || townFallback || '',
   }
@@ -136,6 +144,8 @@ export async function loadStreetListingCards(
     mls_id: string | null
     status: string | null
     price: number | string | null
+    close_price: number | string | null
+    close_date: string | Date | null
     street: string | null
     listing_town: string | null
   }>(
@@ -144,6 +154,8 @@ export async function loadStreetListingCards(
             COALESCE(lpid.mls_id, lid.mls_id) AS mls_id,
             COALESCE(lpid.status_bucket, lid.status_bucket, lpid.mls_status, lid.mls_status) AS status,
             COALESCE(lpid.price, lid.price) AS price,
+            COALESCE(lpid.close_price, lid.close_price) AS close_price,
+            COALESCE(lpid.close_date, lid.close_date) AS close_date,
             COALESCE(lpid.address_street, lid.address_street) AS street,
             COALESCE(lpid.town, lid.town) AS listing_town
        FROM vision_street_parcels p
@@ -163,11 +175,26 @@ export async function loadStreetListingCards(
     if (!id) continue
     const priceNum =
       row.price == null || row.price === '' ? null : Number(row.price)
+    const closeNum =
+      row.close_price == null || row.close_price === ''
+        ? null
+        : Number(row.close_price)
+    const closeDate =
+      row.close_date instanceof Date
+        ? row.close_date.toISOString().slice(0, 10)
+        : row.close_date?.toString().slice(0, 10) || null
+    const listPrice = priceNum != null && Number.isFinite(priceNum) ? priceNum : null
+    const closePrice = closeNum != null && Number.isFinite(closeNum) ? closeNum : null
     out.set(row.vision_pid, {
       id,
       mlsId: row.mls_id?.trim() || null,
       status: row.status?.trim() || 'MLS',
-      price: priceNum != null && Number.isFinite(priceNum) ? priceNum : null,
+      price:
+        row.status?.trim() === 'Closed' && closePrice != null
+          ? closePrice
+          : listPrice,
+      closePrice,
+      closeDate,
       street: row.street?.trim() || '',
       town: row.listing_town?.trim() || town,
     })
@@ -236,9 +263,12 @@ export async function ingestStreetListingIfMissing(
     await report(mapIngestPhase(update.phase), update.message)
   })
 
-  const card = pulled.listing
-    ? streetListingCardFromListing(pulled.listing, ingestTown)
-    : null
+  const paid = paidSaleFromVision(vision)
+  const usable =
+    pulled.listing && listingFitsVisionParcel(pulled.listing, paid)
+      ? pulled.listing
+      : null
+  const card = usable ? streetListingCardFromListing(usable, ingestTown) : null
   const phase: StreetListingIngestPhase = card
     ? 'found'
     : pulled.listing

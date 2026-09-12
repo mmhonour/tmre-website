@@ -26,6 +26,11 @@ import {
   closedSearchDateForVision,
   closedSearchWindowForSaleDate,
 } from '@/lib/find-listing-window'
+import {
+  listingFitsVisionParcel,
+  paidSaleFromVision,
+  type VisionPaidSale,
+} from '@/lib/vision-listing-sale-match'
 
 export { listingIngestTown } from '@/lib/find-listing-ingest-shared'
 export { closedSearchWindowForSaleDate } from '@/lib/find-listing-window'
@@ -157,6 +162,7 @@ async function findListingInDbByStreet(
   if (!house) return null
   const housePatterns = listingHouseIlikePatterns(house)
   if (housePatterns.length === 0) return null
+  const candidates: Listing[] = []
 
   const rows = await query<{
     id: string
@@ -188,9 +194,14 @@ async function findListingInDbByStreet(
       continue
     }
     const listing = await readListingByIdFromDb(row.id)
-    if (listing) return listing
+    if (listing) candidates.push(listing)
   }
-  return null
+  return pickBestStreetMatch(
+    street,
+    candidates,
+    town,
+    paidSaleFromVision(vision),
+  )
 }
 
 /** Compact MBLU ↔ listings.raw ParcelNumber (spaces/slashes stripped). */
@@ -215,7 +226,11 @@ export async function findListingInDbByVisionMblu(
   )
   const id = row[0]?.id
   if (!id) return null
-  return readListingByIdFromDb(id)
+  const listing = await readListingByIdFromDb(id)
+  if (!listing) return null
+  return listingFitsVisionParcel(listing, paidSaleFromVision(vision))
+    ? listing
+    : null
 }
 
 function listingStreetLine(listing: Listing): string {
@@ -257,6 +272,7 @@ async function searchStreetNumberHop(
   town: string,
   streetNumber: string,
   closed?: { closedAfter: string; closedBefore: string },
+  paid?: VisionPaidSale | null,
 ): Promise<Listing | null> {
   try {
     const hits = await withTimeout(
@@ -276,7 +292,7 @@ async function searchStreetNumberHop(
       INGEST_TIMEOUT_MS,
     )
     if (!hits || hits.length === 0) return null
-    return pickBestStreetMatch(street, hits, town)
+    return pickBestStreetMatch(street, hits, town, paid)
   } catch (err) {
     if (isRetsInvalidQueryError(err)) return null
     throw err
@@ -288,6 +304,7 @@ async function searchStreetNameHop(
   town: string,
   streetNameContains: string,
   closed?: { closedAfter: string; closedBefore: string },
+  paid?: VisionPaidSale | null,
 ): Promise<Listing | null> {
   try {
     const hits = await withTimeout(
@@ -307,7 +324,7 @@ async function searchStreetNameHop(
       INGEST_TIMEOUT_MS,
     )
     if (!hits || hits.length === 0) return null
-    return pickBestStreetMatch(street, hits, town)
+    return pickBestStreetMatch(street, hits, town, paid)
   } catch (err) {
     if (isRetsInvalidQueryError(err)) return null
     throw err
@@ -318,9 +335,10 @@ async function persistStructuredStreet(
   street: string,
   town: string,
   closed?: { closedAfter: string; closedBefore: string },
+  paid?: VisionPaidSale | null,
 ): Promise<Listing | null> {
   for (const streetNumber of findListingStreetNumberHops(street)) {
-    const match = await searchStreetNumberHop(street, town, streetNumber, closed)
+    const match = await searchStreetNumberHop(street, town, streetNumber, closed, paid)
     if (match && (closed || !listingIsWeakOffMarket(match.status))) {
       return persistMatchedListing(match)
     }
@@ -331,6 +349,7 @@ async function persistStructuredStreet(
       town,
       streetNameContains,
       closed,
+      paid,
     )
     if (match && (closed || !listingIsWeakOffMarket(match.status))) {
       return persistMatchedListing(match)
@@ -343,10 +362,12 @@ function pickBestStreetMatch(
   street: string,
   hits: Listing[],
   town?: string,
+  paid?: VisionPaidSale | null,
 ): Listing | null {
   const matched = hits.filter((row) => {
     if (town && !listingMatchesIngestTown(town, row)) return false
-    return listingMatchesStreetQuery(street, listingStreetLine(row))
+    if (!listingMatchesStreetQuery(street, listingStreetLine(row))) return false
+    return listingFitsVisionParcel(row, paid ?? null)
   })
   if (matched.length === 0) return null
   return [...matched].sort((a, b) => {
@@ -367,8 +388,9 @@ async function persistMatchedListing(match: Listing): Promise<Listing | null> {
 async function persistByStreet(
   street: string,
   town: string,
+  paid?: VisionPaidSale | null,
 ): Promise<Listing | null> {
-  const structured = await persistStructuredStreet(street, town)
+  const structured = await persistStructuredStreet(street, town, undefined, paid)
   if (structured && !listingIsWeakOffMarket(structured.status)) {
     return structured
   }
@@ -386,7 +408,7 @@ async function persistByStreet(
       INGEST_TIMEOUT_MS,
     )
     if (!hits || hits.length === 0) continue
-    const match = pickBestStreetMatch(street, hits, town)
+    const match = pickBestStreetMatch(street, hits, town, paid)
     if (match && !listingIsWeakOffMarket(match.status)) {
       return persistMatchedListing(match)
     }
@@ -404,9 +426,10 @@ async function persistByStreetClosed(
   street: string,
   lastSaleDate: string | null | undefined,
   town: string,
+  paid?: VisionPaidSale | null,
 ): Promise<Listing | null> {
   const window = closedSearchWindowForSaleDate(lastSaleDate)
-  const structured = await persistStructuredStreet(street, town, window)
+  const structured = await persistStructuredStreet(street, town, window, paid)
   if (structured) return structured
   if (findListingHouseHasLetterSuffix(street)) {
     return null
@@ -425,7 +448,7 @@ async function persistByStreetClosed(
       INGEST_TIMEOUT_MS,
     )
     if (!hits || hits.length === 0) continue
-    const match = pickBestStreetMatch(street, hits, town)
+    const match = pickBestStreetMatch(street, hits, town, paid)
     if (match) return persistMatchedListing(match)
   }
   return null
@@ -468,7 +491,10 @@ export async function ingestFindListingIfMissing(
   existing: Listing | null,
   onProgress?: FindListingIngestOnProgress,
 ): Promise<FindListingIngestResult> {
-  if (existing) return { listing: existing, ingested: false }
+  const paid = paidSaleFromVision(vision)
+  if (existing && listingFitsVisionParcel(existing, paid)) {
+    return { listing: existing, ingested: false }
+  }
 
   const report = async (
     phase: FindListingIngestPhase,
@@ -493,7 +519,7 @@ export async function ingestFindListingIfMissing(
     for (const id of uniqueIds(vision.listingId, vision.mlsId)) {
       await report('rets-id', `Pulling ${id} from RETS…`)
       const listing = await persistByKnownId(id)
-      if (listing) {
+      if (listing && listingFitsVisionParcel(listing, paid)) {
         await stampVisionListingLink(vision, listing)
         await report('found', listing.status || 'Found in RETS')
         return { listing, ingested: true }
@@ -510,7 +536,7 @@ export async function ingestFindListingIfMissing(
           'rets-closed',
           `Closed window ${window.closedAfter.slice(0, 4)}–${window.closedBefore.slice(0, 4)}…`,
         )
-        const byClosed = await persistByStreetClosed(street, closedDate, town)
+        const byClosed = await persistByStreetClosed(street, closedDate, town, paid)
         if (byClosed) {
           await stampVisionListingLink(vision, byClosed)
           await report('found', byClosed.status || 'Found in RETS')
@@ -519,7 +545,7 @@ export async function ingestFindListingIfMissing(
       }
 
       await report('rets-address', `Searching RETS for ${street}…`)
-      const byAddress = await persistByStreet(street, town)
+      const byAddress = await persistByStreet(street, town, paid)
       if (byAddress && !listingIsWeakOffMarket(byAddress.status)) {
         await stampVisionListingLink(vision, byAddress)
         await report('found', byAddress.status || 'Found in RETS')
@@ -531,7 +557,7 @@ export async function ingestFindListingIfMissing(
           'rets-closed',
           `Closed window ${window.closedAfter.slice(0, 4)}–${window.closedBefore.slice(0, 4)}…`,
         )
-        const byClosed = await persistByStreetClosed(street, closedDate, town)
+        const byClosed = await persistByStreetClosed(street, closedDate, town, paid)
         if (byClosed) {
           await stampVisionListingLink(vision, byClosed)
           await report('found', byClosed.status || 'Found in RETS')
