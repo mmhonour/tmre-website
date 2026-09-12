@@ -9,8 +9,8 @@ import {
   VISION_OWNER_ENTITY_RE,
 } from '@/lib/vision-owner-display'
 import {
-  isVisionQuitclaim,
   normalizeVisionOwnerLine,
+  visionCurrentWarrantyOwnerLine,
   type VisionOwnershipRow,
 } from '@/lib/vision-gis-parse'
 
@@ -162,15 +162,48 @@ export function extractVisionOwnerKeys(input: {
     })
   }
 
-  for (const row of input.ownership ?? []) {
-    const role: VisionOwnerKeyRole = isVisionQuitclaim(row)
-      ? 'quitclaim_grantee'
-      : 'warranty_buyer'
-    pushNameKeys(out, seen, row.owner, role)
+  const warrantyLine = visionCurrentWarrantyOwnerLine(
+    input.ownership,
+    input.ownerName,
+  )
+  if (warrantyLine) {
+    pushNameKeys(out, seen, warrantyLine, 'warranty_buyer')
+  } else if (!input.ownership?.length) {
+    pushNameKeys(out, seen, input.ownerName, 'owner_of_record')
   }
-  pushNameKeys(out, seen, input.ownerName, 'owner_of_record')
 
   return out
+}
+
+/** True when `keyNorm` is on this parcel’s current (non-superseded) warranty. */
+export function hasCurrentWarrantyNameKey(
+  input: Parameters<typeof extractVisionOwnerKeys>[0],
+  keyNorm: string,
+): boolean {
+  return extractVisionOwnerKeys(input).some(
+    (key) => key.keyKind === 'name' && key.keyNorm === keyNorm,
+  )
+}
+
+/**
+ * Drop name-cluster members whose current warranty no longer includes
+ * that person. Unknown parcels (`keysForParcel` → null) stay until a
+ * Field Card can prove they sold.
+ */
+export function keepParcelsOnCurrentWarrantyName<
+  T extends { town: string; visionPid: string },
+>(
+  clusterId: string,
+  parcels: readonly T[],
+  keysForParcel: (parcel: T) => readonly VisionOwnerKey[] | null,
+): T[] {
+  if (!clusterId.startsWith('name:')) return [...parcels]
+  const keyNorm = clusterId.slice('name:'.length)
+  return parcels.filter((parcel) => {
+    const keys = keysForParcel(parcel)
+    if (keys == null) return true
+    return keys.some((key) => key.keyKind === 'name' && key.keyNorm === keyNorm)
+  })
 }
 
 export type VisionOwnerPortfolioParcel = {
@@ -182,7 +215,7 @@ export type VisionOwnerPortfolioParcel = {
 export type VisionOwnerPortfolio = {
   clusterId: string
   clusterKind: VisionOwnerKeyKind
-  /** Name from deed history (2+ homes) vs same mailbox. */
+  /** Current warranty name on 2+ homes vs same mailbox. */
   relationship: 'landlord' | 'owner'
   town: string
   displayName: string

@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   extractVisionOwnerKeys,
+  keepParcelsOnCurrentWarrantyName,
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   visionOwnerMailingKeyNorm,
   isIncompletePersonNameKey,
   visionOwnerNameKeyNorm,
+  type VisionOwnerKey,
   type VisionOwnerPortfolio,
 } from './vision-owner-keys'
 
@@ -83,7 +85,6 @@ describe('extractVisionOwnerKeys', () => {
         'mailing:2a stony pt rd|westport',
         'name:castillo|edward',
         'name:cameron|snyder',
-        'name:cameron|synder',
       ],
     )
     assert.equal(
@@ -105,7 +106,7 @@ describe('extractVisionOwnerKeys', () => {
     assert.ok(!names.includes('adrianne'))
   })
 
-  it('keys Denise from a later quitclaim even when she is not of record', () => {
+  it('keys Denise from an unsuperseded warranty, not a later quitclaim of record', () => {
     const occupied = extractVisionOwnerKeys({
       town: 'Westport',
       ownerName: 'SMITH JOHN',
@@ -144,7 +145,127 @@ describe('extractVisionOwnerKeys', () => {
     })
     assert.ok(occupied.some((row) => row.keyNorm === 'denise|penna'))
     assert.ok(secondHome.some((row) => row.keyNorm === 'denise|penna'))
-    assert.ok(occupied.some((row) => row.keyNorm === 'john|smith'))
+    assert.ok(!occupied.some((row) => row.keyNorm === 'john|smith'))
+  })
+
+  it('does not key a seller whose warranty was superseded', () => {
+    const ferry38 = extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'KING AL W III',
+      ownership: [
+        {
+          owner: 'KING AL W III',
+          date: '11/18/2020',
+          price: '800000',
+          bookPage: '4065/0297',
+          qualified: 'Q',
+          instrument: '00',
+        },
+        {
+          owner: 'GRIMALDI RICHARD',
+          date: '10/18/1993',
+          price: '165000',
+          bookPage: '1270/0069',
+          qualified: 'Q',
+          instrument: null,
+        },
+      ],
+    })
+    const ferry40 = extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'GRIMALDI RICHARD',
+      ownership: [
+        {
+          owner: 'GRIMALDI RICHARD',
+          date: '06/01/1994',
+          price: '200000',
+          bookPage: '1300/0001',
+          qualified: 'Q',
+          instrument: '00',
+        },
+      ],
+    })
+    const names38 = ferry38
+      .filter((row) => row.keyKind === 'name')
+      .map((row) => row.keyNorm)
+    const names40 = ferry40
+      .filter((row) => row.keyKind === 'name')
+      .map((row) => row.keyNorm)
+    assert.ok(names38.some((key) => key.includes('king')))
+    assert.ok(!names38.includes('grimaldi|richard'))
+    assert.deepEqual(names40, ['grimaldi|richard'])
+  })
+})
+
+describe('keepParcelsOnCurrentWarrantyName', () => {
+  const ferry38 = {
+    town: 'Westport',
+    visionPid: '2372',
+    siteAddress: '38 FERRY LN E',
+  }
+  const ferry40 = {
+    town: 'Westport',
+    visionPid: '5990',
+    siteAddress: '40 FERRY LN E',
+  }
+  const keysByPid: Record<string, VisionOwnerKey[]> = {
+    '2372': extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'KING AL W III',
+      ownership: [
+        {
+          owner: 'KING AL W III',
+          date: '11/18/2020',
+          price: '800000',
+          bookPage: '4065/0297',
+          qualified: 'Q',
+          instrument: '00',
+        },
+        {
+          owner: 'GRIMALDI RICHARD',
+          date: '10/18/1993',
+          price: '165000',
+          bookPage: '1270/0069',
+          qualified: 'Q',
+          instrument: '—',
+        },
+      ],
+    }),
+    '5990': extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'GRIMALDI RICHARD',
+      ownership: [
+        {
+          owner: 'GRIMALDI RICHARD',
+          date: '06/01/1994',
+          price: '200000',
+          bookPage: '1300/0001',
+          qualified: 'Q',
+          instrument: '00',
+        },
+      ],
+    }),
+  }
+
+  it('drops 38 Ferry from a Grimaldi landlord cluster after the 2020 warranty', () => {
+    const kept = keepParcelsOnCurrentWarrantyName(
+      'name:grimaldi|richard',
+      [ferry38, ferry40],
+      (parcel) => keysByPid[parcel.visionPid] ?? null,
+    )
+    assert.deepEqual(
+      kept.map((row) => row.visionPid),
+      ['5990'],
+    )
+  })
+
+  it('leaves mailing clusters alone', () => {
+    const kept = keepParcelsOnCurrentWarrantyName(
+      'mailing:po box 88|westport',
+      [ferry38, ferry40],
+      (parcel) => keysByPid[parcel.visionPid] ?? null,
+    )
+    assert.equal(kept.length, 2)
   })
 })
 

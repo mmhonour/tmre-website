@@ -542,6 +542,27 @@ export function compileVisionOwnerFromDeeds(
   return compileVisionOwnerParts(ownership, currentOwner).displayName
 }
 
+/**
+ * Latest non-quitclaim / warranty buyers. A later warranty supersedes
+ * the prior one (Grimaldi 1993 on 38 Ferry is not current after King 2020).
+ * A later quitclaim does not supersede the warranty.
+ * When the of-record line is the same people (typo / AND vs &), use it.
+ */
+export function visionCurrentWarrantyOwnerLine(
+  ownership: readonly VisionOwnershipRow[] | null | undefined,
+  currentOwner?: string | null,
+): string | null {
+  const sorted = sortVisionOwnershipDesc(ownership ?? [])
+  const row = sorted.find((entry) => !isVisionQuitclaim(entry))
+  if (!row) return null
+  const raw = completeDanglingDeedOwner(row.owner, currentOwner)
+  const warranty = raw === '—' || !raw ? null : raw
+  if (!warranty) return null
+  const current = currentOwner?.replace(/\s+/g, ' ').trim() || null
+  if (current && visionOwnerLinesMirror(warranty, current)) return current
+  return warranty
+}
+
 export function visionDeedPriceLabel(row: VisionOwnershipRow): string {
   const money = formatVisionMoney(row.price)
   if (money) return money

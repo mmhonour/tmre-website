@@ -22,7 +22,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "owner-portfolios",
     title: "Owner portfolios (2+ homes)",
     summary:
-      "Admin landlord / owner aggregation: same name on warranty or quitclaim history, or the same mailbox. Find (admin) links here.",
+      "Admin landlord / owner aggregation: same current warranty name on 2+ homes, or the same mailbox. Find (admin) links here.",
   },
   {
     slug: "open-houses-town-day",

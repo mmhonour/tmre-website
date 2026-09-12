@@ -61,10 +61,12 @@ export default function OwnerPortfoliosPreviewPage() {
           Owner portfolios (2+ homes)
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture list — largest first. A name on two warranty or
-          quitclaim rows is a landlord (Denise Penna). Same mailbox is an
-          owner cluster. Production (admin): /streets/owners or Find →
-          Landlord / owners.
+          Fixture list — largest first. The current (non-superseded)
+          warranty name on two or more homes is a landlord (Denise
+          Penna). A later warranty replaces the prior buyer; a later
+          quitclaim does not. Same mailbox is an owner cluster.
+          Production (admin): /streets/owners or Find → Landlord /
+          owners.
         </p>
         <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Find · Westport · Landlord / owners

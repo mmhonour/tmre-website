@@ -5,6 +5,7 @@ import {
   compileVisionOwnerParts,
   completeDanglingDeedOwner,
   formatVisionMoney,
+  visionCurrentWarrantyOwnerLine,
   visionDeedDisplayRows,
   visionLastPaidSale,
   visionOwnerLinesMirror,
@@ -259,6 +260,50 @@ describe('compileVisionOwnerParts', () => {
       'CASTILLO EDWARD AND SNYDER CAMERON',
     ])
     assert.equal(parts.displayName, 'CASTILLO EDWARD AND SNYDER CAMERON')
+  })
+
+  it('picks the current warranty buyer, not a superseded 1993 warranty (38 Ferry / King)', () => {
+    const ownership = [
+      {
+        owner: 'KING AL W III',
+        date: '11/18/2020',
+        price: '800000',
+        bookPage: '4065/0297',
+        qualified: 'Q',
+        instrument: '00',
+      },
+      {
+        owner: 'GRIMALDI RICHARD',
+        date: '10/18/1993',
+        price: '165000',
+        bookPage: '1270/0069',
+        qualified: 'Q',
+        instrument: '—',
+      },
+    ]
+    assert.equal(
+      visionCurrentWarrantyOwnerLine(ownership, 'KING AL W III'),
+      'KING AL W III',
+    )
+    const parts = compileVisionOwnerParts(ownership, 'KING AL W III')
+    assert.equal(parts.displayLines[0], 'KING AL W III')
+  })
+
+  it('keeps Grimaldi as current warranty on the house he still owns (40 Ferry)', () => {
+    const ownership = [
+      {
+        owner: 'GRIMALDI RICHARD',
+        date: '12/15/1993',
+        price: '175000',
+        bookPage: '1280/0010',
+        qualified: 'Q',
+        instrument: '00',
+      },
+    ]
+    assert.equal(
+      visionCurrentWarrantyOwnerLine(ownership, 'GRIMALDI RICHARD'),
+      'GRIMALDI RICHARD',
+    )
   })
 })
 

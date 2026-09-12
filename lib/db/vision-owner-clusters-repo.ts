@@ -6,6 +6,7 @@ import {
   clusterKindFromId,
   extractVisionOwnerKeys,
   isIncompletePersonNameKey,
+  keepParcelsOnCurrentWarrantyName,
   ownerPortfolioRelationship,
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
@@ -117,6 +118,33 @@ async function loadAddressOwnerRow(
       WHERE town = $1 AND vision_pid = $2`,
     [town, visionPid],
   )
+}
+
+async function loadAddressOwnerRows(
+  pairs: readonly { town: string; visionPid: string }[],
+): Promise<Map<string, AddressOwnerRow>> {
+  const byTown = new Map<string, string[]>()
+  for (const pair of pairs) {
+    const list = byTown.get(pair.town) ?? []
+    list.push(pair.visionPid)
+    byTown.set(pair.town, list)
+  }
+  const out = new Map<string, AddressOwnerRow>()
+  for (const [town, pids] of byTown) {
+    const unique = [...new Set(pids)]
+    if (unique.length === 0) continue
+    const rows = await query<AddressOwnerRow>(
+      `SELECT town, vision_pid, owner_name, owner_mailing_address,
+              address_full, street_no, street_name, field_card
+         FROM vision_addresses
+        WHERE town = $1 AND vision_pid = ANY($2::text[])`,
+      [town, unique],
+    )
+    for (const row of rows) {
+      out.set(`${row.town}:${row.vision_pid}`, row)
+    }
+  }
+  return out
 }
 
 async function listKeyStamps(
@@ -273,10 +301,27 @@ export async function listVisionOwnerClusterMates(
                m2.cluster_id`,
     [town, visionPid],
   )
+  const subjectRow = await loadAddressOwnerRow(town, visionPid)
+  const subjectKeys = subjectRow ? keysFromAddressRow(subjectRow) : null
+  const cards = await loadAddressOwnerRows(
+    rows.map((row) => ({ town: row.town, visionPid: row.vision_pid })),
+  )
   return rows
     .filter((row) => {
       if (!row.cluster_id.startsWith('name:')) return true
-      return !isIncompletePersonNameKey(row.cluster_id.slice('name:'.length))
+      const keyNorm = row.cluster_id.slice('name:'.length)
+      if (isIncompletePersonNameKey(keyNorm)) return false
+      if (
+        subjectKeys &&
+        !subjectKeys.some((key) => key.keyKind === 'name' && key.keyNorm === keyNorm)
+      ) {
+        return false
+      }
+      const mate = cards.get(`${row.town}:${row.vision_pid}`)
+      if (!mate) return true
+      return keysFromAddressRow(mate).some(
+        (key) => key.keyKind === 'name' && key.keyNorm === keyNorm,
+      )
     })
     .map((row) => ({
     town: row.town,
@@ -372,6 +417,15 @@ export async function listVisionOwnerPortfolios(opts: {
         [town, minParcels],
       )
 
+  const nameParcels: { town: string; visionPid: string }[] = []
+  for (const row of rows) {
+    if (clusterKindFromId(row.cluster_id) !== 'name') continue
+    for (const parcel of row.parcels ?? []) {
+      nameParcels.push({ town: parcel.town, visionPid: parcel.visionPid })
+    }
+  }
+  const cards = await loadAddressOwnerRows(nameParcels)
+
   const portfolios: VisionOwnerPortfolio[] = []
   for (const row of rows) {
     const kind = clusterKindFromId(row.cluster_id)
@@ -382,8 +436,19 @@ export async function listVisionOwnerPortfolios(opts: {
     ) {
       continue
     }
-    const parcelCount = Number(row.parcel_count)
-    if (!Number.isFinite(parcelCount) || parcelCount < minParcels) continue
+    const rawParcels = (row.parcels ?? []).map((parcel) => ({
+      town: parcel.town,
+      visionPid: parcel.visionPid,
+      siteAddress: parcel.siteAddress?.trim() || parcel.visionPid,
+    }))
+    const parcels =
+      kind === 'name'
+        ? keepParcelsOnCurrentWarrantyName(row.cluster_id, rawParcels, (parcel) => {
+            const card = cards.get(`${parcel.town}:${parcel.visionPid}`)
+            return card ? keysFromAddressRow(card) : null
+          })
+        : rawParcels
+    if (parcels.length < minParcels) continue
     const mailingLabel =
       kind === 'mailing'
         ? row.cluster_id.slice('mailing:'.length).replace(/\|/g, ', ')
@@ -400,12 +465,8 @@ export async function listVisionOwnerPortfolios(opts: {
       town: row.town,
       displayName,
       mailingLabel,
-      parcelCount,
-      parcels: (row.parcels ?? []).map((parcel) => ({
-        town: parcel.town,
-        visionPid: parcel.visionPid,
-        siteAddress: parcel.siteAddress?.trim() || parcel.visionPid,
-      })),
+      parcelCount: parcels.length,
+      parcels,
     })
   }
   return pickUniqueOwnerPortfolios(portfolios)
@@ -449,6 +510,51 @@ export async function fillMissingVisionOwnerKeys(opts: {
     if (result.keys > 0) keyed += 1
   }
   return { scanned: rows.length, keyed }
+}
+
+/**
+ * Re-key the oldest stored parcels so name keys catch up to the
+ * current-warranty rule. First-name leftovers are a subset; this also
+ * drops superseded warranty sellers (Grimaldi on 38 Ferry).
+ */
+export async function refreshOldestVisionOwnerKeys(opts: {
+  town?: string
+  limit?: number
+}): Promise<{ scanned: number; refreshed: number }> {
+  await ensureVisionOwnerClusterTables()
+  const limit = Math.max(1, Math.min(opts.limit ?? 80, 400))
+  const town = opts.town?.trim()
+  const rows = town
+    ? await query<{ town: string; vision_pid: string }>(
+        `SELECT town, vision_pid
+           FROM (
+             SELECT town, vision_pid, MIN(updated_at) AS oldest
+               FROM vision_owner_keys
+              WHERE town = $1
+              GROUP BY town, vision_pid
+           ) t
+          ORDER BY oldest ASC, town, vision_pid
+          LIMIT $2`,
+        [town, limit],
+      )
+    : await query<{ town: string; vision_pid: string }>(
+        `SELECT town, vision_pid
+           FROM (
+             SELECT town, vision_pid, MIN(updated_at) AS oldest
+               FROM vision_owner_keys
+              GROUP BY town, vision_pid
+           ) t
+          ORDER BY oldest ASC, town, vision_pid
+          LIMIT $1`,
+        [limit],
+      )
+
+  let refreshed = 0
+  for (const row of rows) {
+    await refreshVisionOwnerKeysForParcel(row.town, row.vision_pid)
+    refreshed += 1
+  }
+  return { scanned: rows.length, refreshed }
 }
 
 /** Re-key parcels that still carry a first-name-only landlord key. */

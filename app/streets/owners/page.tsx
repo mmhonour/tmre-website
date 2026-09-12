@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 export const metadata = {
   title: 'Owners with 2+ homes — Streets — TMRE',
   description:
-    'Admin: landlords (same name on warranty or quitclaim history) and owners who share a mailing — two or more homes, largest first.',
+    'Admin: landlords (same current warranty name on two or more homes) and owners who share a mailing — largest first.',
   robots: { index: false, follow: false },
 }
 
@@ -125,8 +125,10 @@ export default async function StreetsOwnersPage({
               : `Landlords and owners with two or more homes`}
           </h1>
           <p className="mt-3 max-w-xl font-mono text-sm text-white/70">
-            Admin only. Largest first. A landlord is the same person on two
-            warranty or quitclaim rows. An owner cluster is the same mailbox.
+            Admin only. Largest first. A landlord is the same person on the
+            current (non-superseded) warranty of two or more homes. A later
+            warranty replaces the prior buyer; a later quitclaim does not.
+            An owner cluster is the same mailbox.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}
