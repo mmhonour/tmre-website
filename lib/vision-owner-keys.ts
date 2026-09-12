@@ -3,7 +3,11 @@ import {
   normalizePropertyAddress,
 } from '@/lib/property-address'
 import { parseVisionMailingLetterParts } from '@/lib/vision-mailing-address'
-import { VISION_OWNER_ENTITY_RE } from '@/lib/vision-owner-display'
+import {
+  parseVisionOwnerPeople,
+  visionOwnerPersonAssessorLine,
+  VISION_OWNER_ENTITY_RE,
+} from '@/lib/vision-owner-display'
 import {
   isVisionQuitclaim,
   normalizeVisionOwnerLine,
@@ -35,9 +39,8 @@ export function visionOwnerClusterId(
 }
 
 export function splitVisionOwnerPeople(line: string): string[] {
-  return normalizeVisionOwnerLine(line)
-    .split(/\s*&\s*/)
-    .map((part) => part.trim())
+  return parseVisionOwnerPeople(normalizeVisionOwnerLine(line))
+    .map(visionOwnerPersonAssessorLine)
     .filter(Boolean)
 }
 
@@ -48,9 +51,11 @@ export function visionOwnerNameKeyNorm(person: string): string {
     .split(/\s+/)
     .filter(Boolean)
   if (tokens.length === 0) return ''
-  if (tokens.length === 1 || VISION_OWNER_ENTITY_RE.test(person)) {
+  if (VISION_OWNER_ENTITY_RE.test(person)) {
     return tokens.join('|')
   }
+  /** A given name alone is not a landlord key (`Melissa` ≠ Melissa Marks). */
+  if (tokens.length < 2) return ''
   return [...tokens].sort().join('|')
 }
 

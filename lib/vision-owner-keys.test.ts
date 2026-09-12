@@ -20,6 +20,11 @@ describe('visionOwnerNameKeyNorm', () => {
   it('does not scramble an LLC', () => {
     assert.equal(visionOwnerNameKeyNorm('ACME HOLDINGS LLC'), 'acme|holdings|llc')
   })
+
+  it('does not treat a first name alone as a landlord key', () => {
+    assert.equal(visionOwnerNameKeyNorm('Melissa'), '')
+    assert.equal(visionOwnerNameKeyNorm('MELISSA'), '')
+  })
 })
 
 describe('visionOwnerMailingKeyNorm', () => {
@@ -70,6 +75,19 @@ describe('extractVisionOwnerKeys', () => {
       visionOwnerClusterId('name', 'castillo|edward'),
       'name:castillo|edward',
     )
+  })
+
+  it('inherits the shared last name so Melissa is not a first-name cluster', () => {
+    const keys = extractVisionOwnerKeys({
+      town: 'Westport',
+      ownerName: 'MARKS TIMOTHY & MELISSA',
+    })
+    const names = keys
+      .filter((row) => row.keyKind === 'name')
+      .map((row) => row.keyNorm)
+      .sort()
+    assert.deepEqual(names, ['marks|melissa', 'marks|timothy'])
+    assert.ok(!names.includes('melissa'))
   })
 
   it('keys Denise from a later quitclaim even when she is not of record', () => {
