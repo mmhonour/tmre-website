@@ -131,6 +131,22 @@ async function writeCachedOpenHousesPage(data: OpenHousesPageData): Promise<void
 }
 
 /**
+ * Cheap page-document read. Cache row only — never the live join.
+ * A miss returns null so the HTML still ships and the client can fetch.
+ */
+export async function peekOpenHousesPageCache(): Promise<OpenHousesPageLoad | null> {
+  try {
+    const window = openHouseRemainingWeekWindow()
+    const cached = await readCachedOpenHousesPage(window)
+    if (!cached) return null
+    return { ok: true, data: { ...cached, source: 'db' } }
+  } catch (err) {
+    console.warn('[open-houses] page cache peek failed', err)
+    return null
+  }
+}
+
+/**
  * Remaining-week open houses for the page and `/api/listings/open-houses`.
  * Prefer the precomputed week payload; assemble from Neon only on a miss.
  */
