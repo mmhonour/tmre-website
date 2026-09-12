@@ -144,6 +144,15 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   const pruned = await pruneOpenHousesBefore(lookback.start)
 
   try {
+    const { refreshOpenHousesPageCache } = await import(
+      '@/lib/open-houses-page-data'
+    )
+    await refreshOpenHousesPageCache()
+  } catch (err) {
+    console.warn('[open-houses-sync] week cache rebuild failed', err)
+  }
+
+  try {
     const { processDueSavedSearchAlerts } = await import(
       '@/lib/saved-search-alerts'
     )

@@ -80,6 +80,13 @@ export function OpenHousesForwardPreview() {
             {OPEN_HOUSES_LOAD_ERROR_TITLE}
           </p>
           <p className="text-charcoal/70">{OPEN_HOUSES_LOAD_ERROR_BODY}</p>
+          <button
+            type="button"
+            onClick={() => setScene("loaded")}
+            className="mt-5 rounded-full border border-charcoal/20 bg-white px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy"
+          >
+            Try again
+          </button>
         </div>
       ) : scene === "empty" ? (
         <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-10 text-center">

@@ -134,7 +134,18 @@ export function pickNextOpenHouse(
 
 export const OPEN_HOUSES_LOAD_ERROR_TITLE = 'Open houses could not be loaded'
 export const OPEN_HOUSES_LOAD_ERROR_BODY =
-  'The week list failed to load. Refresh the page. This is not an empty calendar.'
+  'The week list failed to load. Try again. This is not an empty calendar.'
+
+export const OPEN_HOUSES_PAGE_CACHE_KEY = 'open-houses:remaining-week'
+
+export function openHousesPageCacheMatchesWindow(
+  data: Pick<OpenHousesPageData, 'window'> | null | undefined,
+  window: { start: string; end: string },
+): boolean {
+  return (
+    data?.window?.start === window.start && data?.window?.end === window.end
+  )
+}
 
 /** Yesterday back through the lookback horizon (empty when lookback is 0). */
 export function openHouseLookbackWindow(from = new Date()): { start: string; end: string } {

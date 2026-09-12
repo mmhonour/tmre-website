@@ -1,23 +1,29 @@
 import 'server-only'
 
 import {
-  ensureOpenHousesTable,
+  openHousesTableExists,
   readOpenHouseCountsForListings,
   readOpenHousesJoinedToActiveListings,
+  type OpenHouseJoinedRow,
 } from '@/lib/db/open-houses-repo'
 import { OPEN_HOUSES_SYNCED_AT_KEY } from '@/lib/open-houses-sync'
 import { getSyncMeta as getSyncMetaFresh } from '@/lib/db/sync-meta'
 import {
+  readStatsCacheRow,
+  writeStatsCacheRow,
+} from '@/lib/db/stats-cache-repo'
+import {
   etCalendarDate,
+  OPEN_HOUSES_PAGE_CACHE_KEY,
   openHouseRemainingWeekLabel,
   openHouseRemainingWeekWindow,
+  openHousesPageCacheMatchesWindow,
   pickNextOpenHouse,
   type OpenHouseEvent,
   type OpenHouseListing,
   type OpenHousesPageData,
   type OpenHousesPageLoad,
 } from '@/lib/open-houses'
-import { type Listing } from '@/lib/rets'
 import { listingInTmreCoverage, resolveListingTown } from '@/lib/tmre-towns'
 
 export type { OpenHousesPageData, OpenHousesPageLoad }
@@ -25,6 +31,19 @@ export type { OpenHousesPageData, OpenHousesPageLoad }
 function isoDate(value: Date | string): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   return String(value).slice(0, 10)
+}
+
+function isoStamp(value: Date | string | null | undefined): string | null {
+  if (value == null) return null
+  if (value instanceof Date) return value.toISOString()
+  const raw = String(value)
+  return raw || null
+}
+
+function asNumber(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : null
 }
 
 function daysBetween(iso: string | null | undefined): number | null {
@@ -42,23 +61,111 @@ function sortEvents(events: OpenHouseEvent[]): OpenHouseEvent[] {
   })
 }
 
+function listingFromJoinedRow(row: OpenHouseJoinedRow): {
+  mlsId: string
+  listingKey: string | null
+  propertyType: string
+  style: string
+  address: OpenHouseListing['address']
+  price: number | null
+  beds: number | null
+  baths: number | null
+  sqft: number | null
+  yearBuilt: number | null
+  dom: number | null
+  photoCount: number | null
+  status: string
+  ownerName: string | null
+  listDate: string | null
+  modificationTimestamp: string | null
+} | null {
+  const mlsId = row.mls_id?.trim()
+  if (!mlsId) return null
+  const city = row.address_city?.trim() ?? ''
+  const postalCode = row.postal_code?.trim() ?? ''
+  if (!city && !postalCode) return null
+  return {
+    mlsId,
+    listingKey: row.listing_listing_key?.trim() || row.listing_key?.trim() || null,
+    propertyType: row.property_type?.trim() || '',
+    style: row.style?.trim() || '',
+    address: {
+      street: row.address_street?.trim() || '',
+      unit: row.address_unit?.trim() || '',
+      city,
+      state: row.address_state?.trim() || 'Connecticut',
+      postalCode,
+      full: row.address_full?.trim() || '',
+    },
+    price: asNumber(row.price),
+    beds: asNumber(row.beds),
+    baths: asNumber(row.baths),
+    sqft: asNumber(row.sqft),
+    yearBuilt: asNumber(row.year_built),
+    dom: asNumber(row.dom),
+    photoCount: asNumber(row.photo_count),
+    status: row.mls_status?.trim() || '',
+    ownerName: row.owner_name?.trim() || null,
+    listDate: isoStamp(row.list_date),
+    modificationTimestamp: isoStamp(row.modification_timestamp),
+  }
+}
+
+async function readCachedOpenHousesPage(
+  window: { start: string; end: string },
+): Promise<OpenHousesPageData | null> {
+  try {
+    const row = await readStatsCacheRow(OPEN_HOUSES_PAGE_CACHE_KEY)
+    if (!row?.payload) return null
+    const data = JSON.parse(row.payload) as OpenHousesPageData
+    if (!openHousesPageCacheMatchesWindow(data, window)) return null
+    if (!Array.isArray(data.listings)) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+async function writeCachedOpenHousesPage(data: OpenHousesPageData): Promise<void> {
+  await writeStatsCacheRow(OPEN_HOUSES_PAGE_CACHE_KEY, data)
+}
+
 /**
  * Remaining-week open houses for the page and `/api/listings/open-houses`.
- * Same payload both places so the HTML is not an empty “Loading…” shell.
+ * Prefer the precomputed week payload; assemble from Neon only on a miss.
  */
-export async function loadOpenHousesPageData(): Promise<OpenHousesPageLoad> {
+export async function loadOpenHousesPageData(
+  options: { forceRefresh?: boolean } = {},
+): Promise<OpenHousesPageLoad> {
   const window = openHouseRemainingWeekWindow()
+  if (!options.forceRefresh) {
+    const cached = await readCachedOpenHousesPage(window)
+    if (cached) {
+      return { ok: true, data: { ...cached, source: 'db' } }
+    }
+  }
+
   try {
-    await ensureOpenHousesTable()
+    if (!(await openHousesTableExists())) {
+      return {
+        ok: false,
+        error: 'open_houses table is not ready',
+        window,
+      }
+    }
     const rows = await readOpenHousesJoinedToActiveListings(window.start, window.end)
 
     const byMls = new Map<
       string,
-      { listing: Listing; events: Map<string, OpenHouseEvent>; dom: number | null }
+      {
+        listing: NonNullable<ReturnType<typeof listingFromJoinedRow>>
+        events: Map<string, OpenHouseEvent>
+        dom: number | null
+      }
     >()
     for (const row of rows) {
-      const listing = row.listing_json as Listing | null
-      if (!listing?.address) continue
+      const listing = listingFromJoinedRow(row)
+      if (!listing) continue
       if (!listingInTmreCoverage(listing.address.postalCode, listing.address.city)) {
         continue
       }
@@ -112,7 +219,7 @@ export async function loadOpenHousesPageData(): Promise<OpenHousesPageLoad> {
         yearBuilt: listing.yearBuilt,
         dom:
           listing.dom ??
-          dom ??
+          asNumber(dom) ??
           daysBetween(listing.listDate ?? listing.modificationTimestamp),
         photoCount: listing.photoCount,
         primaryPhotoIndex: null,
@@ -138,19 +245,20 @@ export async function loadOpenHousesPageData(): Promise<OpenHousesPageLoad> {
       () => null,
     )
 
-    return {
-      ok: true,
-      data: {
-        listings,
-        generatedAt: new Date().toISOString(),
-        source: 'db',
-        syncedAt,
-        window,
-        windowLabel: openHouseRemainingWeekLabel(window),
-        eventsFound: rows.length,
-        listingsMatched: listings.length,
-      },
+    const data: OpenHousesPageData = {
+      listings,
+      generatedAt: new Date().toISOString(),
+      source: 'db',
+      syncedAt,
+      window,
+      windowLabel: openHouseRemainingWeekLabel(window),
+      eventsFound: rows.length,
+      listingsMatched: listings.length,
     }
+    await writeCachedOpenHousesPage(data).catch((err) => {
+      console.warn('[open-houses] week cache write failed', err)
+    })
+    return { ok: true, data }
   } catch (err) {
     console.error('[open-houses] load error', err)
     return {
@@ -158,5 +266,13 @@ export async function loadOpenHousesPageData(): Promise<OpenHousesPageLoad> {
       error: err instanceof Error ? err.message : String(err),
       window,
     }
+  }
+}
+
+/** Rebuild the remaining-week payload after an upcoming OH write. */
+export async function refreshOpenHousesPageCache(): Promise<void> {
+  const result = await loadOpenHousesPageData({ forceRefresh: true })
+  if (!result.ok) {
+    throw new Error(result.error)
   }
 }

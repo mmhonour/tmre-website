@@ -18,8 +18,8 @@ export default function OpenHousesForwardPreviewPage() {
         <p className="mb-8 text-sm leading-relaxed text-slate">
           The page lists homes with an open house today or later this week.
           Past counts document earlier showings on those homes. A series that
-          ended yesterday is out. A failed load is not an empty week.
-          Production: /open-houses.
+          ended yesterday is out. A failed load is not an empty week —
+          Try again retries the week list. Production: /open-houses.
         </p>
         <OpenHousesForwardPreview />
       </div>

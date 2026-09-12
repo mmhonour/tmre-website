@@ -10,6 +10,7 @@ import {
   openHouseHorizonWindow,
   openHouseLookbackWindow,
   openHouseRemainingWeekWindow,
+  openHousesPageCacheMatchesWindow,
   openHouseWeekWindow,
   pickNextOpenHouse,
   splitDateWindow,
@@ -127,6 +128,24 @@ describe('formatOpenHouseWeekCount', () => {
   it('uses singular and plural labels', () => {
     assert.equal(formatOpenHouseWeekCount(1), '1 this week')
     assert.equal(formatOpenHouseWeekCount(3), '3 this week')
+  })
+})
+
+describe('openHousesPageCacheMatchesWindow', () => {
+  it('accepts today-through-Sunday and rejects yesterday’s window', () => {
+    const window = { start: '2026-09-12', end: '2026-09-13' }
+    assert.equal(
+      openHousesPageCacheMatchesWindow({ window }, window),
+      true,
+    )
+    assert.equal(
+      openHousesPageCacheMatchesWindow(
+        { window: { start: '2026-09-11', end: '2026-09-13' } },
+        window,
+      ),
+      false,
+    )
+    assert.equal(openHousesPageCacheMatchesWindow(null, window), false)
   })
 })
 

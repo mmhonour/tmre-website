@@ -70,7 +70,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-forward",
     title: "Open houses — remaining week + load error",
     summary:
-      "Page lists today-through-Sunday only. A series that ended yesterday is out. Load failure is not an empty week.",
+      "Page lists today-through-Sunday only. A series that ended yesterday is out. Load failure is not an empty week — Try again retries.",
   },
   {
     slug: "listing-open-house-history",

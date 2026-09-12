@@ -84,6 +84,29 @@ type ApiResponse = {
 
 type LoadState = "loading" | "ready" | "error";
 
+async function fetchOpenHousesWeek(signal: AbortSignal): Promise<ApiResponse> {
+  let last: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const r = await globalThis.fetch("/api/listings/open-houses", {
+        cache: attempt === 0 ? "default" : "no-store",
+        headers: { Accept: "application/json" },
+        signal,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return (await r.json()) as ApiResponse;
+    } catch (err) {
+      last = err;
+      if (signal.aborted) throw err;
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+        if (signal.aborted) throw err;
+      }
+    }
+  }
+  throw last instanceof Error ? last : new Error("Failed to load open houses");
+}
+
 const TOWN_NAMES = TMRE_TOWNS;
 
 const TX_FILTERS: { value: TxFilter; label: string }[] = [
@@ -355,6 +378,7 @@ export default function OpenHousesClient({
   const [loadState, setLoadState] = useState<LoadState>(() =>
     initial?.ok ? "ready" : initial && !initial.ok ? "error" : "loading",
   );
+  const [reloadToken, setReloadToken] = useState(0);
   const [townFilter, setTownFilter] = useMaybePersistedFilter<TownFilter>(
     isolatePrefs,
     "tmre_oh_town",
@@ -421,33 +445,26 @@ export default function OpenHousesClient({
   }, []);
 
   useEffect(() => {
-    if (initial?.ok) return;
-    if (allListings.length > 0) return;
-    let cancelled = false;
-    const fetchJson = globalThis.fetch.bind(globalThis);
-    fetchJson("/api/listings/open-houses", {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<ApiResponse>;
-      })
+    if (reloadToken === 0 && initial?.ok) return;
+    if (reloadToken === 0 && allListings.length > 0) return;
+    const controller = new AbortController();
+    setLoadState("loading");
+    fetchOpenHousesWeek(controller.signal)
       .then((d) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setAllListings(d.listings);
         setWindowLabel(d.windowLabel);
         setSyncedAt(d.syncedAt ?? null);
         setLoadState("ready");
       })
       .catch(() => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setLoadState((state) => (state === "ready" ? state : "error"));
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [initial, allListings.length]);
+  }, [initial, reloadToken]);
 
   const listings = useMemo(() => {
     let result = allListings.filter((l) =>
@@ -679,6 +696,16 @@ export default function OpenHousesClient({
                 {OPEN_HOUSES_LOAD_ERROR_TITLE}
               </p>
               <p className="text-charcoal/70">{OPEN_HOUSES_LOAD_ERROR_BODY}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setAllListings([]);
+                  setReloadToken((n) => n + 1);
+                }}
+                className="mt-5 rounded-full border border-charcoal/20 bg-white px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy hover:border-navy"
+              >
+                Try again
+              </button>
             </div>
           ) : listings.length === 0 ? (
             <div className="text-center py-24">
