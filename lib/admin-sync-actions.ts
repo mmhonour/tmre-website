@@ -1564,38 +1564,8 @@ async function runAdminSyncActionImpl(
       }
     }
     case 'cpi-sync': {
-      if (shouldQueueOnServerless(options)) {
-        const { queueNetlifyCpiSync, isNetlifyQueueRateLimited } = await import(
-          '@/lib/netlify-sync-trigger'
-        )
-        const { queued, via } = await queueSyncNowThroughQueue(
-          'cpi-sync',
-          () => queueNetlifyCpiSync({ source: 'admin' }),
-        )
-        if (queued.ok) {
-          return {
-            ok: true,
-            action,
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            durationMs: Date.now() - t0,
-            backgroundQueued: true,
-            message: `CPI sync queued (${via})`,
-          }
-        }
-        if (!isNetlifyQueueRateLimited(queued)) {
-          return {
-            ok: false,
-            action,
-            startedAt,
-            finishedAt: new Date().toISOString(),
-            durationMs: Date.now() - t0,
-            backgroundQueued: true,
-            message: `CPI sync queue failed (${via}): ${queued.error ?? 'unknown'}`,
-          }
-        }
-        // Fall through and scrape here — the background hop is HTTP 429.
-      }
+      // Always scrape here. CPI is an overwrite of one BLS print — not a
+      // background worker. Admin Sync now was 429ing on that hop.
       const { runCpiReleaseSync, stampCpiSyncSuccess } = await import(
         '@/lib/cpi-release-sync'
       )
