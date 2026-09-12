@@ -88,7 +88,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "vision-owner-first-last",
     title: "Owner First Last",
     summary:
-      "VGSI LAST FIRST becomes First Last for people; LLC and trust lines stay as filed.",
+      "VGSI LAST FIRST becomes First Last. A couple with one last name is First1 & First2 Last — not First Last and First. A first name alone is not a landlord key.",
+  },
+  {
+    slug: "streets-letter-scroll",
+    title: "Streets letter jump",
+    summary:
+      "Letter index hashes clear the fixed site header so the letter heading stays visible — not one or two streets too low.",
   },
 ];
 
