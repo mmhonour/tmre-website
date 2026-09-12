@@ -18,7 +18,6 @@ import {
   type OpenHousesPageLoad,
 } from '@/lib/open-houses'
 import { type Listing } from '@/lib/rets'
-import { openHouseListingTown } from '@/lib/open-houses-groups'
 import { listingInTmreCoverage, resolveListingTown } from '@/lib/tmre-towns'
 
 export type { OpenHousesPageData, OpenHousesPageLoad }
@@ -33,19 +32,6 @@ function daysBetween(iso: string | null | undefined): number | null {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return null
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000))
-}
-
-/** Temporary test cap so /open-houses can load: first home in each town. */
-function takeFirstListingPerTown(listings: OpenHouseListing[]): OpenHouseListing[] {
-  const seen = new Set<string>()
-  const out: OpenHouseListing[] = []
-  for (const listing of listings) {
-    const town = openHouseListingTown(listing)
-    if (seen.has(town)) continue
-    seen.add(town)
-    out.push(listing)
-  }
-  return out
 }
 
 function sortEvents(events: OpenHouseEvent[]): OpenHouseEvent[] {
@@ -147,7 +133,6 @@ export async function loadOpenHousesPageData(): Promise<OpenHousesPageLoad> {
         b.nextOpenHouse.startDateTime ?? '',
       )
     })
-    const capped = takeFirstListingPerTown(listings)
 
     const syncedAt = await getSyncMetaFresh(OPEN_HOUSES_SYNCED_AT_KEY).catch(
       () => null,
@@ -156,14 +141,14 @@ export async function loadOpenHousesPageData(): Promise<OpenHousesPageLoad> {
     return {
       ok: true,
       data: {
-        listings: capped,
+        listings,
         generatedAt: new Date().toISOString(),
         source: 'db',
         syncedAt,
         window,
         windowLabel: openHouseRemainingWeekLabel(window),
         eventsFound: rows.length,
-        listingsMatched: capped.length,
+        listingsMatched: listings.length,
       },
     }
   } catch (err) {
