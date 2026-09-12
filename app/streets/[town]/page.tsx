@@ -8,6 +8,8 @@ import {
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
+import HeaderScrollOffset from '@/components/HeaderScrollOffset'
+import { HEADER_SCROLL_MT } from '@/lib/header-scroll-offset'
 import {
   resolveStreetTown,
   streetNameToSlug,
@@ -70,6 +72,7 @@ export default async function StreetsTownPage({
 
   return (
     <>
+      <HeaderScrollOffset />
       <section className="navy-gradient text-white pt-20 pb-10 lg:pt-28 lg:pb-14 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
@@ -150,7 +153,11 @@ export default async function StreetsTownPage({
               </nav>
               <div className="mt-8 space-y-10">
                 {letters.map((letter) => (
-                  <div key={letter} id={`letter-${letter}`}>
+                  <div
+                    key={letter}
+                    id={`letter-${letter}`}
+                    className={HEADER_SCROLL_MT}
+                  >
                     <h2 className="font-serif italic text-2xl text-navy mb-3">
                       {letter}
                     </h2>

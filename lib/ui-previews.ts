@@ -90,6 +90,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "VGSI LAST FIRST becomes First Last for people; LLC and trust lines stay as filed.",
   },
+  {
+    slug: "streets-letter-scroll",
+    title: "Streets letter jump",
+    summary:
+      "Letter index hashes clear the fixed site header so the letter heading stays visible — not one or two streets too low.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {
