@@ -32,10 +32,55 @@ export default async function handler() {
       )
     }
     const queued = await queueNetlifyCpiSync()
-    if (!queued.ok) {
+    if (queued.ok) return thinCronResponse(queued)
+
+    const { isNetlifyQueueRateLimited } = await import(
+      '../../lib/netlify-sync-trigger'
+    )
+    if (!isNetlifyQueueRateLimited(queued)) {
       console.warn(`[netlify/sync-cpi] worker queue failed: ${queued.error}`)
+      return thinCronResponse(queued)
     }
-    return thinCronResponse(queued)
+
+    // Background hop is refused site-wide (HTTP 429). CPI is a short BLS
+    // scrape — run it here rather than wait a month for the next print day.
+    const { getSyncMeta } = await import('../../lib/db/sync-meta-store')
+    const { cpiSyncDueRelease } = await import(
+      '../../lib/fed-event-sync-schedule'
+    )
+    const { readSyncScheduleConfig } = await import(
+      '../../lib/sync-schedule-config'
+    )
+    const { runCpiReleaseSync, stampCpiSyncSuccess } = await import(
+      '../../lib/cpi-release-sync'
+    )
+    const start =
+      readSyncScheduleConfig().jobs['cpi-sync']?.startTimeEt ?? '09:15'
+    const due = cpiSyncDueRelease(
+      undefined,
+      new Date(),
+      start,
+      getSyncMeta('cpi_last_synced_event_id'),
+    )
+    const result = await runCpiReleaseSync(
+      due ? { releaseId: due.id } : undefined,
+    )
+    await stampCpiSyncSuccess(result, due?.id)
+    return new Response(
+      JSON.stringify({
+        ok: result.ok,
+        mode: 'inline-after-429',
+        releaseId: due?.id ?? null,
+        fetched: result.fetched,
+        updated: result.updated,
+        skipped: result.skipped,
+        failed: result.failed,
+      }),
+      {
+        status: result.ok ? 200 : 207,
+        headers: { 'content-type': 'application/json' },
+      },
+    )
   } catch (err) {
     return thinCronError('netlify/sync-cpi', err)
   }
