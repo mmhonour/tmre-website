@@ -801,7 +801,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows (90-day upcoming + 1-year lookback)',
     owner: 'lib/open-houses-sync.ts',
     notes:
-      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today .. +90d) is replaced so cancellations disappear, then open_houses_synced_at is stamped. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. After a successful pull, the remaining-week page payload is written to stats_cache (`open-houses:remaining-week`) so /open-houses is a cache read. A failed RETS pull must not empty a window.',
+      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today .. +90d) is replaced so cancellations disappear, then open_houses_synced_at is stamped. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. After a successful pull, the remaining-week JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML. A failed RETS pull must not empty a window.',
     live: { kind: 'postgres_table', table: 'open_houses' },
   },
   {
