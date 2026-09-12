@@ -25,6 +25,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Admin landlord / owner aggregation: same name on warranty or quitclaim history, or the same mailbox. Find (admin) links here.",
   },
   {
+    slug: "open-houses-view-glyphs",
+    title: "Open houses — Large / Grid / Line",
+    summary:
+      "View glyphs match Intelligence. Click Large, Grid, or Line — fixture cards switch. Not Grid / Rows / Compact list.",
+  },
+  {
     slug: "open-houses-one-per-town",
     title: "Open houses — one listing per town",
     summary:
