@@ -46,7 +46,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
-      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Show by sits on the glyph line (All / Most open houses / First showing).",
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Show by sits on the glyph line. First town sits just under the alerts divider.",
   },
   {
     slug: "open-houses-focus",

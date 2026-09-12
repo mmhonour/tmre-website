@@ -183,11 +183,19 @@ export function OpenHousesFilterBarPreview() {
         </div>
       </div>
 
-      <div className="space-y-4 px-6 py-10">
+      <div className="space-y-3 px-6 pt-3 pb-10">
         <p className="font-mono text-[11px] text-slate">
           Place filters {docked ? "are docked in the sticky bar" : "are still in the hero"}.
+          First town sits just under the alerts divider.
         </p>
-        {Array.from({ length: 8 }, (_, i) => (
+        <div className="flex items-baseline gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-charcoal/[0.12] bg-white font-mono text-sm text-navy">
+            +
+          </span>
+          <span className="font-serif text-2xl text-navy">Westport</span>
+          <span className="font-mono text-sm tabular-nums text-slate">5</span>
+        </div>
+        {Array.from({ length: 7 }, (_, i) => (
           <div
             key={i}
             className="h-24 rounded-xl border border-charcoal/[0.08] bg-white"

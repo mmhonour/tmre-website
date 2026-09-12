@@ -616,7 +616,7 @@ export default function OpenHousesClient({
             />
           </div>
         </div>
-        <div className="mx-auto max-w-7xl px-6 lg:px-10 py-10 lg:py-16">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10 pt-3 pb-10 lg:pt-4 lg:pb-12">
           {loadState === "loading" ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[1, 2, 3, 4].map((i) => (
