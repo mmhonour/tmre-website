@@ -71,7 +71,7 @@ export function parseVisionOwnerPeople(
   return people
 }
 
-/** Assessor-order person lines (`MARKS TIMOTHY`, `MARKS MELISSA`). */
+/** Assessor-order person lines (`THARP CHARLES`, `THARP ADRIANNE`). */
 export function visionOwnerPersonAssessorLine(person: VisionOwnerPerson): string {
   if (person.entity) return person.given.join(' ')
   return [person.last, ...person.given].filter(Boolean).join(' ')

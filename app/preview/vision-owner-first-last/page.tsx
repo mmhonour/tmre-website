@@ -19,12 +19,20 @@ const CASES = [
     raw: "SLOSSBERG MATTHEW & CHAMMAH-SLOSSBERG EMMANUELLE",
   },
   {
-    label: "Shared last — given names first",
-    raw: "MARKS TIMOTHY & MELISSA",
+    label: "Shared last — 3 Acorn Ln",
+    raw: "THARP CHARLES & ADRIANNE",
   },
   {
     label: "Shared last written twice",
-    raw: "MARKS TIMOTHY & MARKS MELISSA",
+    raw: "THARP CHARLES & THARP ADRIANNE",
+  },
+  {
+    label: "Shared last — Irina & Yury",
+    raw: "FEYGIN IRINA & YURY",
+  },
+  {
+    label: "Different last names",
+    raw: "MARKS TIMOTHY AND HONOUR MELISSA",
   },
   {
     label: "LLC — no flip",

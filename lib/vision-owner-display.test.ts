@@ -43,13 +43,20 @@ describe('formatVisionOwnerDisplay', () => {
 
   it('puts both given names before a shared last name', () => {
     assert.equal(
-      formatVisionOwnerDisplay('MARKS TIMOTHY & MELISSA'),
-      'Timothy & Melissa Marks',
+      formatVisionOwnerDisplay('THARP CHARLES & ADRIANNE'),
+      'Charles & Adrianne Tharp',
     )
     assert.equal(
-      formatVisionOwnerDisplay('MARKS TIMOTHY & MARKS MELISSA'),
-      'Timothy & Melissa Marks',
+      formatVisionOwnerDisplay('THARP CHARLES & THARP ADRIANNE'),
+      'Charles & Adrianne Tharp',
     )
+    assert.equal(
+      formatVisionOwnerDisplay('FEYGIN IRINA & YURY'),
+      'Irina & Yury Feygin',
+    )
+  })
+
+  it('keeps different last names as First Last and First Last', () => {
     assert.equal(
       formatVisionOwnerDisplay('MARKS TIMOTHY AND HONOUR MELISSA'),
       'Timothy Marks and Melissa Honour',

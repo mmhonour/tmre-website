@@ -54,7 +54,7 @@ export function visionOwnerNameKeyNorm(person: string): string {
   if (VISION_OWNER_ENTITY_RE.test(person)) {
     return tokens.join('|')
   }
-  /** A given name alone is not a landlord key (`Melissa` ≠ Melissa Marks). */
+  /** A given name alone is not a landlord key (`Adrianne` ≠ Adrianne Tharp). */
   if (tokens.length < 2) return ''
   return [...tokens].sort().join('|')
 }

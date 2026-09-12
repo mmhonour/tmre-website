@@ -22,8 +22,8 @@ describe('visionOwnerNameKeyNorm', () => {
   })
 
   it('does not treat a first name alone as a landlord key', () => {
-    assert.equal(visionOwnerNameKeyNorm('Melissa'), '')
-    assert.equal(visionOwnerNameKeyNorm('MELISSA'), '')
+    assert.equal(visionOwnerNameKeyNorm('Adrianne'), '')
+    assert.equal(visionOwnerNameKeyNorm('ADRIANNE'), '')
   })
 })
 
@@ -77,17 +77,17 @@ describe('extractVisionOwnerKeys', () => {
     )
   })
 
-  it('inherits the shared last name so Melissa is not a first-name cluster', () => {
+  it('inherits the shared last name so Adrianne is not a first-name cluster', () => {
     const keys = extractVisionOwnerKeys({
       town: 'Westport',
-      ownerName: 'MARKS TIMOTHY & MELISSA',
+      ownerName: 'THARP CHARLES & ADRIANNE',
     })
     const names = keys
       .filter((row) => row.keyKind === 'name')
       .map((row) => row.keyNorm)
       .sort()
-    assert.deepEqual(names, ['marks|melissa', 'marks|timothy'])
-    assert.ok(!names.includes('melissa'))
+    assert.deepEqual(names, ['adrianne|tharp', 'charles|tharp'])
+    assert.ok(!names.includes('adrianne'))
   })
 
   it('keys Denise from a later quitclaim even when she is not of record', () => {
