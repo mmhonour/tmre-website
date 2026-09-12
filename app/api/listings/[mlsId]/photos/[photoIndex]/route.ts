@@ -47,7 +47,7 @@ export async function GET(
     const photoKey = listing?.listingKey?.trim() || id
     const retsKey = listing?.listingKey?.trim() || photoKey
     const mlsId = listing?.mlsId?.trim() || (id !== photoKey ? id : '')
-    const resolved = await resolveListingPhotoBuffer({
+    const photoOpts = {
       mlsId: photoKey,
       listingKey: retsKey,
       photoIndex: index,
@@ -56,7 +56,17 @@ export async function GET(
       quality,
       // Also try MLS id when photos were cached under ListingId historically.
       alternateCacheIds: mlsId && mlsId !== photoKey ? [mlsId] : undefined,
-    })
+    }
+    let resolved = await resolveListingPhotoBuffer(photoOpts)
+    // Cache-only mid (email, old ?size=mid) has no __card blob yet. Serve the
+    // warmed full hero rather than 404 — Gmail cannot send ?fetch=1.
+    if (!resolved && !allowFetch && quality === 'mid') {
+      resolved = await resolveListingPhotoBuffer({
+        ...photoOpts,
+        quality: 'full',
+        sqliteOnly: true,
+      })
+    }
 
     if (!resolved) {
       if (allowFetch) recordPhotoProxyOutcome('fetch-fail')
