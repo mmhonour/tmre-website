@@ -5,6 +5,7 @@ import { formatVisionOwnerDisplay } from '@/lib/vision-owner-display'
 import {
   clusterKindFromId,
   extractVisionOwnerKeys,
+  isIncompletePersonNameKey,
   ownerPortfolioRelationship,
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
@@ -272,7 +273,12 @@ export async function listVisionOwnerClusterMates(
                m2.cluster_id`,
     [town, visionPid],
   )
-  return rows.map((row) => ({
+  return rows
+    .filter((row) => {
+      if (!row.cluster_id.startsWith('name:')) return true
+      return !isIncompletePersonNameKey(row.cluster_id.slice('name:'.length))
+    })
+    .map((row) => ({
     town: row.town,
     visionPid: row.vision_pid,
     siteAddress: row.site_address?.trim() || row.vision_pid,
@@ -370,6 +376,12 @@ export async function listVisionOwnerPortfolios(opts: {
   for (const row of rows) {
     const kind = clusterKindFromId(row.cluster_id)
     if (!kind) continue
+    if (
+      kind === 'name' &&
+      isIncompletePersonNameKey(row.cluster_id.slice('name:'.length))
+    ) {
+      continue
+    }
     const parcelCount = Number(row.parcel_count)
     if (!Number.isFinite(parcelCount) || parcelCount < minParcels) continue
     const mailingLabel =
@@ -437,4 +449,39 @@ export async function fillMissingVisionOwnerKeys(opts: {
     if (result.keys > 0) keyed += 1
   }
   return { scanned: rows.length, keyed }
+}
+
+/** Re-key parcels that still carry a first-name-only landlord key. */
+export async function refreshIncompleteVisionOwnerNameKeys(opts: {
+  town?: string
+  limit?: number
+}): Promise<{ scanned: number; refreshed: number }> {
+  await ensureVisionOwnerClusterTables()
+  const limit = Math.max(1, Math.min(opts.limit ?? 80, 400))
+  const town = opts.town?.trim()
+  const rows = town
+    ? await query<{ town: string; vision_pid: string; key_norm: string }>(
+        `SELECT k.town, k.vision_pid, k.key_norm
+           FROM vision_owner_keys k
+          WHERE k.town = $1 AND k.key_kind = 'name'`,
+        [town],
+      )
+    : await query<{ town: string; vision_pid: string; key_norm: string }>(
+        `SELECT k.town, k.vision_pid, k.key_norm
+           FROM vision_owner_keys k
+          WHERE k.key_kind = 'name'`,
+      )
+
+  const seen = new Set<string>()
+  let refreshed = 0
+  for (const row of rows) {
+    if (!isIncompletePersonNameKey(row.key_norm)) continue
+    const stamp = `${row.town}:${row.vision_pid}`
+    if (seen.has(stamp)) continue
+    seen.add(stamp)
+    await refreshVisionOwnerKeysForParcel(row.town, row.vision_pid)
+    refreshed += 1
+    if (refreshed >= limit) break
+  }
+  return { scanned: rows.length, refreshed }
 }

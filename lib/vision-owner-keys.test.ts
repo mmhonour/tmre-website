@@ -5,6 +5,7 @@ import {
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   visionOwnerMailingKeyNorm,
+  isIncompletePersonNameKey,
   visionOwnerNameKeyNorm,
   type VisionOwnerPortfolio,
 } from './vision-owner-keys'
@@ -24,6 +25,20 @@ describe('visionOwnerNameKeyNorm', () => {
   it('does not treat a first name alone as a landlord key', () => {
     assert.equal(visionOwnerNameKeyNorm('Adrianne'), '')
     assert.equal(visionOwnerNameKeyNorm('ADRIANNE'), '')
+    assert.equal(visionOwnerNameKeyNorm('Pamela'), '')
+    assert.equal(visionOwnerNameKeyNorm('A ELIZABETH'), '')
+    assert.equal(visionOwnerNameKeyNorm('ANN LOU'), '')
+    assert.equal(visionOwnerNameKeyNorm('MARY ELIZABETH'), '')
+  })
+
+  it('still keys a real last name plus given name', () => {
+    assert.equal(visionOwnerNameKeyNorm('PENNA DENISE'), 'denise|penna')
+    assert.equal(visionOwnerNameKeyNorm('KING AL W III'), 'al|iii|king|w')
+    assert.ok(!isIncompletePersonNameKey('denise|penna'))
+    assert.ok(!isIncompletePersonNameKey('al|iii|king|w'))
+    assert.ok(isIncompletePersonNameKey('pamela'))
+    assert.ok(isIncompletePersonNameKey('a|elizabeth'))
+    assert.ok(isIncompletePersonNameKey('ann|lou'))
   })
 })
 

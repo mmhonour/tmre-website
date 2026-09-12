@@ -4,7 +4,10 @@
  *   npm run sync:owner-clusters
  */
 import { existsSync } from 'node:fs'
-import { fillMissingVisionOwnerKeys } from '../lib/db/vision-owner-clusters-repo'
+import {
+  fillMissingVisionOwnerKeys,
+  refreshIncompleteVisionOwnerNameKeys,
+} from '../lib/db/vision-owner-clusters-repo'
 
 if (existsSync('.env.local')) {
   process.loadEnvFile('.env.local')
@@ -13,9 +16,10 @@ if (existsSync('.env.local')) {
 async function main() {
   const town = process.env.VISION_SYNC_TOWN?.trim() || 'Westport'
   const limit = Number(process.env.OWNER_CLUSTER_LIMIT ?? 400)
+  const stale = await refreshIncompleteVisionOwnerNameKeys({ town, limit })
   const result = await fillMissingVisionOwnerKeys({ town, limit })
   console.log(
-    `[owner-clusters] town=${town} scanned=${result.scanned} keyed=${result.keyed}`,
+    `[owner-clusters] town=${town} stale=${stale.refreshed}/${stale.scanned} scanned=${result.scanned} keyed=${result.keyed}`,
   )
 }
 

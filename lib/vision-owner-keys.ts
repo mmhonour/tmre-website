@@ -44,6 +44,47 @@ export function splitVisionOwnerPeople(line: string): string[] {
     .filter(Boolean)
 }
 
+/**
+ * Tokens that are given names, not surnames. A key made only of these
+ * (Pamela, Ann Lou, A Elizabeth) is not a landlord — VGSI couples often
+ * leave the spouse as a bare given name.
+ */
+const GIVEN_NAME_TOKENS = new Set([
+  'adrianne',
+  'ann',
+  'anne',
+  'elizabeth',
+  'jane',
+  'john',
+  'karin',
+  'linda',
+  'lou',
+  'mary',
+  'melissa',
+  'pamela',
+  'patricia',
+  'peter',
+  'susan',
+  'william',
+])
+
+export function isIncompletePersonNameKey(keyNorm: string): boolean {
+  if (!keyNorm.trim()) return true
+  const parts = keyNorm
+    .toLowerCase()
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length === 0) return true
+  if (VISION_OWNER_ENTITY_RE.test(parts.join(' '))) return false
+  if (parts.length < 2) return true
+  /** `A Elizabeth` — initial + given, no surname. Not `Al W III King`. */
+  if (parts.length === 2 && parts.some((part) => part.length === 1)) return true
+  return parts.every(
+    (part) => part.length === 1 || GIVEN_NAME_TOKENS.has(part),
+  )
+}
+
 export function visionOwnerNameKeyNorm(person: string): string {
   const tokens = person
     .toLowerCase()
@@ -56,7 +97,9 @@ export function visionOwnerNameKeyNorm(person: string): string {
   }
   /** A given name alone is not a landlord key (`Adrianne` ≠ Adrianne Tharp). */
   if (tokens.length < 2) return ''
-  return [...tokens].sort().join('|')
+  const keyNorm = [...tokens].sort().join('|')
+  if (isIncompletePersonNameKey(keyNorm)) return ''
+  return keyNorm
 }
 
 export function visionOwnerMailingKeyNorm(
