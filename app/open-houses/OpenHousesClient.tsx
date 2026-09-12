@@ -241,64 +241,65 @@ function OhStickyFilters({
         />
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2 min-h-8">
-        <button
-          type="button"
-          onClick={() => setSortMode("date")}
-          aria-pressed={sortMode === "date"}
-          className={creamChipClass(sortMode === "date")}
-        >
-          Date
-        </button>
-        <button
-          type="button"
-          onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
-          aria-pressed={groupMode === "day"}
-          className={creamChipClass(groupMode === "day")}
-        >
-          {groupMode === "day" ? "By day" : "By town"}
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
-          }
-          aria-pressed={sortMode !== "date"}
-          className={creamChipClass(sortMode !== "date")}
-        >
-          Price
-          {sortMode === "price-desc" ? (
-            <span className="text-[9px] tabular-nums" aria-hidden>
-              ↓
-            </span>
-          ) : sortMode === "price-asc" ? (
-            <span className="text-[9px] tabular-nums" aria-hidden>
-              ↑
-            </span>
-          ) : null}
-        </button>
-      </div>
-
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSortMode("date")}
+            aria-pressed={sortMode === "date"}
+            className={creamChipClass(sortMode === "date")}
+          >
+            Date
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
+            aria-pressed={groupMode === "day"}
+            className={creamChipClass(groupMode === "day")}
+          >
+            {groupMode === "day" ? "By day" : "By town"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
+            }
+            aria-pressed={sortMode !== "date"}
+            className={creamChipClass(sortMode !== "date")}
+          >
+            Price
+            {sortMode === "price-desc" ? (
+              <span className="text-[9px] tabular-nums" aria-hidden>
+                ↓
+              </span>
+            ) : sortMode === "price-asc" ? (
+              <span className="text-[9px] tabular-nums" aria-hidden>
+                ↑
+              </span>
+            ) : null}
+          </button>
+        </div>
         <LatestSearchAlertForm
           variant="open-houses"
           fallbackCriteria={alertFallback}
           triggerId="open-house-alerts"
+          panelAlign="end"
         />
-        <div className="flex shrink-0 items-center gap-1.5">
-          <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
-          {showTownChrome ? (
-            <TownFoldGlyphs
-              allTownsCollapsed={allTownsCollapsed}
-              allTownsExpanded={allTownsExpanded}
-              onCloseAllTowns={onCloseAllTowns}
-              onExpandAllTowns={onExpandAllTowns}
-              customOrder={customOrder}
-              onResetOrder={onResetOrder}
-            />
-          ) : null}
-        </div>
+      </div>
+
+      <div className="flex min-h-8 flex-wrap items-center justify-end gap-1.5">
+        <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
+        <ViewModeToggle value={viewMode} onChange={setViewMode} />
+        {showTownChrome ? (
+          <TownFoldGlyphs
+            allTownsCollapsed={allTownsCollapsed}
+            allTownsExpanded={allTownsExpanded}
+            onCloseAllTowns={onCloseAllTowns}
+            onExpandAllTowns={onExpandAllTowns}
+            customOrder={customOrder}
+            onResetOrder={onResetOrder}
+          />
+        ) : null}
       </div>
     </div>
   );

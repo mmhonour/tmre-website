@@ -124,12 +124,12 @@ export function OpenHousesFilterBarPreview() {
               setTown={setTown}
             />
           ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={creamChipClass(true)}>Date</span>
-            <span className={creamChipClass(false)}>By day</span>
-            <span className={creamChipClass(false)}>Price</span>
-          </div>
-          <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
+          <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={creamChipClass(true)}>Date</span>
+              <span className={creamChipClass(false)}>By day</span>
+              <span className={creamChipClass(false)}>Price</span>
+            </div>
             <LatestSearchAlertForm
               variant="open-houses"
               fallbackCriteria={fallbackCriteriaFromPage({
@@ -137,7 +137,10 @@ export function OpenHousesFilterBarPreview() {
                 tx,
               })}
               triggerId="preview-open-house-alerts"
+              panelAlign="end"
             />
+          </div>
+          <div className="flex min-h-8 flex-wrap items-center justify-end gap-1.5">
             <div className="flex items-center gap-1.5">
               <OpenHouseShowBySelect
                 id="preview-oh-show-by-bar"

@@ -46,7 +46,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
-      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Show by sits on the glyph line. First town sits just under the alerts divider.",
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Open house alerts sits right of Date / By day / Price. Show by sits on the glyph line.",
   },
   {
     slug: "open-houses-focus",
@@ -70,7 +70,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-house-alerts",
     title: "Open house + listing alerts",
     summary:
-      "Open Houses signup is titled for showings (optional new listings). Latest can add open-house notify when a matching home first schedules a showing.",
+      "Open Houses signup is titled Open house alerts (optional new listings). Latest keeps listing alerts and can add open houses.",
   },
   {
     slug: "open-houses-next-oh",
