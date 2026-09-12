@@ -181,14 +181,17 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
   tmre_oh_town: pref("Open houses — town filter", "open-houses"),
   tmre_oh_tx: pref("Open houses — sale / rental", "open-houses"),
   tmre_oh_sort: pref("Open houses — sort", "open-houses"),
-  tmre_oh_view: pref("Open houses — view mode", "open-houses"),
-  tmre_oh_group: pref("Open houses — group by day or town", "open-houses"),
-  tmre_oh_most: pref(
-    "Open houses — most historical showings (top 3 per town, ties stay)",
+  tmre_oh_view: pref(
+    "Open houses — Large / Grid / Line (same glyphs as Intelligence)",
     "open-houses",
   ),
-  tmre_oh_first: pref(
-    "Open houses — first showing (zero prior public OH)",
+  tmre_oh_group: pref("Open houses — group by day or town", "open-houses"),
+  tmre_oh_town_order: pref(
+    "Open houses — preferred town section order",
+    "open-houses",
+  ),
+  tmre_oh_show_by: pref(
+    "Open houses — Show by (all / most open houses / first showing)",
     "open-houses",
   ),
 

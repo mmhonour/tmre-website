@@ -47,12 +47,15 @@ export default function LatestSearchAlertForm({
   fallbackCriteria = null,
   triggerId = "latest-alerts",
   variant = "latest",
+  panelAlign = "start",
 }: {
   /** Used on Open Houses when the visitor has no Intelligence / Find history. */
   fallbackCriteria?: VisitorSearchCriteria | null;
   triggerId?: string;
   /** Open Houses page: OH alerts first, optional listing alerts. */
   variant?: SearchAlertVariant;
+  /** Centered / right-aligned triggers keep the desktop panel on screen. */
+  panelAlign?: "start" | "center" | "end";
 } = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -261,18 +264,13 @@ export default function LatestSearchAlertForm({
           {triggerLabel}
           {open ? " · close" : ""}
         </span>
-        {/* The open panel says what it wants; the nudge would only crowd it. */}
-        {open ? null : (
+        {open || isOpenHouses ? null : (
           <>
             <span aria-hidden>-</span>
             <span className="normal-case italic text-navy/55">
-              {isOpenHouses
-                ? usedFallback
-                  ? "town, home type, and price"
-                  : "when a matching home schedules a showing"
-                : usedFallback
-                  ? "town, home type, and price"
-                  : "choose from a previous search"}
+              {usedFallback
+                ? "town, home type, and price"
+                : "choose from a previous search"}
             </span>
           </>
         )}
@@ -284,7 +282,13 @@ export default function LatestSearchAlertForm({
           id={`${triggerId}-panel`}
           role="dialog"
           aria-label={dialogLabel}
-          className="absolute left-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_32px_rgba(28,42,58,0.18)]"
+          className={`absolute top-full z-30 mt-2 w-[min(22rem,calc(100vw-2.5rem))] rounded-xl border border-charcoal/15 bg-cream shadow-[0_12px_32px_rgba(28,42,58,0.18)] ${
+            panelAlign === "end"
+              ? "right-0"
+              : panelAlign === "center"
+                ? "left-1/2 -translate-x-1/2"
+                : "left-0"
+          }`}
         >
           <div className="space-y-3 px-3.5 py-3">
             <AlertFormFields {...formProps} />
@@ -368,11 +372,11 @@ function AlertFormFields({
       <p className="text-xs text-slate leading-snug">
         {isOpenHouses
           ? usedFallback
-            ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching. We'll email when a matching home schedules an open house."
-            : "Email when a matching home schedules an open house. A new listing may not have one yet — add listing alerts if you want those too."
+            ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching."
+            : "We'll email you about matching open houses. New listings is optional."
           : usedFallback
             ? "No recent searches yet — starting from this page's town, the home type, and the price range you're searching."
-            : "Alert from a search you've already run. A new listing may not have an open house yet — add open house alerts to hear when one is scheduled."}
+            : "Alert from a search you've already run. Open house alerts is optional."}
       </p>
 
       {searches.length === 0 ? (
@@ -435,7 +439,7 @@ function AlertFormFields({
           <p className="text-[11px] text-slate leading-snug">
             {isOpenHouses
               ? "Open houses are on by default. New listings is optional — a home may list before it has a showing."
-              : "New listings are on by default. Open houses fire later, when a matching home first schedules a showing."}
+              : "New listings are on by default. Open houses is optional."}
           </p>
         </fieldset>
 

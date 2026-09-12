@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
+import { useOpenHouseTownOrder } from "@/hooks/useOpenHouseTownOrder";
 import {
   formatTownList,
   listingInTmreCoverage,
@@ -41,28 +41,36 @@ import {
   openHouseListingTown,
   type OpenHouseTownGroup,
 } from "@/lib/open-houses-groups";
+import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import {
   compareOpenHousePastCountDesc,
-  exclusiveOpenHouseFocus,
   filterOpenHouseFocus,
+  OPEN_HOUSE_SHOW_BY_VALUES,
   openHouseFocusEmptyCopy,
+  showByToFocus,
+  type OpenHouseShowBy,
 } from "@/lib/open-houses-focus";
+import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
+import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
+import { readClientPref } from "@/lib/client-prefs";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import { fallbackCriteriaFromPage } from "@/lib/visitor-search-profile";
+import {
+  DEAL_BOARD_CARD_VIEW_VALUES,
+  type DealBoardCardView,
+} from "@/lib/deal-board-view";
 
 const OH_TOWN_VALUES = ["All", ...TMRE_TOWNS] as const;
 const OH_TX_VALUES = ["all", "sale", "rental"] as const;
-const OH_VIEW_VALUES = ["grid", "rows", "line"] as const;
+const OH_VIEW_VALUES = DEAL_BOARD_CARD_VIEW_VALUES;
 const OH_SORT_VALUES = ["date", "price-asc", "price-desc"] as const;
 const OH_GROUP_VALUES = ["day", "town"] as const;
-const OH_TOGGLE_VALUES = ["off", "on"] as const;
 
-type ViewMode = (typeof OH_VIEW_VALUES)[number];
+type ViewMode = DealBoardCardView;
 type TxFilter = "all" | "sale" | "rental";
 type SortMode = (typeof OH_SORT_VALUES)[number];
 type GroupMode = (typeof OH_GROUP_VALUES)[number];
-type ToggleOn = (typeof OH_TOGGLE_VALUES)[number];
 type TownName = TmreTown;
 type TownFilter = "All" | TownName;
 
@@ -99,8 +107,6 @@ const PHOTO_PREVIEW_ROWS = "w-[10.5rem] min-h-[7.5rem]";
 const PHOTO_PREVIEW_LINE = "h-[2.7rem] w-[3.6rem]";
 const LINE_OH_COL = "shrink-0 w-[10.5rem] text-right";
 const LINE_PRICE_COL = "shrink-0 w-[5.25rem] text-right";
-const MOST_OH_LABEL = "Most open houses";
-const FIRST_OH_LABEL = "First showing";
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
 
 function formatOhSyncAge(iso: string | null | undefined): string | null {
@@ -182,9 +188,8 @@ function OhStickyFilters({
   orderedTowns,
   townCounts,
   loadState,
-  mostOpenHouses,
-  firstShowing,
-  onFocusChange,
+  showBy,
+  setShowBy,
   sortMode,
   setSortMode,
   groupMode,
@@ -195,6 +200,8 @@ function OhStickyFilters({
   allTownsExpanded,
   onCloseAllTowns,
   onExpandAllTowns,
+  customOrder,
+  onResetOrder,
   showTownChrome,
   alertFallback,
 }: {
@@ -206,9 +213,8 @@ function OhStickyFilters({
   orderedTowns: readonly TownName[];
   townCounts: Partial<Record<TownFilter | TownName, number>>;
   loadState: LoadState;
-  mostOpenHouses: boolean;
-  firstShowing: boolean;
-  onFocusChange: (next: { most: boolean; first: boolean }) => void;
+  showBy: OpenHouseShowBy;
+  setShowBy: (value: OpenHouseShowBy) => void;
   sortMode: SortMode;
   setSortMode: (value: SortMode) => void;
   groupMode: GroupMode;
@@ -219,6 +225,8 @@ function OhStickyFilters({
   allTownsExpanded: boolean;
   onCloseAllTowns: () => void;
   onExpandAllTowns: () => void;
+  customOrder: boolean;
+  onResetOrder: () => void;
   showTownChrome: boolean;
   alertFallback: ReturnType<typeof fallbackCriteriaFromPage>;
 }) {
@@ -238,105 +246,102 @@ function OhStickyFilters({
         />
       ) : null}
 
-      <div
-        className="flex flex-wrap items-center gap-2"
-        role="group"
-        aria-label="First showing or most open houses"
-      >
-        <button
-          type="button"
-          onClick={() => onFocusChange(exclusiveOpenHouseFocus("most", !mostOpenHouses))}
-          aria-pressed={mostOpenHouses}
-          title="Top 3 homes in each town by stored past showings; ties stay in"
-          className={creamChipClass(mostOpenHouses)}
-        >
-          {MOST_OH_LABEL}
-        </button>
-        <button
-          type="button"
-          onClick={() => onFocusChange(exclusiveOpenHouseFocus("first", !firstShowing))}
-          aria-pressed={firstShowing}
-          title="Homes with zero public open houses on file before today"
-          className={creamChipClass(firstShowing)}
-        >
-          {FIRST_OH_LABEL}
-        </button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 min-h-8">
-        <button
-          type="button"
-          onClick={() => setSortMode("date")}
-          aria-pressed={sortMode === "date"}
-          className={creamChipClass(sortMode === "date")}
-        >
-          Date
-        </button>
-        <button
-          type="button"
-          onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
-          aria-pressed={groupMode === "day"}
-          className={creamChipClass(groupMode === "day")}
-        >
-          {groupMode === "day" ? "By day" : "By town"}
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
-          }
-          aria-pressed={sortMode !== "date"}
-          className={creamChipClass(sortMode !== "date")}
-        >
-          Price
-          {sortMode === "price-desc" ? (
-            <span className="text-[9px] tabular-nums" aria-hidden>
-              ↓
-            </span>
-          ) : sortMode === "price-asc" ? (
-            <span className="text-[9px] tabular-nums" aria-hidden>
-              ↑
-            </span>
+      <div className="grid min-h-8 grid-cols-1 items-center gap-2 min-[860px]:grid-cols-[1fr_auto_1fr]">
+        <div className="flex flex-wrap items-center justify-start gap-2">
+          <button
+            type="button"
+            onClick={() => setSortMode("date")}
+            aria-pressed={sortMode === "date"}
+            className={creamChipClass(sortMode === "date")}
+          >
+            Date
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupMode(groupMode === "day" ? "town" : "day")}
+            aria-pressed={groupMode === "day"}
+            className={creamChipClass(groupMode === "day")}
+          >
+            {groupMode === "day" ? "By day" : "By town"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setSortMode(sortMode === "price-asc" ? "price-desc" : "price-asc")
+            }
+            aria-pressed={sortMode !== "date"}
+            className={creamChipClass(sortMode !== "date")}
+          >
+            Price
+            {sortMode === "price-desc" ? (
+              <span className="text-[9px] tabular-nums" aria-hidden>
+                ↓
+              </span>
+            ) : sortMode === "price-asc" ? (
+              <span className="text-[9px] tabular-nums" aria-hidden>
+                ↑
+              </span>
+            ) : null}
+          </button>
+        </div>
+        <div className="justify-self-center">
+          <LatestSearchAlertForm
+            variant="open-houses"
+            fallbackCriteria={alertFallback}
+            triggerId="open-house-alerts"
+            panelAlign="center"
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-start gap-1.5 min-[860px]:justify-end">
+          <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
+          <DealBoardViewPicker view={viewMode} onChange={setViewMode} />
+          {showTownChrome ? (
+            <TownFoldGlyphs
+              allTownsCollapsed={allTownsCollapsed}
+              allTownsExpanded={allTownsExpanded}
+              onCloseAllTowns={onCloseAllTowns}
+              onExpandAllTowns={onExpandAllTowns}
+              customOrder={customOrder}
+              onResetOrder={onResetOrder}
+            />
           ) : null}
-        </button>
-        {showTownChrome ? (
-          <>
-            <button
-              type="button"
-              onClick={onCloseAllTowns}
-              aria-pressed={allTownsCollapsed}
-              className={creamChipClass(allTownsCollapsed)}
-            >
-              Close all towns
-            </button>
-            <button
-              type="button"
-              onClick={onExpandAllTowns}
-              aria-pressed={allTownsExpanded}
-              className={creamChipClass(allTownsExpanded)}
-            >
-              Expand all towns
-            </button>
-          </>
-        ) : null}
-      </div>
-
-      <div className="flex min-h-8 items-center justify-between gap-3">
-        <LatestSearchAlertForm
-          variant="open-houses"
-          fallbackCriteria={alertFallback}
-          triggerId="open-house-alerts"
-        />
-        <ViewModeToggle value={viewMode} onChange={setViewMode} />
+        </div>
       </div>
     </div>
   );
 }
 
+function useMaybePersistedFilter<T extends string>(
+  isolate: boolean,
+  key: string,
+  defaultValue: T,
+  validValues: readonly T[],
+  resolveDefault?: () => T,
+): [T, (value: T) => void] {
+  const persisted = usePersistedFilter(
+    key,
+    defaultValue,
+    validValues,
+    false,
+    resolveDefault,
+  );
+  const [local, setLocal] = useState<T>(defaultValue);
+  return isolate ? [local, setLocal] : persisted;
+}
+
 export default function OpenHousesClient({
   initial,
+  defaultOpenTowns,
+  previewBanner,
+  isolatePrefs = false,
+  initialView,
 }: {
   initial?: OpenHousesPageLoad | null;
+  defaultOpenTowns?: readonly string[];
+  previewBanner?: string;
+  /** Preview pages: ignore saved OH cookies so Grid is not stuck on. */
+  isolatePrefs?: boolean;
+  initialView?: ViewMode;
 } = {}) {
   const [allListings, setAllListings] = useState<OpenHouseListing[]>(
     () => (initial?.ok ? initial.data.listings : []),
@@ -350,53 +355,56 @@ export default function OpenHousesClient({
   const [loadState, setLoadState] = useState<LoadState>(() =>
     initial?.ok ? "ready" : initial && !initial.ok ? "error" : "loading",
   );
-  const [townFilter, setTownFilter] = usePersistedFilter<TownFilter>(
+  const [townFilter, setTownFilter] = useMaybePersistedFilter<TownFilter>(
+    isolatePrefs,
     "tmre_oh_town",
     "All",
     OH_TOWN_VALUES,
   );
-  const [txFilter, setTxFilter] = usePersistedFilter<TxFilter>(
+  const [txFilter, setTxFilter] = useMaybePersistedFilter<TxFilter>(
+    isolatePrefs,
     "tmre_oh_tx",
     "all",
     OH_TX_VALUES,
   );
-  const [sortMode, setSortMode] = usePersistedFilter<SortMode>(
+  const [sortMode, setSortMode] = useMaybePersistedFilter<SortMode>(
+    isolatePrefs,
     "tmre_oh_sort",
     "date",
     OH_SORT_VALUES,
   );
-  const [viewMode, setViewMode] = usePersistedFilter<ViewMode>(
+  const [viewMode, setViewMode] = useMaybePersistedFilter<ViewMode>(
+    isolatePrefs,
     "tmre_oh_view",
-    "grid",
+    initialView ?? "grid",
     OH_VIEW_VALUES,
+    () => (readClientPref("tmre_oh_view") === "rows" ? "large" : "grid"),
   );
-  const [groupMode, setGroupMode] = usePersistedFilter<GroupMode>(
+  const [groupMode, setGroupMode] = useMaybePersistedFilter<GroupMode>(
+    isolatePrefs,
     "tmre_oh_group",
     "day",
     OH_GROUP_VALUES,
   );
-  const [mostPref, setMostPref] = usePersistedFilter<ToggleOn>(
-    "tmre_oh_most",
+  const [showBy, setShowBy] = useMaybePersistedFilter<OpenHouseShowBy>(
+    isolatePrefs,
+    "tmre_oh_show_by",
     "off",
-    OH_TOGGLE_VALUES,
+    OPEN_HOUSE_SHOW_BY_VALUES,
+    () => {
+      if (readClientPref("tmre_oh_first") === "on") return "first";
+      if (readClientPref("tmre_oh_most") === "on") return "most";
+      return "off";
+    },
   );
-  const [firstPref, setFirstPref] = usePersistedFilter<ToggleOn>(
-    "tmre_oh_first",
-    "off",
-    OH_TOGGLE_VALUES,
+  const focus = useMemo(() => showByToFocus(showBy), [showBy]);
+  const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
+    useOpenHouseTownOrder(TOWN_NAMES);
+  const [openTowns, setOpenTowns] = useState<Set<string>>(
+    () => new Set(defaultOpenTowns ?? []),
   );
-  const mostOpenHouses = mostPref === "on";
-  const firstShowing = firstPref === "on";
-  const focus = useMemo(
-    () => ({ most: mostOpenHouses, first: firstShowing }),
-    [mostOpenHouses, firstShowing],
-  );
-  const applyFocus = (next: { most: boolean; first: boolean }) => {
-    setMostPref(next.most ? "on" : "off");
-    setFirstPref(next.first ? "on" : "off");
-  };
-  const orderedTowns = usePersonalizedTowns(TOWN_NAMES);
-  const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
+  const [dragTown, setDragTown] = useState<string | null>(null);
+  const [dragOverTown, setDragOverTown] = useState<string | null>(null);
   const [placeFiltersDocked, setPlaceFiltersDocked] = useState(false);
   const placeFiltersSentinelRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => etCalendarDate(), []);
@@ -406,7 +414,7 @@ export default function OpenHousesClient({
     if (!el || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       ([entry]) => setPlaceFiltersDocked(!entry.isIntersecting),
-      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
+      { rootMargin: "-96px 0px 0px 0px", threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -548,6 +556,11 @@ export default function OpenHousesClient({
       <section className="navy-gradient text-white pt-20 pb-8 lg:pt-28 lg:pb-12 relative overflow-hidden">
         <div className="absolute inset-0 hero-grid opacity-40" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6 lg:px-10">
+          {previewBanner ? (
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-gold/80">
+              {previewBanner}
+            </p>
+          ) : null}
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold mb-3 animate-fade-up">
             Open Houses
           </p>
@@ -629,9 +642,8 @@ export default function OpenHousesClient({
               orderedTowns={orderedTowns}
               townCounts={townCounts}
               loadState={loadState}
-              mostOpenHouses={mostOpenHouses}
-              firstShowing={firstShowing}
-              onFocusChange={applyFocus}
+              showBy={showBy}
+              setShowBy={setShowBy}
               sortMode={sortMode}
               setSortMode={setSortMode}
               groupMode={groupMode}
@@ -644,12 +656,14 @@ export default function OpenHousesClient({
               }
               onCloseAllTowns={collapseAllTowns}
               onExpandAllTowns={expandAllTowns}
+              customOrder={customOrder}
+              onResetOrder={resetOrder}
               showTownChrome={loadState === "ready" && listings.length > 0}
               alertFallback={alertFallback}
             />
           </div>
         </div>
-        <div className="mx-auto max-w-7xl px-6 lg:px-10 py-10 lg:py-16">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10 pt-3 pb-10 lg:pt-4 lg:pb-12">
           {loadState === "loading" ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[1, 2, 3, 4].map((i) => (
@@ -681,13 +695,7 @@ export default function OpenHousesClient({
             </div>
           ) : (
             <>
-              <p className="mb-4 font-mono text-[10px] text-slate/60 max-w-2xl">
-                Past / upcoming counts document earlier and later public
-                showings for homes that still have a date today or later. Most
-                is the top 3 of those hosts in each town (ties stay). First
-                showing means zero past showings. Towns start collapsed.
-              </p>
-              <div className="space-y-10">
+              <div className="space-y-3">
                 {townSections.map((townGroup) => (
                   <OpenHouseTownSection
                     key={townGroup.town}
@@ -695,6 +703,39 @@ export default function OpenHousesClient({
                     propertyCount={townGroup.propertyCount}
                     open={openTowns.has(townGroup.town)}
                     onOpenChange={(next) => toggleTownOpen(townGroup.town, next)}
+                    organize={
+                      townSections.length > 1
+                        ? {
+                            dragging: dragTown === townGroup.town,
+                            dragOver:
+                              dragOverTown === townGroup.town && dragTown !== townGroup.town,
+                            onDragStart: () => setDragTown(townGroup.town),
+                            onDragOver: () => setDragOverTown(townGroup.town),
+                            onDragLeave: () =>
+                              setDragOverTown((current) =>
+                                current === townGroup.town ? null : current,
+                              ),
+                            onDrop: () => {
+                              if (dragTown && dragTown !== townGroup.town) {
+                                setPreferredOrder(
+                                  placeTownNextTo(
+                                    orderedTowns,
+                                    dragTown,
+                                    townGroup.town,
+                                    "before",
+                                  ),
+                                );
+                              }
+                              setDragTown(null);
+                              setDragOverTown(null);
+                            },
+                            onDragEnd: () => {
+                              setDragTown(null);
+                              setDragOverTown(null);
+                            },
+                          }
+                        : undefined
+                    }
                   >
                     {townGroup.propertyCount === 0 ? (
                       <p className="font-mono text-xs text-slate">
@@ -919,15 +960,23 @@ function OpenHouseBadge({
   );
 }
 
-function ViewModeToggle({
-  value,
-  onChange,
+function TownFoldGlyphs({
+  allTownsCollapsed,
+  allTownsExpanded,
+  onCloseAllTowns,
+  onExpandAllTowns,
+  customOrder,
+  onResetOrder,
 }: {
-  value: ViewMode;
-  onChange: (mode: ViewMode) => void;
+  allTownsCollapsed: boolean;
+  allTownsExpanded: boolean;
+  onCloseAllTowns: () => void;
+  onExpandAllTowns: () => void;
+  customOrder: boolean;
+  onResetOrder: () => void;
 }) {
   const btn =
-    "inline-flex h-8 w-8 items-center justify-center transition-colors disabled:opacity-40";
+    "inline-flex h-8 w-8 items-center justify-center transition-colors";
   const active = "bg-navy text-white";
   const idle = "text-navy/55 hover:text-navy hover:bg-charcoal/[0.04]";
 
@@ -935,75 +984,79 @@ function ViewModeToggle({
     <div
       className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
       role="group"
-      aria-label="Listing layout"
+      aria-label="Town sections"
     >
       <button
         type="button"
-        aria-label="Grid view"
-        aria-pressed={value === "grid"}
-        title="Grid"
-        onClick={() => onChange("grid")}
-        className={`${btn} rounded-full ${value === "grid" ? active : idle}`}
+        aria-label="Close all towns"
+        aria-pressed={allTownsCollapsed}
+        title="Close all towns"
+        onClick={onCloseAllTowns}
+        className={`${btn} rounded-full ${allTownsCollapsed ? active : idle}`}
       >
-        <GridViewIcon />
+        <CloseTownsIcon />
       </button>
       <button
         type="button"
-        aria-label="Row view"
-        aria-pressed={value === "rows"}
-        title="Rows"
-        onClick={() => onChange("rows")}
-        className={`${btn} rounded-full ${value === "rows" ? active : idle}`}
+        aria-label="Expand all towns"
+        aria-pressed={allTownsExpanded}
+        title="Expand all towns"
+        onClick={onExpandAllTowns}
+        className={`${btn} rounded-full ${allTownsExpanded ? active : idle}`}
       >
-        <RowsViewIcon />
+        <ExpandTownsIcon />
       </button>
-      <button
-        type="button"
-        aria-label="Compact list view"
-        aria-pressed={value === "line"}
-        title="Compact list"
-        onClick={() => onChange("line")}
-        className={`${btn} rounded-full ${value === "line" ? active : idle}`}
-      >
-        <LineViewIcon />
-      </button>
+      {customOrder ? (
+        <button
+          type="button"
+          aria-label="Reset town order"
+          title="Reset town order"
+          onClick={onResetOrder}
+          className={`${btn} rounded-full ${idle}`}
+        >
+          <ResetTownOrderIcon />
+        </button>
+      ) : null}
     </div>
   );
 }
 
-function GridViewIcon() {
+function CloseTownsIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="1" y="1" width="6" height="6" rx="1" />
-      <rect x="9" y="1" width="6" height="6" rx="1" />
-      <rect x="1" y="9" width="6" height="6" rx="1" />
-      <rect x="9" y="9" width="6" height="6" rx="1" />
+      <rect x="2" y="3.5" width="12" height="1.4" rx="0.6" />
+      <rect x="4" y="7.3" width="8" height="1.4" rx="0.6" />
+      <rect x="6" y="11.1" width="4" height="1.4" rx="0.6" />
     </svg>
   );
 }
 
-function RowsViewIcon() {
+function ExpandTownsIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="1" y="2" width="5" height="4" rx="0.75" />
-      <rect x="7" y="2.5" width="8" height="1.25" rx="0.5" />
-      <rect x="7" y="4.25" width="6" height="1" rx="0.5" opacity="0.55" />
-      <rect x="1" y="8" width="5" height="4" rx="0.75" />
-      <rect x="7" y="8.5" width="8" height="1.25" rx="0.5" />
-      <rect x="7" y="10.25" width="6" height="1" rx="0.5" opacity="0.55" />
+      <rect x="2" y="2.5" width="12" height="1.35" rx="0.6" />
+      <rect x="2" y="7.3" width="12" height="1.35" rx="0.6" />
+      <rect x="2" y="12.1" width="12" height="1.35" rx="0.6" />
     </svg>
   );
 }
 
-function LineViewIcon() {
+function ResetTownOrderIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="1" y="3" width="2" height="2" rx="0.4" />
-      <rect x="4" y="3.35" width="11" height="1.3" rx="0.5" />
-      <rect x="1" y="7" width="2" height="2" rx="0.4" />
-      <rect x="4" y="7.35" width="11" height="1.3" rx="0.5" />
-      <rect x="1" y="11" width="2" height="2" rx="0.4" />
-      <rect x="4" y="11.35" width="11" height="1.3" rx="0.5" />
+    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M3.2 8a4.8 4.8 0 1 1 1.1 3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 4.6v3.2h3.2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -1064,7 +1117,7 @@ function ListingCard({ listing: l, view }: { listing: OpenHouseListing; view: Vi
     );
   }
 
-  if (view === "rows") {
+  if (view === "large") {
     return (
       <article
         {...listingHoverHandlers(l.mlsId)}

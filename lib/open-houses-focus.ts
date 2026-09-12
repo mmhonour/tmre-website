@@ -60,6 +60,22 @@ export function listingMatchesOpenHouseFocus(
   return true
 }
 
+export const OPEN_HOUSE_SHOW_BY_VALUES = ["off", "most", "first"] as const
+export type OpenHouseShowBy = (typeof OPEN_HOUSE_SHOW_BY_VALUES)[number]
+
+export function showByToFocus(showBy: OpenHouseShowBy): OpenHouseFocusFlags {
+  return {
+    most: showBy === "most",
+    first: showBy === "first",
+  }
+}
+
+export function focusToShowBy(focus: OpenHouseFocusFlags): OpenHouseShowBy {
+  if (focus.most && !focus.first) return "most"
+  if (focus.first && !focus.most) return "first"
+  return "off"
+}
+
 /** Most and First are a single choice — turning one on clears the other. */
 export function exclusiveOpenHouseFocus(
   key: keyof OpenHouseFocusFlags,

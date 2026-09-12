@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
+import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
+import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
 import TownFilterPills from "@/components/TownFilterPills";
-import {
-  exclusiveOpenHouseFocus,
-} from "@/lib/open-houses-focus";
+import type { DealBoardCardView } from "@/lib/deal-board-view";
+import type { OpenHouseShowBy } from "@/lib/open-houses-focus";
 import {
   filterPillButtonClass,
   filterPillContainerClass,
@@ -74,8 +75,8 @@ function PlaceRow({
 export function OpenHousesFilterBarPreview() {
   const [tx, setTx] = useState<(typeof TX)[number]["value"]>("all");
   const [town, setTown] = useState<"All" | (typeof TMRE_TOWNS)[number]>("All");
-  const [most, setMost] = useState(false);
-  const [first, setFirst] = useState(false);
+  const [showBy, setShowBy] = useState<OpenHouseShowBy>("off");
+  const [view, setView] = useState<DealBoardCardView>("grid");
   const [docked, setDocked] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +85,7 @@ export function OpenHousesFilterBarPreview() {
     if (!el || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       ([entry]) => setDocked(!entry.isIntersecting),
-      { rootMargin: "-6rem 0px 0px 0px", threshold: 0 },
+      { rootMargin: "-96px 0px 0px 0px", threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -100,8 +101,8 @@ export function OpenHousesFilterBarPreview() {
           Sale / rental and towns live in the hero.
         </h2>
         <p className="mt-3 max-w-lg text-sm text-white/70">
-          Scroll down — they dock into the cream bar. Most / First stay exclusive
-          on their own line. Alerts left, view glyphs right.
+          Scroll down — they dock into the cream bar. Date / By day / Price
+          left, Open house alerts centered, view glyphs right.
         </p>
         <div className="mt-5">
           <PlaceRow
@@ -126,76 +127,66 @@ export function OpenHousesFilterBarPreview() {
               setTown={setTown}
             />
           ) : null}
-          <div
-            className="flex flex-wrap items-center gap-2"
-            role="group"
-            aria-label="First showing or most open houses"
-          >
-            <button
-              type="button"
-              aria-pressed={most}
-              onClick={() => {
-                const next = exclusiveOpenHouseFocus("most", !most);
-                setMost(next.most);
-                setFirst(next.first);
-              }}
-              className={creamChipClass(most)}
-            >
-              Most open houses
-            </button>
-            <button
-              type="button"
-              aria-pressed={first}
-              onClick={() => {
-                const next = exclusiveOpenHouseFocus("first", !first);
-                setMost(next.most);
-                setFirst(next.first);
-              }}
-              className={creamChipClass(first)}
-            >
-              First showing
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={creamChipClass(true)}>Date</span>
-            <span className={creamChipClass(false)}>By day</span>
-            <span className={creamChipClass(false)}>Price</span>
-            <span className={creamChipClass(false)}>Close all towns</span>
-          </div>
-          <div className="flex min-h-8 items-center justify-between gap-3">
-            <LatestSearchAlertForm
-              variant="open-houses"
-              fallbackCriteria={fallbackCriteriaFromPage({
-                town: town === "All" ? null : town,
-                tx,
-              })}
-              triggerId="preview-open-house-alerts"
-            />
-            <div
-              className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
-              role="group"
-              aria-label="Listing layout"
-            >
-              {["Grid", "Rows", "Line"].map((label, i) => (
+          <div className="grid min-h-8 grid-cols-1 items-center gap-2 min-[860px]:grid-cols-[1fr_auto_1fr]">
+            <div className="flex flex-wrap items-center justify-start gap-2">
+              <span className={creamChipClass(true)}>Date</span>
+              <span className={creamChipClass(false)}>By day</span>
+              <span className={creamChipClass(false)}>Price</span>
+            </div>
+            <div className="justify-self-center">
+              <LatestSearchAlertForm
+                variant="open-houses"
+                fallbackCriteria={fallbackCriteriaFromPage({
+                  town: town === "All" ? null : town,
+                  tx,
+                })}
+                triggerId="preview-open-house-alerts"
+                panelAlign="center"
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-start gap-1.5 min-[860px]:justify-end">
+              <OpenHouseShowBySelect
+                id="preview-oh-show-by-bar"
+                value={showBy}
+                onChange={setShowBy}
+              />
+              <DealBoardViewPicker view={view} onChange={setView} />
+              <div
+                className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
+                role="group"
+                aria-label="Town sections"
+              >
                 <span
-                  key={label}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-mono text-[9px] ${
-                    i === 0 ? "bg-navy text-white" : "text-navy/55"
-                  }`}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-navy text-white font-mono text-[10px]"
+                  title="Close all towns"
                 >
-                  {label[0]}
+                  ≡
                 </span>
-              ))}
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-navy/55 font-mono text-[10px]"
+                  title="Expand all towns"
+                >
+                  ☰
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="space-y-4 px-6 py-10">
+      <div className="space-y-3 px-6 pt-3 pb-10">
         <p className="font-mono text-[11px] text-slate">
           Place filters {docked ? "are docked in the sticky bar" : "are still in the hero"}.
+          First town sits just under the alerts divider.
         </p>
-        {Array.from({ length: 8 }, (_, i) => (
+        <div className="flex items-baseline gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-charcoal/[0.12] bg-white font-mono text-sm text-navy">
+            +
+          </span>
+          <span className="font-serif text-2xl text-navy">Westport</span>
+          <span className="font-mono text-sm tabular-nums text-slate">5</span>
+        </div>
+        {Array.from({ length: 7 }, (_, i) => (
           <div
             key={i}
             className="h-24 rounded-xl border border-charcoal/[0.08] bg-white"

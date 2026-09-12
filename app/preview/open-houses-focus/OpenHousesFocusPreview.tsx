@@ -2,15 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { ListingCollection } from "@/app/open-houses/OpenHousesClient";
-import {
-  filterPillIndependentButtonClass,
-  filterPillIndependentContainerClass,
-} from "@/lib/filter-pill-styles";
+import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
 import { openHouseListingTown } from "@/lib/open-houses-groups";
 import {
-  exclusiveOpenHouseFocus,
   filterOpenHouseFocus,
   openHouseFocusEmptyCopy,
+  showByToFocus,
+  type OpenHouseShowBy,
 } from "@/lib/open-houses-focus";
 import {
   formatOpenHouseHistory,
@@ -105,46 +103,20 @@ const LISTINGS: OpenHouseListing[] = [
 ];
 
 export function OpenHousesFocusPreview() {
-  const [most, setMost] = useState(false);
-  const [first, setFirst] = useState(false);
-  const focus = { most, first };
+  const [showBy, setShowBy] = useState<OpenHouseShowBy>("off");
+  const focus = showByToFocus(showBy);
   const shown = useMemo(
-    () => filterOpenHouseFocus(LISTINGS, focus, openHouseListingTown),
-    [most, first],
+    () => filterOpenHouseFocus(LISTINGS, showByToFocus(showBy), openHouseListingTown),
+    [showBy],
   );
 
   return (
     <div className="space-y-6">
-      <div
-        className={filterPillIndependentContainerClass("compact")}
-        role="group"
-        aria-label="First showing or most open houses"
-      >
-        <button
-          type="button"
-          onClick={() => {
-            const next = exclusiveOpenHouseFocus("most", !most);
-            setMost(next.most);
-            setFirst(next.first);
-          }}
-          aria-pressed={most}
-          className={filterPillIndependentButtonClass(most, "compact", "light")}
-        >
-          Most open houses
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const next = exclusiveOpenHouseFocus("first", !first);
-            setMost(next.most);
-            setFirst(next.first);
-          }}
-          aria-pressed={first}
-          className={filterPillIndependentButtonClass(first, "compact", "light")}
-        >
-          First showing
-        </button>
-      </div>
+      <OpenHouseShowBySelect
+        id="preview-oh-show-by-focus"
+        value={showBy}
+        onChange={setShowBy}
+      />
 
       <p className="font-mono text-[11px] text-slate">
         {shown.length} of {LISTINGS.length} fixture homes
@@ -164,7 +136,7 @@ export function OpenHousesFocusPreview() {
       </ul>
 
       {shown.length > 0 ? (
-        <ListingCollection listings={shown} view="rows" />
+        <ListingCollection listings={shown} view="large" />
       ) : null}
     </div>
   );

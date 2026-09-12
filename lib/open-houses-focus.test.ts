@@ -5,9 +5,11 @@ import {
   filterOpenHouseFocus,
   isFirstOpenHouse,
   exclusiveOpenHouseFocus,
+  focusToShowBy,
   listingsWithMostHistoricalShowings,
   mostHistoricalCutoff,
   openHouseFocusEmptyCopy,
+  showByToFocus,
 } from './open-houses-focus'
 
 const row = (past: number, town = 'Westport') => ({
@@ -91,6 +93,21 @@ describe('exclusive Most / First', () => {
       most: false,
       first: false,
     })
+  })
+})
+
+describe('Show by tri-state', () => {
+  it('maps off / most / first onto exclusive flags', () => {
+    assert.deepEqual(showByToFocus('off'), { most: false, first: false })
+    assert.deepEqual(showByToFocus('most'), { most: true, first: false })
+    assert.deepEqual(showByToFocus('first'), { most: false, first: true })
+  })
+
+  it('collapses stacked flags back to off', () => {
+    assert.equal(focusToShowBy({ most: false, first: false }), 'off')
+    assert.equal(focusToShowBy({ most: true, first: false }), 'most')
+    assert.equal(focusToShowBy({ most: false, first: true }), 'first')
+    assert.equal(focusToShowBy({ most: true, first: true }), 'off')
   })
 })
 

@@ -44,7 +44,7 @@ export function OpenHouseAlertsPreview() {
         </h2>
         <p className="mb-3 text-xs text-slate">
           Trigger stays Listing alerts. Notify for defaults to new listings;
-          open houses is optional for when a showing is detected later.
+          open houses is optional.
         </p>
         <LatestSearchAlertForm
           variant="latest"
