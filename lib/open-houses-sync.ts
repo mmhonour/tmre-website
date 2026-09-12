@@ -1,6 +1,7 @@
 import 'server-only'
 
 import {
+  pruneOpenHousesAfter,
   pruneOpenHousesBefore,
   replaceOpenHouseWindow,
   upsertOpenHouses,
@@ -90,10 +91,13 @@ export async function upsertOpenHouseLookbackChunks(
 /**
  * Pull upcoming + historical open houses from SmartMLS into Neon.
  *
- * Upcoming (today .. +90d) is replaced wholesale so a cancelled showing
- * disappears, then we stamp `open_houses_synced_at` so a long lookback
- * cannot hide a finished upcoming pull. History is upserted in newest-first
- * slices under a time budget — the next hourly run continues the year.
+ * Upcoming (today through today+6) is replaced wholesale so a cancelled
+ * showing disappears, then we stamp `open_houses_synced_at` so a long
+ * lookback cannot hide a finished upcoming pull. Dates after the t+6
+ * horizon are dropped so a prior 90-day inventory cannot linger. History
+ * is upserted in newest-first slices under a time budget — the next hourly
+ * run continues the year. After a successful pull, stats_cache holds that
+ * seven-day inventory for Admin and /open-houses.
  */
 export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   const t0 = Date.now()
@@ -121,6 +125,7 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   }
 
   const { written, removed } = await replaceOpenHouseWindow(window, upcoming)
+  const prunedAhead = await pruneOpenHousesAfter(window.end)
   await setSyncMetaDurable(OPEN_HOUSES_SYNCED_AT_KEY, new Date().toISOString())
 
   let historyWritten = 0
@@ -141,7 +146,16 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
     }
   }
 
-  const pruned = await pruneOpenHousesBefore(lookback.start)
+  const pruned = prunedAhead + (await pruneOpenHousesBefore(lookback.start))
+
+  try {
+    const { refreshOpenHousesPageCache } = await import(
+      '@/lib/open-houses-page-data'
+    )
+    await refreshOpenHousesPageCache()
+  } catch (err) {
+    console.warn('[open-houses-sync] week cache rebuild failed', err)
+  }
 
   try {
     const { processDueSavedSearchAlerts } = await import(

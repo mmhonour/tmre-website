@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import OpenHousesClient from "./OpenHousesClient";
+import { peekOpenHousesPageCache } from "@/lib/open-houses-page-data";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +11,12 @@ export const metadata: Metadata = {
 };
 
 /**
- * Do not load the week list here. Awaiting that query on the document is what
- * 502’d Chrome/Edge while `/api/listings/open-houses` still answered 200.
- * The client fetches the API (the request that already works).
+ * Embed the hourly-sync week JSON when it is already in stats_cache.
+ * Do not assemble the live join here — that 502’d Chrome/Edge on the
+ * document while `/api/listings/open-houses` still answered 200.
+ * A cache miss still ships the shell; the client fetches the API.
  */
-export default function OpenHousesPage() {
-  return <OpenHousesClient />;
+export default async function OpenHousesPage() {
+  const initial = await peekOpenHousesPageCache();
+  return <OpenHousesClient initial={initial} />;
 }

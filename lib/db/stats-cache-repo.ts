@@ -52,7 +52,7 @@ export async function writeStatsCacheRow(key: string, payload: unknown): Promise
 /**
  * Clear the rebuildable stats cache while preserving the "last-good" feed rows.
  * Mirrors lib/listings-db.ts clearStatsCache: deal-of-the-day / latest-town-feed
- * / latest-feed entries survive an hourly stats rebuild. Returns rows deleted.
+ * / latest-feed / open-houses entries survive an hourly stats rebuild. Returns rows deleted.
  */
 export async function clearStatsCache(): Promise<number> {
   return execute(
@@ -62,7 +62,8 @@ export async function clearStatsCache(): Promise<number> {
         AND cache_key NOT LIKE 'latest-town-stats:%'
         AND cache_key NOT LIKE 'latest-feed:%'
         AND cache_key NOT LIKE 'listing-price-change:%'
-        AND cache_key NOT LIKE 'closed-daily-counts:%'`,
+        AND cache_key NOT LIKE 'closed-daily-counts:%'
+        AND cache_key NOT LIKE 'open-houses:%'`,
   )
 }
 

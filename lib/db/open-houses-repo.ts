@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { execute, query, withTransaction } from '@/lib/db/postgres'
+import { execute, query, queryOne, withTransaction } from '@/lib/db/postgres'
 import {
   openHouseDateWindow,
   type OpenHouseEvent,
@@ -12,6 +12,17 @@ import {
  * too — the same arrangement `sync_queue` uses.
  */
 let ensured: Promise<void> | null = null
+let tablePresent = false
+
+/** Cheap read-path check — do not run CREATE INDEX on `/open-houses`. */
+export async function openHousesTableExists(): Promise<boolean> {
+  if (tablePresent) return true
+  const row = await queryOne<{ reg: string | null }>(
+    `SELECT to_regclass('public.open_houses')::text AS reg`,
+  )
+  tablePresent = Boolean(row?.reg)
+  return tablePresent
+}
 
 export async function ensureOpenHousesTable(): Promise<void> {
   if (ensured) return ensured
@@ -48,6 +59,7 @@ export async function ensureOpenHousesTable(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_open_houses_listing_key_date
          ON open_houses (listing_key, oh_date) WHERE listing_key IS NOT NULL`,
     )
+    tablePresent = true
   })().catch((err) => {
     ensured = null
     throw err
@@ -192,6 +204,12 @@ export async function pruneOpenHousesBefore(isoDay: string): Promise<number> {
   return execute(`DELETE FROM open_houses WHERE oh_date < $1::date`, [isoDay])
 }
 
+/** Drop dates after the t+6 inventory horizon (a prior 90-day pull). */
+export async function pruneOpenHousesAfter(isoDay: string): Promise<number> {
+  await ensureOpenHousesTable()
+  return execute(`DELETE FROM open_houses WHERE oh_date > $1::date`, [isoDay])
+}
+
 export type OpenHouseListingCounts = {
   past: number
   upcoming: number
@@ -209,7 +227,7 @@ export async function readOpenHouseCountsForListings(
   listings: readonly { mlsId?: string | null; listingKey?: string | null }[],
   today: string,
 ): Promise<Map<string, OpenHouseListingCounts>> {
-  await ensureOpenHousesTable()
+  if (!(await openHousesTableExists())) await ensureOpenHousesTable()
   const ids = [
     ...new Set(
       listings.map((row) => row.mlsId?.trim()).filter((id): id is string => Boolean(id)),
@@ -288,9 +306,26 @@ export type OpenHouseJoinedRow = {
   oh_type: string | null
   comment: string | null
   mls_id: string
-  listing_json: unknown
+  listing_listing_key: string | null
+  property_type: string | null
+  style: string | null
+  postal_code: string | null
+  address_city: string | null
+  address_street: string | null
+  address_full: string | null
+  address_unit: string | null
+  address_state: string | null
+  price: number | string | null
+  beds: number | string | null
+  baths: number | string | null
+  sqft: number | null
+  year_built: number | null
+  photo_count: number | null
   mls_status: string | null
   dom: number | null
+  list_date: Date | string | null
+  modification_timestamp: Date | string | null
+  owner_name: string | null
 }
 
 const JOINED_OH_SELECT = `
@@ -303,9 +338,26 @@ const JOINED_OH_SELECT = `
               oh.oh_type,
               oh.comment,
               l.mls_id,
-              l.data        AS listing_json,
+              l.listing_key AS listing_listing_key,
+              l.property_type,
+              l.style,
+              l.postal_code,
+              l.address_city,
+              l.address_street,
+              l.address_full,
+              l.price,
+              l.beds,
+              l.baths,
+              l.sqft,
+              l.year_built,
+              l.photo_count,
               l.mls_status,
-              l.dom`
+              l.dom,
+              l.list_date,
+              l.modification_timestamp,
+              l.data->>'ownerName' AS owner_name,
+              l.data->'address'->>'unit' AS address_unit,
+              l.data->'address'->>'state' AS address_state`
 
 const ACTIVE_PRICED_LISTING = `
           l.status_bucket = 'Active'
@@ -319,7 +371,7 @@ export async function readOpenHousesJoinedToActiveListings(
   start: string,
   end: string,
 ): Promise<OpenHouseJoinedRow[]> {
-  await ensureOpenHousesTable()
+  if (!(await openHousesTableExists())) await ensureOpenHousesTable()
   if (start > end) return []
 
   const [byId, byKey] = await Promise.all([

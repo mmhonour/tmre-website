@@ -6,6 +6,8 @@ import {
   formatOpenHouseWeekCount,
   OPEN_HOUSES_LOAD_ERROR_BODY,
   OPEN_HOUSES_LOAD_ERROR_TITLE,
+  openHouseHorizonWindow,
+  openHouseRemainingWeekLabel,
   openHouseRemainingWeekWindow,
   pickNextOpenHouse,
   type OpenHouseEvent,
@@ -25,6 +27,29 @@ function slot(id: string, date: string): OpenHouseEvent {
     comment: null,
   };
 }
+
+const WEEKDAY_FIXTURES = [
+  {
+    weekday: "Sunday",
+    at: "2026-09-13T04:00:00Z",
+    page: "Sunday–Saturday",
+  },
+  {
+    weekday: "Monday",
+    at: "2026-09-14T04:00:00Z",
+    page: "Monday–Sunday",
+  },
+  {
+    weekday: "Thursday",
+    at: "2026-09-10T16:00:00Z",
+    page: "Thursday–Sunday",
+  },
+  {
+    weekday: "Saturday",
+    at: "2026-09-12T16:00:00Z",
+    page: "Saturday–Sunday",
+  },
+] as const;
 
 const TODAY = "2026-09-11";
 const MON = slot("ended-mon", "2026-09-07");
@@ -46,6 +71,41 @@ export function OpenHousesForwardPreview() {
 
   return (
     <div className="space-y-6">
+      <div className="overflow-x-auto rounded-2xl border border-charcoal/[0.08] bg-white">
+        <table className="w-full min-w-[36rem] text-left text-sm">
+          <thead>
+            <tr className="border-b border-charcoal/[0.08] font-mono text-[10px] uppercase tracking-[0.12em] text-slate">
+              <th className="px-4 py-3 font-medium">When (ET)</th>
+              <th className="px-4 py-3 font-medium">Page shows</th>
+              <th className="px-4 py-3 font-medium">Dates</th>
+              <th className="px-4 py-3 font-medium">Cache / RETS (t+6)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {WEEKDAY_FIXTURES.map((row) => {
+              const at = new Date(row.at);
+              const page = openHouseRemainingWeekWindow(at);
+              const inventory = openHouseHorizonWindow(at);
+              return (
+                <tr key={row.weekday} className="border-b border-charcoal/[0.06] last:border-0">
+                  <td className="px-4 py-3 font-medium text-navy">{row.weekday}</td>
+                  <td className="px-4 py-3 text-slate">{row.page}</td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-slate">
+                    {page.start} → {page.end}
+                    <span className="mt-1 block text-[10px] uppercase tracking-[0.08em]">
+                      {openHouseRemainingWeekLabel(page)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-slate">
+                    {inventory.start} → {inventory.end}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {(
           [
@@ -71,7 +131,7 @@ export function OpenHousesForwardPreview() {
       </div>
 
       <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
-        Remaining window {remaining.start} → {remaining.end}
+        Friday remaining window {remaining.start} → {remaining.end}
       </p>
 
       {scene === "error" ? (
@@ -80,6 +140,13 @@ export function OpenHousesForwardPreview() {
             {OPEN_HOUSES_LOAD_ERROR_TITLE}
           </p>
           <p className="text-charcoal/70">{OPEN_HOUSES_LOAD_ERROR_BODY}</p>
+          <button
+            type="button"
+            onClick={() => setScene("loaded")}
+            className="mt-5 rounded-full border border-charcoal/20 bg-white px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase text-navy"
+          >
+            Try again
+          </button>
         </div>
       ) : scene === "empty" ? (
         <div className="rounded-2xl border border-charcoal/[0.08] bg-white px-6 py-10 text-center">
@@ -87,7 +154,7 @@ export function OpenHousesForwardPreview() {
             No open houses found
           </p>
           <p className="text-charcoal/70">
-            Nothing left today through Sunday in this town.
+            Nothing left this week in this town.
           </p>
         </div>
       ) : (
