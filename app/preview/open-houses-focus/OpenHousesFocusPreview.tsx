@@ -112,6 +112,9 @@ export function OpenHousesFocusPreview() {
 
   return (
     <div className="space-y-6">
+      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+        First load is All. Changing Most / First here is local only.
+      </p>
       <OpenHouseShowBySelect
         id="preview-oh-show-by-focus"
         value={showBy}

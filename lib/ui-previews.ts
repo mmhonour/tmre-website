@@ -64,7 +64,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-focus",
     title: "Open houses — most / first showing",
     summary:
-      "Show by: All, Most open houses (top 3 hosts per town), or First showing (zero past).",
+      "First load is Show by: All. Most / First is session-only, not a cookie.",
   },
   {
     slug: "open-houses-forward",

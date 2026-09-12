@@ -191,7 +191,7 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     "open-houses",
   ),
   tmre_oh_show_by: pref(
-    "Open houses — Show by (all / most open houses / first showing)",
+    "Open houses — Show by is no longer persisted. First load is All. Leftover most/first cookies are cleared on visit.",
     "open-houses",
   ),
 

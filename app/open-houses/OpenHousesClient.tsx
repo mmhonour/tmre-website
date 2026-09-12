@@ -45,7 +45,6 @@ import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import {
   compareOpenHousePastCountDesc,
   filterOpenHouseFocus,
-  OPEN_HOUSE_SHOW_BY_VALUES,
   openHouseFocusEmptyCopy,
   showByToFocus,
   type OpenHouseShowBy,
@@ -53,7 +52,7 @@ import {
 import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
 import DealBoardViewPicker from "@/components/intelligence/deal-board/DealBoardViewPicker";
-import { readClientPref } from "@/lib/client-prefs";
+import { clearClientPref, readClientPref } from "@/lib/client-prefs";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import { fallbackCriteriaFromPage } from "@/lib/visitor-search-profile";
 import {
@@ -410,17 +409,13 @@ export default function OpenHousesClient({
     "day",
     OH_GROUP_VALUES,
   );
-  const [showBy, setShowBy] = useMaybePersistedFilter<OpenHouseShowBy>(
-    isolatePrefs,
-    "tmre_oh_show_by",
-    "off",
-    OPEN_HOUSE_SHOW_BY_VALUES,
-    () => {
-      if (readClientPref("tmre_oh_first") === "on") return "first";
-      if (readClientPref("tmre_oh_most") === "on") return "most";
-      return "off";
-    },
-  );
+  /** Session-only. First load is All — do not restore Most / First from a cookie. */
+  const [showBy, setShowBy] = useState<OpenHouseShowBy>("off");
+  useEffect(() => {
+    clearClientPref("tmre_oh_show_by");
+    clearClientPref("tmre_oh_most");
+    clearClientPref("tmre_oh_first");
+  }, []);
   const focus = useMemo(() => showByToFocus(showBy), [showBy]);
   const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
     useOpenHouseTownOrder(TOWN_NAMES);
