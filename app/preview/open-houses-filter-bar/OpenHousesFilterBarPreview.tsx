@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
+import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
 import TownFilterPills from "@/components/TownFilterPills";
-import {
-  exclusiveOpenHouseFocus,
-} from "@/lib/open-houses-focus";
+import type { OpenHouseShowBy } from "@/lib/open-houses-focus";
 import {
   filterPillButtonClass,
   filterPillContainerClass,
@@ -74,8 +73,7 @@ function PlaceRow({
 export function OpenHousesFilterBarPreview() {
   const [tx, setTx] = useState<(typeof TX)[number]["value"]>("all");
   const [town, setTown] = useState<"All" | (typeof TMRE_TOWNS)[number]>("All");
-  const [most, setMost] = useState(false);
-  const [first, setFirst] = useState(false);
+  const [showBy, setShowBy] = useState<OpenHouseShowBy>("off");
   const [docked, setDocked] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -100,8 +98,8 @@ export function OpenHousesFilterBarPreview() {
           Sale / rental and towns live in the hero.
         </h2>
         <p className="mt-3 max-w-lg text-sm text-white/70">
-          Scroll down — they dock into the cream bar. Most / First stay exclusive
-          on their own line. Alerts left, view glyphs right.
+          Scroll down — they dock into the cream bar. Show by sits on the
+          same line as the view glyphs.
         </p>
         <div className="mt-5">
           <PlaceRow
@@ -126,42 +124,12 @@ export function OpenHousesFilterBarPreview() {
               setTown={setTown}
             />
           ) : null}
-          <div
-            className="flex flex-wrap items-center gap-2"
-            role="group"
-            aria-label="First showing or most open houses"
-          >
-            <button
-              type="button"
-              aria-pressed={most}
-              onClick={() => {
-                const next = exclusiveOpenHouseFocus("most", !most);
-                setMost(next.most);
-                setFirst(next.first);
-              }}
-              className={creamChipClass(most)}
-            >
-              Most open houses
-            </button>
-            <button
-              type="button"
-              aria-pressed={first}
-              onClick={() => {
-                const next = exclusiveOpenHouseFocus("first", !first);
-                setMost(next.most);
-                setFirst(next.first);
-              }}
-              className={creamChipClass(first)}
-            >
-              First showing
-            </button>
-          </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={creamChipClass(true)}>Date</span>
             <span className={creamChipClass(false)}>By day</span>
             <span className={creamChipClass(false)}>Price</span>
           </div>
-          <div className="flex min-h-8 items-center justify-between gap-3">
+          <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
             <LatestSearchAlertForm
               variant="open-houses"
               fallbackCriteria={fallbackCriteriaFromPage({
@@ -171,6 +139,11 @@ export function OpenHousesFilterBarPreview() {
               triggerId="preview-open-house-alerts"
             />
             <div className="flex items-center gap-1.5">
+              <OpenHouseShowBySelect
+                id="preview-oh-show-by-bar"
+                value={showBy}
+                onChange={setShowBy}
+              />
               <div
                 className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
                 role="group"

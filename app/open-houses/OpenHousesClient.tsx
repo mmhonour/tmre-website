@@ -44,11 +44,15 @@ import {
 import { placeTownNextTo } from "@/lib/open-houses-town-order";
 import {
   compareOpenHousePastCountDesc,
-  exclusiveOpenHouseFocus,
   filterOpenHouseFocus,
+  OPEN_HOUSE_SHOW_BY_VALUES,
   openHouseFocusEmptyCopy,
+  showByToFocus,
+  type OpenHouseShowBy,
 } from "@/lib/open-houses-focus";
+import { OpenHouseShowBySelect } from "@/components/OpenHouseShowBySelect";
 import { OpenHouseTownSection } from "@/components/OpenHouseTownSection";
+import { readClientPref } from "@/lib/client-prefs";
 import LatestSearchAlertForm from "@/components/latest/LatestSearchAlertForm";
 import { fallbackCriteriaFromPage } from "@/lib/visitor-search-profile";
 
@@ -57,13 +61,11 @@ const OH_TX_VALUES = ["all", "sale", "rental"] as const;
 const OH_VIEW_VALUES = ["grid", "rows", "line"] as const;
 const OH_SORT_VALUES = ["date", "price-asc", "price-desc"] as const;
 const OH_GROUP_VALUES = ["day", "town"] as const;
-const OH_TOGGLE_VALUES = ["off", "on"] as const;
 
 type ViewMode = (typeof OH_VIEW_VALUES)[number];
 type TxFilter = "all" | "sale" | "rental";
 type SortMode = (typeof OH_SORT_VALUES)[number];
 type GroupMode = (typeof OH_GROUP_VALUES)[number];
-type ToggleOn = (typeof OH_TOGGLE_VALUES)[number];
 type TownName = TmreTown;
 type TownFilter = "All" | TownName;
 
@@ -100,8 +102,6 @@ const PHOTO_PREVIEW_ROWS = "w-[10.5rem] min-h-[7.5rem]";
 const PHOTO_PREVIEW_LINE = "h-[2.7rem] w-[3.6rem]";
 const LINE_OH_COL = "shrink-0 w-[10.5rem] text-right";
 const LINE_PRICE_COL = "shrink-0 w-[5.25rem] text-right";
-const MOST_OH_LABEL = "Most open houses";
-const FIRST_OH_LABEL = "First showing";
 const STICKY_TOP_CLASS = "top-20 lg:top-24";
 
 function formatOhSyncAge(iso: string | null | undefined): string | null {
@@ -183,9 +183,8 @@ function OhStickyFilters({
   orderedTowns,
   townCounts,
   loadState,
-  mostOpenHouses,
-  firstShowing,
-  onFocusChange,
+  showBy,
+  setShowBy,
   sortMode,
   setSortMode,
   groupMode,
@@ -209,9 +208,8 @@ function OhStickyFilters({
   orderedTowns: readonly TownName[];
   townCounts: Partial<Record<TownFilter | TownName, number>>;
   loadState: LoadState;
-  mostOpenHouses: boolean;
-  firstShowing: boolean;
-  onFocusChange: (next: { most: boolean; first: boolean }) => void;
+  showBy: OpenHouseShowBy;
+  setShowBy: (value: OpenHouseShowBy) => void;
   sortMode: SortMode;
   setSortMode: (value: SortMode) => void;
   groupMode: GroupMode;
@@ -242,31 +240,6 @@ function OhStickyFilters({
           loadState={loadState}
         />
       ) : null}
-
-      <div
-        className="flex flex-wrap items-center gap-2"
-        role="group"
-        aria-label="First showing or most open houses"
-      >
-        <button
-          type="button"
-          onClick={() => onFocusChange(exclusiveOpenHouseFocus("most", !mostOpenHouses))}
-          aria-pressed={mostOpenHouses}
-          title="Top 3 homes in each town by stored past showings; ties stay in"
-          className={creamChipClass(mostOpenHouses)}
-        >
-          {MOST_OH_LABEL}
-        </button>
-        <button
-          type="button"
-          onClick={() => onFocusChange(exclusiveOpenHouseFocus("first", !firstShowing))}
-          aria-pressed={firstShowing}
-          title="Homes with zero public open houses on file before today"
-          className={creamChipClass(firstShowing)}
-        >
-          {FIRST_OH_LABEL}
-        </button>
-      </div>
 
       <div className="flex flex-wrap items-center gap-2 min-h-8">
         <button
@@ -306,13 +279,14 @@ function OhStickyFilters({
         </button>
       </div>
 
-      <div className="flex min-h-8 items-center justify-between gap-3">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
         <LatestSearchAlertForm
           variant="open-houses"
           fallbackCriteria={alertFallback}
           triggerId="open-house-alerts"
         />
         <div className="flex shrink-0 items-center gap-1.5">
+          <OpenHouseShowBySelect value={showBy} onChange={setShowBy} />
           <ViewModeToggle value={viewMode} onChange={setViewMode} />
           {showTownChrome ? (
             <TownFoldGlyphs
@@ -372,26 +346,18 @@ export default function OpenHousesClient({
     "day",
     OH_GROUP_VALUES,
   );
-  const [mostPref, setMostPref] = usePersistedFilter<ToggleOn>(
-    "tmre_oh_most",
+  const [showBy, setShowBy] = usePersistedFilter<OpenHouseShowBy>(
+    "tmre_oh_show_by",
     "off",
-    OH_TOGGLE_VALUES,
+    OPEN_HOUSE_SHOW_BY_VALUES,
+    false,
+    () => {
+      if (readClientPref("tmre_oh_first") === "on") return "first";
+      if (readClientPref("tmre_oh_most") === "on") return "most";
+      return "off";
+    },
   );
-  const [firstPref, setFirstPref] = usePersistedFilter<ToggleOn>(
-    "tmre_oh_first",
-    "off",
-    OH_TOGGLE_VALUES,
-  );
-  const mostOpenHouses = mostPref === "on";
-  const firstShowing = firstPref === "on";
-  const focus = useMemo(
-    () => ({ most: mostOpenHouses, first: firstShowing }),
-    [mostOpenHouses, firstShowing],
-  );
-  const applyFocus = (next: { most: boolean; first: boolean }) => {
-    setMostPref(next.most ? "on" : "off");
-    setFirstPref(next.first ? "on" : "off");
-  };
+  const focus = useMemo(() => showByToFocus(showBy), [showBy]);
   const { orderedTowns, customOrder, setPreferredOrder, resetOrder } =
     useOpenHouseTownOrder(TOWN_NAMES);
   const [openTowns, setOpenTowns] = useState<Set<string>>(() => new Set());
@@ -629,9 +595,8 @@ export default function OpenHousesClient({
               orderedTowns={orderedTowns}
               townCounts={townCounts}
               loadState={loadState}
-              mostOpenHouses={mostOpenHouses}
-              firstShowing={firstShowing}
-              onFocusChange={applyFocus}
+              showBy={showBy}
+              setShowBy={setShowBy}
               sortMode={sortMode}
               setSortMode={setSortMode}
               groupMode={groupMode}

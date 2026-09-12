@@ -17,8 +17,9 @@ export default function OpenHousesFilterBarPreviewPage() {
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Sale / rental and towns start in the navy hero. Scroll until they
-          dock into the cream bar. Most / First are exclusive. Alerts left;
-          view glyphs then town fold glyphs on the right. Production:
+          dock into the cream bar. Show by sits on the glyph line (All /
+          Most open houses / First showing). Alerts left; Show by, view
+          glyphs, then town fold glyphs on the right. Production:
           /open-houses.
         </p>
       </div>

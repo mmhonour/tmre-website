@@ -16,9 +16,8 @@ export default function OpenHousesFocusPreviewPage() {
           Most open houses / first showing
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Most = top 3 historical hosts in each town (ties stay). First
-          showing = zero past showings. The two filters are mutually
-          exclusive. Production: /open-houses.
+          Show by is All, Most open houses (top 3 hosts per town, ties
+          stay), or First showing (zero past). Production: /open-houses.
         </p>
         <OpenHousesFocusPreview />
       </div>

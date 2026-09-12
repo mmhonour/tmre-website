@@ -46,13 +46,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
-      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Most / First are exclusive. Alerts left; view glyphs then town fold glyphs on the right.",
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Show by sits on the glyph line (All / Most open houses / First showing).",
   },
   {
     slug: "open-houses-focus",
     title: "Open houses — most / first showing",
     summary:
-      "Most open houses and First showing are mutually exclusive (top 3 historical hosts per town vs zero past).",
+      "Show by: All, Most open houses (top 3 hosts per town), or First showing (zero past).",
   },
   {
     slug: "open-houses-forward",
