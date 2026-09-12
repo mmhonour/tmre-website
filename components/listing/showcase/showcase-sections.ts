@@ -19,6 +19,7 @@ export const SHOWCASE_SECTION_IDS = {
   if: "showcase-if",
   history: "showcase-history",
   map: "showcase-map",
+  admin: "showcase-admin",
 } as const;
 
 export type ShowcaseSection = keyof typeof SHOWCASE_SECTION_IDS;
@@ -36,6 +37,7 @@ const TAB_TO_SECTION: Partial<Record<ListingTab, ShowcaseSection>> = {
   if: "if",
   history: "history",
   map: "map",
+  admin: "admin",
 };
 
 export function showcaseSectionForTab(tab: ListingTab): ShowcaseSection | null {

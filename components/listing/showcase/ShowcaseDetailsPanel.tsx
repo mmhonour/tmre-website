@@ -301,13 +301,27 @@ export default function ShowcaseDetailsPanel({
     scrollToShowcaseSection("map");
   };
 
+  /** Mobile: Admin lives under the map, not in the desktop deck. */
+  const goToPageAdmin = () => {
+    if (!siteUnlocked) return;
+    if (isDesktop) {
+      setActiveDeckCard((cur) => (cur === "admin" ? null : "admin"));
+      return;
+    }
+    setActiveTab("admin");
+    scrollToShowcaseSection("admin");
+  };
+
   /**
    * Without this the subnav drops into hash-jump mode and every content tab
    * resolves to the Overview route plus an anchor, bouncing the visitor off
    * this page. Tabs that have a section here scroll to it; the rest navigate.
    */
   const handleTabSelect = (tab: ListingTab) => {
-    if (tab === "admin") return;
+    if (tab === "admin") {
+      goToPageAdmin();
+      return;
+    }
     if (isTransactionTab(tab)) setTxTab(tab);
     // Overview content *is* the remarks, which live in the dashboard deck on
     // desktop — open that card rather than scrolling to an empty anchor.
@@ -342,12 +356,20 @@ export default function ShowcaseDetailsPanel({
 
   useEffect(() => {
     const tab = host.initialTab;
-    if (tab && tab !== "overview" && tab !== "admin") {
+    if (tab === "admin") {
+      goToPageAdmin();
+      return;
+    }
+    if (tab && tab !== "overview") {
       handleTabSelect(tab);
       return;
     }
     const hash = window.location.hash.replace(/^#/, "");
     if (!hash) return;
+    if (hash === "listing-admin" || hash === SHOWCASE_SECTION_IDS.admin) {
+      goToPageAdmin();
+      return;
+    }
     const section = (
       Object.entries(SHOWCASE_SECTION_IDS) as [
         keyof typeof SHOWCASE_SECTION_IDS,
@@ -540,15 +562,12 @@ export default function ShowcaseDetailsPanel({
                 mapVisible={activeTab === "map"}
                 onMapToggle={goToPageMap}
                 showAdminTab={siteUnlocked}
-              adminVisible={activeDeckCard === "admin"}
-              onAdminToggle={
-                siteUnlocked && isDesktop
-                  ? () =>
-                      setActiveDeckCard((cur) =>
-                        cur === "admin" ? null : "admin",
-                      )
-                  : null
-              }
+                adminVisible={
+                  isDesktop
+                    ? activeDeckCard === "admin"
+                    : activeTab === "admin"
+                }
+                onAdminToggle={siteUnlocked ? goToPageAdmin : null}
               historyElevated={activeDeckCard === "history"}
                 onHistoryToggle={
                   isDesktop
@@ -715,6 +734,19 @@ export default function ShowcaseDetailsPanel({
                 under What if. The right-hand deck Map card is a peek only. */}
                 {listingMap("h-[20rem] w-full sm:h-[26rem]")}
               </Section>
+
+              {siteUnlocked ? (
+                <div className="lg:hidden">
+                  <Section id={SHOWCASE_SECTION_IDS.admin} title="Admin">
+                    <ListingAdminAgentPanel
+                      contact={adminContact}
+                      vision={vision}
+                      mlsId={listing.mlsId}
+                      anchorId={null}
+                    />
+                  </Section>
+                </div>
+              ) : null}
 
               {/*
                 Public listing-agent attribution, served as a PNG so it reads
