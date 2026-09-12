@@ -3,13 +3,14 @@ import { describe, it } from 'node:test'
 import {
   extractVisionOwnerKeys,
   keepParcelsOnCurrentWarrantyName,
+  ownerPortfolioPurchaseTotal,
   pickUniqueOwnerPortfolios,
   visionOwnerClusterId,
   visionOwnerMailingKeyNorm,
   isIncompletePersonNameKey,
   visionOwnerNameKeyNorm,
   type VisionOwnerKey,
-  type VisionOwnerPortfolio,
+  type VisionOwnerPortfolioDraft,
 } from './vision-owner-keys'
 
 describe('visionOwnerNameKeyNorm', () => {
@@ -269,9 +270,22 @@ describe('keepParcelsOnCurrentWarrantyName', () => {
   })
 })
 
+describe('ownerPortfolioPurchaseTotal', () => {
+  it('sums last paid purchases and skips missing or $0 rows', () => {
+    const total = ownerPortfolioPurchaseTotal([
+      { lastPaidPrice: 800_000 },
+      { lastPaidPrice: 165_000 },
+      { lastPaidPrice: null },
+      { lastPaidPrice: 0 },
+    ])
+    assert.equal(total.lastPaidTotal, 965_000)
+    assert.equal(total.lastPaidTotalLabel, '$965,000')
+  })
+})
+
 describe('pickUniqueOwnerPortfolios', () => {
   it('keeps the larger mailing cluster and drops a name overlap', () => {
-    const mailing: VisionOwnerPortfolio = {
+    const mailing: VisionOwnerPortfolioDraft = {
       clusterId: 'mailing:po box 88|westport',
       clusterKind: 'mailing',
       town: 'Westport',
@@ -306,7 +320,7 @@ describe('pickUniqueOwnerPortfolios', () => {
         },
       ],
     }
-    const name: VisionOwnerPortfolio = {
+    const name: VisionOwnerPortfolioDraft = {
       clusterId: 'name:king|albert',
       clusterKind: 'name',
       town: 'Westport',
@@ -337,5 +351,7 @@ describe('pickUniqueOwnerPortfolios', () => {
     assert.equal(picked.length, 1)
     assert.equal(picked[0]?.clusterId, mailing.clusterId)
     assert.equal(picked[0]?.parcelCount, 3)
+    assert.equal(picked[0]?.lastPaidTotal, 2_950_000)
+    assert.equal(picked[0]?.lastPaidTotalLabel, '$2,950,000')
   })
 })

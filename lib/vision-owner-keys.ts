@@ -9,6 +9,7 @@ import {
   VISION_OWNER_ENTITY_RE,
 } from '@/lib/vision-owner-display'
 import {
+  formatVisionMoney,
   normalizeVisionOwnerLine,
   visionCurrentWarrantyOwnerLine,
   type VisionOwnershipRow,
@@ -225,6 +226,35 @@ export type VisionOwnerPortfolio = {
   mailingLabel: string | null
   parcelCount: number
   parcels: VisionOwnerPortfolioParcel[]
+  /** Sum of last paid purchases on the homes in this panel. */
+  lastPaidTotal: number | null
+  lastPaidTotalLabel: string | null
+}
+
+export type VisionOwnerPortfolioDraft = Omit<
+  VisionOwnerPortfolio,
+  'lastPaidTotal' | 'lastPaidTotalLabel'
+>
+
+/** Sum last paid purchases already on the parcel list (not quitclaim $0). */
+export function ownerPortfolioPurchaseTotal(
+  parcels: readonly Pick<VisionOwnerPortfolioParcel, 'lastPaidPrice'>[],
+): { lastPaidTotal: number | null; lastPaidTotalLabel: string | null } {
+  let total = 0
+  let counted = 0
+  for (const parcel of parcels) {
+    const price = parcel.lastPaidPrice
+    if (price == null || !(price > 0)) continue
+    total += price
+    counted += 1
+  }
+  if (counted === 0) {
+    return { lastPaidTotal: null, lastPaidTotalLabel: null }
+  }
+  return {
+    lastPaidTotal: total,
+    lastPaidTotalLabel: formatVisionMoney(total),
+  }
 }
 
 export function clusterKindFromId(
@@ -240,7 +270,7 @@ export function clusterKindFromId(
  * when counts tie, and skip a cluster whose cards already appeared.
  */
 export function pickUniqueOwnerPortfolios(
-  rows: readonly VisionOwnerPortfolio[],
+  rows: readonly VisionOwnerPortfolioDraft[],
 ): VisionOwnerPortfolio[] {
   const ranked = [...rows].sort((a, b) => {
     if (b.parcelCount !== a.parcelCount) return b.parcelCount - a.parcelCount
@@ -255,7 +285,10 @@ export function pickUniqueOwnerPortfolios(
     const keys = row.parcels.map((p) => `${p.town}:${p.visionPid}`)
     if (keys.length === 0 || keys.every((key) => seen.has(key))) continue
     for (const key of keys) seen.add(key)
-    out.push(row)
+    out.push({
+      ...row,
+      ...ownerPortfolioPurchaseTotal(row.parcels),
+    })
   }
   return out
 }

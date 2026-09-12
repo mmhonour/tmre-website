@@ -12,6 +12,7 @@ import {
   visionOwnerClusterId,
   type VisionOwnerKey,
   type VisionOwnerPortfolio,
+  type VisionOwnerPortfolioDraft,
 } from '@/lib/vision-owner-keys'
 import {
   visionPaidSaleFields,
@@ -456,7 +457,7 @@ export async function listVisionOwnerPortfolios(opts: {
   }
   const cards = await loadAddressOwnerRows(addressPairs)
 
-  const portfolios: VisionOwnerPortfolio[] = []
+  const portfolios: VisionOwnerPortfolioDraft[] = []
   for (const row of rows) {
     const kind = clusterKindFromId(row.cluster_id)
     if (!kind) continue

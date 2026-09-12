@@ -113,8 +113,9 @@ export default function OwnerPortfoliosPreviewPage() {
           warranty name on two or more homes is a landlord (Denise
           Penna). A later warranty replaces the prior buyer; a later
           quitclaim does not. Same mailbox is an owner cluster. Last
-          paid sale sits on the right. Production (admin):
-          /streets/owners or Find → Landlord / owners.
+          paid sale sits on the right; purchase total at the bottom of
+          the panel. Production (admin): /streets/owners or Find →
+          Landlord / owners.
         </p>
         <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Find · Westport · Landlord / owners
@@ -137,7 +138,10 @@ export default function OwnerPortfoliosPreviewPage() {
                     : " · same mailing"}
                 </p>
               </div>
-              <OwnerPortfolioHomes parcels={row.parcels} />
+              <OwnerPortfolioHomes
+                parcels={row.parcels}
+                purchaseTotalLabel={row.lastPaidTotalLabel}
+              />
             </li>
           ))}
         </ol>
@@ -184,7 +188,10 @@ export default function OwnerPortfoliosPreviewPage() {
                   {row.parcelCount} homes on this street
                 </p>
               </div>
-              <OwnerPortfolioHomes parcels={row.parcels} />
+              <OwnerPortfolioHomes
+                parcels={row.parcels}
+                purchaseTotalLabel={row.lastPaidTotalLabel}
+              />
             </li>
           ))}
         </ol>

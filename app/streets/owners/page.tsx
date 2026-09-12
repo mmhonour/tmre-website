@@ -129,7 +129,7 @@ export default async function StreetsOwnersPage({
             current (non-superseded) warranty of two or more homes. A later
             warranty replaces the prior buyer; a later quitclaim does not.
             An owner cluster is the same mailbox. Last paid sale sits on
-            the right.
+            the right; purchase total at the bottom of the panel.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}
@@ -179,7 +179,10 @@ export default async function StreetsOwnersPage({
                       {row.mailingLabel}
                     </p>
                   ) : null}
-                  <OwnerPortfolioHomes parcels={row.parcels} />
+                  <OwnerPortfolioHomes
+                    parcels={row.parcels}
+                    purchaseTotalLabel={row.lastPaidTotalLabel}
+                  />
                 </li>
               ))}
             </ol>
