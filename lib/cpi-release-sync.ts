@@ -284,3 +284,17 @@ export async function runCpiReleaseSync(options?: {
     releases: results,
   }
 }
+
+/** Record which print this run covered so catch-up can stand down. */
+export async function stampCpiSyncSuccess(
+  result: CpiSyncResult,
+  dueId?: string | null,
+): Promise<void> {
+  if (!result.ok && result.updated <= 0) return
+  const eventId =
+    dueId ??
+    result.releases.find((row) => row.ok && !row.skipped)?.id ??
+    null
+  if (!eventId) return
+  await setSyncMetaDurable('cpi_last_synced_event_id', eventId)
+}

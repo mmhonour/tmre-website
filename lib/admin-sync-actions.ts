@@ -1565,43 +1565,47 @@ async function runAdminSyncActionImpl(
     }
     case 'cpi-sync': {
       if (shouldQueueOnServerless(options)) {
-        const { queueNetlifyCpiSync } = await import('@/lib/netlify-sync-trigger')
+        const { queueNetlifyCpiSync, isNetlifyQueueRateLimited } = await import(
+          '@/lib/netlify-sync-trigger'
+        )
         const { queued, via } = await queueSyncNowThroughQueue(
           'cpi-sync',
           () => queueNetlifyCpiSync({ source: 'admin' }),
         )
-        return {
-          ok: queued.ok,
-          action,
-          startedAt,
-          finishedAt: new Date().toISOString(),
-          durationMs: Date.now() - t0,
-          backgroundQueued: true,
-          message: queued.ok
-            ? `CPI sync queued (${via})`
-            : `CPI sync queue failed (${via}): ${queued.error ?? 'unknown'}`,
+        if (queued.ok) {
+          return {
+            ok: true,
+            action,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message: `CPI sync queued (${via})`,
+          }
         }
+        if (!isNetlifyQueueRateLimited(queued)) {
+          return {
+            ok: false,
+            action,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - t0,
+            backgroundQueued: true,
+            message: `CPI sync queue failed (${via}): ${queued.error ?? 'unknown'}`,
+          }
+        }
+        // Fall through and scrape here — the background hop is HTTP 429.
       }
-      const { runCpiReleaseSync } = await import('@/lib/cpi-release-sync')
-      const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
-      const { etYmd } = await import('@/lib/fed-event-sync-schedule')
-      const { CPI_RELEASES } = await import('@/lib/cpi-calendar')
+      const { runCpiReleaseSync, stampCpiSyncSuccess } = await import(
+        '@/lib/cpi-release-sync'
+      )
       const result = await runCpiReleaseSync()
-      const finishedAt = result.syncedAt
-      const today = etYmd()
-      const todayRelease = CPI_RELEASES.find((r) => r.releaseDate === today)
-      const eventId =
-        todayRelease?.id ??
-        result.releases.find((r) => r.ok && !r.skipped)?.id ??
-        null
-      if ((result.ok || result.updated > 0) && eventId) {
-        await setSyncMetaDurable('cpi_last_synced_event_id', eventId)
-      }
+      await stampCpiSyncSuccess(result)
       return {
         ok: result.ok,
         action,
         startedAt,
-        finishedAt,
+        finishedAt: result.syncedAt,
         durationMs: Date.now() - t0,
         recordsFetched: result.updated,
         message: `CPI sync — updated ${result.updated}, fetched ${result.fetched}`,

@@ -117,8 +117,9 @@ export function nextCpiSyncTarget(
 }
 
 /**
- * Meeting to sync right now: today is decision day, past start time ET,
- * and we have not yet recorded a successful sync for this meeting id.
+ * Meeting to sync right now: the latest decision-day slot that has
+ * already passed, if we have not yet recorded a successful sync for it.
+ * Same-day-only used to drop a missed 3:15 p.m. print forever.
  */
 export function fomcSyncDueMeeting(
   meetings: readonly FomcMeeting[] = FOMC_MEETINGS,
@@ -126,28 +127,36 @@ export function fomcSyncDueMeeting(
   startTimeEt = FOMC_SYNC_DEFAULT_START_ET,
   lastSyncedEventId: string | null = null,
 ): FomcMeeting | null {
-  const today = etYmd(now)
   const { hour, minute } = startParts(startTimeEt)
-  const meeting = meetings.find((m) => m.endDate === today) ?? null
-  if (!meeting) return null
-  if (lastSyncedEventId === meeting.id) return null
-  const slot = etWallClockToDate(today, hour, minute, now)
-  if (now.getTime() < slot.getTime()) return null
+  const nowMs = now.getTime()
+  const due = [...meetings]
+    .filter((m) => etWallClockToDate(m.endDate, hour, minute, now).getTime() <= nowMs)
+    .sort((a, b) => b.endDate.localeCompare(a.endDate))
+  const meeting = due[0] ?? null
+  if (!meeting || lastSyncedEventId === meeting.id) return null
   return meeting
 }
 
+/**
+ * Release to sync right now: the latest BLS print whose Configure start
+ * (default 09:15 ET) has already passed, if that event id is not stamped.
+ * Catch-up after release day — a Friday 429 must not wait until next month.
+ */
 export function cpiSyncDueRelease(
   releases: readonly CpiRelease[] = CPI_RELEASES,
   now = new Date(),
   startTimeEt = CPI_SYNC_DEFAULT_START_ET,
   lastSyncedEventId: string | null = null,
 ): CpiRelease | null {
-  const today = etYmd(now)
   const { hour, minute } = startParts(startTimeEt)
-  const release = releases.find((r) => r.releaseDate === today) ?? null
-  if (!release) return null
-  if (lastSyncedEventId === release.id) return null
-  const slot = etWallClockToDate(today, hour, minute, now)
-  if (now.getTime() < slot.getTime()) return null
+  const nowMs = now.getTime()
+  const due = [...releases]
+    .filter(
+      (r) =>
+        etWallClockToDate(r.releaseDate, hour, minute, now).getTime() <= nowMs,
+    )
+    .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate))
+  const release = due[0] ?? null
+  if (!release || lastSyncedEventId === release.id) return null
   return release
 }

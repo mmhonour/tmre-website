@@ -57,7 +57,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'cpi-sync': {
     label: 'CPI release sync',
     description:
-      'Scrape official BLS CPI news release on print day (~9:15 a.m. ET) into Postgres for /fed-analysis',
+      'Scrape official BLS CPI news release after ~9:15 a.m. ET on print day (and catch up until that print is stamped) into Postgres for /fed-analysis',
   },
   'market-digest': {
     label: 'Monday market brief',

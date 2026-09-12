@@ -1,10 +1,6 @@
 import type { Config, Context } from '@netlify/functions'
-import {
-  getSyncMeta,
-  hydrateSyncMetaStore,
-  setSyncMetaDurable,
-} from '../../lib/db/sync-meta-store'
-import { runCpiReleaseSync } from '../../lib/cpi-release-sync'
+import { getSyncMeta, hydrateSyncMetaStore } from '../../lib/db/sync-meta-store'
+import { runCpiReleaseSync, stampCpiSyncSuccess } from '../../lib/cpi-release-sync'
 import { cpiSyncDueRelease } from '../../lib/fed-event-sync-schedule'
 import { assertSyncCronAuth } from '../../lib/netlify-cron-auth'
 import { isScheduledSyncJobPausedFresh } from '../../lib/scheduled-sync-toggle'
@@ -52,15 +48,7 @@ export default async function handler(req: Request, _context: Context) {
       due ? { releaseId: due.id } : undefined,
     )
 
-    if (result.ok || result.updated > 0) {
-      const eventId =
-        due?.id ??
-        result.releases.find((r) => r.ok && !r.skipped)?.id ??
-        null
-      if (eventId) {
-        await setSyncMetaDurable('cpi_last_synced_event_id', eventId)
-      }
-    }
+    await stampCpiSyncSuccess(result, due?.id)
 
     return new Response(
       JSON.stringify({

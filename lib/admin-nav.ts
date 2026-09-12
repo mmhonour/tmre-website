@@ -1058,7 +1058,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-cpi",
     detail:
-      "Thin trigger — queues sync-cpi-worker on BLS CPI release day after Configure start time (default 09:15 ET)",
+      "Thin trigger — queues sync-cpi-worker after Configure start time (default 09:15 ET) on print day, and keeps trying until that print is stamped; scrapes inline if the worker hop is HTTP 429",
     schedule: "Every 30 min (event-gated)",
   },
   {

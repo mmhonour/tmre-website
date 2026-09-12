@@ -509,7 +509,7 @@ export function describeStartupProcess(): {
         title: "CPI release sync",
         timing: "Release day ~9:15 a.m. ET",
         detail:
-          "netlify/functions/sync-cpi → sync-cpi-worker: scrape bls.gov CPI news release into cpi_releases (summary + highlights). Dense */30 cron; runs only when today is a CPI releaseDate and Configure start time (default 09:15 ET) has passed.",
+          "netlify/functions/sync-cpi → sync-cpi-worker: scrape bls.gov CPI news release into cpi_releases (summary + highlights). Dense */30 cron; due after Configure start time (default 09:15 ET) on print day, and stays due until that event id is stamped — a Friday 429 must not wait until next month. If the background hop is HTTP 429, the thin cron / Admin Sync now scrape inline.",
         status: "scheduled",
         statusLabel: "Cron",
       },
