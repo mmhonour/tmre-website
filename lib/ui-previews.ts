@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "listing-vision-address",
+    title: "Listing address → Vision card",
+    summary:
+      "Admin-only: click the street to the VGSI / Find parcel page. Locked visitors see plain text.",
+  },
+  {
     slug: "listing-card-photo",
     title: "Listing card photos — mid vs full",
     summary:

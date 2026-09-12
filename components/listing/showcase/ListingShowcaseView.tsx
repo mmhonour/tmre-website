@@ -17,6 +17,8 @@ import {
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
 import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
+import { ListingVisionAddressLink } from "@/components/listing/ListingVisionAddressLink";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import { formatListingHeaderPrice } from "@/lib/listing-header-price";
 import {
   formatMlsStatus,
@@ -24,7 +26,10 @@ import {
   primaryListingPriceIsClosed,
 } from "@/lib/listing-history";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
-import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
+import {
+  listingVisionAddressHref,
+  type ListingVisionLink,
+} from "@/lib/listing-vision-link-shared";
 import { isRentalListing } from "@/lib/listing-kind";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 
@@ -110,6 +115,11 @@ export default function ListingShowcaseView({
   const [railDetailsOnly, setRailDetailsOnly] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const isDesktop = useIsDesktop();
+  const siteUnlocked = useSiteUnlocked();
+  const visionHref =
+    siteUnlocked && !host.privacyMode
+      ? listingVisionAddressHref(vision, host.headline)
+      : null;
 
   const livePhotos = useMemo(() => {
     if (!host.showHero) return [] as string[];
@@ -246,7 +256,16 @@ export default function ListingShowcaseView({
                 </span>
               )}
               <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                {host.headline}
+                {visionHref ? (
+                  <ListingVisionAddressLink
+                    href={visionHref}
+                    className="pointer-events-auto"
+                  >
+                    {host.headline}
+                  </ListingVisionAddressLink>
+                ) : (
+                  host.headline
+                )}
               </h1>
               {host.locationLine ? (
                 <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
