@@ -141,7 +141,7 @@ export function OpenHousesTownOrderPreview() {
           </button>
         ) : null}
       </div>
-      <div className="space-y-8">
+      <div className="space-y-3">
         {sections.map((section, index) => (
           <OpenHouseTownSection
             key={section.town}

@@ -160,7 +160,6 @@ export function OpenHousesFilterBarPreview() {
             <span className={creamChipClass(true)}>Date</span>
             <span className={creamChipClass(false)}>By day</span>
             <span className={creamChipClass(false)}>Price</span>
-            <span className={creamChipClass(false)}>Close all towns</span>
           </div>
           <div className="flex min-h-8 items-center justify-between gap-3">
             <LatestSearchAlertForm
@@ -171,21 +170,41 @@ export function OpenHousesFilterBarPreview() {
               })}
               triggerId="preview-open-house-alerts"
             />
-            <div
-              className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
-              role="group"
-              aria-label="Listing layout"
-            >
-              {["Grid", "Rows", "Line"].map((label, i) => (
+            <div className="flex items-center gap-1.5">
+              <div
+                className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
+                role="group"
+                aria-label="Listing layout"
+              >
+                {["Grid", "Rows", "Line"].map((label, i) => (
+                  <span
+                    key={label}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-mono text-[9px] ${
+                      i === 0 ? "bg-navy text-white" : "text-navy/55"
+                    }`}
+                  >
+                    {label[0]}
+                  </span>
+                ))}
+              </div>
+              <div
+                className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
+                role="group"
+                aria-label="Town sections"
+              >
                 <span
-                  key={label}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-mono text-[9px] ${
-                    i === 0 ? "bg-navy text-white" : "text-navy/55"
-                  }`}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-navy text-white font-mono text-[10px]"
+                  title="Close all towns"
                 >
-                  {label[0]}
+                  ≡
                 </span>
-              ))}
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-navy/55 font-mono text-[10px]"
+                  title="Expand all towns"
+                >
+                  ☰
+                </span>
+              </div>
             </div>
           </div>
         </div>

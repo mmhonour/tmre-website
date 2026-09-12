@@ -304,35 +304,6 @@ function OhStickyFilters({
             </span>
           ) : null}
         </button>
-        {showTownChrome ? (
-          <>
-            <button
-              type="button"
-              onClick={onCloseAllTowns}
-              aria-pressed={allTownsCollapsed}
-              className={creamChipClass(allTownsCollapsed)}
-            >
-              Close all towns
-            </button>
-            <button
-              type="button"
-              onClick={onExpandAllTowns}
-              aria-pressed={allTownsExpanded}
-              className={creamChipClass(allTownsExpanded)}
-            >
-              Expand all towns
-            </button>
-            {customOrder ? (
-              <button
-                type="button"
-                onClick={onResetOrder}
-                className={creamChipClass(false)}
-              >
-                Reset town order
-              </button>
-            ) : null}
-          </>
-        ) : null}
       </div>
 
       <div className="flex min-h-8 items-center justify-between gap-3">
@@ -341,7 +312,19 @@ function OhStickyFilters({
           fallbackCriteria={alertFallback}
           triggerId="open-house-alerts"
         />
-        <ViewModeToggle value={viewMode} onChange={setViewMode} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          {showTownChrome ? (
+            <TownFoldGlyphs
+              allTownsCollapsed={allTownsCollapsed}
+              allTownsExpanded={allTownsExpanded}
+              onCloseAllTowns={onCloseAllTowns}
+              onExpandAllTowns={onExpandAllTowns}
+              customOrder={customOrder}
+              onResetOrder={onResetOrder}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -700,14 +683,7 @@ export default function OpenHousesClient({
             </div>
           ) : (
             <>
-              <p className="mb-4 font-mono text-[10px] text-slate/60 max-w-2xl">
-                Past / upcoming counts document earlier and later public
-                showings for homes that still have a date today or later. Most
-                is the top 3 of those hosts in each town (ties stay). First
-                showing means zero past showings. Towns start collapsed — drag
-                ⋮⋮ to set your order.
-              </p>
-              <div className="space-y-10">
+              <div className="space-y-3">
                 {townSections.map((townGroup) => (
                   <OpenHouseTownSection
                     key={townGroup.town}
@@ -969,6 +945,107 @@ function OpenHouseBadge({
     >
       {label}
     </span>
+  );
+}
+
+function TownFoldGlyphs({
+  allTownsCollapsed,
+  allTownsExpanded,
+  onCloseAllTowns,
+  onExpandAllTowns,
+  customOrder,
+  onResetOrder,
+}: {
+  allTownsCollapsed: boolean;
+  allTownsExpanded: boolean;
+  onCloseAllTowns: () => void;
+  onExpandAllTowns: () => void;
+  customOrder: boolean;
+  onResetOrder: () => void;
+}) {
+  const btn =
+    "inline-flex h-8 w-8 items-center justify-center transition-colors";
+  const active = "bg-navy text-white";
+  const idle = "text-navy/55 hover:text-navy hover:bg-charcoal/[0.04]";
+
+  return (
+    <div
+      className="inline-flex items-center rounded-full border border-charcoal/[0.08] bg-white p-0.5"
+      role="group"
+      aria-label="Town sections"
+    >
+      <button
+        type="button"
+        aria-label="Close all towns"
+        aria-pressed={allTownsCollapsed}
+        title="Close all towns"
+        onClick={onCloseAllTowns}
+        className={`${btn} rounded-full ${allTownsCollapsed ? active : idle}`}
+      >
+        <CloseTownsIcon />
+      </button>
+      <button
+        type="button"
+        aria-label="Expand all towns"
+        aria-pressed={allTownsExpanded}
+        title="Expand all towns"
+        onClick={onExpandAllTowns}
+        className={`${btn} rounded-full ${allTownsExpanded ? active : idle}`}
+      >
+        <ExpandTownsIcon />
+      </button>
+      {customOrder ? (
+        <button
+          type="button"
+          aria-label="Reset town order"
+          title="Reset town order"
+          onClick={onResetOrder}
+          className={`${btn} rounded-full ${idle}`}
+        >
+          <ResetTownOrderIcon />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function CloseTownsIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <rect x="2" y="3.5" width="12" height="1.4" rx="0.6" />
+      <rect x="4" y="7.3" width="8" height="1.4" rx="0.6" />
+      <rect x="6" y="11.1" width="4" height="1.4" rx="0.6" />
+    </svg>
+  );
+}
+
+function ExpandTownsIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <rect x="2" y="2.5" width="12" height="1.35" rx="0.6" />
+      <rect x="2" y="7.3" width="12" height="1.35" rx="0.6" />
+      <rect x="2" y="12.1" width="12" height="1.35" rx="0.6" />
+    </svg>
+  );
+}
+
+function ResetTownOrderIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M3.2 8a4.8 4.8 0 1 1 1.1 3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 4.6v3.2h3.2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

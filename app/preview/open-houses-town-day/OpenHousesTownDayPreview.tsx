@@ -83,7 +83,7 @@ const GROUPS = groupOpenHousesByTownAndDay(
 
 export function OpenHousesTownDayPreview() {
   return (
-    <div className="space-y-10">
+    <div className="space-y-3">
       {GROUPS.map((town) => (
         <OpenHouseTownSection
           key={town.town}

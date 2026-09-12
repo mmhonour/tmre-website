@@ -92,7 +92,7 @@ export function OpenHousesOnePerTownPreview() {
           {allOpen ? "Close all towns" : "Expand all towns"}
         </button>
       </div>
-      <div className="space-y-8">
+      <div className="space-y-3">
         {groups.map((group) => (
           <OpenHouseTownSection
             key={group.town}

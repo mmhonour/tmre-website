@@ -40,13 +40,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "open-houses-town-order",
     title: "Open houses — collapsed towns + order",
     summary:
-      "Towns start collapsed. Close all towns / Expand all towns. Drag ⋮⋮ to set a preferred order, stored in tmre_oh_town_order.",
+      "Towns start collapsed. Drag the town name to reorder. Fold glyphs sit to the right of the view icons.",
   },
   {
     slug: "open-houses-filter-bar",
     title: "Open houses — hero pills + sticky bar",
     summary:
-      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Most / First are exclusive on their own line. Alerts left, view glyphs right.",
+      "Sale / rental and towns start in the navy hero and dock into the cream bar on scroll. Most / First are exclusive. Alerts left; view glyphs then town fold glyphs on the right.",
   },
   {
     slug: "open-houses-focus",
