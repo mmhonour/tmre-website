@@ -39,8 +39,8 @@ export default function ListingPhotoFocusPreview() {
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Phone-width demo. Tap the full-bleed photo or a thumbnail. Rail
-          glyphs and type hide; Close (or swipe down) exits. Fixture swatches —
-          not a live listing.
+          glyphs and type hide; Close (or swipe down) exits to the carousel
+          still playing. Fixture swatches — not a live listing.
         </p>
 
         <div className="relative min-h-[70vh] overflow-hidden bg-navy-dark text-white">
