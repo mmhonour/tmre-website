@@ -7,8 +7,10 @@ import DealBoardMap, {
 import MatchingCriteriaSummary from "@/components/listing/MatchingCriteriaSummary";
 import {
   FIND_PARCEL_MAP_RADIUS_MILES,
+  aroundFocusBounds,
   neighborMatchesAroundFilter,
   type FindParcelMapAroundFilter,
+  type FindParcelMapBounds,
   type FindParcelMapMode,
   type FindParcelMapPayload,
 } from "@/lib/find-parcel-map-shared";
@@ -73,6 +75,10 @@ export default function FindParcelMap({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mode, setMode] = useState<FindParcelMapMode>("around");
   const [around, setAround] = useState<FindParcelMapAroundFilter>("all");
+  const [focus, setFocus] = useState<{
+    token: string;
+    bounds: FindParcelMapBounds;
+  } | null>(null);
   const [session, setSession] = useState<SessionMatchOverrides | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -139,6 +145,19 @@ export default function FindParcelMap({
     return match?.href ?? `/listings/${encodeURIComponent(listing.key)}`;
   };
 
+  const applyAround = (id: FindParcelMapAroundFilter) => {
+    setAround(id);
+    if (!payload?.subject) return;
+    const bounds = aroundFocusBounds(
+      id,
+      payload.subject,
+      payload.neighbors,
+      payload.radiusMiles,
+    );
+    if (!bounds) return;
+    setFocus({ token: `${id}:${Date.now()}`, bounds });
+  };
+
   if (loadError) {
     return (
       <p className="font-mono text-sm text-white/60">{loadError}</p>
@@ -186,27 +205,6 @@ export default function FindParcelMap({
             </button>
           ))}
         </div>
-        {mode === "around" ? (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {(Object.keys(AROUND_LABEL) as FindParcelMapAroundFilter[]).map(
-              (id) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setAround(id)}
-                  aria-pressed={around === id}
-                  className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
-                    around === id
-                      ? "bg-white text-navy"
-                      : "border border-white/15 text-white/60 hover:text-white"
-                  }`}
-                >
-                  {AROUND_LABEL[id]}
-                </button>
-              ),
-            )}
-          </div>
-        ) : null}
         <p className="mb-3 font-mono text-[11px] text-white/55">
           {sameStreet} same street · {cross} cross streets · {inRadius} within{" "}
           {payload.radiusMiles} mi
@@ -223,9 +221,41 @@ export default function FindParcelMap({
           onSelect={setActiveKey}
           hrefFor={hrefFor}
           subjectKey={payload.subjectKey}
-          fitZips={payload.boundZips}
+          overviewFit
+          focusToken={focus?.token ?? null}
+          focusBounds={focus?.bounds ?? null}
+          onResetView={() => {
+            setAround("all");
+            setFocus(null);
+          }}
           heightClass="h-[420px] lg:h-[520px]"
           className="overflow-hidden rounded-2xl border border-white/10"
+          overlay={
+            mode === "around" ? (
+              <div
+                className="absolute right-2 top-2 z-30 flex w-[7.25rem] flex-col items-stretch gap-1"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {(Object.keys(AROUND_LABEL) as FindParcelMapAroundFilter[]).map(
+                  (id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => applyAround(id)}
+                      aria-pressed={around === id}
+                      className={`rounded-md px-2 py-1.5 text-left font-mono text-[9px] uppercase leading-none tracking-[0.12em] shadow-lg backdrop-blur-sm ${
+                        around === id
+                          ? "border border-gold/60 bg-navy/90 text-gold"
+                          : "border border-white/15 bg-navy/80 text-white/80 hover:text-gold"
+                      }`}
+                    >
+                      {AROUND_LABEL[id]}
+                    </button>
+                  ),
+                )}
+              </div>
+            ) : null
+          }
         />
       </div>
       <aside className="rounded-2xl border border-charcoal/[0.08] bg-cream p-4 text-navy">

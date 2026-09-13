@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  aroundFocusBounds,
   classifyFindParcelRelation,
   criteriaFromParcelFacts,
   neighborMatchesAroundFilter,
+  radiusBounds,
   sameStreetName,
   streetNameKey,
+  type FindParcelMapNeighbor,
 } from './find-parcel-map-shared'
 
 describe('streetNameKey', () => {
@@ -61,6 +64,59 @@ describe('neighborMatchesAroundFilter', () => {
       ),
       false,
     )
+  })
+})
+
+function testNeighbor(
+  relation: FindParcelMapNeighbor['relation'],
+  lat: number,
+  lon: number,
+): FindParcelMapNeighbor {
+  return {
+    relation,
+    miles: 0.1,
+    zip: '06880',
+    vintageLabel: '1941–1970',
+    yearBuilt: 1965,
+    furnished: null,
+    href: '/listings/x',
+    pin: {
+      key: `${relation}-${lat}`,
+      address: 'x',
+      price: 1,
+      score: 0,
+      isRental: false,
+      sqft: 1,
+      latitude: lat,
+      longitude: lon,
+    },
+  }
+}
+
+describe('aroundFocusBounds', () => {
+  const subject = { latitude: 41.141, longitude: -73.358 }
+  const neighbors = [
+    testNeighbor('same_street', 41.143, -73.356),
+    testNeighbor('cross_street', 41.136, -73.365),
+  ]
+
+  it('frames the 0.35 mi radius around the house', () => {
+    const box = aroundFocusBounds('radius', subject, neighbors, 0.35)
+    const expected = radiusBounds({ lat: 41.141, lon: -73.358 }, 0.35)
+    assert.deepEqual(box, expected)
+  })
+
+  it('same street stays tighter than street plus crossings', () => {
+    const street = aroundFocusBounds('same_street', subject, neighbors)
+    const cross = aroundFocusBounds('cross_street', subject, neighbors)
+    assert.ok(street)
+    assert.ok(cross)
+    const streetSpan = street.maxLat - street.minLat
+    const crossSpan = cross.maxLat - cross.minLat
+    assert.ok(crossSpan > streetSpan)
+    assert.ok(street.maxLat > 41.143)
+    assert.ok(street.minLat < 41.141)
+    assert.ok(cross.minLat < 41.136)
   })
 })
 

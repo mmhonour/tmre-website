@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "find-parcel-map",
     title: "VGSI neighborhood map",
     summary:
-      "Find / VGSI parcel map: same street, cross streets, or a small radius. Like kind uses the listing criteria panel.",
+      "Find / VGSI map chips on the upper right. Street / crossings / 0.35 mi zoom; Reset fills the town outline.",
   },
   {
     slug: "admin-sync-sort",
