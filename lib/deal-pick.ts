@@ -20,7 +20,9 @@ import {
 import { listingPhotoProxyUrl } from './listing-url'
 import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingSuperlativesByMlsIds } from './db/listings-repo'
-import { normalizeZip } from './tmre-towns'
+import { normalizeZip, resolveListingTownKey } from './tmre-towns'
+import { townClosedMedianKey } from './closed-median-12mo'
+import { loadClosedMedians12MoForListings } from './deal-of-the-day-median'
 
 export type DealPickPayload = {
   generatedAt: string
@@ -121,16 +123,26 @@ export function isRenderingOrProposedListing(l: Listing): boolean {
   return RENDERING_KEYWORDS.some((k) => hay.includes(k))
 }
 
+function closedMedianKeyForListing(l: Listing): string | null {
+  const town = resolveListingTownKey(l.address.postalCode, l.address.city)
+  if (!town) return null
+  return townClosedMedianKey(town, kindOf(l))
+}
+
 function isBelowTownMedian(l: Listing, medians: Map<string, number>): boolean {
   if (!l.price || l.price <= 0) return false
-  const med = medians.get(cityKey(l))
+  const key = closedMedianKeyForListing(l)
+  if (!key) return false
+  const med = medians.get(key)
   if (med == null || med <= 0) return false
   return l.price < med
 }
 
 function valueDiscountPct(l: Listing, medians: Map<string, number>): number | null {
   if (!l.price) return null
-  const med = medians.get(cityKey(l))
+  const key = closedMedianKeyForListing(l)
+  if (!key) return null
+  const med = medians.get(key)
   if (!med || med <= 0) return null
   return Math.round((1 - l.price / med) * 100)
 }
@@ -263,8 +275,9 @@ async function resolveWinnerSuperlatives(
 function buildValueDealInsight(s: ScoredListing, medians: Map<string, number>): string {
   const discount = valueDiscountPct(s.listing, medians)
   const city = s.listing.address.city || 'the area'
-  const med = medians.get(cityKey(s.listing))
-  const priceLabel = s.kind === 'rental' ? 'monthly rent' : 'list price'
+  const key = closedMedianKeyForListing(s.listing)
+  const med = key ? medians.get(key) : null
+  const priceLabel = s.kind === 'rental' ? 'closed rent' : 'sold price'
 
   let lead = ''
   if (discount != null && discount > 0 && med != null) {
@@ -272,9 +285,9 @@ function buildValueDealInsight(s: ScoredListing, medians: Map<string, number>): 
       s.kind === 'rental'
         ? `$${Math.round(med).toLocaleString()}/mo`
         : `$${Math.round(med).toLocaleString()}`
-    lead = `Today's pick lists ${discount}% below the ${city} median ${priceLabel} (${medFmt}) — real value in established inventory, not new construction. `
+    lead = `Today's pick lists ${discount}% below the ${city} 12-month median ${priceLabel} (${medFmt}). `
   } else {
-    lead = `Today's pick reflects below-median value in ${city} — established inventory, not new construction. `
+    lead = `Today's pick is measured against the ${city} 12-month closed market. `
   }
 
   return lead + buildInsight(s)
@@ -320,7 +333,15 @@ async function finalizePayload(
     score: winner.score,
     pricePerSqft: winner.pricePerSqft,
     cityMedianPricePerSqft: winner.cityMedianPpsf,
-    cityMedianPrice: medians.get(cityKey(winner.listing)) ?? null,
+    cityMedianPrice:
+      (() => {
+        const closedKey = closedMedianKeyForListing(winner.listing)
+        return (
+          (closedKey ? medians.get(closedKey) : undefined) ??
+          medians.get(cityKey(winner.listing)) ??
+          null
+        )
+      })(),
     valueDiscountPct: valueDiscountPct(winner.listing, medians),
     lotAcres: parseLotAcres(winner.listing),
     photoUrl: dealListingPhotoUrl(winner.listing),
@@ -394,11 +415,12 @@ function matchesListingId(l: Listing, listingId: string): boolean {
 export async function pickDealOfTheDayFromBoardScored(
   scoped: Listing[],
   boardScored: ScoredListing[],
-  opts?: { listingId?: string },
+  opts?: { listingId?: string; closedMedians?: Map<string, number> },
 ): Promise<DealPickPayload | null> {
   if (!scoped.length) return null
 
-  const medians = cityMedianListPrices(scoped)
+  const medians =
+    opts?.closedMedians ?? (await loadClosedMedians12MoForListings(scoped))
   const active = scoped.filter(isStrictlyActiveListing)
   if (!active.length) return null
 

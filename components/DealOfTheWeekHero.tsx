@@ -1453,8 +1453,8 @@ function DealCard({
             label={
               valueDealMode
                 ? cityShort
-                  ? `${cityShort} median`
-                  : "Town median"
+                  ? `${cityShort} 12-mo ${kind === "rental" ? "rent" : "sold"}`
+                  : `12-mo ${kind === "rental" ? "rent" : "sold"}`
                 : wasLabel
             }
             value={

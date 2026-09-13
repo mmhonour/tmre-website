@@ -975,7 +975,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Goldilocks score',
     category: 'scoring',
     definition:
-      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings.goldilocks_* and read by Intelligence. DOTD currently rescores a 500-listing peer cap into a frozen cache (deal-of-the-day:v7) on its own schedule — same formula, different snapshot. Consolidation: DOTD should pick from the Intelligence-scored board instead of scoring twice.',
+      '0–100 composite ranking (age, condition, finishes, PPSF fit, layout, schools, DOM) — “not too cheap, not overpriced.” Persisted on listings.goldilocks_* and read by Intelligence. DOTD currently rescores a 500-listing peer cap into a frozen cache (deal-of-the-day:v8) on its own schedule — same formula, different snapshot. Consolidation: DOTD should pick from the Intelligence-scored board instead of scoring twice.',
   },
   {
     term: 'PPSF',
@@ -1171,7 +1171,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Deal of the Day / Week',
     category: 'ui-tabs',
     definition:
-      'Featured high-score listing surfaces (homepage / Intelligence), backed by stats_cache payloads. Picks must be MLS Active — Under Contract, Continue to Show, Coming Soon, and Pending are excluded. A live Postgres read (coalesced mls_status + RESO StandardStatus) drops stale cached picks after Incremental; MLSStatus staying Active while StandardStatus moved to UC/CTS used to leak through.',
+      'Featured high-score listing surfaces (homepage / Intelligence), backed by stats_cache payloads. Picks must be MLS Active — Under Contract, Continue to Show, Coming Soon, and Pending are excluded. “Below median” uses the town’s trailing-12-month closed median (sold price or closed rent) from market-stats.medianPrice12Mo — not the on-market list-price median. A live Postgres read (coalesced mls_status + RESO StandardStatus) drops stale cached picks after Incremental; MLSStatus staying Active while StandardStatus moved to UC/CTS used to leak through.',
   },
   {
     term: 'Latest',
