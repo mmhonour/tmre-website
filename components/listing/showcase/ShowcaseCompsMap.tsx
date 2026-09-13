@@ -86,7 +86,7 @@ export default function ShowcaseCompsMap({
   postalCode,
   expanded = false,
   onToggleExpanded,
-  onExit,
+  onExit: _onExit,
   fetchUrl,
   uagFetchUrl,
   hrefFor: hrefForOverride,
@@ -187,60 +187,7 @@ export default function ShowcaseCompsMap({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-2 bg-[#0d1424]/95 px-3 py-2">
-        <div className="flex items-center gap-1">
-          {(
-            [
-              { id: "active" as const, label: "For sale", count: counts.active },
-              { id: "uag" as const, label: "UAG", count: counts.uag },
-              { id: "sold" as const, label: "Closed", count: counts.sold },
-            ] as const
-          ).map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPool(p.id)}
-              aria-pressed={pool === p.id}
-              title={p.id === "uag" ? "Under agreement" : undefined}
-              className={`px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
-                pool === p.id ? "bg-white/15 text-white" : "text-white/50 hover:text-white"
-              }`}
-            >
-              {p.label}
-              <span className="ml-1.5 tabular-nums text-white/40">{p.count}</span>
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-1">
-          {overlay.unlocked ? (
-            <button
-              type="button"
-              onClick={() => void overlay.setEnabled(!overlay.enabled)}
-              disabled={overlay.busy}
-              aria-pressed={overlay.enabled}
-              className={`px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
-                overlay.enabled
-                  ? "bg-sky/20 text-sky"
-                  : "text-white/50 hover:text-white"
-              }`}
-            >
-              Corridors
-            </button>
-          ) : null}
-          {onExit ? (
-            <button
-              type="button"
-              onClick={onExit}
-              aria-label="Exit map view"
-              className="inline-flex h-9 w-9 items-center justify-center font-mono text-base leading-none text-white/70 transition-colors hover:bg-white/15 hover:text-white lg:h-6 lg:w-6 lg:text-sm"
-            >
-              ✕
-            </button>
-          ) : null}
-        </div>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-col bg-[#0d1424]">
       <div className="relative min-h-0 flex-1">
         {/* DealBoardMap puts `heightClass` on an inner div, so its own outer
             wrapper needs a height too or `h-full` resolves against auto. */}
@@ -261,16 +208,56 @@ export default function ShowcaseCompsMap({
           className="h-full"
           heightClass="h-full"
         />
-        {/* Over the map, opposite its zoom controls. Sizing is meaningless on a
-            phone, where the sheet is already full screen. */}
-        {onToggleExpanded ? (
+        <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
+          {onToggleExpanded ? (
+            <button
+              type="button"
+              onClick={onToggleExpanded}
+              aria-pressed={expanded}
+              className="hidden rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85 shadow-lg transition-colors hover:text-gold lg:block"
+            >
+              {expanded ? "Shrink" : "Full size"}
+            </button>
+          ) : null}
+          <div className="flex flex-col items-stretch bg-[#0d1424] shadow-lg">
+            {(
+              [
+                { id: "active" as const, label: "For sale", count: counts.active },
+                { id: "uag" as const, label: "UAG", count: counts.uag },
+                { id: "sold" as const, label: "Closed", count: counts.sold },
+              ] as const
+            ).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPool(p.id)}
+                aria-pressed={pool === p.id}
+                title={p.id === "uag" ? "Under agreement" : undefined}
+                className={`px-2.5 py-1.5 text-left font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
+                  pool === p.id
+                    ? "bg-white/15 text-white"
+                    : "text-white/50 hover:text-white"
+                }`}
+              >
+                {p.label}
+                <span className="ml-1.5 tabular-nums text-white/40">{p.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {overlay.unlocked ? (
           <button
             type="button"
-            onClick={onToggleExpanded}
-            aria-pressed={expanded}
-            className="absolute right-2 top-2 z-20 hidden rounded-md border border-white/15 bg-navy/85 px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85 shadow-lg backdrop-blur-sm transition-colors hover:text-gold lg:block"
+            onClick={() => void overlay.setEnabled(!overlay.enabled)}
+            disabled={overlay.busy}
+            aria-pressed={overlay.enabled}
+            className={`absolute left-2 top-2 z-20 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
+              overlay.enabled
+                ? "bg-sky/20 text-sky"
+                : "bg-[#0d1424] text-white/50 hover:text-white"
+            }`}
           >
-            {expanded ? "Shrink" : "Full size"}
+            Corridors
           </button>
         ) : null}
         <Compass />

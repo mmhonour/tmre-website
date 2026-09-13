@@ -19,9 +19,6 @@ const railRow =
 const railIcon =
   "inline-flex h-11 w-11 items-center justify-center bg-[#0d1424]/85 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
 
-const railIconOn =
-  "inline-flex h-11 w-11 items-center justify-center bg-navy text-white shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
-
 function Glyph({ id }: { id: string }) {
   switch (id) {
     case "insight":
@@ -76,7 +73,7 @@ function SymbolRailDemo() {
           aria-label="Hide comps"
           className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
         >
-          «
+          ↑
         </button>
       </div>
     ) : (
@@ -111,7 +108,7 @@ function SymbolRailDemo() {
           aria-label="Hide What if"
           className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
         >
-          «
+          ↑
         </button>
       </div>
     ) : (
@@ -128,63 +125,112 @@ function SymbolRailDemo() {
     );
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-start gap-1">
-        <div className="flex flex-col items-end gap-1">
-          <span className={railIcon} title="Insight">
-            <InsightGlyph />
-          </span>
-          <div className="flex items-start gap-1">
-            {compsBtn}
-            <div className="flex flex-col gap-1">
-              {ifBtn}
-              <button
-                type="button"
-                data-testid="preview-details-open"
-                onClick={() => setDetailsOpen((on) => !on)}
-                aria-pressed={detailsOpen}
-                title="Details"
-                className={detailsOpen ? railIconOn : railIcon}
-              >
-                <DetailsGlyph />
-              </button>
-              <span className={railIcon} title="Town pulse">
-                <PulseGlyph />
-              </span>
-              <span className={railIcon} title="Map">
-                <MapGlyph />
-              </span>
-            </div>
-          </div>
+    <div className="flex min-h-[22rem] flex-col items-end">
+      <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
+        <span className={railIcon} title="Insight">
+          <InsightGlyph />
+        </span>
+        <div className="flex items-start gap-1">
+          {compsBtn}
+          {ifBtn}
         </div>
       </div>
-
-      {detailsOpen ? (
-        <div className="mt-1 w-full max-w-sm bg-[#0d1424]/85">
-          <div className="flex gap-0 border-b border-white/10 px-3">
-            {(["summary", "full"] as const).map((id) => (
+      <div
+        className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
+        aria-hidden
+      >
+        →
+      </div>
+      <div className="flex flex-1 flex-col items-end justify-start gap-1 pt-1">
+        {detailsOpen ? (
+          <div className="w-full max-w-sm bg-[#0d1424]">
+            <div className={`${railRow} w-full bg-[#0d1424]`}>
+              <span className="flex-1">Details</span>
               <button
-                key={id}
                 type="button"
-                data-testid={`preview-details-tab-${id}`}
-                onClick={() => setDetailsTab(id)}
-                className={`px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] ${
-                  detailsTab === id
-                    ? "border-b-2 border-gold text-white"
-                    : "border-b-2 border-transparent text-white/45"
-                }`}
+                data-testid="preview-details-hide"
+                onClick={() => setDetailsOpen(false)}
+                aria-label="Hide Details"
+                className="ml-2 px-1 font-mono text-white/70"
               >
-                {id === "summary" ? "Summary" : "Full"}
+                ↑
               </button>
-            ))}
+            </div>
+            <div className="flex items-end gap-0.5 bg-[#0d1424] px-3 pt-2">
+              {(["summary", "full"] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  data-testid={`preview-details-tab-${id}`}
+                  onClick={() => setDetailsTab(id)}
+                  className={`relative -mb-px shrink-0 rounded-t-md border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+                    detailsTab === id
+                      ? "z-[1] border-gold border-b-transparent bg-gold text-navy"
+                      : "border-transparent text-white/45"
+                  }`}
+                >
+                  {id === "summary" ? "Summary" : "Full"}
+                </button>
+              ))}
+            </div>
+            <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+              {detailsTab === "summary"
+                ? "Beds 4 · Baths 3 · 2,410 sf"
+                : "Full details card — schools, taxes, rooms"}
+            </div>
           </div>
-          <div className="px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-            {detailsTab === "summary"
-              ? "Beds 4 · Baths 3 · 2,410 sf"
-              : "Full details card — schools, taxes, rooms"}
-          </div>
+        ) : (
+          <button
+            type="button"
+            data-testid="preview-details-open"
+            onClick={() => setDetailsOpen(true)}
+            title="Details"
+            className={railIcon}
+          >
+            <DetailsGlyph />
+          </button>
+        )}
+        <span className={railIcon} title="Town pulse">
+          <PulseGlyph />
+        </span>
+        <span className={railIcon} title="Map">
+          <MapGlyph />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MapChromeDemo() {
+  const [pool, setPool] = useState<"active" | "uag" | "sold">("active");
+  return (
+    <div className="relative h-56 bg-[#1a2744]">
+      <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
+        <span className="rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85">
+          Full size
+        </span>
+        <div className="flex flex-col bg-[#0d1424]">
+          {(
+            [
+              { id: "active" as const, label: "For sale", count: 6 },
+              { id: "uag" as const, label: "UAG", count: 2 },
+              { id: "sold" as const, label: "Closed", count: 21 },
+            ] as const
+          ).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPool(p.id)}
+              className={`px-2.5 py-1.5 text-left font-mono text-[9px] uppercase tracking-[0.16em] ${
+                pool === p.id ? "bg-white/15 text-white" : "text-white/50"
+              }`}
+            >
+              {p.label}
+              <span className="ml-1.5 tabular-nums text-white/40">{p.count}</span>
+            </button>
+          ))}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -250,16 +296,27 @@ export function ShowcaseRailPillsPreview() {
 
       <section>
         <h2 className="mb-3 font-serif text-xl text-navy">
-          Symbols first — Details tabs
+          Symbols around the right arrow
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Page load is icons only. Insight above Comps; Comps left of What if.
-          Under What if: Details, Town pulse, Map last. One Details control
-          opens Summary / Full tabs.
+          Insight, Comps, and What if sit above the right arrow. Details,
+          Pulse, and Map sit below. A tap replaces the symbol with a card; ↑
+          restores the symbol. Details uses the gold folder tabs on an opaque
+          navy card.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
         </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 font-serif text-xl text-navy">
+          Map — filters under Full size
+        </h2>
+        <p className="mb-4 text-sm leading-relaxed text-slate">
+          For sale, UAG, and Closed stack under the Full size control.
+        </p>
+        <MapChromeDemo />
       </section>
     </div>
   );

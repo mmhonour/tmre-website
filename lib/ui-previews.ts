@@ -142,7 +142,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Symbols-only rail: Insight above Comps, Comps left of What if, then Details / Pulse / Map down that column. Summary / Full tabs. Navy type wash.",
+      "Right arrow opposite the left. Insight/Comps/What if above; Details/Pulse/Map below. Cards close with ↑. Gold Details tabs. Map filters under Full size.",
   },
 ];
 
