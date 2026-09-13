@@ -16,10 +16,10 @@ export default function ShowcaseRailPillsPreviewPage() {
           Listing full-bleed rail pills
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture only — no live MLS. Glyphs for the remaining text pills,
-          Insight stacked above Details, mobile « to hide What if and Comps,
-          and a lighter-blue fade behind status, address, and Offered at /
-          Closed at.
+          Fixture only — no live MLS. Page load is symbols only. Insight sits
+          above Comps; Comps sits left of What if. Under What if: Details,
+          Town pulse, then Map last. One Details icon opens Summary / Full
+          tabs. Navy wash behind status, address, and Offered at / Closed at.
         </p>
         <ShowcaseRailPillsPreview />
       </div>

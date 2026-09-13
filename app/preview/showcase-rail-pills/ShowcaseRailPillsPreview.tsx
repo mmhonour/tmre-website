@@ -50,94 +50,141 @@ function CountChip({ label, count }: { label: string; count: number }) {
   );
 }
 
-/** Phone-rail demo: first tap reveals figures, « hides them. */
-function MobileFigureDemo() {
+/** Default: symbols only. First tap reveals figures; « hides them. */
+function SymbolRailDemo() {
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<"summary" | "full">("summary");
 
-  return (
-    <div className="flex flex-col items-end gap-1">
-      {revealed === "comps" ? (
-        <div className={`${railRow} gap-2`}>
-          <span className="inline-flex items-center">
-            <span className="mr-2.5 inline-flex">
-              <CompsGlyph />
-            </span>
-            Comps
-          </span>
-          <span className="flex flex-1 items-center justify-end gap-1">
-            <CountChip label="On market" count={6} />
-            <CountChip label="Sold 12 in mos" count={21} />
-          </span>
-          <button
-            type="button"
-            data-testid="preview-comps-hide"
-            onClick={() => setRevealed(null)}
-            aria-label="Hide comps"
-            className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
-          >
-            «
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          data-testid="preview-comps-open"
-          onClick={() => setRevealed("comps")}
-          className={railRow}
-        >
+  const compsBtn =
+    revealed === "comps" ? (
+      <div className={`${railRow} gap-2`}>
+        <span className="inline-flex items-center">
           <span className="mr-2.5 inline-flex">
             <CompsGlyph />
           </span>
-          <span>Comps</span>
-          <span
-            aria-hidden
-            className="showcase-chevron-pulse ml-3 font-mono text-white/70"
-          >
-            »
-          </span>
-        </button>
-      )}
-
-      {revealed === "if" ? (
-        <div className={`${railRow} gap-2`}>
-          <span className="flex min-w-0 flex-1 items-center">
-            <span className="mr-2.5 inline-flex">
-              <WhatIfGlyph />
-            </span>
-            <span className="shrink-0">What if</span>
-            <span className="ml-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
-              $1.42M / $6,200
-            </span>
-          </span>
-          <button
-            type="button"
-            data-testid="preview-if-hide"
-            onClick={() => setRevealed(null)}
-            aria-label="Hide What if"
-            className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
-          >
-            «
-          </button>
-        </div>
-      ) : (
+          Comps
+        </span>
+        <span className="flex flex-1 items-center justify-end gap-1">
+          <CountChip label="On market" count={6} />
+          <CountChip label="Sold 12 in mos" count={21} />
+        </span>
         <button
           type="button"
-          data-testid="preview-if-open"
-          onClick={() => setRevealed("if")}
-          className={railRow}
+          data-testid="preview-comps-hide"
+          onClick={() => setRevealed(null)}
+          aria-label="Hide comps"
+          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
         >
+          «
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        data-testid="preview-comps-open"
+        onClick={() => setRevealed("comps")}
+        aria-label="Comps"
+        title="Comps"
+        className={railIcon}
+      >
+        <CompsGlyph />
+      </button>
+    );
+
+  const ifBtn =
+    revealed === "if" ? (
+      <div className={`${railRow} gap-2`}>
+        <span className="flex min-w-0 flex-1 items-center">
           <span className="mr-2.5 inline-flex">
             <WhatIfGlyph />
           </span>
-          <span>What if</span>
-          <span
-            aria-hidden
-            className="showcase-chevron-pulse ml-3 font-mono text-white/70"
-          >
-            »
+          <span className="shrink-0">What if</span>
+          <span className="ml-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
+            $1.4M / $6,200
           </span>
+        </span>
+        <button
+          type="button"
+          data-testid="preview-if-hide"
+          onClick={() => setRevealed(null)}
+          aria-label="Hide What if"
+          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+        >
+          «
         </button>
-      )}
+      </div>
+    ) : (
+      <button
+        type="button"
+        data-testid="preview-if-open"
+        onClick={() => setRevealed("if")}
+        aria-label="What if"
+        title="What if"
+        className={railIcon}
+      >
+        <WhatIfGlyph />
+      </button>
+    );
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-start gap-1">
+        <div className="flex flex-col items-end gap-1">
+          <span className={railIcon} title="Insight">
+            <InsightGlyph />
+          </span>
+          <div className="flex items-start gap-1">
+            {compsBtn}
+            <div className="flex flex-col gap-1">
+              {ifBtn}
+              <button
+                type="button"
+                data-testid="preview-details-open"
+                onClick={() => setDetailsOpen((on) => !on)}
+                aria-pressed={detailsOpen}
+                title="Details"
+                className={detailsOpen ? railIconOn : railIcon}
+              >
+                <DetailsGlyph />
+              </button>
+              <span className={railIcon} title="Town pulse">
+                <PulseGlyph />
+              </span>
+              <span className={railIcon} title="Map">
+                <MapGlyph />
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {detailsOpen ? (
+        <div className="mt-1 w-full max-w-sm bg-[#0d1424]/85">
+          <div className="flex gap-0 border-b border-white/10 px-3">
+            {(["summary", "full"] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                data-testid={`preview-details-tab-${id}`}
+                onClick={() => setDetailsTab(id)}
+                className={`px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] ${
+                  detailsTab === id
+                    ? "border-b-2 border-gold text-white"
+                    : "border-b-2 border-transparent text-white/45"
+                }`}
+              >
+                {id === "summary" ? "Summary" : "Full"}
+              </button>
+            ))}
+          </div>
+          <div className="px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+            {detailsTab === "summary"
+              ? "Beds 4 · Baths 3 · 2,410 sf"
+              : "Full details card — schools, taxes, rooms"}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -172,13 +219,13 @@ export function ShowcaseRailPillsPreview() {
           Full-bleed status, address, and price
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Status, street, and Offered at / Closed at all sit on the same
-          lighter-blue wash — strongest in the middle, transparent at the
-          edges. Type stays opaque.
+          Status, street, and Offered at / Closed at sit on the same navy as
+          the rail pills — strongest in the middle, transparent at the edges.
+          Compact prices keep the M; labels keep At.
         </p>
-        <div className="listing-showcase-type relative overflow-hidden bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-10 sm:px-8">
-          <div className="flex items-start justify-between gap-6">
-            <div>
+        <div className="listing-showcase-type relative bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-10 sm:px-8">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
                 <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
                   Active
@@ -193,52 +240,25 @@ export function ShowcaseRailPillsPreview() {
                 </p>
               </ListingShowcaseTypeWash>
             </div>
-            <ListingShowcasePriceBlock label="Offered at" amount="$1,895,000" />
+            <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
           </div>
           <div className="mt-8 flex justify-end">
-            <ListingShowcasePriceBlock label="Closed at" amount="$1,750,000" />
+            <ListingShowcasePriceBlock label="Closed at" amount="$1.75M" />
           </div>
         </div>
       </section>
 
       <section>
         <h2 className="mb-3 font-serif text-xl text-navy">
-          Insight above Details
+          Symbols first — Details tabs
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Desktop and mobile: the lightbulb sits on top of the details list,
-          then Map and Town pulse sit beside that stack.
-        </p>
-        <div className="flex justify-end bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
-          <div className="flex items-end gap-1">
-            <div className="flex flex-col gap-1">
-              <span className={railIconOn} title="Insight">
-                <InsightGlyph />
-              </span>
-              <span className={railIcon} title="Details">
-                <DetailsGlyph />
-              </span>
-            </div>
-            <span className={railIcon} title="Map">
-              <MapGlyph />
-            </span>
-            <span className={railIcon} title="Town pulse">
-              <PulseGlyph />
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-3 font-serif text-xl text-navy">
-          Mobile — reveal, then « to hide
-        </h2>
-        <p className="mb-4 text-sm leading-relaxed text-slate">
-          First tap expands Comps or What if. « tucks the figures away again.
-          The label still jumps to the section on the live listing.
+          Page load is icons only. Insight above Comps; Comps left of What if.
+          Under What if: Details, Town pulse, Map last. One Details control
+          opens Summary / Full tabs.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
-          <MobileFigureDemo />
+          <SymbolRailDemo />
         </div>
       </section>
     </div>

@@ -973,17 +973,17 @@ html.listing-split-test body {
   display: none;
 }
 
-/* Full-bleed status, address, and Offered at / Closed at — lighter blue,
-   strongest in the middle, transparent at the sides. Type stays fully
-   opaque; only the wash fades. */
+/* Full-bleed status, address, and Offered at / Closed at — same navy as
+   the rail pills (`#0d1424`), strongest in the middle, transparent at
+   the sides. Type stays fully opaque; only the wash fades. */
 .listing-showcase-type-wash {
   background: linear-gradient(
     90deg,
-    rgb(120 160 220 / 0) 0%,
-    rgb(120 160 220 / 0.38) 22%,
-    rgb(130 172 230 / 0.72) 50%,
-    rgb(120 160 220 / 0.38) 78%,
-    rgb(120 160 220 / 0) 100%
+    rgb(13 20 36 / 0) 0%,
+    rgb(13 20 36 / 0.5) 22%,
+    rgb(13 20 36 / 0.85) 50%,
+    rgb(13 20 36 / 0.5) 78%,
+    rgb(13 20 36 / 0) 100%
   );
 }
 
