@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  applyFrozenAdminSyncRowOrder,
   compareAdminSyncRowSortMeta,
   compareNullableMs,
   nextAdminSyncColumnSort,
+  snapshotAdminSyncSortIds,
   type AdminSyncRowSortMeta,
+  type AdminSyncSortableRow,
 } from './admin-sync-table-sort'
 import { frequencySortRank } from './sync-schedule-config-shared'
 
@@ -28,13 +31,17 @@ describe('frequencySortRank', () => {
 })
 
 describe('nextAdminSyncColumnSort', () => {
-  it('starts frequency and next ascending', () => {
+  it('starts frequency, next, and order ascending', () => {
     assert.deepEqual(nextAdminSyncColumnSort(null, 'asc', 'frequency'), {
       key: 'frequency',
       dir: 'asc',
     })
     assert.deepEqual(nextAdminSyncColumnSort(null, 'asc', 'next'), {
       key: 'next',
+      dir: 'asc',
+    })
+    assert.deepEqual(nextAdminSyncColumnSort(null, 'asc', 'order'), {
+      key: 'order',
       dir: 'asc',
     })
   })
@@ -70,12 +77,14 @@ describe('compareAdminSyncRowSortMeta', () => {
     startMs: 100,
     endMs: 200,
     nextMs: 400,
+    order: 7,
   }
   const b: AdminSyncRowSortMeta = {
     frequency: '15m',
     startMs: 300,
     endMs: 150,
     nextMs: 350,
+    order: 2,
   }
 
   it('sorts frequency by duration', () => {
@@ -85,5 +94,45 @@ describe('compareAdminSyncRowSortMeta', () => {
 
   it('sorts next by time', () => {
     assert.equal(compareAdminSyncRowSortMeta(a, b, 'next', 'asc') > 0, true)
+  })
+
+  it('sorts order numerically', () => {
+    assert.equal(compareAdminSyncRowSortMeta(a, b, 'order', 'asc') > 0, true)
+    assert.equal(compareAdminSyncRowSortMeta(a, b, 'order', 'desc') < 0, true)
+  })
+})
+
+describe('snapshotAdminSyncSortIds', () => {
+  it('freezes click-time order so later edits do not reshuffle', () => {
+    const rows: AdminSyncSortableRow[] = [
+      {
+        id: 'weekly',
+        frequency: 'weekly',
+        startMs: 1,
+        endMs: 2,
+        nextMs: 3,
+        order: 1,
+      },
+      {
+        id: 'fast',
+        frequency: '15m',
+        startMs: 4,
+        endMs: 5,
+        nextMs: 6,
+        order: 2,
+      },
+    ]
+    const frozen = snapshotAdminSyncSortIds(rows, 'frequency', 'asc')
+    assert.deepEqual(frozen, ['fast', 'weekly'])
+
+    const edited = rows.map((row) =>
+      row.id === 'fast' ? { ...row, frequency: 'monthly' as const } : row,
+    )
+    const live = snapshotAdminSyncSortIds(edited, 'frequency', 'asc')
+    assert.deepEqual(live, ['weekly', 'fast'])
+    assert.deepEqual(
+      applyFrozenAdminSyncRowOrder(edited, frozen).map((row) => row.id),
+      ['fast', 'weekly'],
+    )
   })
 })

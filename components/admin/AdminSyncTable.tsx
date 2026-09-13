@@ -63,11 +63,12 @@ import {
   type SyncScheduleWeekdayEt,
 } from "@/lib/sync-schedule-config-shared";
 import {
-  compareAdminSyncRowSortMeta,
+  applyFrozenAdminSyncRowOrder,
   nextAdminSyncColumnSort,
+  snapshotAdminSyncSortIds,
   type AdminSyncColumnSortDir,
   type AdminSyncColumnSortKey,
-  type AdminSyncRowSortMeta,
+  type AdminSyncSortableRow,
 } from "@/lib/admin-sync-table-sort";
 import AdminSyncSortTh from "@/components/admin/AdminSyncSortTh";
 import {
@@ -1940,11 +1941,42 @@ export default function AdminSyncTable({
   const [now, setNow] = useState(() => new Date());
   const [sortKey, setSortKey] = useState<AdminSyncColumnSortKey | null>(null);
   const [sortDir, setSortDir] = useState<AdminSyncColumnSortDir>("asc");
+  const [sortedRowIds, setSortedRowIds] = useState<string[] | null>(null);
   const toggleColumnSort = useCallback((column: AdminSyncColumnSortKey) => {
     const next = nextAdminSyncColumnSort(sortKey, sortDir, column);
+    const nowMs = Date.now();
+    const metas: AdminSyncSortableRow[] = rows.map((row) => {
+      const jobId = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+      const timing = timingWithLogFallback(
+        row,
+        status,
+        runTimings,
+        runSnapshot,
+        nowMs,
+      );
+      return {
+        id: row.id,
+        frequency: jobId ? scheduleConfig.jobs[jobId]?.frequency : undefined,
+        startMs: parseIsoMs(timing.started),
+        endMs: parseIsoMs(timing.finished),
+        nextMs: parseIsoMs(nextRunForRow(row, status)),
+        order:
+          orderByRow[row.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id] ?? 999,
+      };
+    });
     setSortKey(next.key);
     setSortDir(next.dir);
-  }, [sortKey, sortDir]);
+    setSortedRowIds(snapshotAdminSyncSortIds(metas, next.key, next.dir));
+  }, [
+    sortKey,
+    sortDir,
+    rows,
+    status,
+    runTimings,
+    runSnapshot,
+    scheduleConfig,
+    orderByRow,
+  ]);
 
   // Publish the run log to the dedicated panel rendered at the bottom of the DB
   // tab. While a run is active we surface its live snapshot; otherwise the last
@@ -3196,13 +3228,17 @@ export default function AdminSyncTable({
                   Pause
                 </th>
               ) : null}
-              <th
+              <AdminSyncSortTh
+                column="order"
+                label="Order"
+                title="Configure Sync-all order number. Sort is low ↔ high, and only when you click this heading."
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={toggleColumnSort}
                 className={`${TH} sticky z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${
                   isConfigure ? "left-[3.25rem]" : "left-0"
                 }`}
-              >
-                Order
-              </th>
+              />
               {isDashboard ? <th className={TH}>Action</th> : null}
               {isDashboard ? (
                 <th
@@ -3364,25 +3400,6 @@ export default function AdminSyncTable({
                 return false;
               };
 
-              const rowSortMeta = (row: AdminSyncRow): AdminSyncRowSortMeta => {
-                const jobId =
-                  SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
-                const timing = timingWithLogFallback(
-                  row,
-                  status,
-                  runTimings,
-                  runSnapshot,
-                  nowMsOuter,
-                );
-                return {
-                  frequency: jobId
-                    ? scheduleConfig.jobs[jobId]?.frequency
-                    : undefined,
-                  startMs: parseIsoMs(timing.started),
-                  endMs: parseIsoMs(timing.finished),
-                  nextMs: parseIsoMs(nextRunForRow(row, status)),
-                };
-              };
               const compareDefaultOrder = (a: AdminSyncRow, b: AdminSyncRow) => {
                 const aOrder =
                   orderByRow[a.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
@@ -3392,27 +3409,20 @@ export default function AdminSyncTable({
                 return a.label.localeCompare(b.label);
               };
 
-              return [...rows]
-              .sort((a, b) => {
-                if (sortKey) {
-                  const cmp = compareAdminSyncRowSortMeta(
-                    rowSortMeta(a),
-                    rowSortMeta(b),
-                    sortKey,
-                    sortDir,
-                  );
-                  if (cmp !== 0) return cmp;
-                  return compareDefaultOrder(a, b);
-                }
-                // Same Configure order on Dashboard so #5 Stats cache lines up.
-                // Running rows still pin to the top so in-flight work is visible.
-                if (!isConfigure) {
-                  const aRunning = rowIsRunningForSort(a);
-                  const bRunning = rowIsRunningForSort(b);
-                  if (aRunning !== bRunning) return aRunning ? -1 : 1;
-                }
-                return compareDefaultOrder(a, b);
-              })
+              const visibleRows = sortedRowIds
+                ? applyFrozenAdminSyncRowOrder(rows, sortedRowIds)
+                : [...rows].sort((a, b) => {
+                    // Same Configure order on Dashboard so #5 Stats cache lines up.
+                    // Running rows still pin to the top so in-flight work is visible.
+                    if (!isConfigure) {
+                      const aRunning = rowIsRunningForSort(a);
+                      const bRunning = rowIsRunningForSort(b);
+                      if (aRunning !== bRunning) return aRunning ? -1 : 1;
+                    }
+                    return compareDefaultOrder(a, b);
+                  });
+
+              return visibleRows
               .map((row, index) => {
               const nowMs = now.getTime();
               const visionLiveFresh =

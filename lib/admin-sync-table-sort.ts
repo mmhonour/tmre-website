@@ -3,7 +3,12 @@ import {
   type SyncScheduleFrequencyId,
 } from '@/lib/sync-schedule-config-shared'
 
-export type AdminSyncColumnSortKey = 'frequency' | 'start' | 'end' | 'next'
+export type AdminSyncColumnSortKey =
+  | 'order'
+  | 'frequency'
+  | 'start'
+  | 'end'
+  | 'next'
 export type AdminSyncColumnSortDir = 'asc' | 'desc'
 
 export type AdminSyncRowSortMeta = {
@@ -11,9 +16,12 @@ export type AdminSyncRowSortMeta = {
   startMs: number | null
   endMs: number | null
   nextMs: number | null
+  order: number
 }
 
-/** Frequency / Next: shortest or soonest first. Start / End: newest first. */
+export type AdminSyncSortableRow = { id: string } & AdminSyncRowSortMeta
+
+/** Frequency / Next / Order: low first. Start / End: newest first. */
 export function nextAdminSyncColumnSort(
   currentKey: AdminSyncColumnSortKey | null,
   currentDir: AdminSyncColumnSortDir,
@@ -51,7 +59,46 @@ export function compareAdminSyncRowSortMeta(
     if (left === right) return 0
     return dir === 'asc' ? left - right : right - left
   }
+  if (key === 'order') {
+    return dir === 'asc' ? a.order - b.order : b.order - a.order
+  }
   if (key === 'start') return compareNullableMs(a.startMs, b.startMs, dir)
   if (key === 'end') return compareNullableMs(a.endMs, b.endMs, dir)
   return compareNullableMs(a.nextMs, b.nextMs, dir)
+}
+
+/** Snapshot ids at click time so later edits do not reshuffle the table. */
+export function snapshotAdminSyncSortIds(
+  metas: readonly AdminSyncSortableRow[],
+  key: AdminSyncColumnSortKey,
+  dir: AdminSyncColumnSortDir,
+): string[] {
+  return [...metas]
+    .sort((a, b) => {
+      const cmp = compareAdminSyncRowSortMeta(a, b, key, dir)
+      if (cmp !== 0) return cmp
+      if (a.order !== b.order) return a.order - b.order
+      return a.id.localeCompare(b.id)
+    })
+    .map((row) => row.id)
+}
+
+export function applyFrozenAdminSyncRowOrder<T extends { id: string }>(
+  rows: readonly T[],
+  frozenIds: readonly string[] | null,
+): T[] {
+  if (!frozenIds?.length) return [...rows]
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  const seen = new Set<string>()
+  const ordered: T[] = []
+  for (const id of frozenIds) {
+    const row = byId.get(id)
+    if (!row) continue
+    ordered.push(row)
+    seen.add(id)
+  }
+  for (const row of rows) {
+    if (!seen.has(row.id)) ordered.push(row)
+  }
+  return ordered
 }
