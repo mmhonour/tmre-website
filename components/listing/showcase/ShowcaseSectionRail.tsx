@@ -159,7 +159,7 @@ function DetailsOverlayTabs({
   return (
     <div
       role="tablist"
-      className="flex w-full items-stretch bg-[#0d1424]"
+      className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
     >
       {(["full", "other"] as const).map((id) => (
         <button
@@ -168,9 +168,7 @@ function DetailsOverlayTabs({
           role="tab"
           aria-selected={tab === id}
           onClick={() => onChange(id)}
-          className={`min-w-0 flex-1 px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
-            id === "full" ? "rounded-tl-md" : "rounded-tr-md"
-          } ${
+          className={`w-fit shrink-0 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
             tab === id
               ? "bg-gold text-navy"
               : "bg-gold/25 text-gold hover:bg-gold/40 hover:text-navy"
