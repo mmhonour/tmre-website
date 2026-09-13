@@ -493,7 +493,9 @@ function toMatchListing(
     href: listingShareHref(mlsId),
     photoUrl:
       Number.isFinite(photoCount) && photoCount > 0
-        ? absoluteUrl(listingPhotoProxyUrl(mlsId, 0))
+        ? // Email clients cannot retry ?fetch=1. Incremental warms full, not
+          // the card `__card` mid blob — so default ?size=mid 404s in Gmail.
+          absoluteUrl(listingPhotoProxyUrl(mlsId, 0, { size: 'full' }))
         : null,
     matchKind,
     openHouseWhen: row.next_oh?.trim() || null,
