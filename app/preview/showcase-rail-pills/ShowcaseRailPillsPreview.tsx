@@ -101,22 +101,39 @@ function DemoControl({
   );
 }
 
-/** Default: symbols only. Min/max reveals every word; a tap still opens a card. */
+/** Default: glyphs only. One exclusive card in the center-right. */
 function SymbolRailDemo() {
-  const [revealed, setRevealed] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [pulseOpen, setPulseOpen] = useState(false);
-  const [insightOpen, setInsightOpen] = useState(false);
+  const [open, setOpen] = useState<
+    "insight" | "comps" | "if" | "details" | "pulse" | "map" | null
+  >(null);
   const [detailsTab, setDetailsTab] = useState<"full" | "other">("full");
   const [labelsMax, setLabelsMax] = useState(false);
 
-  const compsBtn =
-    revealed === "comps" ? (
-      <div className={`${railRow} gap-2`}>
-        <span className="inline-flex items-center">
-          <span className="mr-2.5 inline-flex">
-            <CompsGlyph />
-          </span>
+  const toggle = (id: NonNullable<typeof open>) =>
+    setOpen((current) => (current === id ? null : id));
+
+  const card =
+    open === "insight" ? (
+      <div className="w-full max-w-sm bg-[#0d1424]">
+        <div className={`${railRow} w-full bg-[#0d1424]`}>
+          <span className="flex-1">Insight</span>
+          <button
+            type="button"
+            data-testid="preview-insight-hide"
+            onClick={() => setOpen(null)}
+            aria-label="Hide Insight"
+            className="ml-2 px-1 font-mono text-white/70"
+          >
+            ↑
+          </button>
+        </div>
+        <div className="bg-[#0d1424] px-4 py-3 text-sm text-white/85">
+          Four beds on the harbor, listed this week.
+        </div>
+      </div>
+    ) : open === "comps" ? (
+      <div className={`${railRow} w-full max-w-sm gap-2 bg-[#0d1424]`}>
+        <span className="underline decoration-white/35 underline-offset-4">
           Comps
         </span>
         <span className="flex flex-1 items-center justify-end gap-1">
@@ -126,65 +143,129 @@ function SymbolRailDemo() {
         <button
           type="button"
           data-testid="preview-comps-hide"
-          onClick={() => setRevealed(null)}
+          onClick={() => setOpen(null)}
           aria-label="Hide comps"
           className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
         >
           ↑
         </button>
       </div>
-    ) : (
-      <DemoControl
-        label="Comps"
-        glyph={<CompsGlyph />}
-        showLabel={labelsMax}
-        testId="preview-comps-open"
-        onClick={() => setRevealed("comps")}
-      />
-    );
-
-  const ifBtn =
-    revealed === "if" ? (
-      <div className={`${railRow} gap-2`}>
-        <span className="flex min-w-0 flex-1 items-center">
-          <span className="mr-2.5 inline-flex">
-            <WhatIfGlyph />
-          </span>
-          <span className="shrink-0 underline decoration-white/35 underline-offset-4">
-            What if
-          </span>
-          <span className="ml-2 flex items-center gap-1">
-            <CountChip label="Sale" count="$1.4M" />
-            <CountChip label="Rent" count="$6.2K" />
-          </span>
+    ) : open === "if" ? (
+      <div className={`${railRow} w-full max-w-sm gap-2 bg-[#0d1424]`}>
+        <span className="underline decoration-white/35 underline-offset-4">
+          What if
+        </span>
+        <span className="flex flex-1 items-center justify-end gap-1">
+          <CountChip label="Sale" count="$1.4M" />
+          <CountChip label="Rent" count="$6.2K" />
         </span>
         <button
           type="button"
           data-testid="preview-if-hide"
-          onClick={() => setRevealed(null)}
+          onClick={() => setOpen(null)}
           aria-label="Hide What if"
           className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
         >
           ↑
         </button>
       </div>
-    ) : (
-      <DemoControl
-        label="What if"
-        glyph={<WhatIfGlyph />}
-        showLabel={labelsMax}
-        testId="preview-if-open"
-        onClick={() => setRevealed("if")}
-      />
-    );
+    ) : open === "details" ? (
+      <div className="w-full max-w-sm bg-[#0d1424]">
+        <div className={`${railRow} w-full bg-[#0d1424]`}>
+          <span className="flex-1">Details</span>
+          <button
+            type="button"
+            data-testid="preview-details-hide"
+            onClick={() => setOpen(null)}
+            aria-label="Hide Details"
+            className="ml-2 px-1 font-mono text-white/70"
+          >
+            ↑
+          </button>
+        </div>
+        <div
+          role="tablist"
+          className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
+        >
+          {(["full", "other"] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={detailsTab === id}
+              data-testid={`preview-details-tab-${id}`}
+              onClick={() => setDetailsTab(id)}
+              className={`w-fit shrink-0 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+                detailsTab === id
+                  ? "bg-gold text-navy"
+                  : "bg-gold/25 text-gold"
+              }`}
+            >
+              {id === "full" ? "Full" : "Other"}
+            </button>
+          ))}
+        </div>
+        <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+          {detailsTab === "full" ? (
+            <ul className="space-y-2">
+              <li>Schools · taxes · rooms</li>
+              <li>Lot 0.42 ac · 2,410 sf</li>
+              <li>Assessed $1.12M · tax $18,440</li>
+            </ul>
+          ) : (
+            "Beds 4 · Baths 3 · 2,410 sf"
+          )}
+        </div>
+      </div>
+    ) : open === "pulse" ? (
+      <div className="w-full max-w-sm bg-[#0d1424]">
+        <div className={`${railRow} w-full bg-[#0d1424]`}>
+          <span className="flex-1">Town pulse</span>
+          <button
+            type="button"
+            data-testid="preview-pulse-hide"
+            onClick={() => setOpen(null)}
+            aria-label="Hide Town pulse"
+            className="ml-2 px-1 font-mono text-white/70"
+          >
+            ↑
+          </button>
+        </div>
+        <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+          <li>Inventory 42</li>
+          <li>Months supply 3.1 mo</li>
+          <li>Avg DOM 28d</li>
+          <li>Closed 21 · 12 mos</li>
+          <li>Median $1.85M</li>
+        </ul>
+      </div>
+    ) : open === "map" ? (
+      <div className="flex h-64 w-full max-w-sm flex-col bg-[#0d1424]">
+        <div className={`${railRow} w-full bg-[#0d1424]`}>
+          <span className="flex-1">Map</span>
+          <span className="rounded-md border border-white/15 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85">
+            Full screen
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen(null)}
+            aria-label="Hide Map"
+            className="ml-2 px-1 font-mono text-white/70"
+          >
+            ↑
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 bg-[#1a2744]" />
+      </div>
+    ) : null;
 
   return (
-    <div className="flex min-h-[22rem] flex-col items-end">
+    <div className="relative min-h-[28rem]">
       <div
         className="mb-3 w-full transition-[padding] duration-300"
         style={
-          insightOpen
-            ? { paddingRight: "min(24rem, calc(100% - 3rem))" }
+          open
+            ? { paddingRight: "min(24rem, calc(100% - 3.75rem))" }
             : undefined
         }
       >
@@ -192,178 +273,91 @@ function SymbolRailDemo() {
           <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
         </div>
       </div>
-      <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
-        <button
-          type="button"
-          data-testid="preview-rail-minmax"
-          onClick={() => setLabelsMax((open) => !open)}
-          aria-pressed={labelsMax}
-          aria-label={labelsMax ? "Show icons only" : "Show icon names"}
-          title={labelsMax ? "Minimize to icons" : "Maximize labels"}
-          className={railIcon}
-        >
-          {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
-        </button>
-        {insightOpen ? (
-          <div className="w-full max-w-sm bg-[#0d1424]">
-            <div className={`${railRow} w-full bg-[#0d1424]`}>
-              <span className="flex-1">Insight</span>
-              <button
-                type="button"
-                data-testid="preview-insight-hide"
-                onClick={() => setInsightOpen(false)}
-                aria-label="Hide Insight"
-                className="ml-2 px-1 font-mono text-white/70"
-              >
-                ↑
-              </button>
-            </div>
-            <div className="bg-[#0d1424] px-4 py-3 text-sm text-white/85">
-              Four beds on the harbor, listed this week.
-            </div>
-          </div>
-        ) : (
-          <DemoControl
-            label="Insight"
-            glyph={<InsightGlyph />}
-            showLabel={labelsMax}
-            testId="preview-insight-open"
-            onClick={() => setInsightOpen(true)}
-          />
-        )}
-        {compsBtn}
-        {ifBtn}
-      </div>
       <div
-        className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
-        aria-hidden
+        className={`absolute inset-y-0 flex flex-col items-end pr-3 ${
+          open ? "right-[min(24rem,calc(100%-3.75rem))]" : "right-0"
+        }`}
       >
-        →
-      </div>
-      <div className="flex flex-1 items-end justify-end gap-1 pt-1">
-        {detailsOpen || pulseOpen ? (
-          <>
-            <div className="flex flex-col items-end gap-1">
-              {detailsOpen ? null : (
-                <DemoControl
-                  label="Details"
-                  glyph={<DetailsGlyph />}
-                  showLabel={labelsMax}
-                  testId="preview-details-open"
-                  onClick={() => {
-                    setPulseOpen(false);
-                    setDetailsOpen(true);
-                  }}
-                />
-              )}
-              {pulseOpen ? null : (
-                <DemoControl
-                  label="Pulse"
-                  glyph={<PulseGlyph />}
-                  showLabel={labelsMax}
-                  testId="preview-pulse-open"
-                  onClick={() => {
-                    setDetailsOpen(false);
-                    setPulseOpen(true);
-                  }}
-                />
-              )}
-              <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
-            </div>
-            {detailsOpen ? (
-              <div className="w-full max-w-sm bg-[#0d1424]">
-                <div className={`${railRow} w-full bg-[#0d1424]`}>
-                  <span className="flex-1">Details</span>
-                  <button
-                    type="button"
-                    data-testid="preview-details-hide"
-                    onClick={() => setDetailsOpen(false)}
-                    aria-label="Hide Details"
-                    className="ml-2 px-1 font-mono text-white/70"
-                  >
-                    ↑
-                  </button>
-                </div>
-                <div
-                  role="tablist"
-                  className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
-                >
-                  {(["full", "other"] as const).map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="tab"
-                      aria-selected={detailsTab === id}
-                      data-testid={`preview-details-tab-${id}`}
-                      onClick={() => setDetailsTab(id)}
-                      className={`w-fit shrink-0 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
-                        detailsTab === id
-                          ? "bg-gold text-navy"
-                          : "bg-gold/25 text-gold"
-                      }`}
-                    >
-                      {id === "full" ? "Full" : "Other"}
-                    </button>
-                  ))}
-                </div>
-                <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-                  {detailsTab === "full" ? (
-                    <ul className="space-y-2">
-                      <li>Schools · taxes · rooms</li>
-                      <li>Lot 0.42 ac · 2,410 sf</li>
-                      <li>Assessed $1.12M · tax $18,440</li>
-                      <li>No scrollbar on this card</li>
-                    </ul>
-                  ) : (
-                    "Beds 4 · Baths 3 · 2,410 sf"
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="w-full max-w-sm overflow-x-hidden overflow-y-hidden bg-[#0d1424]">
-                <div className={`${railRow} w-full bg-[#0d1424]`}>
-                  <span className="flex-1">Town pulse</span>
-                  <button
-                    type="button"
-                    data-testid="preview-pulse-hide"
-                    onClick={() => setPulseOpen(false)}
-                    aria-label="Hide Town pulse"
-                    className="ml-2 px-1 font-mono text-white/70"
-                  >
-                    ↑
-                  </button>
-                </div>
-                <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-                  <li>Inventory 42</li>
-                  <li>Months supply 3.1 mo</li>
-                  <li>Avg DOM 28d</li>
-                  <li>Closed 21 · 12 mos</li>
-                  <li>Median $1.85M</li>
-                  <li>No scrollbar on this card</li>
-                </ul>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
+          <button
+            type="button"
+            data-testid="preview-rail-minmax"
+            onClick={() => setLabelsMax((current) => !current)}
+            aria-pressed={labelsMax}
+            aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+            title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+            className={railIcon}
+          >
+            {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+          </button>
+          {open === "insight" ? null : (
+            <DemoControl
+              label="Insight"
+              glyph={<InsightGlyph />}
+              showLabel={labelsMax}
+              testId="preview-insight-open"
+              onClick={() => toggle("insight")}
+            />
+          )}
+          {open === "comps" ? null : (
+            <DemoControl
+              label="Comps"
+              glyph={<CompsGlyph />}
+              showLabel={labelsMax}
+              testId="preview-comps-open"
+              onClick={() => toggle("comps")}
+            />
+          )}
+          {open === "if" ? null : (
+            <DemoControl
+              label="What if"
+              glyph={<WhatIfGlyph />}
+              showLabel={labelsMax}
+              testId="preview-if-open"
+              onClick={() => toggle("if")}
+            />
+          )}
+        </div>
+        <div
+          className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
+          aria-hidden
+        >
+          →
+        </div>
+        <div className="flex flex-1 flex-col items-end justify-start gap-1 pt-1">
+          {open === "details" ? null : (
             <DemoControl
               label="Details"
               glyph={<DetailsGlyph />}
               showLabel={labelsMax}
               testId="preview-details-open"
-              onClick={() => setDetailsOpen(true)}
+              onClick={() => toggle("details")}
             />
+          )}
+          {open === "pulse" ? null : (
             <DemoControl
               label="Pulse"
               glyph={<PulseGlyph />}
               showLabel={labelsMax}
               testId="preview-pulse-open"
-              onClick={() => setPulseOpen(true)}
+              onClick={() => toggle("pulse")}
             />
-            <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
-          </div>
-        )}
+          )}
+          {open === "map" ? null : (
+            <DemoControl
+              label="Map"
+              glyph={<MapGlyph />}
+              showLabel={labelsMax}
+              onClick={() => toggle("map")}
+            />
+          )}
+        </div>
       </div>
+      {card ? (
+        <div className="pointer-events-auto absolute bottom-8 right-3 top-16 z-10 flex items-center justify-end">
+          {card}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -494,12 +488,10 @@ export function ShowcaseRailPillsPreview() {
           Symbols around the right arrow
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Insight, Comps, then What if stack above the right arrow. Details,
-          Pulse, and Map sit below. Opening a card keeps leftover glyphs on
-          its left edge (or above it when there is room). What if is a link;
-          Sale and Rent are clickable boxes. The square min/max control
-          expands every icon to its word. ↑ restores the glyph. Details uses
-          the gold folder tabs on an opaque navy card.
+          One exclusive card at a time in the center-right of the bleed,
+          above the type. Leftover glyphs hug its left edge. What if is a
+          link; Sale and Rent are clickable boxes. Map stays inset until
+          Full screen. ↑ restores the glyph.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
@@ -511,10 +503,10 @@ export function ShowcaseRailPillsPreview() {
           Map — flush right, glyphs to the left
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Map sits on the page’s right edge. Rail glyphs stay to its left.
-          One Corridors control sits next to the Map label (admin). Offered
-          at shifts left of the map plus the glyph column. For sale, Under
-          Agreement, and Closed stack under Full size.
+          Map opens inset in the same slot. Full screen is an opt-in.
+          Rail glyphs stay to its left. One Corridors control sits next to
+          the Map label (admin). For sale, Under Agreement, and Closed
+          stack under Full size.
         </p>
         <MapChromeDemo />
       </section>
