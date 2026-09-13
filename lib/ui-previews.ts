@@ -172,7 +172,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "One exclusive card in the center-right of the bleed, above the type. Glyphs hug its left edge. What if Sale/Rent chips jump to each scenario. Map is inset until Full screen. Under Agreement. Cards close with ↑.",
+      "Decks are exclusive. Comps and What if expand in place (w-fit) and do not shift other glyphs left. On a phone, opening either closes the deck so the pills have room; leftover glyphs stay on the deck’s right edge; min/max hides while a deck is up.",
   },
 ];
 

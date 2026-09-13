@@ -22,6 +22,7 @@ import {
   PulseGlyph,
   WhatIfGlyph,
 } from "@/components/listing/showcase/showcase-rail-glyphs";
+import { useShowcasePhoneViewport } from "@/components/listing/showcase/ShowcasePhotoFocus";
 import type { ShowcaseMapPresentation } from "@/components/listing/showcase/showcase-host";
 import {
   jumpToIfScenario,
@@ -38,7 +39,8 @@ import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 
 type DetailsTab = "full" | "other";
-type RailCard = "insight" | "comps" | "if" | "details" | "pulse" | "map";
+type RailDeck = "insight" | "details" | "pulse" | "map";
+type FigureId = "comps" | "if";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 /** Shared pop-out — leaves a glyph gutter so the rail hugs the card’s left edge. */
@@ -49,12 +51,14 @@ const CARD_RIGHT = "right-[min(24rem,calc(100vw-3.75rem))]";
 const railRowClass = (opts: {
   open?: boolean;
   fullWidth?: boolean;
+  /** Comps / What if — grow in place, never stretch like a deck. */
+  fit?: boolean;
   interactive?: boolean;
 }) =>
   `flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
     // `w-fit` rather than `w-auto`: a block-level flex box with auto width
     // still stretches to its container.
-    opts.fullWidth ? "w-full" : "w-fit lg:w-full"
+    opts.fit ? "w-fit max-w-full" : opts.fullWidth ? "w-full" : "w-fit lg:w-full"
   } ${
     opts.open
       ? "bg-navy text-white"
@@ -252,9 +256,12 @@ type IfAmounts = { sale: number | null; rent: number | null };
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Insight, Comps, then
  * What if sit above that arrow; Details, Pulse, and Map sit below. One
- * card at a time occupies the center-right of the bleed, above the type,
- * with leftover glyphs on its left edge. ↑ restores the glyph. The min/max
- * control expands every icon to its word, or collapses them back.
+ * deck at a time occupies the center-right of the bleed, above the type.
+ * Comps and What if expand in place and can stay open with each other and
+ * with a deck. They stay `w-fit` in the glyph stack — other icons do not
+ * shift left. On a phone, opening either one closes the deck so the pills
+ * have room, leftover glyphs stay on the deck’s right edge, and min/max
+ * hides while a deck is up.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -291,14 +298,17 @@ export default function ShowcaseSectionRail({
   map?: ShowcaseMapPresentation | null;
 }) {
   /**
-   * One exclusive pop-out. Comps and What if use the same center-right slot
-   * as Insight / Details / Pulse / Map.
+   * Decks (Insight / Details / Pulse / Map) are exclusive. Comps and What if
+   * expand in place and may both be open, including next to a deck.
    */
-  const [overlay, setOverlayState] = useState<RailCard | null>(null);
+  const [deck, setDeckState] = useState<RailDeck | null>(null);
+  const [figures, setFigures] = useState<ReadonlySet<FigureId>>(new Set());
   const [mapExpanded, setMapExpanded] = useState(false);
   const corridors = useLocationEstimateOverlay();
+  const phone = useShowcasePhoneViewport();
+  const hideLabels = phone && deck != null;
 
-  const reportClearance = (next: RailCard | null, expanded: boolean) => {
+  const reportClearance = (next: RailDeck | null, expanded: boolean) => {
     onMapStateChange?.({
       open: next != null,
       expanded: next === "map" && expanded,
@@ -306,19 +316,29 @@ export default function ShowcaseSectionRail({
     });
   };
 
-  const setOverlay = (next: RailCard | null) => {
+  const setDeck = (next: RailDeck | null) => {
     if (next !== "map") setMapExpanded(false);
-    setOverlayState(next);
+    setDeckState(next);
     reportClearance(next, next === "map" ? mapExpanded : false);
   };
-  const toggleOverlay = (id: RailCard) =>
-    setOverlay(overlay === id ? null : id);
+  const toggleDeck = (id: RailDeck) => setDeck(deck === id ? null : id);
+  const toggleFigure = (id: FigureId) => {
+    // Phone: a deck eats the width the pills need — collapse it first.
+    if (phone && deck) setDeck(null);
+    setFigures((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
-    reportClearance(overlay, expanded);
+    reportClearance(deck, expanded);
   };
   const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
   const [labelsMax, setLabelsMax] = useState(false);
+  const showLabel = labelsMax && !hideLabels;
   const [counts, setCounts] = useState<CompsCounts | null>(null);
   const [amounts, setAmounts] = useState<IfAmounts | null>(null);
 
@@ -357,32 +377,10 @@ export default function ShowcaseSectionRail({
     <RailControl
       label="Insight"
       glyph={<InsightGlyph />}
-      showLabel={labelsMax}
-      on={overlay === "insight"}
-      onClick={() => toggleOverlay("insight")}
-      ariaLabel={overlay === "insight" ? "Close insight" : "Show insight"}
-    />
-  );
-
-  const compsButton = (
-    <RailControl
-      label="Comps"
-      glyph={<CompsGlyph />}
-      showLabel={labelsMax}
-      on={overlay === "comps"}
-      onClick={() => toggleOverlay("comps")}
-      ariaLabel={overlay === "comps" ? "Close comps" : "Show comps"}
-    />
-  );
-
-  const whatIfButton = (
-    <RailControl
-      label="What if"
-      glyph={<WhatIfGlyph />}
-      showLabel={labelsMax}
-      on={overlay === "if"}
-      onClick={() => toggleOverlay("if")}
-      ariaLabel={overlay === "if" ? "Close What if" : "Show What if"}
+      showLabel={showLabel}
+      on={deck === "insight"}
+      onClick={() => toggleDeck("insight")}
+      ariaLabel={deck === "insight" ? "Close insight" : "Show insight"}
     />
   );
 
@@ -390,10 +388,10 @@ export default function ShowcaseSectionRail({
     <RailControl
       label="Details"
       glyph={<DetailsGlyph />}
-      showLabel={labelsMax}
-      on={overlay === "details"}
-      onClick={() => toggleOverlay("details")}
-      ariaLabel={overlay === "details" ? "Close details" : "Show details"}
+      showLabel={showLabel}
+      on={deck === "details"}
+      onClick={() => toggleDeck("details")}
+      ariaLabel={deck === "details" ? "Close details" : "Show details"}
     />
   );
 
@@ -401,10 +399,10 @@ export default function ShowcaseSectionRail({
     <RailControl
       label="Pulse"
       glyph={<PulseGlyph />}
-      showLabel={labelsMax}
-      on={overlay === "pulse"}
-      onClick={() => toggleOverlay("pulse")}
-      ariaLabel={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
+      showLabel={showLabel}
+      on={deck === "pulse"}
+      onClick={() => toggleDeck("pulse")}
+      ariaLabel={deck === "pulse" ? "Close town pulse" : "Show town pulse"}
     />
   );
 
@@ -412,10 +410,10 @@ export default function ShowcaseSectionRail({
     <RailControl
       label="Map"
       glyph={<MapGlyph />}
-      showLabel={labelsMax}
-      on={overlay === "map"}
-      onClick={() => toggleOverlay("map")}
-      ariaLabel={overlay === "map" ? "Close map" : "Open map"}
+      showLabel={showLabel}
+      on={deck === "map"}
+      onClick={() => toggleDeck("map")}
+      ariaLabel={deck === "map" ? "Close map" : "Open map"}
     />
   );
 
@@ -482,7 +480,7 @@ export default function ShowcaseSectionRail({
           postalCode={postalCode}
           expanded={mapExpanded}
           onToggleExpanded={() => setExpanded(!mapExpanded)}
-          onExit={() => setOverlay(null)}
+          onExit={() => setDeck(null)}
           fetchUrl={compsFetchUrl}
           uagFetchUrl={uagFetchUrl}
           hideSubject={map?.hidePin ?? false}
@@ -494,7 +492,7 @@ export default function ShowcaseSectionRail({
   const mapChrome = (
     <CardChrome
       title="Map"
-      onCollapse={() => setOverlay(null)}
+      onCollapse={() => setDeck(null)}
       afterTitle={
         corridors.unlocked ? (
           <button
@@ -517,29 +515,71 @@ export default function ShowcaseSectionRail({
     </CardChrome>
   );
 
+  const compsPill = figures.has("comps") ? (
+    <div className="flex w-fit max-w-full flex-col items-end">
+      <div
+        className={`${railRowClass({ interactive: false, fit: true })} gap-2 bg-[#0d1424]`}
+      >
+        <button
+          type="button"
+          onClick={() => scrollToShowcaseSection("comps")}
+          className="inline-flex shrink-0 items-center underline decoration-white/35 underline-offset-4 transition-colors hover:text-gold hover:decoration-gold/60"
+        >
+          Comps
+        </button>
+        {compsChips}
+        <CollapseArrow
+          label="Hide comps"
+          onClick={() => toggleFigure("comps")}
+        />
+      </div>
+    </div>
+  ) : (
+    <RailControl
+      label="Comps"
+      glyph={<CompsGlyph />}
+      showLabel={showLabel}
+      onClick={() => toggleFigure("comps")}
+    />
+  );
+
+  const whatIfPill = figures.has("if") ? (
+    <div className="flex w-fit max-w-full flex-col items-end">
+      <div
+        className={`${railRowClass({ interactive: false, fit: true })} gap-2 bg-[#0d1424]`}
+      >
+        <button
+          type="button"
+          onClick={() => scrollToShowcaseSection("if")}
+          className="inline-flex shrink-0 items-center underline decoration-white/35 underline-offset-4 transition-colors hover:text-gold hover:decoration-gold/60"
+        >
+          What if
+        </button>
+        {whatIfChips}
+        <CollapseArrow
+          label="Hide What if"
+          onClick={() => toggleFigure("if")}
+        />
+      </div>
+    </div>
+  ) : (
+    <RailControl
+      label="What if"
+      glyph={<WhatIfGlyph />}
+      showLabel={showLabel}
+      onClick={() => toggleFigure("if")}
+    />
+  );
+
   const openCard =
-    overlay === "insight" ? (
-      <CardChrome title="Insight" onCollapse={() => setOverlay(null)}>
+    deck === "insight" ? (
+      <CardChrome title="Insight" onCollapse={() => setDeck(null)}>
         <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424] p-4">
           <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
         </div>
       </CardChrome>
-    ) : overlay === "comps" ? (
-      <CardChrome
-        title="Comps"
-        onTitleClick={() => scrollToShowcaseSection("comps")}
-        onCollapse={() => setOverlay(null)}
-        afterTitle={compsChips}
-      />
-    ) : overlay === "if" ? (
-      <CardChrome
-        title="What if"
-        onTitleClick={() => scrollToShowcaseSection("if")}
-        onCollapse={() => setOverlay(null)}
-        afterTitle={whatIfChips}
-      />
-    ) : overlay === "details" ? (
-      <CardChrome title="Details" onCollapse={() => setOverlay(null)}>
+    ) : deck === "details" ? (
+      <CardChrome title="Details" onCollapse={() => setDeck(null)}>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
         <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424]">
           {detailsTab === "full" ? (
@@ -563,53 +603,68 @@ export default function ShowcaseSectionRail({
           )}
         </div>
       </CardChrome>
-    ) : overlay === "pulse" ? (
-      <CardChrome title="Town pulse" onCollapse={() => setOverlay(null)}>
+    ) : deck === "pulse" ? (
+      <CardChrome title="Town pulse" onCollapse={() => setDeck(null)}>
         <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={townHint ?? ""} expanded />
         </div>
       </CardChrome>
-    ) : overlay === "map" ? (
+    ) : deck === "map" ? (
       mapChrome
     ) : null;
 
-  const mapFullscreen = overlay === "map" && mapExpanded;
+  const mapFullscreen = deck === "map" && mapExpanded;
   const railRight = mapFullscreen
     ? "max-lg:hidden lg:right-[min(50vw,44rem)]"
-    : overlay
+    : deck && !phone
       ? CARD_RIGHT
       : "right-0";
 
   return (
     <>
       {/*
-       * Glyph column above the type (z-30). The photo arrow gap stays in the
-       * middle. An open card sits in the center-right band; leftovers hug it.
+       * Glyph column above the type (z-30). Phone: the deck sits in this
+       * column so leftover glyphs stay on its right edge. Desktop: the deck
+       * is a separate center-right panel and the column shifts left.
        */}
       <div
         className={`pointer-events-none absolute inset-y-0 z-30 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${railRight}`}
       >
         <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
-          <RailMinMaxButton
-            expanded={labelsMax}
-            onToggle={() => setLabelsMax((open) => !open)}
-          />
-          {overlay === "insight" ? null : insightButton}
-          {overlay === "comps" ? null : compsButton}
-          {overlay === "if" ? null : whatIfButton}
+          {hideLabels ? null : (
+            <RailMinMaxButton
+              expanded={labelsMax}
+              onToggle={() => setLabelsMax((open) => !open)}
+            />
+          )}
+          {deck === "insight" ? null : insightButton}
+          {compsPill}
+          {whatIfPill}
         </div>
-        <div className="h-14 shrink-0" aria-hidden />
+        {phone && deck && !mapFullscreen ? (
+          <div
+            className={`pointer-events-auto flex min-h-0 w-full ${
+              deck === "map"
+                ? "h-[min(28rem,calc(100dvh-18rem))]"
+                : "max-h-[min(28rem,calc(100dvh-18rem))]"
+            } flex-col overflow-hidden bg-[#0d1424]`}
+          >
+            {openCard}
+          </div>
+        ) : (
+          <div className="h-14 shrink-0" aria-hidden />
+        )}
         <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
-          {overlay === "details" ? null : detailsButton}
-          {overlay === "pulse" ? null : pulseButton}
-          {overlay === "map" ? null : mapButton}
+          {deck === "details" ? null : detailsButton}
+          {deck === "pulse" ? null : pulseButton}
+          {deck === "map" ? null : mapButton}
         </div>
       </div>
-      {overlay && !mapFullscreen ? (
+      {deck && !mapFullscreen && !phone ? (
         <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-30 flex items-center justify-end pr-3 sm:pr-6">
           <div
             className={`pointer-events-auto flex ${CARD_WIDTH} ${
-              overlay === "map"
+              deck === "map"
                 ? "h-[min(32rem,calc(100dvh-14rem))]"
                 : "max-h-full"
             } flex-col overflow-hidden bg-[#0d1424]`}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   listingPhotoObfuscationImgClass,
@@ -116,4 +116,17 @@ export default function ShowcasePhotoFocus({
 
 export function isShowcasePhoneViewport(): boolean {
   return !window.matchMedia("(min-width: 1024px)").matches;
+}
+
+/** Live `lg` breakpoint — same cut as `isShowcasePhoneViewport`. */
+export function useShowcasePhoneViewport(): boolean {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setPhone(!mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return phone;
 }
