@@ -247,8 +247,8 @@ export default function ListingShowcaseView({
         />
 
         <div className="listing-showcase-type pointer-events-none relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
-          <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-6">
-            <div className="max-w-xl">
+          <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-3 sm:gap-6">
+            <div className="min-w-0 max-w-xl flex-1">
               {host.propertyTabs ? (
                 <div className="pointer-events-auto mb-3">{host.propertyTabs}</div>
               ) : null}
@@ -282,7 +282,7 @@ export default function ListingShowcaseView({
 
             {headerPrice ? (
               <div
-                className="shrink-0 text-right transition-[margin] duration-300"
+                className="shrink-0 overflow-visible text-right transition-[margin] duration-300"
                 style={
                   isDesktop && mapState.open
                     ? {

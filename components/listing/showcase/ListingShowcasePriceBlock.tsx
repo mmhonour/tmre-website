@@ -9,11 +9,11 @@ export function ListingShowcasePriceBlock({
   amount: string;
 }) {
   return (
-    <ListingShowcaseTypeWash className="min-w-[12.5rem] px-6 py-2.5 text-right">
-      <p className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
+    <ListingShowcaseTypeWash className="overflow-visible px-8 py-2.5 text-right">
+      <p className="relative whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
         {label}
       </p>
-      <p className="relative mt-1 font-serif text-3xl font-bold tabular-nums leading-none text-gold lg:text-4xl">
+      <p className="relative mt-1 whitespace-nowrap font-serif text-3xl font-bold tabular-nums leading-none text-gold lg:text-4xl">
         {amount}
       </p>
     </ListingShowcaseTypeWash>

@@ -142,7 +142,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Glyphs for Comps and What if, Insight stacked above Details, mobile « to hide figures, and a lighter-blue wash behind status, address, and Offered at / Closed at.",
+      "Symbols-only rail on load, one Details icon with Summary / Full tabs, Insight above Details, navy wash behind status, address, and Offered at / Closed at.",
   },
 ];
 

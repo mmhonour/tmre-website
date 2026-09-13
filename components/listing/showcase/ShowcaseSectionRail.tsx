@@ -34,7 +34,7 @@ import {
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
-type CardId = "pulse" | "insight" | "details";
+type DetailsTab = "summary" | "full";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
@@ -97,6 +97,33 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+function DetailsOverlayTabs({
+  tab,
+  onChange,
+}: {
+  tab: DetailsTab;
+  onChange: (tab: DetailsTab) => void;
+}) {
+  return (
+    <div className="flex gap-0 border-b border-white/10 px-3">
+      {(["summary", "full"] as const).map((id) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange(id)}
+          className={`px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] ${
+            tab === id
+              ? "border-b-2 border-gold text-white"
+              : "border-b-2 border-transparent text-white/45 hover:text-white/80"
+          }`}
+        >
+          {id === "summary" ? "Summary" : "Full"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function MinimizeGlyphButton({
   label,
   onClick,
@@ -117,28 +144,14 @@ function MinimizeGlyphButton({
   );
 }
 
-function useIsDesktop(): boolean {
-  const [desktop, setDesktop] = useState(true);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const sync = () => setDesktop(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-  return desktop;
-}
-
 type CompsCounts = { active: number; sold: number; soldMonths: number };
 type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
- * Rail of flush rectangular tiles over the right of the photo. Insight and
- * Details expand in flow; Comps and What if carry their own figures and jump to
- * the matching section; Map takes over the right column.
- *
- * Below `lg` the figures are hidden behind a pulsing chevron — first tap
- * reveals them, the label jumps to the section, and « hides them again.
+ * Rail of flush rectangular tiles over the right of the photo. Every pill
+ * starts as a symbol. Insight sits above Details; one Details icon opens a
+ * Summary / Full tab pair. Comps and What if reveal figures on tap, then «
+ * hides them. Map takes over the right column.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -175,7 +188,6 @@ export default function ShowcaseSectionRail({
   /** Spotlight privacy: town-outline map instead of comps + pin. */
   map?: ShowcaseMapPresentation | null;
 }) {
-  const [openCard, setOpenCard] = useState<CardId | null>(null);
   /**
    * Insight, map, pulse and details share one overlay so their icons stay a
    * single exclusive toggle — opening one closes the others, and the icon
@@ -204,10 +216,10 @@ export default function ShowcaseSectionRail({
     setMapExpanded(expanded);
     onMapStateChange?.({ open: overlay === "map", expanded });
   };
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>("summary");
   const [revealed, setRevealed] = useState<string | null>(null);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
   const [amounts, setAmounts] = useState<IfAmounts | null>(null);
-  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     let cancelled = false;
@@ -251,39 +263,9 @@ export default function ShowcaseSectionRail({
     return `${sale ?? "—"} / ${rent ?? "—"}`;
   }, [amounts]);
 
-  const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
-
-  const cardPill = (
-    id: CardId,
-    label: string,
-    glyph: ReactNode,
-    body: ReactNode,
-  ) => {
-    const open = openCard === id;
-    return (
-      <div className="flex w-full flex-col items-end lg:items-stretch">
-        <button
-          type="button"
-          onClick={() => toggle(id)}
-          aria-expanded={open}
-          className={pillClass(open)}
-        >
-          <span className="mr-2.5 inline-flex">{glyph}</span>
-          <span className="flex-1">{label}</span>
-          <Chevron open={open} />
-        </button>
-        {open ? (
-          <div className="max-h-[60vh] overflow-y-auto overscroll-contain bg-[#0d1424]/95 p-4 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
-            {body}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
   /**
-   * Tiles that carry figures. Desktop shows them inline; mobile hides them
-   * behind one tap so the rail does not wall off the photo.
+   * Tiles that carry figures. Both breakpoints start as a symbol; first tap
+   * reveals the label and figures, « hides them again.
    */
   const figurePill = (
     id: string,
@@ -292,7 +274,7 @@ export default function ShowcaseSectionRail({
     figures: ReactNode | null,
     onActivate: () => void,
   ) => {
-    const showFigures = isDesktop || revealed === id;
+    const showFigures = revealed === id;
     if (showFigures) {
       return (
         <div className="flex w-full flex-col items-end lg:items-stretch">
@@ -310,31 +292,24 @@ export default function ShowcaseSectionRail({
                 </span>
               ) : null}
             </button>
-            {isDesktop ? null : (
-              <MinimizeGlyphButton
-                label={`Hide ${label}`}
-                onClick={() => setRevealed(null)}
-              />
-            )}
+            <MinimizeGlyphButton
+              label={`Hide ${label}`}
+              onClick={() => setRevealed(null)}
+            />
           </div>
         </div>
       );
     }
     return (
-      <div className="flex w-full flex-col items-end lg:items-stretch">
+      <div className="flex w-full flex-col items-end">
         <button
           type="button"
           onClick={() => setRevealed(id)}
-          className={pillClass(false)}
+          aria-label={label}
+          title={label}
+          className={railIconClass(false)}
         >
-          <span className="mr-2.5 inline-flex">{glyph}</span>
-          <span className="shrink-0">{label}</span>
-          <span
-            aria-hidden
-            className="showcase-chevron-pulse ml-3 font-mono text-white/70"
-          >
-            »
-          </span>
+          {glyph}
         </button>
       </div>
     );
@@ -440,25 +415,17 @@ export default function ShowcaseSectionRail({
    * which cannot be nested inside the tile's own button element.
    */
   const compsPill = (() => {
-    const showChips = (isDesktop || revealed === "comps") && counts;
-    if (!showChips) {
+    if (revealed !== "comps") {
       return (
-        <div className="flex w-full flex-col items-end lg:items-stretch">
+        <div className="flex w-full flex-col items-end">
           <button
             type="button"
             onClick={() => setRevealed("comps")}
-            className={pillClass(false)}
+            aria-label="Comps"
+            title="Comps"
+            className={railIconClass(false)}
           >
-            <span className="mr-2.5 inline-flex">
-              <CompsGlyph />
-            </span>
-            <span className="shrink-0">Comps</span>
-            <span
-              aria-hidden
-              className="showcase-chevron-pulse ml-3 font-mono text-white/70"
-            >
-              »
-            </span>
+            <CompsGlyph />
           </button>
         </div>
       );
@@ -476,28 +443,28 @@ export default function ShowcaseSectionRail({
             </span>
             Comps
           </button>
-          <span className="flex flex-1 items-center justify-end gap-1">
-            <CountChip
-              label="On market"
-              count={counts.active}
-              onClick={() =>
-                jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
-              }
-            />
-            <CountChip
-              label={`Sold ${counts.soldMonths} in mos`}
-              count={counts.sold}
-              onClick={() =>
-                jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
-              }
-            />
-          </span>
-          {isDesktop ? null : (
-            <MinimizeGlyphButton
-              label="Hide comps"
-              onClick={() => setRevealed(null)}
-            />
-          )}
+          {counts ? (
+            <span className="flex flex-1 items-center justify-end gap-1">
+              <CountChip
+                label="On market"
+                count={counts.active}
+                onClick={() =>
+                  jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
+                }
+              />
+              <CountChip
+                label={`Sold ${counts.soldMonths} in mos`}
+                count={counts.sold}
+                onClick={() =>
+                  jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
+                }
+              />
+            </span>
+          ) : null}
+          <MinimizeGlyphButton
+            label="Hide comps"
+            onClick={() => setRevealed(null)}
+          />
         </div>
       </div>
     );
@@ -543,11 +510,32 @@ export default function ShowcaseSectionRail({
               </span>
               <Chevron open />
             </button>
+            {overlay === "details" ? (
+              <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
+            ) : null}
             <div className="max-h-[70vh] w-full overflow-y-auto overscroll-contain bg-[#0d1424]/85 shadow-[0_18px_48px_-16px_rgba(0,0,0,0.8)] backdrop-blur-md">
               {overlay === "details" ? (
-                /* The dashboard's own Details card, not a second summary —
-                   same component the deck below the photo renders. */
-                <ListingSidebar details={detailsPanelProps} />
+                detailsTab === "summary" ? (
+                  <dl className="divide-y divide-white/10 px-4">
+                    {detailRows.map((row) => (
+                      <div
+                        key={row.label}
+                        className="flex items-baseline justify-between gap-4 py-2"
+                      >
+                        <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
+                          {row.label}
+                        </dt>
+                        <dd className="text-right text-sm text-white/90">
+                          {row.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  /* The dashboard's own Details card — same component the
+                     deck below the photo renders. */
+                  <ListingSidebar details={detailsPanelProps} />
+                )
               ) : overlay === "pulse" ? (
                 <div className="p-4">
                   <ShowcaseTownPulse city={townHint ?? ""} expanded />
@@ -561,22 +549,6 @@ export default function ShowcaseSectionRail({
           </>
         ) : overlay === "map" ? null : (
           <>
-        {cardPill(
-          "details",
-          "Details",
-          <DetailsGlyph />,
-          <dl className="divide-y divide-white/10">
-            {detailRows.map((row) => (
-              <div key={row.label} className="flex items-baseline justify-between gap-4 py-2">
-                <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
-                  {row.label}
-                </dt>
-                <dd className="text-right text-sm text-white/90">{row.value}</dd>
-              </div>
-            ))}
-          </dl>,
-        )}
-
         {compsPill}
 
         <ShowcaseStepArrow direction="next" label="Next photo" onClick={onNext} />
