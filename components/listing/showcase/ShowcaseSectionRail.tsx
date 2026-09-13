@@ -35,7 +35,7 @@ import {
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 
-type DetailsTab = "summary" | "full";
+type DetailsTab = "full" | "other";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
@@ -159,22 +159,22 @@ function DetailsOverlayTabs({
   return (
     <div
       role="tablist"
-      className="flex items-end gap-0.5 border-b border-gold bg-[#0d1424] px-3 pt-2"
+      className="flex w-full items-stretch bg-[#0d1424]"
     >
-      {(["summary", "full"] as const).map((id) => (
+      {(["full", "other"] as const).map((id) => (
         <button
           key={id}
           type="button"
           role="tab"
           aria-selected={tab === id}
           onClick={() => onChange(id)}
-          className={`relative -mb-px shrink-0 rounded-t-md border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+          className={`min-w-0 flex-1 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
             tab === id
-              ? "z-[1] border-gold border-b-transparent bg-gold text-navy"
-              : "border-gold/50 bg-gold/25 text-gold hover:bg-gold/40 hover:text-navy"
+              ? "bg-gold text-navy"
+              : "bg-gold/25 text-gold hover:bg-gold/40 hover:text-navy"
           }`}
         >
-          {id === "summary" ? "Summary" : "Full"}
+          {id === "full" ? "Full" : "Other"}
         </button>
       ))}
     </div>
@@ -286,7 +286,7 @@ export default function ShowcaseSectionRail({
     setMapExpanded(expanded);
     onMapStateChange?.({ open: overlay === "map", expanded });
   };
-  const [detailsTab, setDetailsTab] = useState<DetailsTab>("summary");
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
   const [revealed, setRevealed] = useState<string | null>(null);
   const [labelsMax, setLabelsMax] = useState(false);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
@@ -440,7 +440,11 @@ export default function ShowcaseSectionRail({
       <CardChrome title="Details" onCollapse={() => setOverlay(null)}>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
         <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424]">
-          {detailsTab === "summary" ? (
+          {detailsTab === "full" ? (
+            <div className="p-3">
+              <ListingSidebar details={detailsPanelProps} unframed />
+            </div>
+          ) : (
             <dl className="divide-y divide-white/10 px-4">
               {detailRows.map((row) => (
                 <div
@@ -454,10 +458,6 @@ export default function ShowcaseSectionRail({
                 </div>
               ))}
             </dl>
-          ) : (
-            <div className="p-3">
-              <ListingSidebar details={detailsPanelProps} unframed />
-            </div>
           )}
         </div>
       </CardChrome>

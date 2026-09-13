@@ -97,7 +97,7 @@ function DemoControl({
 function SymbolRailDemo() {
   const [revealed, setRevealed] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"summary" | "full">("summary");
+  const [detailsTab, setDetailsTab] = useState<"full" | "other">("full");
   const [labelsMax, setLabelsMax] = useState(false);
 
   const compsBtn =
@@ -210,9 +210,9 @@ function SymbolRailDemo() {
             </div>
             <div
               role="tablist"
-              className="flex items-end gap-0.5 border-b border-gold bg-[#0d1424] px-3 pt-2"
+              className="flex w-full items-stretch bg-[#0d1424]"
             >
-              {(["summary", "full"] as const).map((id) => (
+              {(["full", "other"] as const).map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -220,20 +220,20 @@ function SymbolRailDemo() {
                   aria-selected={detailsTab === id}
                   data-testid={`preview-details-tab-${id}`}
                   onClick={() => setDetailsTab(id)}
-                  className={`relative -mb-px shrink-0 rounded-t-md border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+                  className={`min-w-0 flex-1 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
                     detailsTab === id
-                      ? "z-[1] border-gold border-b-transparent bg-gold text-navy"
-                      : "border-gold/50 bg-gold/25 text-gold"
+                      ? "bg-gold text-navy"
+                      : "bg-gold/25 text-gold"
                   }`}
                 >
-                  {id === "summary" ? "Summary" : "Full"}
+                  {id === "full" ? "Full" : "Other"}
                 </button>
               ))}
             </div>
             <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-              {detailsTab === "summary"
-                ? "Beds 4 · Baths 3 · 2,410 sf"
-                : "Full details card — schools, taxes, rooms"}
+              {detailsTab === "full"
+                ? "Full details card — schools, taxes, rooms"
+                : "Beds 4 · Baths 3 · 2,410 sf"}
             </div>
           </div>
         ) : (
