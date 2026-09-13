@@ -220,7 +220,9 @@ function SymbolRailDemo() {
                   aria-selected={detailsTab === id}
                   data-testid={`preview-details-tab-${id}`}
                   onClick={() => setDetailsTab(id)}
-                  className={`min-w-0 flex-1 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+                  className={`min-w-0 flex-1 px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+                    id === "full" ? "rounded-tl-md" : "rounded-tr-md"
+                  } ${
                     detailsTab === id
                       ? "bg-gold text-navy"
                       : "bg-gold/25 text-gold"
