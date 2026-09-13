@@ -688,6 +688,15 @@ export default function DealBoardMap({
           if (next.length < needed.length && prevHits.length > next.length) {
             return prev;
           }
+          if (
+            prev.length === next.length &&
+            prev.every(
+              (entry, i) =>
+                entry.zip === next[i]?.zip && entry.rings === next[i]?.rings,
+            )
+          ) {
+            return prev;
+          }
           return next;
         });
       })
@@ -698,6 +707,7 @@ export default function DealBoardMap({
     return () => {
       cancelled = true;
     };
+    // boundKey is boundZips.join(",") — same contents, even if the array is new.
   }, [boundKey, boundZips]);
 
   useEffect(() => {

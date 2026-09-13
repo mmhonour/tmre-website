@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
 import { mapBoundZipsForListing } from "@/lib/tmre-towns";
@@ -377,6 +377,26 @@ function SymbolRailDemo() {
 
 function MapChromeDemo() {
   const [pool, setPool] = useState<"active" | "uag" | "sold">("active");
+  const previewBounds = useMemo(
+    () => mapBoundZipsForListing("Westport", "06880"),
+    [],
+  );
+  const previewListings = useMemo(
+    () => [
+      {
+        key: "preview-harbor",
+        address: "12 Harbor Rd",
+        city: "Westport",
+        price: 1_900_000,
+        score: 80,
+        isRental: false,
+        sqft: 2410,
+        latitude: 41.141,
+        longitude: -73.358,
+      },
+    ],
+    [],
+  );
   return (
     <div className="relative h-64 overflow-hidden bg-[#1a2744]">
       <div
@@ -405,21 +425,10 @@ function MapChromeDemo() {
         <div className="relative min-h-0 w-full flex-1">
           <div className="absolute inset-0">
             <DealBoardMap
-              listings={[
-                {
-                  key: "preview-harbor",
-                  address: "12 Harbor Rd",
-                  city: "Westport",
-                  price: 1_900_000,
-                  score: 80,
-                  isRental: false,
-                  sqft: 2410,
-                  latitude: 41.141,
-                  longitude: -73.358,
-                },
-              ]}
+              listings={previewListings}
               subjectKey="preview-harbor"
-              {...mapBoundZipsForListing("Westport", "06880")}
+              boundZips={previewBounds.boundZips}
+              highlightZip={previewBounds.highlightZip}
               className="h-full w-full"
               heightClass="h-full"
               hideLocationOverlayButton
