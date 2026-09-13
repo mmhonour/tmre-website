@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { westportParcelHref } from "@/lib/listing-url";
 import {
@@ -30,7 +31,7 @@ function PurchaseSortLink({
         event.preventDefault();
         onSort(column);
       }}
-      className={`inline-flex items-center gap-1 no-underline ${
+      className={`inline-flex items-center justify-end gap-1 no-underline ${
         active ? "text-navy" : "text-navy/70 hover:text-navy"
       }`}
       aria-label={`Sort purchases by ${label}${active ? `, ${dir}ending` : ""}`}
@@ -65,8 +66,9 @@ export function OwnerPortfolioHomes({
   const rows = sortOwnerPortfolioParcels(parcels, sortKey, sortDir);
 
   return (
-    <>
-      <div className="mt-3 flex items-baseline justify-end gap-4 font-mono text-[10px] uppercase tracking-[0.14em]">
+    <div className="mt-3 grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-baseline gap-x-6 gap-y-1.5">
+      <div aria-hidden />
+      <div className="justify-self-end font-mono text-[10px] uppercase tracking-[0.14em]">
         <PurchaseSortLink
           column="date"
           label="Date"
@@ -74,6 +76,8 @@ export function OwnerPortfolioHomes({
           dir={sortDir}
           onSort={onSort}
         />
+      </div>
+      <div className="justify-self-end font-mono text-[10px] uppercase tracking-[0.14em]">
         <PurchaseSortLink
           column="amount"
           label="Amount"
@@ -82,43 +86,37 @@ export function OwnerPortfolioHomes({
           onSort={onSort}
         />
       </div>
-      <ul className="mt-1.5 space-y-1.5">
-        {rows.map((parcel) => (
-          <li
-            key={`${parcel.town}:${parcel.visionPid}`}
-            className="flex items-start justify-between gap-6"
+      {rows.map((parcel) => (
+        <Fragment key={`${parcel.town}:${parcel.visionPid}`}>
+          <Link
+            href={westportParcelHref(parcel.visionPid)}
+            className="min-w-0 text-left font-mono text-sm text-navy hover:underline"
           >
-            <Link
-              href={westportParcelHref(parcel.visionPid)}
-              className="min-w-0 font-mono text-sm text-navy hover:underline"
-            >
-              {parcel.siteAddress}
-            </Link>
-            {parcel.lastPaidPriceLabel ? (
-              <p className="flex shrink-0 items-baseline justify-end gap-3 text-right">
-                {parcel.lastPaidSaleDate ? (
-                  <span className="font-mono text-[11px] tracking-[0.04em] text-charcoal/55">
-                    {parcel.lastPaidSaleDate}
-                  </span>
-                ) : null}
-                <span className="font-mono text-sm tabular-nums text-charcoal/90">
-                  {parcel.lastPaidPriceLabel}
-                </span>
-              </p>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+            {parcel.siteAddress}
+          </Link>
+          <p className="justify-self-end whitespace-nowrap text-right font-mono text-[11px] tabular-nums tracking-[0.04em] text-charcoal/55">
+            {parcel.lastPaidSaleDate ?? ""}
+          </p>
+          <p className="justify-self-end whitespace-nowrap text-right font-mono text-sm tabular-nums text-charcoal/90">
+            {parcel.lastPaidPriceLabel ?? ""}
+          </p>
+        </Fragment>
+      ))}
       {purchaseTotalLabel ? (
-        <p className="mt-3 flex items-baseline justify-between gap-6 border-t border-charcoal/[0.08] pt-2">
-          <span className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
+        <>
+          <div
+            className="col-span-3 mt-1.5 border-t border-charcoal/[0.08]"
+            aria-hidden
+          />
+          <p className="pt-2 font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
             Purchases
-          </span>
-          <span className="font-mono text-sm tabular-nums text-navy">
+          </p>
+          <p className="pt-2" />
+          <p className="justify-self-end pt-2 text-right font-mono text-sm tabular-nums text-navy">
             {purchaseTotalLabel}
-          </span>
-        </p>
+          </p>
+        </>
       ) : null}
-    </>
+    </div>
   );
 }
