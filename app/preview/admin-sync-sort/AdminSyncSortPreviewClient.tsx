@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import AdminSyncSortTh from "@/components/admin/AdminSyncSortTh";
+import { formatAdminSyncTimeOnly } from "@/lib/admin-sync-schedule-format";
 import {
-  formatAdminSyncTimeOnly,
-} from "@/lib/admin-sync-schedule-format";
-import {
-  compareAdminSyncRowSortMeta,
+  applyFrozenAdminSyncRowOrder,
   nextAdminSyncColumnSort,
+  snapshotAdminSyncSortIds,
   type AdminSyncColumnSortDir,
   type AdminSyncColumnSortKey,
 } from "@/lib/admin-sync-table-sort";
 import {
+  SYNC_SCHEDULE_FREQUENCIES,
   frequencyLabel,
   type SyncScheduleFrequencyId,
 } from "@/lib/sync-schedule-config-shared";
@@ -19,6 +19,7 @@ import {
 type FixtureRow = {
   id: string;
   label: string;
+  order: number;
   frequency: SyncScheduleFrequencyId;
   startIso: string | null;
   endIso: string | null;
@@ -33,11 +34,11 @@ function isoHoursAhead(hours: number): string {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
-/** Labels that would sort A–Z as 15 mins, 2 hours, 30 mins, Daily, Weekly. */
-const FIXTURE_ROWS: FixtureRow[] = [
+const INITIAL_ROWS: FixtureRow[] = [
   {
     id: "weekly",
     label: "Market digest",
+    order: 1,
     frequency: "weekly",
     startIso: isoHoursAgo(30),
     endIso: isoHoursAgo(29.5),
@@ -46,6 +47,7 @@ const FIXTURE_ROWS: FixtureRow[] = [
   {
     id: "15m",
     label: "Incremental",
+    order: 2,
     frequency: "15m",
     startIso: isoHoursAgo(0.2),
     endIso: isoHoursAgo(0.1),
@@ -54,6 +56,7 @@ const FIXTURE_ROWS: FixtureRow[] = [
   {
     id: "2h",
     label: "Stats cache",
+    order: 3,
     frequency: "2h",
     startIso: isoHoursAgo(3),
     endIso: isoHoursAgo(2.4),
@@ -62,6 +65,7 @@ const FIXTURE_ROWS: FixtureRow[] = [
   {
     id: "daily",
     label: "Deal of the day",
+    order: 4,
     frequency: "daily",
     startIso: isoHoursAgo(20),
     endIso: isoHoursAgo(19.8),
@@ -70,6 +74,7 @@ const FIXTURE_ROWS: FixtureRow[] = [
   {
     id: "30m",
     label: "Open houses",
+    order: 5,
     frequency: "30m",
     startIso: isoHoursAgo(0.8),
     endIso: isoHoursAgo(0.6),
@@ -78,6 +83,7 @@ const FIXTURE_ROWS: FixtureRow[] = [
   {
     id: "monthly",
     label: "CAMA tax",
+    order: 6,
     frequency: "monthly",
     startIso: isoHoursAgo(200),
     endIso: isoHoursAgo(198),
@@ -86,6 +92,7 @@ const FIXTURE_ROWS: FixtureRow[] = [
   {
     id: "event",
     label: "FOMC",
+    order: 7,
     frequency: "event",
     startIso: null,
     endIso: null,
@@ -93,37 +100,32 @@ const FIXTURE_ROWS: FixtureRow[] = [
   },
 ];
 
+function metaFor(row: FixtureRow) {
+  return {
+    id: row.id,
+    frequency: row.frequency,
+    startMs: row.startIso ? Date.parse(row.startIso) : null,
+    endMs: row.endIso ? Date.parse(row.endIso) : null,
+    nextMs: row.nextIso ? Date.parse(row.nextIso) : null,
+    order: row.order,
+  };
+}
+
 export default function AdminSyncSortPreviewClient() {
+  const [rows, setRows] = useState(INITIAL_ROWS);
   const [sortKey, setSortKey] = useState<AdminSyncColumnSortKey | null>(null);
   const [sortDir, setSortDir] = useState<AdminSyncColumnSortDir>("asc");
+  const [sortedRowIds, setSortedRowIds] = useState<string[] | null>(null);
 
-  const rows = useMemo(() => {
-    const next = [...FIXTURE_ROWS];
-    if (!sortKey) return next;
-    return next.sort((a, b) =>
-      compareAdminSyncRowSortMeta(
-        {
-          frequency: a.frequency,
-          startMs: a.startIso ? Date.parse(a.startIso) : null,
-          endMs: a.endIso ? Date.parse(a.endIso) : null,
-          nextMs: a.nextIso ? Date.parse(a.nextIso) : null,
-        },
-        {
-          frequency: b.frequency,
-          startMs: b.startIso ? Date.parse(b.startIso) : null,
-          endMs: b.endIso ? Date.parse(b.endIso) : null,
-          nextMs: b.nextIso ? Date.parse(b.nextIso) : null,
-        },
-        sortKey,
-        sortDir,
-      ),
-    );
-  }, [sortKey, sortDir]);
+  const visible = applyFrozenAdminSyncRowOrder(rows, sortedRowIds);
 
   const onSort = (column: AdminSyncColumnSortKey) => {
     const next = nextAdminSyncColumnSort(sortKey, sortDir, column);
     setSortKey(next.key);
     setSortDir(next.dir);
+    setSortedRowIds(
+      snapshotAdminSyncSortIds(rows.map(metaFor), next.key, next.dir),
+    );
   };
 
   return (
@@ -136,15 +138,22 @@ export default function AdminSyncSortPreviewClient() {
           Admin sync column sort
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
-          Click Frequency, Start, End, or Next. Frequency is shortest cadence
-          to longest (15 mins before 2 hours before Daily), not A–Z of the
-          label. Start / End / Next use the clock, not the printed string.
-          Fixture rows — not the live sync table.
+          Click a heading to sort (Order, Frequency, Start, End, Next). Changing
+          Frequency in a row does not move that row — the order stays until you
+          click a heading again. Frequency is shortest cadence to longest, not
+          A–Z. Fixture rows — not the live sync table.
         </p>
         <div className="overflow-x-auto rounded-2xl border border-charcoal/[0.08] bg-white">
           <table className="w-full border-collapse text-sm text-navy">
             <thead>
               <tr>
+                <AdminSyncSortTh
+                  column="order"
+                  label="Order"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                />
                 <th className="px-3 py-2 text-left font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40">
                   Job
                 </th>
@@ -179,10 +188,32 @@ export default function AdminSyncSortPreviewClient() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visible.map((row) => (
                 <tr key={row.id} className="border-t border-charcoal/[0.06]">
+                  <td className="px-3 py-2 font-mono text-xs">{row.order}</td>
                   <td className="px-3 py-2">{row.label}</td>
-                  <td className="px-3 py-2">{frequencyLabel(row.frequency)}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      aria-label={`Frequency for ${row.label}`}
+                      className="rounded border border-charcoal/15 bg-white px-1.5 py-1 text-sm"
+                      value={row.frequency}
+                      onChange={(event) => {
+                        const frequency = event.target
+                          .value as SyncScheduleFrequencyId;
+                        setRows((current) =>
+                          current.map((item) =>
+                            item.id === row.id ? { ...item, frequency } : item,
+                          ),
+                        );
+                      }}
+                    >
+                      {SYNC_SCHEDULE_FREQUENCIES.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-3 py-2">
                     {formatAdminSyncTimeOnly(row.startIso)}
                   </td>
@@ -197,6 +228,11 @@ export default function AdminSyncSortPreviewClient() {
             </tbody>
           </table>
         </div>
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-charcoal/40">
+          {sortKey
+            ? `Sorted by ${sortKey} ${sortDir} — frozen until the next heading click`
+            : `Unsorted fixture order — ${frequencyLabel("15m")} sits below Weekly until you click Frequency`}
+        </p>
       </div>
     </div>
   );

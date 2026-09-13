@@ -15,6 +15,7 @@ export default function AdminSyncSortTh({
   activeKey,
   dir,
   onSort,
+  className,
 }: {
   column: AdminSyncColumnSortKey;
   label: string;
@@ -22,11 +23,12 @@ export default function AdminSyncSortTh({
   activeKey: AdminSyncColumnSortKey | null;
   dir: AdminSyncColumnSortDir;
   onSort: (column: AdminSyncColumnSortKey) => void;
+  className?: string;
 }) {
   const active = activeKey === column;
   const arrow = !active ? "↕" : dir === "asc" ? "↑" : "↓";
   return (
-    <th className={TH} title={title}>
+    <th className={className ?? TH} title={title}>
       <button
         type="button"
         onClick={() => onSort(column)}

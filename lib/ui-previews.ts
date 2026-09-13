@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "admin-sync-sort",
     title: "Admin sync column sort",
     summary:
-      "Frequency sorts shortest ↔ longest cadence (not A–Z). Start, End, and Next sort by clock time.",
+      "Click a heading to sort (including Order). Edits in the row stay put until the next heading click.",
   },
   {
     slug: "listing-vision-address",
