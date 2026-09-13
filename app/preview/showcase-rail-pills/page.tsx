@@ -16,9 +16,10 @@ export default function ShowcaseRailPillsPreviewPage() {
           Listing full-bleed rail pills
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture only — no live MLS. Page load is symbols only. One Details
-          icon opens Summary / Full tabs. Insight sits above Details. Navy
-          wash behind status, address, and Offered at / Closed at.
+          Fixture only — no live MLS. Page load is symbols only. Insight sits
+          above Comps; Comps sits left of What if. Details, Map, and Town
+          pulse stack on the right. One Details icon opens Summary / Full
+          tabs. Navy wash behind status, address, and Offered at / Closed at.
         </p>
         <ShowcaseRailPillsPreview />
       </div>

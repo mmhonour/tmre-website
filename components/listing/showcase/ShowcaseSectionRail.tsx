@@ -149,9 +149,10 @@ type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
  * Rail of flush rectangular tiles over the right of the photo. Every pill
- * starts as a symbol. Insight sits above Details; one Details icon opens a
- * Summary / Full tab pair. Comps and What if reveal figures on tap, then «
- * hides them. Map takes over the right column.
+ * starts as a symbol. Insight sits above Comps; Comps sits left of What if.
+ * Details, Map, and Town pulse stack as a column on the right. One Details
+ * icon opens a Summary / Full tab pair. Comps and What if reveal figures on
+ * tap, then « hides them. Map takes over the right column.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -277,7 +278,7 @@ export default function ShowcaseSectionRail({
     const showFigures = revealed === id;
     if (showFigures) {
       return (
-        <div className="flex w-full flex-col items-end lg:items-stretch">
+        <div className="flex w-fit max-w-full flex-col items-end">
           <div className={`${railRowClass({ interactive: false })} gap-2`}>
             <button
               type="button"
@@ -301,45 +302,44 @@ export default function ShowcaseSectionRail({
       );
     }
     return (
-      <div className="flex w-full flex-col items-end">
-        <button
-          type="button"
-          onClick={() => setRevealed(id)}
-          aria-label={label}
-          title={label}
-          className={railIconClass(false)}
-        >
-          {glyph}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setRevealed(id)}
+        aria-label={label}
+        title={label}
+        className={railIconClass(false)}
+      >
+        {glyph}
+      </button>
     );
   };
 
-  /* Insight sits above Details; Map and Pulse stay beside that stack. */
-  const iconRow = (
-    <div className="mt-1 flex items-end gap-1">
-      <div className="flex flex-col gap-1">
-        <button
-          type="button"
-          onClick={() => toggleOverlay("insight")}
-          aria-pressed={overlay === "insight"}
-          aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
-          title="Insight"
-          className={railIconClass(overlay === "insight")}
-        >
-          <InsightGlyph />
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleOverlay("details")}
-          aria-pressed={overlay === "details"}
-          aria-label={overlay === "details" ? "Close details" : "Show details"}
-          title={overlay === "details" ? "Close details" : "Details"}
-          className={railIconClass(overlay === "details")}
-        >
-          <DetailsGlyph />
-        </button>
-      </div>
+  const insightButton = (
+    <button
+      type="button"
+      onClick={() => toggleOverlay("insight")}
+      aria-pressed={overlay === "insight"}
+      aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
+      title="Insight"
+      className={railIconClass(overlay === "insight")}
+    >
+      <InsightGlyph />
+    </button>
+  );
+
+  /* Details, Map, Pulse — a column flush to the right, not a row. */
+  const sideIcons = (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => toggleOverlay("details")}
+        aria-pressed={overlay === "details"}
+        aria-label={overlay === "details" ? "Close details" : "Show details"}
+        title={overlay === "details" ? "Close details" : "Details"}
+        className={railIconClass(overlay === "details")}
+      >
+        <DetailsGlyph />
+      </button>
       <button
         type="button"
         onClick={() => toggleOverlay("map")}
@@ -363,6 +363,13 @@ export default function ShowcaseSectionRail({
     </div>
   );
 
+  const chromeIcons = (
+    <div className="flex items-end gap-1">
+      {insightButton}
+      {sideIcons}
+    </div>
+  );
+
   const mapOverlay = overlay === "map" ? (
     /*
      * Phone: true full screen, over the site header, like the Intelligence
@@ -378,7 +385,7 @@ export default function ShowcaseSectionRail({
         mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
-      <div className="flex shrink-0 justify-end">{iconRow}</div>
+      <div className="flex shrink-0 justify-end">{chromeIcons}</div>
       <div className="min-h-0 flex-1">
         {map?.hidePin ? (
           <ListingLocationMap
@@ -417,21 +424,19 @@ export default function ShowcaseSectionRail({
   const compsPill = (() => {
     if (revealed !== "comps") {
       return (
-        <div className="flex w-full flex-col items-end">
-          <button
-            type="button"
-            onClick={() => setRevealed("comps")}
-            aria-label="Comps"
-            title="Comps"
-            className={railIconClass(false)}
-          >
-            <CompsGlyph />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setRevealed("comps")}
+          aria-label="Comps"
+          title="Comps"
+          className={railIconClass(false)}
+        >
+          <CompsGlyph />
+        </button>
       );
     }
     return (
-      <div className="flex w-full flex-col items-end lg:items-stretch">
+      <div className="flex w-fit max-w-full flex-col items-end">
         <div className={`${railRowClass({ interactive: false })} gap-2`}>
           <button
             type="button"
@@ -485,7 +490,7 @@ export default function ShowcaseSectionRail({
           <>
             {/* Icons first in this mode: the card can run to 70vh, which would
                 push the only way out below the fold. */}
-            {iconRow}
+            {chromeIcons}
             <button
               type="button"
               onClick={() => toggleOverlay(overlay)}
@@ -548,23 +553,28 @@ export default function ShowcaseSectionRail({
             </div>
           </>
         ) : overlay === "map" ? null : (
-          <>
-        {compsPill}
-
-        <ShowcaseStepArrow direction="next" label="Next photo" onClick={onNext} />
-
-        {figurePill(
-          "if",
-          "What if",
-          <WhatIfGlyph />,
-          ifLabel ? <span>{ifLabel}</span> : null,
-          () => scrollToShowcaseSection("if"),
+          <div className="flex items-end gap-1">
+            <ShowcaseStepArrow
+              direction="next"
+              label="Next photo"
+              onClick={onNext}
+            />
+            <div className="flex flex-col items-end gap-1">
+              {insightButton}
+              <div className="flex items-center gap-1">
+                {compsPill}
+                {figurePill(
+                  "if",
+                  "What if",
+                  <WhatIfGlyph />,
+                  ifLabel ? <span>{ifLabel}</span> : null,
+                  () => scrollToShowcaseSection("if"),
+                )}
+              </div>
+            </div>
+            {sideIcons}
+          </div>
         )}
-
-          </>
-        )}
-
-        {overlay ? null : iconRow}
       </div>
     </>
   );

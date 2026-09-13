@@ -56,82 +56,90 @@ function SymbolRailDemo() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"summary" | "full">("summary");
 
+  const compsBtn =
+    revealed === "comps" ? (
+      <div className={`${railRow} gap-2`}>
+        <span className="inline-flex items-center">
+          <span className="mr-2.5 inline-flex">
+            <CompsGlyph />
+          </span>
+          Comps
+        </span>
+        <span className="flex flex-1 items-center justify-end gap-1">
+          <CountChip label="On market" count={6} />
+          <CountChip label="Sold 12 in mos" count={21} />
+        </span>
+        <button
+          type="button"
+          data-testid="preview-comps-hide"
+          onClick={() => setRevealed(null)}
+          aria-label="Hide comps"
+          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+        >
+          «
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        data-testid="preview-comps-open"
+        onClick={() => setRevealed("comps")}
+        aria-label="Comps"
+        title="Comps"
+        className={railIcon}
+      >
+        <CompsGlyph />
+      </button>
+    );
+
+  const ifBtn =
+    revealed === "if" ? (
+      <div className={`${railRow} gap-2`}>
+        <span className="flex min-w-0 flex-1 items-center">
+          <span className="mr-2.5 inline-flex">
+            <WhatIfGlyph />
+          </span>
+          <span className="shrink-0">What if</span>
+          <span className="ml-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
+            $1.4M / $6,200
+          </span>
+        </span>
+        <button
+          type="button"
+          data-testid="preview-if-hide"
+          onClick={() => setRevealed(null)}
+          aria-label="Hide What if"
+          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+        >
+          «
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        data-testid="preview-if-open"
+        onClick={() => setRevealed("if")}
+        aria-label="What if"
+        title="What if"
+        className={railIcon}
+      >
+        <WhatIfGlyph />
+      </button>
+    );
+
   return (
     <div className="flex flex-col items-end gap-1">
-      {revealed === "comps" ? (
-        <div className={`${railRow} gap-2`}>
-          <span className="inline-flex items-center">
-            <span className="mr-2.5 inline-flex">
-              <CompsGlyph />
-            </span>
-            Comps
-          </span>
-          <span className="flex flex-1 items-center justify-end gap-1">
-            <CountChip label="On market" count={6} />
-            <CountChip label="Sold 12 in mos" count={21} />
-          </span>
-          <button
-            type="button"
-            data-testid="preview-comps-hide"
-            onClick={() => setRevealed(null)}
-            aria-label="Hide comps"
-            className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
-          >
-            «
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          data-testid="preview-comps-open"
-          onClick={() => setRevealed("comps")}
-          aria-label="Comps"
-          title="Comps"
-          className={railIcon}
-        >
-          <CompsGlyph />
-        </button>
-      )}
-
-      {revealed === "if" ? (
-        <div className={`${railRow} gap-2`}>
-          <span className="flex min-w-0 flex-1 items-center">
-            <span className="mr-2.5 inline-flex">
-              <WhatIfGlyph />
-            </span>
-            <span className="shrink-0">What if</span>
-            <span className="ml-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
-              $1.4M / $6,200
-            </span>
-          </span>
-          <button
-            type="button"
-            data-testid="preview-if-hide"
-            onClick={() => setRevealed(null)}
-            aria-label="Hide What if"
-            className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
-          >
-            «
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          data-testid="preview-if-open"
-          onClick={() => setRevealed("if")}
-          aria-label="What if"
-          title="What if"
-          className={railIcon}
-        >
-          <WhatIfGlyph />
-        </button>
-      )}
-
-      <div className="mt-1 flex items-end gap-1">
-        <div className="flex flex-col gap-1">
+      <div className="flex items-end gap-1">
+        <div className="flex flex-col items-end gap-1">
           <span className={railIcon} title="Insight">
             <InsightGlyph />
           </span>
+          <div className="flex items-center gap-1">
+            {compsBtn}
+            {ifBtn}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
           <button
             type="button"
             data-testid="preview-details-open"
@@ -142,13 +150,13 @@ function SymbolRailDemo() {
           >
             <DetailsGlyph />
           </button>
+          <span className={railIcon} title="Map">
+            <MapGlyph />
+          </span>
+          <span className={railIcon} title="Town pulse">
+            <PulseGlyph />
+          </span>
         </div>
-        <span className={railIcon} title="Map">
-          <MapGlyph />
-        </span>
-        <span className={railIcon} title="Town pulse">
-          <PulseGlyph />
-        </span>
       </div>
 
       {detailsOpen ? (
@@ -245,9 +253,9 @@ export function ShowcaseRailPillsPreview() {
           Symbols first — Details tabs
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Page load is icons only. Insight sits above Details. One Details
-          control opens Summary / Full tabs. Comps and What if expand on tap;
-          « hides them.
+          Page load is icons only. Insight sits above Comps; Comps sits left
+          of What if. Details, Map, and Town pulse stack on the right. One
+          Details control opens Summary / Full tabs.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
