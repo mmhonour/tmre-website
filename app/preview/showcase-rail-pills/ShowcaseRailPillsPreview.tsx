@@ -232,7 +232,7 @@ function SymbolRailDemo() {
     ) : null;
 
   const compsPill = compsOpen ? (
-    <div className={`${railRow} max-w-full gap-2`}>
+    <div className={`${railRow} w-fit max-w-full gap-2`}>
       <span className="underline decoration-white/35 underline-offset-4">
         Comps
       </span>
@@ -261,7 +261,7 @@ function SymbolRailDemo() {
   );
 
   const ifPill = ifOpen ? (
-    <div className={`${railRow} max-w-full gap-2`}>
+    <div className={`${railRow} w-fit max-w-full gap-2`}>
       <span className="underline decoration-white/35 underline-offset-4">
         What if
       </span>
@@ -500,7 +500,8 @@ export function ShowcaseRailPillsPreview() {
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
           Decks (Insight / Details / Pulse / Map) are exclusive. Comps and
-          What if expand in place and can stay open together. On a phone,
+          What if expand in place and can stay open together. Other glyphs
+          stay in the right-hand stack — they do not shift left. On a phone,
           opening either one closes the deck so the pills have room, leftover
           glyphs stay on the deck’s right edge, and min/max hides while a
           deck is up.

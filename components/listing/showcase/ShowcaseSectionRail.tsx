@@ -51,12 +51,14 @@ const CARD_RIGHT = "right-[min(24rem,calc(100vw-3.75rem))]";
 const railRowClass = (opts: {
   open?: boolean;
   fullWidth?: boolean;
+  /** Comps / What if — grow in place, never stretch like a deck. */
+  fit?: boolean;
   interactive?: boolean;
 }) =>
   `flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
     // `w-fit` rather than `w-auto`: a block-level flex box with auto width
     // still stretches to its container.
-    opts.fullWidth ? "w-full" : "w-fit lg:w-full"
+    opts.fit ? "w-fit max-w-full" : opts.fullWidth ? "w-full" : "w-fit lg:w-full"
   } ${
     opts.open
       ? "bg-navy text-white"
@@ -256,7 +258,8 @@ type IfAmounts = { sale: number | null; rent: number | null };
  * What if sit above that arrow; Details, Pulse, and Map sit below. One
  * deck at a time occupies the center-right of the bleed, above the type.
  * Comps and What if expand in place and can stay open with each other and
- * with a deck. On a phone, opening either one closes the deck so the pills
+ * with a deck. They stay `w-fit` in the glyph stack — other icons do not
+ * shift left. On a phone, opening either one closes the deck so the pills
  * have room, leftover glyphs stay on the deck’s right edge, and min/max
  * hides while a deck is up.
  */
@@ -515,7 +518,7 @@ export default function ShowcaseSectionRail({
   const compsPill = figures.has("comps") ? (
     <div className="flex w-fit max-w-full flex-col items-end">
       <div
-        className={`${railRowClass({ interactive: false, fullWidth: true })} gap-2 bg-[#0d1424]`}
+        className={`${railRowClass({ interactive: false, fit: true })} gap-2 bg-[#0d1424]`}
       >
         <button
           type="button"
@@ -543,7 +546,7 @@ export default function ShowcaseSectionRail({
   const whatIfPill = figures.has("if") ? (
     <div className="flex w-fit max-w-full flex-col items-end">
       <div
-        className={`${railRowClass({ interactive: false, fullWidth: true })} gap-2 bg-[#0d1424]`}
+        className={`${railRowClass({ interactive: false, fit: true })} gap-2 bg-[#0d1424]`}
       >
         <button
           type="button"
