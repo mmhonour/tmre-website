@@ -166,7 +166,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Right arrow opposite the left. Insight/Comps/What if stack above; Details/Pulse/Map below. Open cards keep leftover glyphs on the card’s left edge. What if Sale/Rent chips jump to each scenario. Map says Under Agreement. Cards close with ↑.",
+      "One exclusive card in the center-right of the bleed, above the type. Glyphs hug its left edge. What if Sale/Rent chips jump to each scenario. Map is inset until Full screen. Under Agreement. Cards close with ↑.",
   },
 ];
 

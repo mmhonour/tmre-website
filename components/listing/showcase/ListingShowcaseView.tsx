@@ -50,9 +50,9 @@ function priceClearanceStyle(
     kind === "map"
       ? expanded
         ? "min(50vw, 44rem)"
-        : "24rem"
-      : "min(24rem, calc(100vw - 3rem))";
-  const gutter = kind === "map" ? "3.5rem" : "0rem";
+        : "min(24rem, calc(100vw - 3.75rem))"
+      : "min(24rem, calc(100vw - 3.75rem))";
+  const gutter = "3.5rem";
   return {
     marginRight: `max(0rem, calc(${width} + ${gutter} + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
   };

@@ -213,9 +213,14 @@ export default function ShowcaseCompsMap({
               type="button"
               onClick={onToggleExpanded}
               aria-pressed={expanded}
-              className="hidden rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85 shadow-lg transition-colors hover:text-gold lg:block"
+              className="rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85 shadow-lg transition-colors hover:text-gold"
             >
-              {expanded ? "Shrink" : "Full size"}
+              <span className="lg:hidden">
+                {expanded ? "Exit full screen" : "Full screen"}
+              </span>
+              <span className="hidden lg:inline">
+                {expanded ? "Shrink" : "Full size"}
+              </span>
             </button>
           ) : null}
           <div className="flex flex-col items-stretch bg-[#0d1424] shadow-lg">
