@@ -101,26 +101,36 @@ function DemoControl({
   );
 }
 
-/** Default: glyphs only. One exclusive card in the center-right. */
+/** Glyphs plus in-place Comps / What if. Decks are exclusive. */
 function SymbolRailDemo() {
-  const [open, setOpen] = useState<
-    "insight" | "comps" | "if" | "details" | "pulse" | "map" | null
+  const [deck, setDeck] = useState<
+    "insight" | "details" | "pulse" | "map" | null
   >(null);
+  const [compsOpen, setCompsOpen] = useState(false);
+  const [ifOpen, setIfOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"full" | "other">("full");
   const [labelsMax, setLabelsMax] = useState(false);
 
-  const toggle = (id: NonNullable<typeof open>) =>
-    setOpen((current) => (current === id ? null : id));
+  const toggleDeck = (id: NonNullable<typeof deck>) =>
+    setDeck((current) => (current === id ? null : id));
+  const toggleComps = () => {
+    if (deck) setDeck(null);
+    setCompsOpen((open) => !open);
+  };
+  const toggleIf = () => {
+    if (deck) setDeck(null);
+    setIfOpen((open) => !open);
+  };
 
   const card =
-    open === "insight" ? (
+    deck === "insight" ? (
       <div className="w-full max-w-sm bg-[#0d1424]">
         <div className={`${railRow} w-full bg-[#0d1424]`}>
           <span className="flex-1">Insight</span>
           <button
             type="button"
             data-testid="preview-insight-hide"
-            onClick={() => setOpen(null)}
+            onClick={() => setDeck(null)}
             aria-label="Hide Insight"
             className="ml-2 px-1 font-mono text-white/70"
           >
@@ -131,52 +141,14 @@ function SymbolRailDemo() {
           Four beds on the harbor, listed this week.
         </div>
       </div>
-    ) : open === "comps" ? (
-      <div className={`${railRow} w-full max-w-sm gap-2 bg-[#0d1424]`}>
-        <span className="underline decoration-white/35 underline-offset-4">
-          Comps
-        </span>
-        <span className="flex flex-1 items-center justify-end gap-1">
-          <CountChip label="On market" count={6} />
-          <CountChip label="Sold 12 in mos" count={21} />
-        </span>
-        <button
-          type="button"
-          data-testid="preview-comps-hide"
-          onClick={() => setOpen(null)}
-          aria-label="Hide comps"
-          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
-        >
-          ↑
-        </button>
-      </div>
-    ) : open === "if" ? (
-      <div className={`${railRow} w-full max-w-sm gap-2 bg-[#0d1424]`}>
-        <span className="underline decoration-white/35 underline-offset-4">
-          What if
-        </span>
-        <span className="flex flex-1 items-center justify-end gap-1">
-          <CountChip label="Sale" count="$1.4M" />
-          <CountChip label="Rent" count="$6.2K" />
-        </span>
-        <button
-          type="button"
-          data-testid="preview-if-hide"
-          onClick={() => setOpen(null)}
-          aria-label="Hide What if"
-          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
-        >
-          ↑
-        </button>
-      </div>
-    ) : open === "details" ? (
+    ) : deck === "details" ? (
       <div className="w-full max-w-sm bg-[#0d1424]">
         <div className={`${railRow} w-full bg-[#0d1424]`}>
           <span className="flex-1">Details</span>
           <button
             type="button"
             data-testid="preview-details-hide"
-            onClick={() => setOpen(null)}
+            onClick={() => setDeck(null)}
             aria-label="Hide Details"
             className="ml-2 px-1 font-mono text-white/70"
           >
@@ -217,14 +189,14 @@ function SymbolRailDemo() {
           )}
         </div>
       </div>
-    ) : open === "pulse" ? (
+    ) : deck === "pulse" ? (
       <div className="w-full max-w-sm bg-[#0d1424]">
         <div className={`${railRow} w-full bg-[#0d1424]`}>
           <span className="flex-1">Town pulse</span>
           <button
             type="button"
             data-testid="preview-pulse-hide"
-            onClick={() => setOpen(null)}
+            onClick={() => setDeck(null)}
             aria-label="Hide Town pulse"
             className="ml-2 px-1 font-mono text-white/70"
           >
@@ -239,7 +211,7 @@ function SymbolRailDemo() {
           <li>Median $1.85M</li>
         </ul>
       </div>
-    ) : open === "map" ? (
+    ) : deck === "map" ? (
       <div className="flex h-64 w-full max-w-sm flex-col bg-[#0d1424]">
         <div className={`${railRow} w-full bg-[#0d1424]`}>
           <span className="flex-1">Map</span>
@@ -248,7 +220,7 @@ function SymbolRailDemo() {
           </span>
           <button
             type="button"
-            onClick={() => setOpen(null)}
+            onClick={() => setDeck(null)}
             aria-label="Hide Map"
             className="ml-2 px-1 font-mono text-white/70"
           >
@@ -259,12 +231,70 @@ function SymbolRailDemo() {
       </div>
     ) : null;
 
+  const compsPill = compsOpen ? (
+    <div className={`${railRow} max-w-full gap-2`}>
+      <span className="underline decoration-white/35 underline-offset-4">
+        Comps
+      </span>
+      <span className="flex items-center gap-1">
+        <CountChip label="On market" count={6} />
+        <CountChip label="Sold 12 in mos" count={21} />
+      </span>
+      <button
+        type="button"
+        data-testid="preview-comps-hide"
+        onClick={() => setCompsOpen(false)}
+        aria-label="Hide comps"
+        className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+      >
+        ↑
+      </button>
+    </div>
+  ) : (
+    <DemoControl
+      label="Comps"
+      glyph={<CompsGlyph />}
+      showLabel={labelsMax && !deck}
+      testId="preview-comps-open"
+      onClick={toggleComps}
+    />
+  );
+
+  const ifPill = ifOpen ? (
+    <div className={`${railRow} max-w-full gap-2`}>
+      <span className="underline decoration-white/35 underline-offset-4">
+        What if
+      </span>
+      <span className="flex items-center gap-1">
+        <CountChip label="Sale" count="$1.4M" />
+        <CountChip label="Rent" count="$6.2K" />
+      </span>
+      <button
+        type="button"
+        data-testid="preview-if-hide"
+        onClick={() => setIfOpen(false)}
+        aria-label="Hide What if"
+        className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+      >
+        ↑
+      </button>
+    </div>
+  ) : (
+    <DemoControl
+      label="What if"
+      glyph={<WhatIfGlyph />}
+      showLabel={labelsMax && !deck}
+      testId="preview-if-open"
+      onClick={toggleIf}
+    />
+  );
+
   return (
     <div className="relative min-h-[28rem]">
       <div
         className="mb-3 w-full transition-[padding] duration-300"
         style={
-          open
+          deck
             ? { paddingRight: "min(24rem, calc(100% - 3.75rem))" }
             : undefined
         }
@@ -273,91 +303,72 @@ function SymbolRailDemo() {
           <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
         </div>
       </div>
-      <div
-        className={`absolute inset-y-0 flex flex-col items-end pr-3 ${
-          open ? "right-[min(24rem,calc(100%-3.75rem))]" : "right-0"
-        }`}
-      >
+      <div className="absolute inset-y-0 right-0 flex flex-col items-end pr-3">
         <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
-          <button
-            type="button"
-            data-testid="preview-rail-minmax"
-            onClick={() => setLabelsMax((current) => !current)}
-            aria-pressed={labelsMax}
-            aria-label={labelsMax ? "Show icons only" : "Show icon names"}
-            title={labelsMax ? "Minimize to icons" : "Maximize labels"}
-            className={railIcon}
-          >
-            {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
-          </button>
-          {open === "insight" ? null : (
+          {deck ? null : (
+            <button
+              type="button"
+              data-testid="preview-rail-minmax"
+              onClick={() => setLabelsMax((current) => !current)}
+              aria-pressed={labelsMax}
+              aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+              title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+              className={railIcon}
+            >
+              {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+            </button>
+          )}
+          {deck === "insight" ? null : (
             <DemoControl
               label="Insight"
               glyph={<InsightGlyph />}
-              showLabel={labelsMax}
+              showLabel={labelsMax && !deck}
               testId="preview-insight-open"
-              onClick={() => toggle("insight")}
+              onClick={() => toggleDeck("insight")}
             />
           )}
-          {open === "comps" ? null : (
-            <DemoControl
-              label="Comps"
-              glyph={<CompsGlyph />}
-              showLabel={labelsMax}
-              testId="preview-comps-open"
-              onClick={() => toggle("comps")}
-            />
-          )}
-          {open === "if" ? null : (
-            <DemoControl
-              label="What if"
-              glyph={<WhatIfGlyph />}
-              showLabel={labelsMax}
-              testId="preview-if-open"
-              onClick={() => toggle("if")}
-            />
-          )}
+          {compsPill}
+          {ifPill}
         </div>
-        <div
-          className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
-          aria-hidden
-        >
-          →
-        </div>
+        {card ? (
+          <div className="w-full max-w-sm">{card}</div>
+        ) : (
+          <div
+            className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
+            aria-hidden
+          >
+            →
+          </div>
+        )}
         <div className="flex flex-1 flex-col items-end justify-start gap-1 pt-1">
-          {open === "details" ? null : (
+          {deck === "details" ? null : (
             <DemoControl
               label="Details"
               glyph={<DetailsGlyph />}
-              showLabel={labelsMax}
+              showLabel={labelsMax && !deck}
               testId="preview-details-open"
-              onClick={() => toggle("details")}
+              onClick={() => toggleDeck("details")}
             />
           )}
-          {open === "pulse" ? null : (
+          {deck === "pulse" ? null : (
             <DemoControl
               label="Pulse"
               glyph={<PulseGlyph />}
-              showLabel={labelsMax}
+              showLabel={labelsMax && !deck}
               testId="preview-pulse-open"
-              onClick={() => toggle("pulse")}
+              onClick={() => toggleDeck("pulse")}
             />
           )}
-          {open === "map" ? null : (
+          {deck === "map" ? null : (
             <DemoControl
               label="Map"
               glyph={<MapGlyph />}
-              showLabel={labelsMax}
-              onClick={() => toggle("map")}
+              showLabel={labelsMax && !deck}
+              onClick={() => toggleDeck("map")}
             />
           )}
         </div>
       </div>
-      {card ? (
-        <div className="pointer-events-auto absolute bottom-8 right-3 top-16 z-10 flex items-center justify-end">
-          {card}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -488,10 +499,11 @@ export function ShowcaseRailPillsPreview() {
           Symbols around the right arrow
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          One exclusive card at a time in the center-right of the bleed,
-          above the type. Leftover glyphs hug its left edge. What if is a
-          link; Sale and Rent are clickable boxes. Map stays inset until
-          Full screen. ↑ restores the glyph.
+          Decks (Insight / Details / Pulse / Map) are exclusive. Comps and
+          What if expand in place and can stay open together. On a phone,
+          opening either one closes the deck so the pills have room, leftover
+          glyphs stay on the deck’s right edge, and min/max hides while a
+          deck is up.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
