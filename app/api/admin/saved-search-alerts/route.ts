@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   deleteSavedSearchAlert,
+  getAlertJobLastRuns,
   listSavedSearchAlertsForAdmin,
-  processDueSavedSearchAlerts,
   setSavedSearchAlertActive,
 } from '@/lib/saved-search-alerts'
+import type { AlertJobKind } from '@/lib/saved-search-alert-kinds'
+import {
+  enqueueAlertsJob,
+  markListingAlertsDirty,
+  markOpenHouseAlertsDirty,
+  readAlertDirtyState,
+} from '@/lib/saved-search-alert-dirty'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,22 +24,45 @@ export async function POST(req: NextRequest) {
   }
 
   let force = false
+  let kind: AlertJobKind | 'both' = 'both'
   try {
-    const body = (await req.json()) as { force?: unknown }
+    const body = (await req.json()) as { force?: unknown; kind?: unknown }
     force = body.force === true
+    if (body.kind === 'listing' || body.kind === 'open_house') {
+      kind = body.kind
+    }
   } catch {
     force = false
   }
 
   try {
-    const result = await processDueSavedSearchAlerts({ force })
+    if (kind === 'listing' || kind === 'both') {
+      await markListingAlertsDirty()
+    }
+    if (kind === 'open_house' || kind === 'both') {
+      await markOpenHouseAlertsDirty()
+    }
+    const kinds: AlertJobKind[] | undefined =
+      kind === 'both' ? undefined : [kind]
+    const queued = await enqueueAlertsJob({
+      trigger: 'admin',
+      force,
+      kinds,
+    })
     const alerts = await listSavedSearchAlertsForAdmin(200)
+    const lastRuns = await getAlertJobLastRuns()
+    const dirty = await readAlertDirtyState()
     return NextResponse.json({
-      ok: true,
-      ...result,
+      ok: queued.ok,
+      queued: true,
+      kind,
+      reason: queued.reason,
+      lastRuns,
+      dirty,
       count: alerts.length,
       duplicateCount: alerts.filter((a) => a.isDuplicate).length,
       alerts,
+      error: queued.ok ? undefined : queued.reason,
     })
   } catch (err) {
     console.error('[admin/saved-search-alerts] POST failed', err)
@@ -55,11 +85,15 @@ export async function GET(req: NextRequest) {
     const alerts = await listSavedSearchAlertsForAdmin(
       Number.isFinite(limit) ? limit : 200,
     )
+    const lastRuns = await getAlertJobLastRuns()
+    const dirty = await readAlertDirtyState()
     const duplicateCount = alerts.filter((a) => a.isDuplicate).length
     return NextResponse.json({
       ok: true,
       count: alerts.length,
       duplicateCount,
+      lastRuns,
+      dirty,
       alerts,
     })
   } catch (err) {

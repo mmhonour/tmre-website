@@ -63,7 +63,8 @@ export async function clearStatsCache(): Promise<number> {
         AND cache_key NOT LIKE 'latest-feed:%'
         AND cache_key NOT LIKE 'listing-price-change:%'
         AND cache_key NOT LIKE 'closed-daily-counts:%'
-        AND cache_key NOT LIKE 'open-houses:%'`,
+        AND cache_key NOT LIKE 'open-houses:%'
+        AND cache_key NOT LIKE 'alerts:%'`,
   )
 }
 

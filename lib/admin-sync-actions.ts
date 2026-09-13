@@ -232,6 +232,10 @@ export type AdminSyncActionOptions = {
    * — and the only symptom would be an email nobody received.
    */
   stampWeek?: boolean
+  /** Alerts job: listing and/or open_house matchers. Omit = both. */
+  kinds?: Array<'listing' | 'open_house'>
+  /** Queue trigger — Incremental dirty vs Railway sweep vs Admin. */
+  trigger?: string
 }
 
 function shouldQueueOnServerless(options: AdminSyncActionOptions): boolean {
@@ -251,6 +255,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'vision-addresses': 'vision',
   'zip-boundaries': 'zip-maps',
   'open-houses': 'open-houses',
+  alerts: 'alerts',
   'fomc-sync': 'fomc',
   'cpi-sync': 'cpi',
   'market-digest': 'digest',
@@ -1306,6 +1311,71 @@ async function runAdminSyncActionImpl(
         recordsFetched: result.parcelsFetched,
         message: `${result.town}: ${result.totalRows.toLocaleString()} vision rows (${result.phase})`,
         detail: result.detail,
+      }
+    }
+    case 'alerts': {
+      if (shouldQueueOnServerless(options)) {
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'alerts',
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so listing / OH alerts cannot send right now.',
+          }),
+          {
+            payload: {
+              force: true,
+              ...(options.kinds?.length ? { kinds: options.kinds } : {}),
+            },
+          },
+        )
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? `Alerts queued (${via}) — mail sends on Railway`
+            : `Alerts queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { runSavedSearchAlertJob } = await import('@/lib/saved-search-alerts')
+      const { LAST_ALERTS_JOB_KEY } = await import(
+        '@/lib/saved-search-alert-dirty'
+      )
+      const { setSyncMetaDurable } = await import('@/lib/db/sync-meta-store')
+      const force = options.force === true
+      const scheduled = !force && options.trigger === 'railway-sweep'
+      const result = await runSavedSearchAlertJob({
+        force,
+        scheduled,
+        source: 'alerts',
+        ...(options.kinds?.length ? { kinds: options.kinds } : {}),
+      })
+      const finishedAt = new Date().toISOString()
+      if (!result.skipped) {
+        await setSyncMetaDurable(LAST_ALERTS_JOB_KEY, finishedAt)
+      }
+      const listingBit = result.listing
+        ? `listing sent=${result.listing.sent}`
+        : 'listing skipped'
+      const ohBit = result.openHouse
+        ? `OH sent=${result.openHouse.sent}`
+        : 'OH skipped'
+      return {
+        ok: result.ok,
+        action,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - t0,
+        recordsFetched: result.listings,
+        message: result.skipped
+          ? `Alerts skipped — ${result.reason ?? 'not dirty'}`
+          : `Alerts ${listingBit} · ${ohBit} · ${result.sent} email${result.sent === 1 ? '' : 's'}`,
       }
     }
     case 'open-houses': {

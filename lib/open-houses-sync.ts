@@ -108,6 +108,7 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   try {
     upcoming = await fetchWindow(window, true)
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     return {
       ok: false,
       window,
@@ -120,7 +121,7 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
       lookbackIncomplete: false,
       pruned: 0,
       durationMs: Date.now() - t0,
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
     }
   }
 
@@ -158,12 +159,14 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   }
 
   try {
-    const { processDueSavedSearchAlerts } = await import(
-      '@/lib/saved-search-alerts'
-    )
-    await processDueSavedSearchAlerts()
+    const {
+      markOpenHouseAlertsDirty,
+      enqueueAlertsJob,
+    } = await import('@/lib/saved-search-alert-dirty')
+    await markOpenHouseAlertsDirty()
+    await enqueueAlertsJob({ trigger: 'open-houses-dirty' })
   } catch (err) {
-    console.warn('[open-houses-sync] saved-search alerts failed', err)
+    console.warn('[open-houses-sync] alerts dirty stamp failed', err)
   }
 
   return {

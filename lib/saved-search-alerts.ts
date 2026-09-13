@@ -28,6 +28,22 @@ import {
   notifySavedSearchCreatedAdmin,
   type SavedSearchMatchListing,
 } from '@/lib/saved-search-notify'
+import {
+  ALERT_JOB_LAST_RUN_KEYS,
+  type AlertJobKind,
+  type AlertJobLastRun,
+  type AlertJobLastRuns,
+  type AlertJobSource,
+  type SavedSearchAlertProcessResult,
+} from '@/lib/saved-search-alert-kinds'
+
+export type {
+  AlertJobKind,
+  AlertJobLastRun,
+  AlertJobLastRuns,
+  AlertJobSource,
+  SavedSearchAlertProcessResult,
+} from '@/lib/saved-search-alert-kinds'
 
 export type AlertChannel = 'email' | 'sms'
 export type AlertCadence = 'immediate' | 'daily' | 'weekly'
@@ -47,6 +63,8 @@ export type SavedSearchAlert = {
   weeklyTimeEt: string | null
   active: boolean
   lastNotifiedAt: string | null
+  lastListingNotifiedAt: string | null
+  lastOpenHouseNotifiedAt: string | null
   createdAt: string
 }
 
@@ -71,9 +89,31 @@ export async function ensureSavedSearchAlertTables(): Promise<void> {
       weekly_time_et       text,
       active               boolean NOT NULL DEFAULT true,
       last_notified_at     timestamptz,
+      last_listing_notified_at timestamptz,
+      last_open_house_notified_at timestamptz,
       created_at           timestamptz NOT NULL DEFAULT now(),
       updated_at           timestamptz NOT NULL DEFAULT now()
     )
+  `)
+  await query(`
+    ALTER TABLE saved_search_alerts
+      ADD COLUMN IF NOT EXISTS last_listing_notified_at timestamptz
+  `)
+  await query(`
+    ALTER TABLE saved_search_alerts
+      ADD COLUMN IF NOT EXISTS last_open_house_notified_at timestamptz
+  `)
+  await query(`
+    UPDATE saved_search_alerts
+       SET last_listing_notified_at = last_notified_at
+     WHERE last_listing_notified_at IS NULL
+       AND last_notified_at IS NOT NULL
+  `)
+  await query(`
+    UPDATE saved_search_alerts
+       SET last_open_house_notified_at = last_notified_at
+     WHERE last_open_house_notified_at IS NULL
+       AND last_notified_at IS NOT NULL
   `)
   await query(`
     CREATE TABLE IF NOT EXISTS saved_search_alert_deliveries (
@@ -220,6 +260,8 @@ export async function createSavedSearchAlert(
         weeklyTimeEt: weeklyTime,
         active: true,
         lastNotifiedAt: null,
+        lastListingNotifiedAt: null,
+        lastOpenHouseNotifiedAt: null,
         createdAt: new Date().toISOString(),
       }
       const alreadyOpen = await findMatchingOpenHouseListings(seedAlert, {
@@ -284,6 +326,8 @@ export async function createSavedSearchAlert(
     weeklyTimeEt: weeklyTime,
     active: true,
     lastNotifiedAt: null,
+    lastListingNotifiedAt: null,
+    lastOpenHouseNotifiedAt: null,
     createdAt: new Date().toISOString(),
   }
 }
@@ -303,6 +347,8 @@ type AlertRow = {
   weekly_time_et: string | null
   active: boolean
   last_notified_at: string | null
+  last_listing_notified_at: string | null
+  last_open_house_notified_at: string | null
   created_at: string
 }
 
@@ -327,6 +373,8 @@ function mapRow(row: AlertRow): SavedSearchAlert {
     weeklyTimeEt: row.weekly_time_et,
     active: row.active,
     lastNotifiedAt: row.last_notified_at,
+    lastListingNotifiedAt: row.last_listing_notified_at ?? null,
+    lastOpenHouseNotifiedAt: row.last_open_house_notified_at ?? null,
     createdAt: row.created_at,
   }
 }
@@ -359,6 +407,10 @@ export type AdminSavedSearchAlertRow = {
   channel: AlertChannel
   active: boolean
   lastNotifiedAt: string | null
+  lastListingNotifiedAt: string | null
+  lastOpenHouseNotifiedAt: string | null
+  wantsListing: boolean
+  wantsOpenHouse: boolean
   createdAt: string
   /**
    * True when another alert shares the same email + criteria fingerprint
@@ -421,6 +473,10 @@ export async function listSavedSearchAlertsForAdmin(
       channel: alert.channel,
       active: alert.active,
       lastNotifiedAt: alert.lastNotifiedAt,
+      lastListingNotifiedAt: alert.lastListingNotifiedAt,
+      lastOpenHouseNotifiedAt: alert.lastOpenHouseNotifiedAt,
+      wantsListing: criteriaWantsListingAlerts(alert.criteria),
+      wantsOpenHouse: criteriaWantsOpenHouseAlerts(alert.criteria),
       createdAt: alert.createdAt,
       isDuplicate: (dupCounts.get(key) ?? 0) > 1,
     }
@@ -561,7 +617,10 @@ function appendListingCriteria(
  * Find Active listings matching criteria that look "new" since `sinceIso`
  * and have not already been delivered as a listing match for this alert.
  *
- * "New" = list_date after since, OR DOM ≤ 7 with modification after since.
+ * "New" = list_date on or after the ET calendar day of `since` (deliveries
+ * skip homes already mailed), OR DOM ≤ 7 with modification after since.
+ * Comparing `list_date > last_notified` misses the same ET day — a listing
+ * dated midnight is not after a 9am stamp.
  */
 export async function findMatchingNewListings(
   alert: SavedSearchAlert,
@@ -573,7 +632,9 @@ export async function findMatchingNewListings(
   const conditions: string[] = [
     `l.status_bucket = 'Active'`,
     `(
-       (l.list_date IS NOT NULL AND l.list_date > $2::timestamptz)
+       (l.list_date IS NOT NULL
+         AND (l.list_date AT TIME ZONE 'America/New_York')::date
+           >= ($2::timestamptz AT TIME ZONE 'America/New_York')::date)
        OR (
          l.dom IS NOT NULL AND l.dom <= 7
          AND l.modification_timestamp IS NOT NULL
@@ -771,16 +832,31 @@ function isAtOrAfterScheduled(scheduledHhmm: string): boolean {
  * a whole day or week was skipped. Catch up: due once the scheduled time has
  * passed, until a send lands on this ET day / week.
  */
-function isCadenceDue(alert: SavedSearchAlert, force: boolean): boolean {
+function lastNotifiedForKind(
+  alert: SavedSearchAlert,
+  kind: AlertJobKind,
+): string | null {
+  if (kind === 'listing') {
+    return alert.lastListingNotifiedAt ?? alert.lastNotifiedAt
+  }
+  return alert.lastOpenHouseNotifiedAt ?? alert.lastNotifiedAt
+}
+
+function isCadenceDue(
+  alert: SavedSearchAlert,
+  force: boolean,
+  kind: AlertJobKind,
+): boolean {
   if (force) return true
   if (alert.cadence === 'immediate') return true
+  const lastKind = lastNotifiedForKind(alert, kind)
   if (alert.cadence === 'daily') {
     if (!alert.dailyTimeEt) return false
-    if (alreadyNotifiedEtDay(alert.lastNotifiedAt)) return false
+    if (alreadyNotifiedEtDay(lastKind)) return false
     return isAtOrAfterScheduled(alert.dailyTimeEt)
   }
   if (alert.weeklyDay == null || !alert.weeklyTimeEt) return false
-  if (alreadyNotifiedEtWeek(alert.lastNotifiedAt, alert.weeklyDay)) return false
+  if (alreadyNotifiedEtWeek(lastKind, alert.weeklyDay)) return false
   const { weekday } = etParts()
   const daysFromSend = (weekday - alert.weeklyDay + 7) % 7
   if (daysFromSend === 0 && !isAtOrAfterScheduled(alert.weeklyTimeEt)) {
@@ -805,9 +881,13 @@ async function markDelivered(
     )
   }
   if (opts?.touchLastNotified === false) return
+  const listingStamp =
+    eventKind === 'listing' ? ', last_listing_notified_at = now()' : ''
+  const openHouseStamp =
+    eventKind === 'open_house' ? ', last_open_house_notified_at = now()' : ''
   await query(
     `UPDATE saved_search_alerts
-     SET last_notified_at = now(), updated_at = now()
+     SET last_notified_at = now(), updated_at = now()${listingStamp}${openHouseStamp}
      WHERE id = $1`,
     [alertId],
   )
@@ -834,7 +914,7 @@ function mergeAlertMatches(
   return [...byId.values()]
 }
 
-async function deliverAlert(
+async function deliverCombinedAlert(
   alert: SavedSearchAlert,
   listingMatches: SavedSearchMatchListing[],
   openHouseMatches: SavedSearchMatchListing[],
@@ -852,73 +932,289 @@ async function deliverAlert(
   })
   if (!ok) return 0
   if (listingMatches.length > 0) {
-    await markDelivered(alert.id, listingMatches, 'email', 'listing', {
-      touchLastNotified: false,
-    })
+    await markDelivered(alert.id, listingMatches, 'email', 'listing')
   }
   if (openHouseMatches.length > 0) {
-    await markDelivered(alert.id, openHouseMatches, 'email', 'open_house', {
-      touchLastNotified: false,
-    })
+    await markDelivered(alert.id, openHouseMatches, 'email', 'open_house')
   }
-  await markDelivered(alert.id, [], 'email', 'listing', {
-    touchLastNotified: true,
-  })
   return listings.length
 }
 
-/**
- * Process due alerts after an MLS incremental, open-houses sync, or Admin Process now.
- * - immediate: any new listing / newly detected open house since last notify
- * - daily / weekly: due once the ET send time has passed this day / week
- *   (catch-up — no longer a 30-minute window that Incremental can miss)
- */
-export async function processDueSavedSearchAlerts(opts?: {
-  /** Ignore cadence clocks — still dedupes per listing and uses last notify as since. */
-  force?: boolean
-}): Promise<{
-  checked: number
+function parseAlertJobLastRun(raw: unknown): AlertJobLastRun | null {
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as Partial<AlertJobLastRun>
+  if (row.kind !== 'listing' && row.kind !== 'open_house') return null
+  if (
+    row.source !== 'alerts' &&
+    row.source !== 'admin'
+  ) {
+    return null
+  }
+  if (typeof row.at !== 'string' || !row.at) return null
+  return {
+    at: row.at,
+    kind: row.kind,
+    source: row.source,
+    ok: row.ok !== false,
+    checked: Number(row.checked) || 0,
+    sent: Number(row.sent) || 0,
+    listings: Number(row.listings) || 0,
+    error: typeof row.error === 'string' ? row.error : undefined,
+  }
+}
+
+/** Stamp Admin's "which doorbell ran" clock. Call on success and on failure. */
+export async function recordAlertJobLastRun(
+  result: SavedSearchAlertProcessResult,
+): Promise<void> {
+  try {
+    const { writeStatsCacheRow } = await import('@/lib/db/stats-cache-repo')
+    const payload: AlertJobLastRun = {
+      at: new Date().toISOString(),
+      kind: result.kind,
+      source: result.source,
+      ok: result.ok,
+      checked: result.checked,
+      sent: result.sent,
+      listings: result.listings,
+      ...(result.error ? { error: result.error } : {}),
+    }
+    await writeStatsCacheRow(ALERT_JOB_LAST_RUN_KEYS[result.kind], payload)
+  } catch (err) {
+    console.warn('[saved-search-alerts] last-run stamp failed', result.kind, err)
+  }
+}
+
+export async function getAlertJobLastRuns(): Promise<AlertJobLastRuns> {
+  try {
+    const { readStatsCacheRow } = await import('@/lib/db/stats-cache-repo')
+    const [listingRow, openHouseRow] = await Promise.all([
+      readStatsCacheRow(ALERT_JOB_LAST_RUN_KEYS.listing),
+      readStatsCacheRow(ALERT_JOB_LAST_RUN_KEYS.open_house),
+    ])
+    let listing: unknown = null
+    let openHouse: unknown = null
+    if (listingRow) {
+      try {
+        listing = JSON.parse(listingRow.payload)
+      } catch {
+        listing = null
+      }
+    }
+    if (openHouseRow) {
+      try {
+        openHouse = JSON.parse(openHouseRow.payload)
+      } catch {
+        openHouse = null
+      }
+    }
+    return {
+      listing: parseAlertJobLastRun(listing),
+      openHouse: parseAlertJobLastRun(openHouse),
+    }
+  } catch (err) {
+    console.warn('[saved-search-alerts] last-run read failed', err)
+    return { listing: null, openHouse: null }
+  }
+}
+
+export type SavedSearchAlertJobResult = {
+  skipped: boolean
+  reason?: string
+  listing: SavedSearchAlertProcessResult | null
+  openHouse: SavedSearchAlertProcessResult | null
   sent: number
   listings: number
-}> {
+  ok: boolean
+}
+
+function emptyKindResult(
+  kind: AlertJobKind,
+  source: AlertJobSource,
+): SavedSearchAlertProcessResult {
+  return { kind, source, checked: 0, sent: 0, listings: 0, ok: true }
+}
+
+/**
+ * Railway alerts job — two matchers, one mailer.
+ * Incremental / OH only set dirty; this job sends.
+ * A visitor signed up for both gets one email (same listing + OH = one row).
+ */
+export async function runSavedSearchAlertJob(opts?: {
+  force?: boolean
+  kinds?: AlertJobKind[]
+  source?: AlertJobSource
+  /** 15m Railway sweep — process daily/weekly even when Incremental/OH are clean. */
+  scheduled?: boolean
+}): Promise<SavedSearchAlertJobResult> {
   const force = opts?.force === true
+  const scheduled = opts?.scheduled === true
+  const source: AlertJobSource = opts?.source ?? 'alerts'
+  const {
+    readAlertDirtyState,
+    clearListingAlertsDirty,
+    clearOpenHouseAlertsDirty,
+  } = await import('@/lib/saved-search-alert-dirty')
+  const dirty = await readAlertDirtyState()
+
+  const requested = new Set<AlertJobKind>(
+    opts?.kinds?.length ? opts.kinds : ['listing', 'open_house'],
+  )
+  const runListing =
+    requested.has('listing') &&
+    (force || scheduled || Boolean(dirty.listing))
+  const runOpenHouse =
+    requested.has('open_house') &&
+    (force || scheduled || Boolean(dirty.openHouse))
+
+  if (!runListing && !runOpenHouse) {
+    return {
+      skipped: true,
+      reason: 'not dirty',
+      listing: null,
+      openHouse: null,
+      sent: 0,
+      listings: 0,
+      ok: true,
+    }
+  }
+
+  const listing = runListing ? emptyKindResult('listing', source) : null
+  const openHouse = runOpenHouse ? emptyKindResult('open_house', source) : null
+
   try {
     await ensureSavedSearchAlertTables()
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.warn('[saved-search-alerts] ensure tables failed', err)
-    return { checked: 0, sent: 0, listings: 0 }
+    if (listing) {
+      listing.ok = false
+      listing.error = message
+      await recordAlertJobLastRun(listing)
+    }
+    if (openHouse) {
+      openHouse.ok = false
+      openHouse.error = message
+      await recordAlertJobLastRun(openHouse)
+    }
+    return {
+      skipped: false,
+      listing,
+      openHouse,
+      sent: 0,
+      listings: 0,
+      ok: false,
+    }
   }
 
   const alerts = await loadActiveAlerts()
+  if (listing) {
+    listing.checked = alerts.filter((a) =>
+      criteriaWantsListingAlerts(a.criteria),
+    ).length
+  }
+  if (openHouse) {
+    openHouse.checked = alerts.filter((a) =>
+      criteriaWantsOpenHouseAlerts(a.criteria),
+    ).length
+  }
+
+  let listingPendingCadence = false
+  let openHousePendingCadence = false
   let sent = 0
   let listingCount = 0
 
   for (const alert of alerts) {
     try {
-      if (!isCadenceDue(alert, force)) continue
+      const wantsListing = criteriaWantsListingAlerts(alert.criteria)
+      const wantsOpenHouse = criteriaWantsOpenHouseAlerts(alert.criteria)
+      let listingMatches: SavedSearchMatchListing[] = []
+      let openHouseMatches: SavedSearchMatchListing[] = []
 
-      const since =
-        alert.lastNotifiedAt ||
-        alert.createdAt ||
-        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      const listingMatches = criteriaWantsListingAlerts(alert.criteria)
-        ? await findMatchingNewListings(alert, since)
-        : []
-      const openHouseMatches = criteriaWantsOpenHouseAlerts(alert.criteria)
-        ? await findMatchingOpenHouseListings(alert)
-        : []
+      if (runListing && wantsListing) {
+        if (isCadenceDue(alert, force, 'listing')) {
+          const since =
+            lastNotifiedForKind(alert, 'listing') ||
+            alert.createdAt ||
+            new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+          listingMatches = await findMatchingNewListings(alert, since)
+        } else if (alert.cadence !== 'immediate') {
+          listingPendingCadence = true
+        }
+      }
+      if (runOpenHouse && wantsOpenHouse) {
+        if (isCadenceDue(alert, force, 'open_house')) {
+          openHouseMatches = await findMatchingOpenHouseListings(alert)
+        } else if (alert.cadence !== 'immediate') {
+          openHousePendingCadence = true
+        }
+      }
       if (listingMatches.length === 0 && openHouseMatches.length === 0) continue
-      const n = await deliverAlert(alert, listingMatches, openHouseMatches)
+      const n = await deliverCombinedAlert(
+        alert,
+        listingMatches,
+        openHouseMatches,
+      )
       if (n > 0) {
         sent += 1
         listingCount += n
+        if (listing && listingMatches.length > 0) {
+          listing.sent += 1
+          listing.listings += listingMatches.length
+        }
+        if (openHouse && openHouseMatches.length > 0) {
+          openHouse.sent += 1
+          openHouse.listings += openHouseMatches.length
+        }
       }
     } catch (err) {
       console.warn('[saved-search-alerts] process alert failed', alert.id, err)
     }
   }
 
-  return { checked: alerts.length, sent, listings: listingCount }
+  if (listing) await recordAlertJobLastRun(listing)
+  if (openHouse) await recordAlertJobLastRun(openHouse)
+
+  if (listing?.ok && !listingPendingCadence) {
+    await clearListingAlertsDirty()
+  }
+  if (openHouse?.ok && !openHousePendingCadence) {
+    await clearOpenHouseAlertsDirty()
+  }
+
+  return {
+    skipped: false,
+    listing,
+    openHouse,
+    sent,
+    listings: listingCount,
+    ok: (listing?.ok ?? true) && (openHouse?.ok ?? true),
+  }
+}
+
+/** One-kind helper (Admin force / tests). Prefer runSavedSearchAlertJob. */
+export async function processDueSavedSearchAlerts(opts: {
+  kind: AlertJobKind
+  source: AlertJobSource
+  force?: boolean
+}): Promise<SavedSearchAlertProcessResult> {
+  const result = await runSavedSearchAlertJob({
+    force: opts.force,
+    kinds: [opts.kind],
+    source: opts.source,
+  })
+  const row = opts.kind === 'listing' ? result.listing : result.openHouse
+  return (
+    row ?? {
+      kind: opts.kind,
+      source: opts.source,
+      checked: 0,
+      sent: 0,
+      listings: 0,
+      ok: true,
+      error: result.reason,
+    }
+  )
 }
 
 /** Validate phone shape for future SMS (not used for delivery yet). */

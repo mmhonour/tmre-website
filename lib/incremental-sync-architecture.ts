@@ -61,9 +61,9 @@ export function describeIncrementalSyncArchitecture(): {
         id: 'lane-1',
         title: 'Lane 1 — RETS pull',
         host: 'Railway mls-sync',
-        owns: 'Claim the sync_queue row → fork a child → open RETS → modified-since pull (7 towns) → upsert listings → stamp End + last_mls_sync_heartbeat → logout (auto). The parent holds the child to Configure → Budget and records timeout / crashed if it blows it. Admin Sync now and the watchdog enqueue rather than calling a run endpoint directly.',
+        owns: 'Claim the sync_queue row → fork a child → open RETS → modified-since pull (7 towns) → upsert listings → mark listing alerts dirty + enqueue the Railway alerts job → stamp End + last_mls_sync_heartbeat → logout (auto). The parent holds the child to Configure → Budget and records timeout / crashed if it blows it. Admin Sync now and the watchdog enqueue rather than calling a run endpoint directly.',
         doesNot:
-          'Deal board, latest town feeds, hero thumbnails, stats_cache rebuild, spotlight/alerts digests — those Node-OOMed this process when postHooks stayed true.',
+          'Deal board, latest town feeds, hero thumbnails, stats_cache rebuild, spotlight refresh, or sending alert email. Mail is the Railway alerts job.',
       },
       {
         id: 'lane-2',
@@ -77,7 +77,7 @@ export function describeIncrementalSyncArchitecture(): {
         id: 'lane-3',
         title: 'Lane 3 — Site warm',
         host: 'Netlify',
-        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, saved-search alerts. Also stale-read rebuild if the handoff hop fails.',
+        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses. Also stale-read rebuild if the handoff hop fails. Does not send listing or OH alert mail.',
         doesNot:
           'The Incremental RETS pull, unless a queued row has sat unclaimed past the rescue grace — then the thin cron runs it in-process rather than let inventory go stale.',
       },
@@ -167,7 +167,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'railway',
         title: 'Warm handoff',
         detail:
-          'After Neon upserts: processDueSavedSearchAlerts() on Railway (listing and open-house emails must not wait on the hop), then queue Netlify sync-listings-worker with sideWorkOnly + source=railway. Handoff is non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
+          'After Neon upserts: mark listing alerts dirty and enqueue the Railway alerts job. Incremental does not send mail. Then queue Netlify sync-listings-worker with sideWorkOnly + source=railway for board/stats warm only. Handoff is non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
       },
       {
         id: 'thin-cron',
@@ -195,7 +195,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'worker',
         title: 'sync-listings-worker sideWorkOnly (Lane 3)',
         detail:
-          'Netlify background ≤~15m. No RETS. Latest feeds, deal board, stats cache, spotlight + saved-search digests. Queued by Railway handoff (source=railway) or thin-cron lean fallback.',
+          'Netlify background ≤~15m. No RETS. Latest feeds, deal board, stats cache, spotlight. Does not send alert email. Queued by Railway handoff (source=railway) or thin-cron lean fallback.',
       },
       {
         id: 'worker-rets',

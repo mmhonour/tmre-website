@@ -102,6 +102,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'last_zip_boundaries_sync'
     case 'open-houses':
       return 'open_houses_synced_at'
+    case 'alerts':
+      return 'last_alerts'
     case 'fomc-sync':
       return 'fomc_last_synced_at'
     case 'cpi-sync':

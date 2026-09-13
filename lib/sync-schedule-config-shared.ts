@@ -188,6 +188,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'vision-addresses',
       'zip-boundaries',
       'open-houses',
+      'alerts',
       'fomc-sync',
       'cpi-sync',
       'market-digest',
@@ -244,6 +245,12 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       // stays for the past / upcoming counts.
       'open-houses': {
         frequency: '60m',
+        startTimeEt: '00:00',
+      },
+      // Dirty from Incremental / OH means send now. 15m is cadence catch-up
+      // (daily/weekly) when those jobs are clean.
+      alerts: {
+        frequency: '15m',
         startTimeEt: '00:00',
       },
       'fomc-sync': {

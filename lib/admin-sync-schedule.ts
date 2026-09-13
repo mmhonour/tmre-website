@@ -524,6 +524,8 @@ function lastFinishedForJob(
       return getSyncMeta('last_zip_boundaries_sync')
     case 'open-houses':
       return getSyncMeta('open_houses_synced_at')
+    case 'alerts':
+      return getSyncMeta('last_alerts')
     case 'fomc-sync':
       return getSyncMeta('fomc_last_synced_at')
     case 'cpi-sync':
@@ -623,6 +625,10 @@ export function buildAdminSyncNextRuns(
     naturalFor('open-houses'),
     SCHEDULED_SYNC_JOB_BY_ROW['open-houses'],
   )
+  const nextAlertsIso = applySyncNextOverride(
+    naturalFor('alerts'),
+    SCHEDULED_SYNC_JOB_BY_ROW['alerts'],
+  )
 
   // Event-day calendars — not interval/weekly/monthly Configure math.
   const fomcTarget = nextFomcSyncTarget(
@@ -677,6 +683,7 @@ export function buildAdminSyncNextRuns(
     'vision-addresses': nextVisionAddressesIso,
     'zip-boundaries': nextZipBoundariesIso,
     'open-houses': nextOpenHousesIso,
+    alerts: nextAlertsIso,
     'fomc-sync': nextFomcSyncIso,
     'cpi-sync': nextCpiSyncIso,
     'market-digest': nextMarketDigestIso,
