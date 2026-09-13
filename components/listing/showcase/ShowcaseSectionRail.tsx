@@ -96,16 +96,21 @@ function DetailsOverlayTabs({
   onChange: (tab: DetailsTab) => void;
 }) {
   return (
-    <div className="flex items-end gap-0.5 bg-[#0d1424] px-3 pt-2">
+    <div
+      role="tablist"
+      className="flex items-end gap-0.5 border-b border-gold bg-[#0d1424] px-3 pt-2"
+    >
       {(["summary", "full"] as const).map((id) => (
         <button
           key={id}
           type="button"
+          role="tab"
+          aria-selected={tab === id}
           onClick={() => onChange(id)}
           className={`relative -mb-px shrink-0 rounded-t-md border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
             tab === id
               ? "z-[1] border-gold border-b-transparent bg-gold text-navy"
-              : "border-transparent text-white/45 hover:text-white/75"
+              : "border-gold/50 bg-gold/25 text-gold hover:bg-gold/40 hover:text-navy"
           }`}
         >
           {id === "summary" ? "Summary" : "Full"}
@@ -398,7 +403,9 @@ export default function ShowcaseSectionRail({
               ))}
             </dl>
           ) : (
-            <ListingSidebar details={detailsPanelProps} />
+            <div className="p-3">
+              <ListingSidebar details={detailsPanelProps} unframed />
+            </div>
           )}
         </div>
       </CardChrome>

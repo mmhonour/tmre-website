@@ -156,17 +156,22 @@ function SymbolRailDemo() {
                 ↑
               </button>
             </div>
-            <div className="flex items-end gap-0.5 bg-[#0d1424] px-3 pt-2">
+            <div
+              role="tablist"
+              className="flex items-end gap-0.5 border-b border-gold bg-[#0d1424] px-3 pt-2"
+            >
               {(["summary", "full"] as const).map((id) => (
                 <button
                   key={id}
                   type="button"
+                  role="tab"
+                  aria-selected={detailsTab === id}
                   data-testid={`preview-details-tab-${id}`}
                   onClick={() => setDetailsTab(id)}
                   className={`relative -mb-px shrink-0 rounded-t-md border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
                     detailsTab === id
                       ? "z-[1] border-gold border-b-transparent bg-gold text-navy"
-                      : "border-transparent text-white/45"
+                      : "border-gold/50 bg-gold/25 text-gold"
                   }`}
                 >
                   {id === "summary" ? "Summary" : "Full"}
