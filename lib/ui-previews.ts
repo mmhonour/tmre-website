@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "find-parcel-map",
+    title: "VGSI neighborhood map",
+    summary:
+      "Find / VGSI parcel map: same street, cross streets, or a small radius. Like kind uses the listing criteria panel.",
+  },
+  {
     slug: "admin-sync-sort",
     title: "Admin sync column sort",
     summary:

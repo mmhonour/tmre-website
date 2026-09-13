@@ -1464,6 +1464,37 @@ export async function searchListingsInDbByQuery(
 }
 
 /** Other MLS records at the same street address within a town. */
+/** Listings with coordinates inside a lat/lng box (parcel-page neighborhood). */
+export async function readTownListingsNear(opts: {
+  town: string
+  latitude: number
+  longitude: number
+  radiusDeg: number
+  limit?: number
+}): Promise<Listing[]> {
+  const limit = Math.min(Math.max(opts.limit ?? 250, 1), 400)
+  const { latitude: lat, longitude: lon, radiusDeg } = opts
+  const rows = await query<ListingJsonRow>(
+    `SELECT data, raw, vision_pid, mls_status
+       FROM listings
+      WHERE town = $1
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+        AND latitude BETWEEN $2 AND $3
+        AND longitude BETWEEN $4 AND $5
+      LIMIT $6`,
+    [
+      opts.town,
+      lat - radiusDeg,
+      lat + radiusDeg,
+      lon - radiusDeg,
+      lon + radiusDeg,
+      limit,
+    ],
+  )
+  return rows.map((row) => rowToListing(row))
+}
+
 export async function readAddressListingsFromDb(
   town: string,
   street: string,

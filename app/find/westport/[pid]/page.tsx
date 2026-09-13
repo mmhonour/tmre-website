@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FindAddressDivergenceNote } from "@/components/FindAddressDivergenceNote";
+import FindParcelMap from "@/components/FindParcelMap";
 import { FindListingIngestStatus } from "@/components/FindListingIngestStatus";
 import { VisionDeedHistoryPopout } from "@/components/VisionDeedHistoryPopout";
 import { mergeWestportProperty, type MergedField } from "@/lib/westport-lookup";
@@ -362,6 +363,15 @@ export default async function WestportParcelPage({
               </Link>
             </p>
           ) : null}
+        </div>
+      </section>
+
+      <section className="bg-navy-dark py-8 lg:py-10">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10">
+          <h2 className="mb-4 font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
+            Neighborhood map
+          </h2>
+          <FindParcelMap visionPid={property.visionPid} />
         </div>
       </section>
 
