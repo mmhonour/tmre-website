@@ -38,10 +38,12 @@ import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 
 type DetailsTab = "full" | "other";
+type RailCard = "insight" | "comps" | "if" | "details" | "pulse" | "map";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
-/** Details / Pulse card — leaves a glyph gutter so siblings hug its left edge. */
-const SIDE_CARD_WIDTH = "w-[min(24rem,calc(100vw-3.75rem))]";
+/** Shared pop-out — leaves a glyph gutter so the rail hugs the card’s left edge. */
+const CARD_WIDTH = "w-[min(24rem,calc(100vw-3.75rem))]";
+const CARD_RIGHT = "right-[min(24rem,calc(100vw-3.75rem))]";
 
 /** Shared tile geometry; `interactive` adds the hover the whole-row tiles use. */
 const railRowClass = (opts: {
@@ -210,18 +212,30 @@ function CollapseArrow({
 function CardChrome({
   title,
   onCollapse,
+  onTitleClick,
   afterTitle,
   children,
 }: {
   title: string;
   onCollapse: () => void;
+  onTitleClick?: () => void;
   afterTitle?: ReactNode;
   children?: ReactNode;
 }) {
   return (
-    <div className="flex w-full flex-col items-end">
-      <div className={`${pillClass(true, true)} bg-[#0d1424]`}>
-        <span>{title}</span>
+    <div className="flex h-full min-h-0 w-full flex-col items-end">
+      <div className={`${pillClass(true, true)} shrink-0 bg-[#0d1424]`}>
+        {onTitleClick ? (
+          <button
+            type="button"
+            onClick={onTitleClick}
+            className="underline decoration-white/35 underline-offset-4 transition-colors hover:text-gold hover:decoration-gold/60"
+          >
+            {title}
+          </button>
+        ) : (
+          <span>{title}</span>
+        )}
         {afterTitle}
         <span className="flex-1" />
         <CollapseArrow label={`Hide ${title}`} onClick={onCollapse} />
@@ -237,11 +251,10 @@ type IfAmounts = { sale: number | null; rent: number | null };
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Insight, Comps, then
- * What if sit above that arrow; Details, Pulse, and Map sit below. A tap
- * replaces the glyph with a card; ↑ on the card restores the glyph.
- * Opening Details or Pulse keeps sibling glyphs to the left of that card
- * (or above it when the card is short). The min/max control expands every
- * icon to its word, or collapses them back.
+ * What if sit above that arrow; Details, Pulse, and Map sit below. One
+ * card at a time occupies the center-right of the bleed, above the type,
+ * with leftover glyphs on its left edge. ↑ restores the glyph. The min/max
+ * control expands every icon to its word, or collapses them back.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -278,42 +291,33 @@ export default function ShowcaseSectionRail({
   map?: ShowcaseMapPresentation | null;
 }) {
   /**
-   * Insight, map, pulse and details share one overlay so their icons stay a
-   * single exclusive toggle — opening one closes the others, and the icon
-   * row travels with whichever panel is up.
+   * One exclusive pop-out. Comps and What if use the same center-right slot
+   * as Insight / Details / Pulse / Map.
    */
-  const [overlay, setOverlayState] = useState<
-    "insight" | "map" | "pulse" | "details" | null
-  >(null);
+  const [overlay, setOverlayState] = useState<RailCard | null>(null);
   const [mapExpanded, setMapExpanded] = useState(false);
   const corridors = useLocationEstimateOverlay();
 
-  const reportClearance = (
-    next: "insight" | "map" | "pulse" | "details" | null,
-    expanded: boolean,
-  ) => {
-    const kind = next === "map" || next === "insight" ? next : null;
+  const reportClearance = (next: RailCard | null, expanded: boolean) => {
     onMapStateChange?.({
-      open: kind != null,
+      open: next != null,
       expanded: next === "map" && expanded,
-      kind,
+      kind: next === "map" ? "map" : next != null ? "insight" : null,
     });
   };
 
-  const setOverlay = (
-    next: "insight" | "map" | "pulse" | "details" | null,
-  ) => {
+  const setOverlay = (next: RailCard | null) => {
+    if (next !== "map") setMapExpanded(false);
     setOverlayState(next);
-    reportClearance(next, mapExpanded);
+    reportClearance(next, next === "map" ? mapExpanded : false);
   };
-  const toggleOverlay = (id: "insight" | "map" | "pulse" | "details") =>
+  const toggleOverlay = (id: RailCard) =>
     setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
     reportClearance(overlay, expanded);
   };
   const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
-  const [revealed, setRevealed] = useState<string | null>(null);
   const [labelsMax, setLabelsMax] = useState(false);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
   const [amounts, setAmounts] = useState<IfAmounts | null>(null);
@@ -360,6 +364,28 @@ export default function ShowcaseSectionRail({
     />
   );
 
+  const compsButton = (
+    <RailControl
+      label="Comps"
+      glyph={<CompsGlyph />}
+      showLabel={labelsMax}
+      on={overlay === "comps"}
+      onClick={() => toggleOverlay("comps")}
+      ariaLabel={overlay === "comps" ? "Close comps" : "Show comps"}
+    />
+  );
+
+  const whatIfButton = (
+    <RailControl
+      label="What if"
+      glyph={<WhatIfGlyph />}
+      showLabel={labelsMax}
+      on={overlay === "if"}
+      onClick={() => toggleOverlay("if")}
+      ariaLabel={overlay === "if" ? "Close What if" : "Show What if"}
+    />
+  );
+
   const detailsButton = (
     <RailControl
       label="Details"
@@ -393,20 +419,129 @@ export default function ShowcaseSectionRail({
     />
   );
 
-  const insightCard =
+  const compsChips = counts ? (
+    <span className="ml-2 flex items-center gap-1">
+      <CountChip
+        label="On market"
+        value={counts.active}
+        onClick={() => jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)}
+      />
+      <CountChip
+        label={`Sold ${counts.soldMonths} in mos`}
+        value={counts.sold}
+        onClick={() => jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)}
+      />
+    </span>
+  ) : null;
+
+  const sale =
+    amounts?.sale != null ? fmtIfSaleMoney(amounts.sale) : null;
+  const rent =
+    amounts?.rent != null
+      ? fmtIfRentMoney(roundIfRentMidpoint(amounts.rent))
+      : null;
+  const whatIfChips =
+    sale || rent ? (
+      <span className="ml-2 flex items-center gap-1">
+        {sale ? (
+          <CountChip
+            label="Sale"
+            value={sale}
+            onClick={() => jumpToIfScenario("sale")}
+          />
+        ) : null}
+        {rent ? (
+          <CountChip
+            label="Rent"
+            value={rent}
+            onClick={() => jumpToIfScenario("rent")}
+          />
+        ) : null}
+      </span>
+    ) : null;
+
+  const mapBody = (
+    <div className="min-h-0 flex-1">
+      {map?.hidePin ? (
+        <ListingLocationMap
+          latitude={map.latitude}
+          longitude={map.longitude}
+          addressQuery={map.addressQuery}
+          hidePin
+          hideLabel
+          outlineTown={map.outlineTown}
+          defaultZoom={map.defaultZoom}
+          variant="hero"
+          className="h-full"
+        />
+      ) : (
+        <ShowcaseCompsMap
+          mlsId={mlsId}
+          subject={subject}
+          townHint={townHint}
+          postalCode={postalCode}
+          expanded={mapExpanded}
+          onToggleExpanded={() => setExpanded(!mapExpanded)}
+          onExit={() => setOverlay(null)}
+          fetchUrl={compsFetchUrl}
+          uagFetchUrl={uagFetchUrl}
+          hideSubject={map?.hidePin ?? false}
+        />
+      )}
+    </div>
+  );
+
+  const mapChrome = (
+    <CardChrome
+      title="Map"
+      onCollapse={() => setOverlay(null)}
+      afterTitle={
+        corridors.unlocked ? (
+          <button
+            type="button"
+            onClick={() => void corridors.setEnabled(!corridors.enabled)}
+            disabled={corridors.busy}
+            aria-pressed={corridors.enabled}
+            className={`ml-2 shrink-0 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+              corridors.enabled
+                ? "bg-sky/20 text-sky"
+                : "text-white/50 hover:text-white"
+            }`}
+          >
+            Corridors
+          </button>
+        ) : null
+      }
+    >
+      {mapBody}
+    </CardChrome>
+  );
+
+  const openCard =
     overlay === "insight" ? (
       <CardChrome title="Insight" onCollapse={() => setOverlay(null)}>
-        <div className="w-full bg-[#0d1424] p-4">
+        <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424] p-4">
           <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
         </div>
       </CardChrome>
-    ) : null;
-
-  const detailsCard =
-    overlay === "details" ? (
+    ) : overlay === "comps" ? (
+      <CardChrome
+        title="Comps"
+        onTitleClick={() => scrollToShowcaseSection("comps")}
+        onCollapse={() => setOverlay(null)}
+        afterTitle={compsChips}
+      />
+    ) : overlay === "if" ? (
+      <CardChrome
+        title="What if"
+        onTitleClick={() => scrollToShowcaseSection("if")}
+        onCollapse={() => setOverlay(null)}
+        afterTitle={whatIfChips}
+      />
+    ) : overlay === "details" ? (
       <CardChrome title="Details" onCollapse={() => setOverlay(null)}>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
-        <div className="w-full bg-[#0d1424]">
+        <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424]">
           {detailsTab === "full" ? (
             <div className="p-3">
               <ListingSidebar details={detailsPanelProps} unframed />
@@ -428,253 +563,64 @@ export default function ShowcaseSectionRail({
           )}
         </div>
       </CardChrome>
-    ) : null;
-
-  const pulseCard =
-    overlay === "pulse" ? (
+    ) : overlay === "pulse" ? (
       <CardChrome title="Town pulse" onCollapse={() => setOverlay(null)}>
-        <div className="w-full overflow-x-hidden overflow-y-hidden bg-[#0d1424] p-4">
+        <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={townHint ?? ""} expanded />
         </div>
       </CardChrome>
+    ) : overlay === "map" ? (
+      mapChrome
     ) : null;
 
-  const mapOverlay = overlay === "map" ? (
-    /*
-     * Phone: true full screen, over the site header, like the Intelligence
-     * map. The header bar below carries the only exit, so it has to stay
-     * pinned at the top of the sheet.
-     *
-     * Desktop: flush to the page’s right edge. Rail glyphs sit in a column
-     * just to the left of this panel (`lg:right-96` / expanded width).
-     */
-    <div
-      className={`flex flex-col bg-[#0d1424] max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-0 lg:top-28 lg:z-30 ${
-        mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
-      }`}
-    >
-      <CardChrome
-        title="Map"
-        onCollapse={() => setOverlay(null)}
-        afterTitle={
-          corridors.unlocked ? (
-            <button
-              type="button"
-              onClick={() => void corridors.setEnabled(!corridors.enabled)}
-              disabled={corridors.busy}
-              aria-pressed={corridors.enabled}
-              className={`ml-2 shrink-0 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
-                corridors.enabled
-                  ? "bg-sky/20 text-sky"
-                  : "text-white/50 hover:text-white"
-              }`}
-            >
-              Corridors
-            </button>
-          ) : null
-        }
-      />
-      <div className="min-h-0 flex-1">
-        {map?.hidePin ? (
-          <ListingLocationMap
-            latitude={map.latitude}
-            longitude={map.longitude}
-            addressQuery={map.addressQuery}
-            hidePin
-            hideLabel
-            outlineTown={map.outlineTown}
-            defaultZoom={map.defaultZoom}
-            variant="hero"
-            className="h-full"
-          />
-        ) : (
-          <ShowcaseCompsMap
-            mlsId={mlsId}
-            subject={subject}
-            townHint={townHint}
-            postalCode={postalCode}
-            expanded={mapExpanded}
-            onToggleExpanded={() => setExpanded(!mapExpanded)}
-            onExit={() => setOverlay(null)}
-            fetchUrl={compsFetchUrl}
-            uagFetchUrl={uagFetchUrl}
-            hideSubject={map?.hidePin ?? false}
-          />
-        )}
-      </div>
-    </div>
-  ) : null;
-
-  /**
-   * Its own tile rather than a `figurePill`: the two chips are real buttons,
-   * which cannot be nested inside the tile's own button element.
-   */
-  const compsPill = (() => {
-    if (revealed !== "comps") {
-      return (
-        <RailControl
-          label="Comps"
-          glyph={<CompsGlyph />}
-          showLabel={labelsMax}
-          onClick={() => setRevealed("comps")}
-        />
-      );
-    }
-    return (
-      <div className="flex w-fit max-w-full flex-col items-end">
-        <div className={`${railRowClass({ interactive: false, fullWidth: true })} gap-2 bg-[#0d1424]`}>
-          <button
-            type="button"
-            onClick={() => scrollToShowcaseSection("comps")}
-            className="inline-flex shrink-0 items-center transition-colors hover:text-gold"
-          >
-            Comps
-          </button>
-          {counts ? (
-            <span className="flex flex-1 items-center justify-end gap-1">
-              <CountChip
-                label="On market"
-                value={counts.active}
-                onClick={() =>
-                  jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
-                }
-              />
-              <CountChip
-                label={`Sold ${counts.soldMonths} in mos`}
-                value={counts.sold}
-                onClick={() =>
-                  jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
-                }
-              />
-            </span>
-          ) : null}
-          <CollapseArrow
-            label="Hide comps"
-            onClick={() => setRevealed(null)}
-          />
-        </div>
-      </div>
-    );
-  })();
-
-  const whatIfPill = (() => {
-    if (revealed !== "if") {
-      return (
-        <RailControl
-          label="What if"
-          glyph={<WhatIfGlyph />}
-          showLabel={labelsMax}
-          onClick={() => setRevealed("if")}
-        />
-      );
-    }
-    const sale =
-      amounts?.sale != null ? fmtIfSaleMoney(amounts.sale) : null;
-    const rent =
-      amounts?.rent != null
-        ? fmtIfRentMoney(roundIfRentMidpoint(amounts.rent))
-        : null;
-    return (
-      <div className="flex w-fit max-w-full flex-col items-end">
-        <div
-          className={`${railRowClass({ interactive: false, fullWidth: true })} gap-2 bg-[#0d1424]`}
-        >
-          <button
-            type="button"
-            onClick={() => scrollToShowcaseSection("if")}
-            className="inline-flex shrink-0 items-center underline decoration-white/35 underline-offset-4 transition-colors hover:text-gold hover:decoration-gold/60"
-          >
-            What if
-          </button>
-          {sale || rent ? (
-            <span className="flex flex-1 items-center justify-end gap-1">
-              {sale ? (
-                <CountChip
-                  label="Sale"
-                  value={sale}
-                  onClick={() => jumpToIfScenario("sale")}
-                />
-              ) : null}
-              {rent ? (
-                <CountChip
-                  label="Rent"
-                  value={rent}
-                  onClick={() => jumpToIfScenario("rent")}
-                />
-              ) : null}
-            </span>
-          ) : null}
-          <CollapseArrow
-            label="Hide What if"
-            onClick={() => setRevealed(null)}
-          />
-        </div>
-      </div>
-    );
-  })();
-
-  const aboveIcons = (
-    <div className="flex flex-col items-end gap-1">
-      <RailMinMaxButton
-        expanded={labelsMax}
-        onToggle={() => setLabelsMax((open) => !open)}
-      />
-      {overlay === "insight" ? insightCard : insightButton}
-      {compsPill}
-      {whatIfPill}
-    </div>
-  );
-
-  const belowGlyphs = (
-    <>
-      {overlay === "details" ? null : detailsButton}
-      {overlay === "pulse" ? null : pulseButton}
-      {overlay === "map" ? null : mapButton}
-    </>
-  );
-
-  const mapRight =
-    overlay === "map"
-      ? mapExpanded
-        ? "lg:right-[min(50vw,44rem)]"
-        : "lg:right-96"
+  const mapFullscreen = overlay === "map" && mapExpanded;
+  const railRight = mapFullscreen
+    ? "max-lg:hidden lg:right-[min(50vw,44rem)]"
+    : overlay
+      ? CARD_RIGHT
       : "right-0";
-  const sideCardOpen = overlay === "details" || overlay === "pulse";
 
   return (
     <>
-      {mapOverlay}
       {/*
-       * Full-height column so the middle gap lines up with the left/right
-       * photo arrows. Insight / Comps / What if stack above; Details / Pulse /
-       * Map sit below. Min/max expands every icon to its word. Details and
-       * Pulse cards sit on the page edge; leftover glyphs hug that card.
+       * Glyph column above the type (z-30). The photo arrow gap stays in the
+       * middle. An open card sits in the center-right band; leftovers hug it.
        */}
       <div
-        className={`pointer-events-none absolute inset-y-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${mapRight}`}
+        className={`pointer-events-none absolute inset-y-0 z-30 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${railRight}`}
       >
         <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
-          {aboveIcons}
+          <RailMinMaxButton
+            expanded={labelsMax}
+            onToggle={() => setLabelsMax((open) => !open)}
+          />
+          {overlay === "insight" ? null : insightButton}
+          {overlay === "comps" ? null : compsButton}
+          {overlay === "if" ? null : whatIfButton}
         </div>
         <div className="h-14 shrink-0" aria-hidden />
-        {sideCardOpen ? (
-          <div className="min-h-0 flex-1" />
-        ) : (
-          <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
-            {belowGlyphs}
-          </div>
-        )}
+        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
+          {overlay === "details" ? null : detailsButton}
+          {overlay === "pulse" ? null : pulseButton}
+          {overlay === "map" ? null : mapButton}
+        </div>
       </div>
-      {sideCardOpen ? (
-        <div className="pointer-events-none absolute bottom-3 right-0 top-[calc(50%+1.75rem)] z-20 flex items-end justify-end pr-3 sm:pr-6">
-          <div className="pointer-events-auto mr-1 flex flex-col items-end gap-1">
-            {belowGlyphs}
-          </div>
+      {overlay && !mapFullscreen ? (
+        <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-30 flex items-center justify-end pr-3 sm:pr-6">
           <div
-            className={`pointer-events-auto ${SIDE_CARD_WIDTH} max-h-full overflow-x-hidden overflow-y-hidden`}
+            className={`pointer-events-auto flex ${CARD_WIDTH} ${
+              overlay === "map"
+                ? "h-[min(32rem,calc(100dvh-14rem))]"
+                : "max-h-full"
+            } flex-col overflow-hidden bg-[#0d1424]`}
           >
-            {overlay === "details" ? detailsCard : pulseCard}
+            {openCard}
           </div>
+        </div>
+      ) : null}
+      {mapFullscreen ? (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-[#0d1424] lg:absolute lg:inset-auto lg:bottom-0 lg:right-0 lg:top-28 lg:z-30 lg:w-[min(50vw,44rem)]">
+          {mapChrome}
         </div>
       ) : null}
     </>
