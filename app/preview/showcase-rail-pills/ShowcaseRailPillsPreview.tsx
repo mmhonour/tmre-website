@@ -134,28 +134,28 @@ function SymbolRailDemo() {
           <span className={railIcon} title="Insight">
             <InsightGlyph />
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-start gap-1">
             {compsBtn}
-            {ifBtn}
+            <div className="flex flex-col gap-1">
+              {ifBtn}
+              <button
+                type="button"
+                data-testid="preview-details-open"
+                onClick={() => setDetailsOpen((on) => !on)}
+                aria-pressed={detailsOpen}
+                title="Details"
+                className={detailsOpen ? railIconOn : railIcon}
+              >
+                <DetailsGlyph />
+              </button>
+              <span className={railIcon} title="Town pulse">
+                <PulseGlyph />
+              </span>
+              <span className={railIcon} title="Map">
+                <MapGlyph />
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            data-testid="preview-details-open"
-            onClick={() => setDetailsOpen((on) => !on)}
-            aria-pressed={detailsOpen}
-            title="Details"
-            className={detailsOpen ? railIconOn : railIcon}
-          >
-            <DetailsGlyph />
-          </button>
-          <span className={railIcon} title="Map">
-            <MapGlyph />
-          </span>
-          <span className={railIcon} title="Town pulse">
-            <PulseGlyph />
-          </span>
         </div>
       </div>
 
@@ -253,9 +253,9 @@ export function ShowcaseRailPillsPreview() {
           Symbols first — Details tabs
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Page load is icons only. Insight sits above Comps; Comps sits left
-          of What if. Details, Map, and Town pulse stack on the right. One
-          Details control opens Summary / Full tabs.
+          Page load is icons only. Insight above Comps; Comps left of What if.
+          Under What if: Details, Town pulse, Map last. One Details control
+          opens Summary / Full tabs.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />

@@ -17,8 +17,8 @@ export default function ShowcaseRailPillsPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Fixture only — no live MLS. Page load is symbols only. Insight sits
-          above Comps; Comps sits left of What if. Details, Map, and Town
-          pulse stack on the right. One Details icon opens Summary / Full
+          above Comps; Comps sits left of What if. Under What if: Details,
+          Town pulse, then Map last. One Details icon opens Summary / Full
           tabs. Navy wash behind status, address, and Offered at / Closed at.
         </p>
         <ShowcaseRailPillsPreview />
