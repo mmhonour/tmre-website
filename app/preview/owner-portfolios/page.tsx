@@ -35,7 +35,7 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
       {
         town: "Westport",
         visionPid: "201",
-        siteAddress: "8 Beachside Ave",
+        siteAddress: "1189 Greens Farms Road Ext",
         lastPaidPrice: 3_400_000,
         lastPaidPriceLabel: "$3,400,000",
         lastPaidSaleDate: "07/22/2021",
@@ -92,7 +92,7 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
         siteAddress: "88 Hillspoint Rd",
         lastPaidPrice: 1_200_000,
         lastPaidPriceLabel: "$1,200,000",
-        lastPaidSaleDate: "08/01/2018",
+        lastPaidSaleDate: null,
       },
     ],
   },
@@ -140,8 +140,9 @@ export default function OwnerPortfoliosPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Click Date or Amount to sort purchases in every panel (newest /
-          highest first; click again to reverse). Dates use the calendar, not
-          A–Z of MM/DD/YYYY. Fixture list — largest first. Production
+          highest first; click again to reverse). Each panel is an invisible
+          three-column grid: address left, Date and Amount right-aligned so
+          figures line up even when a sale date is missing. Production
           (admin): /streets/owners or Find → Landlord / owners.
         </p>
         <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">

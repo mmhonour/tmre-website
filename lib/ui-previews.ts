@@ -52,7 +52,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "owner-portfolios",
     title: "Owner portfolios (2+ homes)",
     summary:
-      "Admin landlord / owner aggregation: same current warranty name on 2+ homes, or the same mailbox. Date and Amount sort purchases by clock and dollars.",
+      "Admin landlord / owner aggregation. Date and Amount sort purchases. Each panel is an invisible grid: address left, dates and amounts right-aligned.",
   },
   {
     slug: "open-houses-view-glyphs",
