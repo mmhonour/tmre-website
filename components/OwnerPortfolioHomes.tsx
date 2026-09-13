@@ -1,18 +1,89 @@
-import Link from 'next/link'
-import { westportParcelHref } from '@/lib/listing-url'
-import type { VisionOwnerPortfolioParcel } from '@/lib/vision-owner-keys'
+"use client";
+
+import Link from "next/link";
+import { westportParcelHref } from "@/lib/listing-url";
+import {
+  sortOwnerPortfolioParcels,
+  type OwnerPurchaseSortDir,
+  type OwnerPurchaseSortKey,
+} from "@/lib/owner-portfolio-sort";
+import type { VisionOwnerPortfolioParcel } from "@/lib/vision-owner-keys";
+
+function PurchaseSortLink({
+  column,
+  label,
+  activeKey,
+  dir,
+  onSort,
+}: {
+  column: OwnerPurchaseSortKey;
+  label: string;
+  activeKey: OwnerPurchaseSortKey | null;
+  dir: OwnerPurchaseSortDir;
+  onSort: (column: OwnerPurchaseSortKey) => void;
+}) {
+  const active = activeKey === column;
+  return (
+    <a
+      href={`#sort-purchases-${column}`}
+      onClick={(event) => {
+        event.preventDefault();
+        onSort(column);
+      }}
+      className={`inline-flex items-center gap-1 no-underline ${
+        active ? "text-navy" : "text-navy/70 hover:text-navy"
+      }`}
+      aria-label={`Sort purchases by ${label}${active ? `, ${dir}ending` : ""}`}
+    >
+      {active ? (
+        <span aria-hidden className="w-2.5 shrink-0 text-[9px] tracking-normal">
+          {dir === "asc" ? "↑" : "↓"}
+        </span>
+      ) : (
+        <span className="w-2.5 shrink-0" aria-hidden />
+      )}
+      <span className="underline underline-offset-2 decoration-navy/35 hover:decoration-navy">
+        {label}
+      </span>
+    </a>
+  );
+}
 
 export function OwnerPortfolioHomes({
   parcels,
   purchaseTotalLabel,
+  sortKey,
+  sortDir,
+  onSort,
 }: {
-  parcels: readonly VisionOwnerPortfolioParcel[]
-  purchaseTotalLabel?: string | null
+  parcels: readonly VisionOwnerPortfolioParcel[];
+  purchaseTotalLabel?: string | null;
+  sortKey: OwnerPurchaseSortKey | null;
+  sortDir: OwnerPurchaseSortDir;
+  onSort: (column: OwnerPurchaseSortKey) => void;
 }) {
+  const rows = sortOwnerPortfolioParcels(parcels, sortKey, sortDir);
+
   return (
     <>
-      <ul className="mt-3 space-y-1.5">
-        {parcels.map((parcel) => (
+      <div className="mt-3 flex items-baseline justify-end gap-4 font-mono text-[10px] uppercase tracking-[0.14em]">
+        <PurchaseSortLink
+          column="date"
+          label="Date"
+          activeKey={sortKey}
+          dir={sortDir}
+          onSort={onSort}
+        />
+        <PurchaseSortLink
+          column="amount"
+          label="Amount"
+          activeKey={sortKey}
+          dir={sortDir}
+          onSort={onSort}
+        />
+      </div>
+      <ul className="mt-1.5 space-y-1.5">
+        {rows.map((parcel) => (
           <li
             key={`${parcel.town}:${parcel.visionPid}`}
             className="flex items-start justify-between gap-6"
@@ -49,5 +120,5 @@ export function OwnerPortfolioHomes({
         </p>
       ) : null}
     </>
-  )
+  );
 }

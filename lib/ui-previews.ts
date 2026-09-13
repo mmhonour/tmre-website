@@ -46,7 +46,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "owner-portfolios",
     title: "Owner portfolios (2+ homes)",
     summary:
-      "Admin landlord / owner aggregation: same current warranty name on 2+ homes, or the same mailbox. Close date to the left of the price; purchase total at the bottom.",
+      "Admin landlord / owner aggregation: same current warranty name on 2+ homes, or the same mailbox. Date and Amount sort purchases by clock and dollars.",
   },
   {
     slug: "open-houses-view-glyphs",
