@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
@@ -24,6 +24,7 @@ import {
 } from "@/components/listing/showcase/showcase-rail-glyphs";
 import type { ShowcaseMapPresentation } from "@/components/listing/showcase/showcase-host";
 import {
+  jumpToIfScenario,
   jumpToListingSection,
   scrollToShowcaseSection,
 } from "@/components/listing/showcase/showcase-sections";
@@ -39,6 +40,8 @@ import { useLocationEstimateOverlay } from "@/components/intelligence/use-locati
 type DetailsTab = "full" | "other";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
+/** Details / Pulse card — leaves a glyph gutter so siblings hug its left edge. */
+const SIDE_CARD_WIDTH = "w-[min(24rem,calc(100vw-3.75rem))]";
 
 /** Shared tile geometry; `interactive` adds the hover the whole-row tiles use. */
 const railRowClass = (opts: {
@@ -64,11 +67,11 @@ const pillClass = (open: boolean, fullWidth = false) =>
 /** Summary + jump control, matching the map's For sale / Closed toggles. */
 function CountChip({
   label,
-  count,
+  value,
   onClick,
 }: {
   label: string;
-  count: number;
+  value: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -78,7 +81,9 @@ function CountChip({
       className="inline-flex shrink-0 items-center gap-1.5 bg-white/[0.08] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/65 transition-colors hover:bg-white/20 hover:text-white"
     >
       {label}
-      <span className="tabular-nums text-white">{count}</span>
+      <span className="tabular-nums normal-case tracking-[0.08em] text-white">
+        {value}
+      </span>
     </button>
   );
 }
@@ -233,10 +238,10 @@ type IfAmounts = { sale: number | null; rent: number | null };
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Insight, Comps, then
  * What if sit above that arrow; Details, Pulse, and Map sit below. A tap
- * replaces the symbol with a card; ↑ on the card restores the symbol.
- * Opening Details or Pulse hides the other icons under the arrow so the
- * card never needs a scrollbar. The min/max control expands every icon
- * to its word, or collapses them back.
+ * replaces the glyph with a card; ↑ on the card restores the glyph.
+ * Opening Details or Pulse keeps sibling glyphs to the left of that card
+ * (or above it when the card is short). The min/max control expands every
+ * icon to its word, or collapses them back.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -343,65 +348,6 @@ export default function ShowcaseSectionRail({
       cancelled = true;
     };
   }, [mlsId, compsFetchUrl]);
-
-  const ifLabel = useMemo(() => {
-    if (!amounts) return null;
-    const sale = amounts.sale != null ? fmtIfSaleMoney(amounts.sale) : null;
-    const rent =
-      amounts.rent != null
-        ? fmtIfRentMoney(roundIfRentMidpoint(amounts.rent))
-        : null;
-    if (!sale && !rent) return null;
-    return `${sale ?? "—"} / ${rent ?? "—"}`;
-  }, [amounts]);
-
-  /**
-   * Tiles that carry figures. Both breakpoints start as a symbol; first tap
-   * reveals the label and figures, « hides them again.
-   */
-  const figurePill = (
-    id: string,
-    label: string,
-    glyph: ReactNode,
-    figures: ReactNode | null,
-    onActivate: () => void,
-  ) => {
-    const showFigures = revealed === id;
-    if (showFigures) {
-      return (
-        <div className="flex w-fit max-w-full flex-col items-end">
-          <div
-            className={`${railRowClass({ interactive: false, fullWidth: true })} gap-2 bg-[#0d1424]`}
-          >
-            <button
-              type="button"
-              onClick={onActivate}
-              className="flex min-w-0 flex-1 items-center text-left transition-colors hover:text-gold"
-            >
-              <span className="shrink-0">{label}</span>
-              {figures ? (
-                <span className="ml-3 flex flex-1 items-center justify-end gap-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
-                  {figures}
-                </span>
-              ) : null}
-            </button>
-            <CollapseArrow
-              label={`Hide ${label}`}
-              onClick={() => setRevealed(null)}
-            />
-          </div>
-        </div>
-      );
-    }
-    return (
-      <RailControl
-        label={label}
-        glyph={glyph}
-        showLabel={labelsMax}
-        onClick={() => setRevealed(id)}
-      />
-    );
-  };
 
   const insightButton = (
     <RailControl
@@ -588,14 +534,14 @@ export default function ShowcaseSectionRail({
             <span className="flex flex-1 items-center justify-end gap-1">
               <CountChip
                 label="On market"
-                count={counts.active}
+                value={counts.active}
                 onClick={() =>
                   jumpToListingSection(LISTING_SALE_ON_MARKET_PANEL_ID)
                 }
               />
               <CountChip
                 label={`Sold ${counts.soldMonths} in mos`}
-                count={counts.sold}
+                value={counts.sold}
                 onClick={() =>
                   jumpToListingSection(LISTING_RECENTLY_SOLD_PANEL_ID)
                 }
@@ -611,6 +557,62 @@ export default function ShowcaseSectionRail({
     );
   })();
 
+  const whatIfPill = (() => {
+    if (revealed !== "if") {
+      return (
+        <RailControl
+          label="What if"
+          glyph={<WhatIfGlyph />}
+          showLabel={labelsMax}
+          onClick={() => setRevealed("if")}
+        />
+      );
+    }
+    const sale =
+      amounts?.sale != null ? fmtIfSaleMoney(amounts.sale) : null;
+    const rent =
+      amounts?.rent != null
+        ? fmtIfRentMoney(roundIfRentMidpoint(amounts.rent))
+        : null;
+    return (
+      <div className="flex w-fit max-w-full flex-col items-end">
+        <div
+          className={`${railRowClass({ interactive: false, fullWidth: true })} gap-2 bg-[#0d1424]`}
+        >
+          <button
+            type="button"
+            onClick={() => scrollToShowcaseSection("if")}
+            className="inline-flex shrink-0 items-center underline decoration-white/35 underline-offset-4 transition-colors hover:text-gold hover:decoration-gold/60"
+          >
+            What if
+          </button>
+          {sale || rent ? (
+            <span className="flex flex-1 items-center justify-end gap-1">
+              {sale ? (
+                <CountChip
+                  label="Sale"
+                  value={sale}
+                  onClick={() => jumpToIfScenario("sale")}
+                />
+              ) : null}
+              {rent ? (
+                <CountChip
+                  label="Rent"
+                  value={rent}
+                  onClick={() => jumpToIfScenario("rent")}
+                />
+              ) : null}
+            </span>
+          ) : null}
+          <CollapseArrow
+            label="Hide What if"
+            onClick={() => setRevealed(null)}
+          />
+        </div>
+      </div>
+    );
+  })();
+
   const aboveIcons = (
     <div className="flex flex-col items-end gap-1">
       <RailMinMaxButton
@@ -619,31 +621,25 @@ export default function ShowcaseSectionRail({
       />
       {overlay === "insight" ? insightCard : insightButton}
       {compsPill}
-      {figurePill(
-        "if",
-        "What if",
-        <WhatIfGlyph />,
-        ifLabel ? <span>{ifLabel}</span> : null,
-        () => scrollToShowcaseSection("if"),
-      )}
+      {whatIfPill}
     </div>
   );
 
-  const belowIcons = (
-    <div className="flex flex-col items-end gap-1">
-      {overlay === "details" ? (
-        detailsCard
-      ) : overlay === "pulse" ? (
-        pulseCard
-      ) : (
-        <>
-          {detailsButton}
-          {pulseButton}
-          {overlay === "map" ? null : mapButton}
-        </>
-      )}
-    </div>
+  const belowGlyphs = (
+    <>
+      {overlay === "details" ? null : detailsButton}
+      {overlay === "pulse" ? null : pulseButton}
+      {overlay === "map" ? null : mapButton}
+    </>
   );
+
+  const mapRight =
+    overlay === "map"
+      ? mapExpanded
+        ? "lg:right-[min(50vw,44rem)]"
+        : "lg:right-96"
+      : "right-0";
+  const sideCardOpen = overlay === "details" || overlay === "pulse";
 
   return (
     <>
@@ -651,33 +647,36 @@ export default function ShowcaseSectionRail({
       {/*
        * Full-height column so the middle gap lines up with the left/right
        * photo arrows. Insight / Comps / What if stack above; Details / Pulse /
-       * Map sit below. Min/max expands every icon to its word.
+       * Map sit below. Min/max expands every icon to its word. Details and
+       * Pulse cards sit on the page edge; leftover glyphs hug that card.
        */}
       <div
-        className={`pointer-events-none absolute inset-y-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${
-          overlay === "map"
-            ? mapExpanded
-              ? "lg:right-[min(50vw,44rem)]"
-              : "lg:right-96"
-            : "right-0"
-        }`}
+        className={`pointer-events-none absolute inset-y-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${mapRight}`}
       >
-        {overlay === "pulse" || overlay === "details" ? (
-          <div className="pointer-events-auto mt-auto flex w-full flex-col items-end overflow-x-hidden overflow-y-hidden pb-3">
-            {overlay === "pulse" ? pulseCard : detailsCard}
-          </div>
+        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
+          {aboveIcons}
+        </div>
+        <div className="h-14 shrink-0" aria-hidden />
+        {sideCardOpen ? (
+          <div className="min-h-0 flex-1" />
         ) : (
-          <>
-            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
-              {aboveIcons}
-            </div>
-            <div className="h-14 shrink-0" aria-hidden />
-            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
-              {belowIcons}
-            </div>
-          </>
+          <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
+            {belowGlyphs}
+          </div>
         )}
       </div>
+      {sideCardOpen ? (
+        <div className="pointer-events-none absolute bottom-3 right-0 top-[calc(50%+1.75rem)] z-20 flex items-end justify-end pr-3 sm:pr-6">
+          <div className="pointer-events-auto mr-1 flex flex-col items-end gap-1">
+            {belowGlyphs}
+          </div>
+          <div
+            className={`pointer-events-auto ${SIDE_CARD_WIDTH} max-h-full overflow-x-hidden overflow-y-hidden`}
+          >
+            {overlay === "details" ? detailsCard : pulseCard}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

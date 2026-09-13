@@ -222,7 +222,7 @@ export default function ShowcaseCompsMap({
             {(
               [
                 { id: "active" as const, label: "For sale", count: counts.active },
-                { id: "uag" as const, label: "UAG", count: counts.uag },
+                { id: "uag" as const, label: "Under Agreement", count: counts.uag },
                 { id: "sold" as const, label: "Closed", count: counts.sold },
               ] as const
             ).map((p) => (
@@ -231,7 +231,7 @@ export default function ShowcaseCompsMap({
                 type="button"
                 onClick={() => setPool(p.id)}
                 aria-pressed={pool === p.id}
-                title={p.id === "uag" ? "Under agreement" : undefined}
+                title={p.id === "uag" ? "Under Agreement" : undefined}
                 className={`px-2.5 py-1.5 text-left font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
                   pool === p.id
                     ? "bg-white/15 text-white"

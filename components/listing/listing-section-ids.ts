@@ -27,6 +27,10 @@ export const LISTING_SALE_ON_MARKET_PANEL_ID = "comparables-on-market-sale";
 export const LISTING_RECENTLY_SOLD_PANEL_ID = "comparables-sold-sale";
 export const LISTING_RECENTLY_RENTED_PANEL_ID = "comparables-sold-rental";
 
+/** What if scenario panels — sale and rent stack on phone, sit side by side on desktop. */
+export const LISTING_IF_SALE_PANEL_ID = "if-you-sell";
+export const LISTING_IF_RENT_PANEL_ID = "if-you-rent";
+
 export function listingRecentlyClosedPanelId(
   kind: "sale" | "rental",
 ): string {
@@ -66,6 +70,9 @@ export function listingTabFromSectionId(
     id === "comparables-on-market-rental"
   ) {
     return "comparable-rentals";
+  }
+  if (id === LISTING_IF_SALE_PANEL_ID || id === LISTING_IF_RENT_PANEL_ID) {
+    return "if";
   }
   for (const [tab, sectionId] of Object.entries(LISTING_SECTION_IDS)) {
     if (sectionId === id) return tab as ListingScrollSectionTab;

@@ -162,7 +162,7 @@ export default function ListingShowcaseView({
 
   const openPhotoFocus = useCallback((photoIndex?: number) => {
     if (photoIndex != null) setIndex(photoIndex);
-    setPaused(true);
+    // photoFocus already holds the slideshow; do not leave Pause latched.
     setPhotoFocus(true);
   }, []);
 

@@ -160,13 +160,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "listing-photo-focus",
     title: "Listing photo full screen",
     summary:
-      "On a phone, tap the full-bleed photo or a thumbnail to see just the photo. Close exits; rail and type stay hidden while it is open.",
+      "On a phone, tap the full-bleed photo or a thumbnail to see just the photo. Close exits to the still-playing carousel unless the user hit pause. Rail and type stay hidden while it is open.",
   },
   {
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Right arrow opposite the left. Insight/Comps/What if stack above; Details/Pulse/Map below. Min/max shows icon names. Cards close with ↑. Gold Details tabs. Map filters under Full size.",
+      "Right arrow opposite the left. Insight/Comps/What if stack above; Details/Pulse/Map below. Open cards keep leftover glyphs on the card’s left edge. What if Sale/Rent chips jump to each scenario. Map says Under Agreement. Cards close with ↑.",
   },
 ];
 

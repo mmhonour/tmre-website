@@ -19,7 +19,11 @@ import {
 import ListingCriteriaSideLayout, {
   listingCriteriaLinkSlotId,
 } from "@/components/listing/ListingCriteriaSideLayout";
-import { LISTING_SECTION_IDS } from "@/components/listing/listing-section-ids";
+import {
+  LISTING_IF_RENT_PANEL_ID,
+  LISTING_IF_SALE_PANEL_ID,
+  LISTING_SECTION_IDS,
+} from "@/components/listing/listing-section-ids";
 import MatchingCriteriaSummary, {
   type CriteriaStepFeedback,
   type CriteriaStepKey,
@@ -1159,8 +1163,8 @@ function CompList({
 }
 
 const IF_SCENARIO_PANEL_IDS = {
-  sale: "if-you-sell",
-  rent: "if-you-rent",
+  sale: LISTING_IF_SALE_PANEL_ID,
+  rent: LISTING_IF_RENT_PANEL_ID,
 } as const;
 
 /** Compact admin-only send dialog — always emails sell + rent scenarios. */
@@ -1705,7 +1709,14 @@ export default function ListingIfPanel({
     setSessionSeeded(false);
     setCriteriaStepFeedback(null);
     scenarioSeededForMlsRef.current = null;
-    setMobileScenarioLead(mobileScenarioDefault(isRental));
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash === LISTING_IF_SALE_PANEL_ID) {
+      setMobileScenarioLead("sale");
+    } else if (hash === LISTING_IF_RENT_PANEL_ID) {
+      setMobileScenarioLead("rent");
+    } else {
+      setMobileScenarioLead(mobileScenarioDefault(isRental));
+    }
     if (isRental != null) scenarioSeededForMlsRef.current = mlsId;
     setEmailOpen(false);
     setMidpointMethod(IF_DEFAULT_MIDPOINT_METHOD);
@@ -1720,9 +1731,28 @@ export default function ListingIfPanel({
   useEffect(() => {
     if (scenarioSeededForMlsRef.current === mlsId) return;
     if (data?.subjectIsRental == null) return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (
+      hash === LISTING_IF_SALE_PANEL_ID ||
+      hash === LISTING_IF_RENT_PANEL_ID
+    ) {
+      scenarioSeededForMlsRef.current = mlsId;
+      return;
+    }
     setMobileScenarioLead(mobileScenarioDefault(data.subjectIsRental));
     scenarioSeededForMlsRef.current = mlsId;
   }, [data?.subjectIsRental, mlsId]);
+
+  useEffect(() => {
+    const applyHash = () => {
+      const raw = window.location.hash.replace(/^#/, "");
+      if (raw === LISTING_IF_SALE_PANEL_ID) setMobileScenarioLead("sale");
+      if (raw === LISTING_IF_RENT_PANEL_ID) setMobileScenarioLead("rent");
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, []);
 
   useEffect(() => {
     return () => {

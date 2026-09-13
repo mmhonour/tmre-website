@@ -1,5 +1,7 @@
 import type { ListingTab } from "@/components/listing/ListingSubnav";
 import {
+  LISTING_IF_RENT_PANEL_ID,
+  LISTING_IF_SALE_PANEL_ID,
   LISTING_PRODUCTION_PANEL_ID,
   LISTING_SALE_ON_MARKET_PANEL_ID,
   LISTING_SECTION_IDS,
@@ -82,6 +84,24 @@ export function jumpToListingSection(targetId: string): void {
   };
   window.setTimeout(retry, 80);
   window.setTimeout(retry, 280);
+}
+
+/** Open the matching What if scenario (phone shows one at a time) and scroll to it. */
+export function jumpToIfScenario(kind: "sale" | "rent"): void {
+  const targetId =
+    kind === "sale" ? LISTING_IF_SALE_PANEL_ID : LISTING_IF_RENT_PANEL_ID;
+  if (typeof window === "undefined") return;
+  const hash = `#${targetId}`;
+  if (window.location.hash !== hash) {
+    window.location.hash = hash;
+  } else {
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }
+  const section =
+    document.getElementById(SHOWCASE_SECTION_IDS.if) ??
+    document.getElementById(LISTING_SECTION_IDS.if);
+  if (section) scrollElementIntoView(section);
+  jumpToListingSection(targetId);
 }
 
 export function scrollToShowcaseSection(section: ShowcaseSection): void {

@@ -43,11 +43,19 @@ function Glyph({ id }: { id: string }) {
   }
 }
 
-function CountChip({ label, count }: { label: string; count: number }) {
+function CountChip({
+  label,
+  count,
+}: {
+  label: string;
+  count: number | string;
+}) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 bg-white/[0.08] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/65">
       {label}
-      <span className="tabular-nums text-white">{count}</span>
+      <span className="tabular-nums normal-case tracking-[0.08em] text-white">
+        {count}
+      </span>
     </span>
   );
 }
@@ -142,9 +150,12 @@ function SymbolRailDemo() {
           <span className="mr-2.5 inline-flex">
             <WhatIfGlyph />
           </span>
-          <span className="shrink-0">What if</span>
-          <span className="ml-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
-            $1.4M / $6,200
+          <span className="shrink-0 underline decoration-white/35 underline-offset-4">
+            What if
+          </span>
+          <span className="ml-2 flex items-center gap-1">
+            <CountChip label="Sale" count="$1.4M" />
+            <CountChip label="Rent" count="$6.2K" />
           </span>
         </span>
         <button
@@ -229,81 +240,112 @@ function SymbolRailDemo() {
       >
         →
       </div>
-      <div className="flex flex-1 flex-col items-end justify-start gap-1 pt-1">
-        {detailsOpen ? (
-          <div className="w-full max-w-sm bg-[#0d1424]">
-            <div className={`${railRow} w-full bg-[#0d1424]`}>
-              <span className="flex-1">Details</span>
-              <button
-                type="button"
-                data-testid="preview-details-hide"
-                onClick={() => setDetailsOpen(false)}
-                aria-label="Hide Details"
-                className="ml-2 px-1 font-mono text-white/70"
-              >
-                ↑
-              </button>
+      <div className="flex flex-1 items-end justify-end gap-1 pt-1">
+        {detailsOpen || pulseOpen ? (
+          <>
+            <div className="flex flex-col items-end gap-1">
+              {detailsOpen ? null : (
+                <DemoControl
+                  label="Details"
+                  glyph={<DetailsGlyph />}
+                  showLabel={labelsMax}
+                  testId="preview-details-open"
+                  onClick={() => {
+                    setPulseOpen(false);
+                    setDetailsOpen(true);
+                  }}
+                />
+              )}
+              {pulseOpen ? null : (
+                <DemoControl
+                  label="Pulse"
+                  glyph={<PulseGlyph />}
+                  showLabel={labelsMax}
+                  testId="preview-pulse-open"
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    setPulseOpen(true);
+                  }}
+                />
+              )}
+              <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
             </div>
-            <div
-              role="tablist"
-              className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
-            >
-              {(["full", "other"] as const).map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={detailsTab === id}
-                  data-testid={`preview-details-tab-${id}`}
-                  onClick={() => setDetailsTab(id)}
-                  className={`w-fit shrink-0 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
-                    detailsTab === id
-                      ? "bg-gold text-navy"
-                      : "bg-gold/25 text-gold"
-                  }`}
+            {detailsOpen ? (
+              <div className="w-full max-w-sm bg-[#0d1424]">
+                <div className={`${railRow} w-full bg-[#0d1424]`}>
+                  <span className="flex-1">Details</span>
+                  <button
+                    type="button"
+                    data-testid="preview-details-hide"
+                    onClick={() => setDetailsOpen(false)}
+                    aria-label="Hide Details"
+                    className="ml-2 px-1 font-mono text-white/70"
+                  >
+                    ↑
+                  </button>
+                </div>
+                <div
+                  role="tablist"
+                  className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
                 >
-                  {id === "full" ? "Full" : "Other"}
-                </button>
-              ))}
-            </div>
-            <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-              {detailsTab === "full" ? (
-                <ul className="space-y-2">
-                  <li>Schools · taxes · rooms</li>
-                  <li>Lot 0.42 ac · 2,410 sf</li>
-                  <li>Assessed $1.12M · tax $18,440</li>
+                  {(["full", "other"] as const).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={detailsTab === id}
+                      data-testid={`preview-details-tab-${id}`}
+                      onClick={() => setDetailsTab(id)}
+                      className={`w-fit shrink-0 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+                        detailsTab === id
+                          ? "bg-gold text-navy"
+                          : "bg-gold/25 text-gold"
+                      }`}
+                    >
+                      {id === "full" ? "Full" : "Other"}
+                    </button>
+                  ))}
+                </div>
+                <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+                  {detailsTab === "full" ? (
+                    <ul className="space-y-2">
+                      <li>Schools · taxes · rooms</li>
+                      <li>Lot 0.42 ac · 2,410 sf</li>
+                      <li>Assessed $1.12M · tax $18,440</li>
+                      <li>No scrollbar on this card</li>
+                    </ul>
+                  ) : (
+                    "Beds 4 · Baths 3 · 2,410 sf"
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="w-full max-w-sm overflow-x-hidden overflow-y-hidden bg-[#0d1424]">
+                <div className={`${railRow} w-full bg-[#0d1424]`}>
+                  <span className="flex-1">Town pulse</span>
+                  <button
+                    type="button"
+                    data-testid="preview-pulse-hide"
+                    onClick={() => setPulseOpen(false)}
+                    aria-label="Hide Town pulse"
+                    className="ml-2 px-1 font-mono text-white/70"
+                  >
+                    ↑
+                  </button>
+                </div>
+                <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+                  <li>Inventory 42</li>
+                  <li>Months supply 3.1 mo</li>
+                  <li>Avg DOM 28d</li>
+                  <li>Closed 21 · 12 mos</li>
+                  <li>Median $1.85M</li>
                   <li>No scrollbar on this card</li>
                 </ul>
-              ) : (
-                "Beds 4 · Baths 3 · 2,410 sf"
-              )}
-            </div>
-          </div>
-        ) : pulseOpen ? (
-          <div className="w-full max-w-sm overflow-x-hidden overflow-y-hidden bg-[#0d1424]">
-            <div className={`${railRow} w-full bg-[#0d1424]`}>
-              <span className="flex-1">Town pulse</span>
-              <button
-                type="button"
-                data-testid="preview-pulse-hide"
-                onClick={() => setPulseOpen(false)}
-                aria-label="Hide Town pulse"
-                className="ml-2 px-1 font-mono text-white/70"
-              >
-                ↑
-              </button>
-            </div>
-            <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-              <li>Inventory 42</li>
-              <li>Months supply 3.1 mo</li>
-              <li>Avg DOM 28d</li>
-              <li>Closed 21 · 12 mos</li>
-              <li>Median $1.85M</li>
-              <li>No scrollbar on this card</li>
-            </ul>
-          </div>
+              </div>
+            )}
+          </>
         ) : (
-          <>
+          <div className="flex flex-col items-end gap-1">
             <DemoControl
               label="Details"
               glyph={<DetailsGlyph />}
@@ -319,7 +361,7 @@ function SymbolRailDemo() {
               onClick={() => setPulseOpen(true)}
             />
             <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -362,7 +404,7 @@ function MapChromeDemo() {
               {(
                 [
                   { id: "active" as const, label: "For sale", count: 6 },
-                  { id: "uag" as const, label: "UAG", count: 2 },
+                  { id: "uag" as const, label: "Under Agreement", count: 2 },
                   { id: "sold" as const, label: "Closed", count: 21 },
                 ] as const
               ).map((p) => (
@@ -453,12 +495,11 @@ export function ShowcaseRailPillsPreview() {
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
           Insight, Comps, then What if stack above the right arrow. Details,
-          Pulse, and Map sit below. Opening Insight shifts Offered at left of
-          the card. Opening Details hides Pulse and Map so the card has no
-          scrollbar. The square min/max control expands every
-          icon to its word, or collapses them back. A tap still opens a card;
-          ↑ restores the control. Details uses the gold folder tabs on an
-          opaque navy card.
+          Pulse, and Map sit below. Opening a card keeps leftover glyphs on
+          its left edge (or above it when there is room). What if is a link;
+          Sale and Rent are clickable boxes. The square min/max control
+          expands every icon to its word. ↑ restores the glyph. Details uses
+          the gold folder tabs on an opaque navy card.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
@@ -472,8 +513,8 @@ export function ShowcaseRailPillsPreview() {
         <p className="mb-4 text-sm leading-relaxed text-slate">
           Map sits on the page’s right edge. Rail glyphs stay to its left.
           One Corridors control sits next to the Map label (admin). Offered
-          at shifts left of the map plus the glyph column. For sale, UAG,
-          and Closed stack under Full size.
+          at shifts left of the map plus the glyph column. For sale, Under
+          Agreement, and Closed stack under Full size.
         </p>
         <MapChromeDemo />
       </section>
