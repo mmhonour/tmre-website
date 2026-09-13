@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ListingScoreApiFields } from "@/lib/listing-header-score-props";
+import type { ListingMapPoint } from "@/lib/listing-map-point-shared";
 import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
 import {
   listingChromeApiUrl,
@@ -13,6 +14,8 @@ export type ListingChromePayload<TListing> = ListingScoreApiFields & {
   listing: TListing;
   /** VGSI parcel pairing for the Admin panel; null outside Westport. */
   vision?: ListingVisionLink | null;
+  /** Display pin for listing maps — not a rewrite of stored MLS lat/lon. */
+  mapPoint?: ListingMapPoint | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -56,6 +59,9 @@ export function useListingChrome<TListing>(mlsId: string) {
   const [vision, setVision] = useState<ListingVisionLink | null>(
     () => initial?.vision ?? null,
   );
+  const [mapPoint, setMapPoint] = useState<ListingMapPoint | null>(
+    () => initial?.mapPoint ?? null,
+  );
   const [state, setState] = useState<LoadState>(() =>
     initial?.listing ? "ready" : "loading",
   );
@@ -76,6 +82,7 @@ export function useListingChrome<TListing>(mlsId: string) {
       setMedianPpsfBand(cached.medianPpsfBand ?? null);
       setMarketBandLabel(cached.marketBandLabel ?? null);
       setVision(cached.vision ?? null);
+      setMapPoint(cached.mapPoint ?? null);
       setState("ready");
     } else {
       setListing(null);
@@ -88,6 +95,7 @@ export function useListingChrome<TListing>(mlsId: string) {
       setMedianPpsfBand(null);
       setMarketBandLabel(null);
       setVision(null);
+      setMapPoint(null);
       setState("loading");
     }
 
@@ -110,6 +118,7 @@ export function useListingChrome<TListing>(mlsId: string) {
         setMedianPpsfBand(d.medianPpsfBand ?? null);
         setMarketBandLabel(d.marketBandLabel ?? null);
         setVision(d.vision ?? null);
+        setMapPoint(d.mapPoint ?? null);
         setState("ready");
       })
       .catch(() => {
@@ -132,6 +141,7 @@ export function useListingChrome<TListing>(mlsId: string) {
     medianPpsfBand,
     marketBandLabel,
     vision,
+    mapPoint,
     state,
   };
 }

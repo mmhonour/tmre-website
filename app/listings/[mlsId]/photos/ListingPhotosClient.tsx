@@ -22,6 +22,10 @@ import {
 } from "@/lib/listing-header-score-props";
 import { listingGalleryPhotoUrls } from "@/lib/listing-url";
 import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
+import {
+  listingDisplayMapPoint,
+  type ListingMapPoint,
+} from "@/lib/listing-map-point-shared";
 
 type Schools = {
   elementary: string | null;
@@ -63,6 +67,7 @@ type ApiResponse = ListingScoreApiFields & {
   photos: string[];
   /** VGSI parcel pairing for the Admin panel; null outside Westport. */
   vision?: ListingVisionLink | null;
+  mapPoint?: ListingMapPoint | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -189,6 +194,7 @@ export default function ListingPhotosClient({
   }
 
   const { listing } = data;
+  const pin = listingDisplayMapPoint(listing, data.mapPoint);
   const photos = galleryPhotos;
   const street = listing.address.street || listing.address.full;
   const mapsQuery =
@@ -243,8 +249,8 @@ export default function ListingPhotosClient({
           }),
         }}
         location={{
-          latitude: listing.latitude,
-          longitude: listing.longitude,
+          latitude: pin.latitude,
+          longitude: pin.longitude,
           addressQuery: mapsQuery,
         }}
         subnav={{

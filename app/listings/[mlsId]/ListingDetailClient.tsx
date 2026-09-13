@@ -27,6 +27,10 @@ import {
 } from "@/lib/tab-data-prefetch";
 import { listingPhotosHref } from "@/lib/listing-url";
 import type { ListingVisionLink } from "@/lib/listing-vision-link-shared";
+import {
+  listingDisplayMapPoint,
+  type ListingMapPoint,
+} from "@/lib/listing-map-point-shared";
 import { isRentalListing } from "@/lib/listing-kind";
 
 type Schools = {
@@ -75,6 +79,7 @@ type ApiResponse = ListingScoreApiFields & {
   photos: string[];
   /** VGSI parcel pairing for the Admin panel; null outside Westport. */
   vision?: ListingVisionLink | null;
+  mapPoint?: ListingMapPoint | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -182,6 +187,7 @@ export default function ListingDetailClient({
 
   const { listing } = data;
   const l = listing;
+  const pin = listingDisplayMapPoint(l, data.mapPoint);
   const photoCount = l.photoCount ?? 0;
   const remarks =
     l.remarks?.trim() ||
@@ -207,8 +213,8 @@ export default function ListingDetailClient({
   );
   const isClosed = details.isClosed;
   const mapSlot = {
-    latitude: l.latitude,
-    longitude: l.longitude,
+    latitude: pin.latitude,
+    longitude: pin.longitude,
     addressQuery: mapsQuery,
   };
   const photosHrefForIndex = (photoIndex: number) =>
@@ -257,8 +263,8 @@ export default function ListingDetailClient({
           }),
         }}
         location={{
-          latitude: l.latitude,
-          longitude: l.longitude,
+          latitude: pin.latitude,
+          longitude: pin.longitude,
           addressQuery: mapsQuery,
         }}
         subnav={{

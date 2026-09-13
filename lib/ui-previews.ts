@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "listing-map-town-pin",
+    title: "Listing map — town pin",
+    summary:
+      "When the MLS pin sits outside the listing’s town, the map uses a Census geocode of street + city + state + zip. Stored MLS lat/lon is not overwritten.",
+  },
+  {
     slug: "listing-showcase-nav",
     title: "Listing clicks → showcase",
     summary:

@@ -19,6 +19,7 @@ import { ListingUagPageContent } from "@/components/listing/ListingUagPanel";
 import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url";
 import { listingHeaderScoreProps } from "@/lib/listing-header-score-props";
 import { ListingShell } from "@/components/listing/ListingShell";
+import { listingDisplayMapPoint } from "@/lib/listing-map-point-shared";
 
 type Schools = {
   elementary: string | null;
@@ -80,6 +81,7 @@ export default function ListingComparablesClient({
     medianPpsfBand,
     marketBandLabel,
     vision,
+    mapPoint,
     state,
   } = useListingChrome<Listing>(mlsId);
   const activeTab =
@@ -130,6 +132,7 @@ export default function ListingComparablesClient({
   }
 
   const street = listing.address.street || listing.address.full;
+  const pin = listingDisplayMapPoint(listing, mapPoint);
   const resolvedTown = townHint || listing.address.city;
   const mapsQuery =
     listing.address.full?.trim() ||
@@ -201,8 +204,8 @@ export default function ListingComparablesClient({
           }),
         }}
         location={{
-          latitude: listing.latitude,
-          longitude: listing.longitude,
+          latitude: pin.latitude,
+          longitude: pin.longitude,
           addressQuery: mapsQuery,
         }}
         subnav={{

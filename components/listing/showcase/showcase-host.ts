@@ -130,7 +130,7 @@ export function showcaseMapSubject(
   },
 ): DealBoardMapListing | null {
   if (host.map.hidePin) return null;
-  if (listing.latitude == null || listing.longitude == null) return null;
+  if (host.map.latitude == null || host.map.longitude == null) return null;
   return {
     key: listing.listingKey || listing.mlsId,
     address: host.street,
@@ -141,8 +141,8 @@ export function showcaseMapSubject(
     beds: listing.beds,
     baths: listing.baths,
     sqft: listing.sqft,
-    latitude: listing.latitude,
-    longitude: listing.longitude,
+    latitude: host.map.latitude,
+    longitude: host.map.longitude,
     photoCount: listing.photoCount,
   };
 }

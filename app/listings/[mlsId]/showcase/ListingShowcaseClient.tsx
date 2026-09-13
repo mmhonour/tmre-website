@@ -18,6 +18,10 @@ import {
   listingSectionHref,
   listingShareHref,
 } from "@/lib/listing-url";
+import {
+  listingDisplayMapPoint,
+  type ListingMapPoint,
+} from "@/lib/listing-map-point-shared";
 import { listingChromeApiUrl, loadTabJson } from "@/lib/tab-data-prefetch";
 
 const MAX_PHOTOS = 40;
@@ -26,6 +30,7 @@ const REMARKS_KEYS = ["PublicRemarks", "RemarksPublicAddendum"];
 type ApiResponse = ListingScoreApiFields & {
   listing: ShowcaseListing;
   vision?: ListingVisionLink | null;
+  mapPoint?: ListingMapPoint | null;
 };
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -98,6 +103,7 @@ export default function ListingShowcaseClient({
   const street =
     listing.address.street || listing.address.full || addressHint || "";
   const city = townHint || listing.address.city;
+  const pin = listingDisplayMapPoint(listing, data?.mapPoint);
   const insight = data?.insight?.trim() || null;
   const detailsPanelProps = buildListingDetailsPanelProps(
     { ...listing, townHint: city },
@@ -163,8 +169,8 @@ export default function ListingShowcaseClient({
     obfuscatePhoto: () => false,
     showHero: photos.length > 0,
     map: {
-      latitude: listing.latitude,
-      longitude: listing.longitude,
+      latitude: pin.latitude,
+      longitude: pin.longitude,
       hidePin: false,
       outlineTown: null,
       defaultZoom: 15,

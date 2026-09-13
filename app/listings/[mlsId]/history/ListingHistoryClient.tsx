@@ -17,6 +17,7 @@ import { intelligenceSearchHrefFromListing } from "@/lib/intelligence-search-url
 import { listingHeaderScoreProps } from "@/lib/listing-header-score-props";
 import { ListingShell } from "@/components/listing/ListingShell";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
+import { listingDisplayMapPoint } from "@/lib/listing-map-point-shared";
 
 type Schools = {
   elementary: string | null;
@@ -73,6 +74,7 @@ export default function ListingHistoryClient({
     medianPpsfBand,
     marketBandLabel,
     vision,
+    mapPoint,
     state,
   } =
     useListingChrome<Listing>(mlsId);
@@ -109,6 +111,7 @@ export default function ListingHistoryClient({
   }
 
   const street = listing.address.street || listing.address.full;
+  const pin = listingDisplayMapPoint(listing, mapPoint);
   const mapsQuery =
     listing.address.full?.trim() ||
     [
@@ -180,8 +183,8 @@ export default function ListingHistoryClient({
           }),
         }}
         location={{
-          latitude: listing.latitude,
-          longitude: listing.longitude,
+          latitude: pin.latitude,
+          longitude: pin.longitude,
           addressQuery: mapsQuery,
         }}
         subnav={{
