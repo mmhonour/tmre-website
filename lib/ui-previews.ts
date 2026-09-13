@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "admin-sync-sort",
     title: "Admin sync column sort",
     summary:
-      "Click a heading to sort (including Order). Edits in the row stay put until the next heading click.",
+      "Sortable headings are links. One arrow to the left of the active label (up ASC, down DESC). Edits stay put until the next heading click.",
   },
   {
     slug: "listing-vision-address",
