@@ -231,9 +231,16 @@ function SymbolRailDemo() {
               ))}
             </div>
             <div className="bg-[#0d1424] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-              {detailsTab === "full"
-                ? "Full details card — schools, taxes, rooms"
-                : "Beds 4 · Baths 3 · 2,410 sf"}
+              {detailsTab === "full" ? (
+                <ul className="space-y-2">
+                  <li>Schools · taxes · rooms</li>
+                  <li>Lot 0.42 ac · 2,410 sf</li>
+                  <li>Assessed $1.12M · tax $18,440</li>
+                  <li>No scrollbar on this card</li>
+                </ul>
+              ) : (
+                "Beds 4 · Baths 3 · 2,410 sf"
+              )}
             </div>
           </div>
         ) : (
