@@ -1,4 +1,4 @@
-import ListingShowcaseClient from "@/app/listings/[mlsId]/showcase/ListingShowcaseClient";
+import { ListingShowcaseRoute } from "@/app/listings/[mlsId]/ListingShowcaseRoute";
 
 export const dynamic = "force-dynamic";
 
@@ -31,16 +31,14 @@ export default async function ListingDetailPage({
   searchParams,
 }: {
   params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string; panel?: string }>;
+  searchParams: Promise<{
+    address?: string;
+    city?: string;
+    panel?: string;
+    photo?: string;
+  }>;
 }) {
   const { mlsId } = await params;
-  const { address, city, panel } = await searchParams;
-  return (
-    <ListingShowcaseClient
-      mlsId={mlsId}
-      addressHint={address?.trim() || null}
-      townHint={city?.trim() || null}
-      productionPanel={panel === "production"}
-    />
-  );
+  const search = await searchParams;
+  return <ListingShowcaseRoute mlsId={mlsId} search={search} />;
 }

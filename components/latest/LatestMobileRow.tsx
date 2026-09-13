@@ -205,6 +205,7 @@ function LatestMobileRow({
           surface="light"
           className="rounded-lg shrink-0"
           showPhotoCountBadge={false}
+          returnPath={returnPath}
         />
       </div>
 

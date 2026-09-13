@@ -453,6 +453,7 @@ export function DealBoardPrimaryPhoto({
   surface = "dark",
   overlay,
   withDealBoardReturn = false,
+  returnPath,
 }: {
   listing: DealBoardListing;
   isLive: boolean;
@@ -470,9 +471,11 @@ export function DealBoardPrimaryPhoto({
   overlay?: ReactNode;
   /**
    * Intelligence deal board: link to Overview (with return hash so Back lands
-   * on this row). Without this flag, live photos still open the Photos tab.
+   * on this row). Latest / Closed pass `returnPath` for the same reason.
    */
   withDealBoardReturn?: boolean;
+  /** Override Back target (e.g. `/latest`). Implies showcase overview. */
+  returnPath?: string;
 }) {
   const resolvedIndex =
     photoIndex ??
@@ -480,8 +483,8 @@ export function DealBoardPrimaryPhoto({
       ? listing.primaryPhotoIndex
       : 0);
   const href = isLive
-    ? withDealBoardReturn
-      ? listingDetailHref(listing)
+    ? withDealBoardReturn || returnPath
+      ? listingDetailHref(listing, returnPath)
       : listingPhotosHref(
           listing.key,
           listing.address,
@@ -546,7 +549,7 @@ export function DealBoardPrimaryPhoto({
         onClick={(e) => e.stopPropagation()}
         className={`block ${fluid ? "w-full" : "shrink-0"}`}
         aria-label={
-          withDealBoardReturn
+          withDealBoardReturn || returnPath
             ? `View listing for ${listing.address}`
             : `View photos for ${listing.address}`
         }

@@ -99,18 +99,40 @@ export function listingUagHref(
   return listingSectionHref(id, "uag", address, town);
 }
 
+/**
+ * Showcase panel anchors. Keep in sync with `SHOWCASE_SECTION_IDS` in
+ * `components/listing/showcase/showcase-sections.ts`.
+ */
+export const LISTING_SHOWCASE_HASH = {
+  photos: "showcase-photos",
+  history: "showcase-history",
+  comparables: "showcase-comps",
+  "comparable-rentals": "showcase-comps",
+  "on-the-market": "showcase-comps",
+  uag: "showcase-comps",
+  if: "showcase-if",
+  map: "showcase-map",
+} as const;
+
+export type ListingSection =
+  | "overview"
+  | "history"
+  | "photos"
+  | "map"
+  | "comparables"
+  | "comparable-rentals"
+  | "on-the-market"
+  | "uag"
+  | "if";
+
+function listingShowcaseHash(section: ListingSection): string {
+  if (section === "overview") return "";
+  return LISTING_SHOWCASE_HASH[section] ?? "";
+}
+
 export function listingSectionHref(
   id: string,
-  section:
-    | "overview"
-    | "history"
-    | "photos"
-    | "map"
-    | "comparables"
-    | "comparable-rentals"
-    | "on-the-market"
-    | "uag"
-    | "if",
+  section: ListingSection,
   address?: string | null,
   town?: string | null,
   extraQuery?: string,
@@ -121,24 +143,13 @@ export function listingSectionHref(
   if (street) params.set("address", street);
   if (town?.trim()) params.set("city", town.trim());
   const qs = params.toString();
-  // Map has no dedicated route — it toggles the Location panel on overview.
-  const path =
-    section === "history"
-      ? `/listings/${listingId}/history`
-      : section === "photos"
-        ? `/listings/${listingId}/photos`
-        : section === "comparables"
-          ? `/listings/${listingId}/comparables`
-          : section === "comparable-rentals"
-            ? `/listings/${listingId}/comparable-rentals`
-            : section === "on-the-market"
-              ? `/listings/${listingId}/on-the-market`
-              : section === "uag"
-                ? `/listings/${listingId}/uag`
-                : section === "if"
-                  ? `/listings/${listingId}/if`
-                  : `/listings/${listingId}`;
-  return qs ? `${path}?${qs}` : path;
+  // Showcase is the listing page. Old tab paths (`/photos`, `/history`, …)
+  // still resolve, but in-app links land on `/listings/{id}` plus the
+  // matching panel hash so nothing opens the classic chrome by accident.
+  const path = `/listings/${listingId}`;
+  const withQs = qs ? `${path}?${qs}` : path;
+  const hash = listingShowcaseHash(section);
+  return hash ? `${withQs}#${hash}` : withQs;
 }
 
 /** Card / list thumbs default to MLS mid-size. Pass `{ size: "full" }` for gallery. */

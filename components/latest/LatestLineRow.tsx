@@ -280,6 +280,7 @@ function LatestLineRow({
           surface="light"
           className="rounded-md shrink-0"
           showPhotoCountBadge={false}
+          returnPath={returnPath}
         />
       </div>
       {town ? (

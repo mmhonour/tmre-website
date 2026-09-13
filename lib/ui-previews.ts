@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "listing-showcase-nav",
+    title: "Listing clicks → showcase",
+    summary:
+      "Latest thumbs and old /photos /history /comps tab paths open the full-bleed showcase, not classic chrome.",
+  },
+  {
     slug: "find-parcel-map",
     title: "VGSI neighborhood map",
     summary:

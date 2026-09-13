@@ -1,5 +1,4 @@
-import { Suspense } from "react";
-import ListingPhotosClient from "./ListingPhotosClient";
+import { ListingShowcaseRoute } from "@/app/listings/[mlsId]/ListingShowcaseRoute";
 
 export const dynamic = "force-dynamic";
 
@@ -24,17 +23,16 @@ export default async function ListingPhotosPage({
   searchParams,
 }: {
   params: Promise<{ mlsId: string }>;
-  searchParams: Promise<{ address?: string; city?: string; photo?: string }>;
+  searchParams: Promise<{
+    address?: string;
+    city?: string;
+    photo?: string;
+    panel?: string;
+  }>;
 }) {
   const { mlsId } = await params;
-  const { address, city } = await searchParams;
+  const search = await searchParams;
   return (
-    <Suspense fallback={null}>
-      <ListingPhotosClient
-        mlsId={mlsId}
-        addressHint={address?.trim() || null}
-        townHint={city?.trim() || null}
-      />
-    </Suspense>
+    <ListingShowcaseRoute mlsId={mlsId} search={search} initialTab="photos" />
   );
 }
