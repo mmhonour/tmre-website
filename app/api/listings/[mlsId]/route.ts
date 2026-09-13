@@ -4,6 +4,7 @@ import { resolveListingPhotoUrls } from '@/lib/listing-photos-cache'
 import { scoreListingForDetailPage } from '@/lib/listing-detail-score'
 import { resolveListingVisionLink } from '@/lib/listing-vision-link'
 import { listingCacheHeaders, readListingFromDbByMlsId } from '@/lib/listings-store'
+import { resolveListingMapPoint } from '@/lib/listing-map-point'
 import {
   listingRowId,
   readListingEdgeScoreByMlsId,
@@ -30,7 +31,7 @@ export async function GET(
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
-    const [photos, detailScore, edgeScoreRow, marketBandLabel, vision] =
+    const [photos, detailScore, edgeScoreRow, marketBandLabel, vision, mapPoint] =
       await Promise.all([
       includePhotos
         ? resolveListingPhotoUrls(
@@ -44,6 +45,13 @@ export async function GET(
       readListingEdgeScoreByMlsId(id),
       resolveMarketBandLabelForListing(listing),
       resolveListingVisionLink(listing),
+      resolveListingMapPoint(listing).catch((err) => {
+        console.warn(
+          '[/api/listings/[mlsId]] mapPoint failed',
+          err instanceof Error ? err.message : err,
+        )
+        return null
+      }),
     ])
 
     // Persist so Latest / board caches stop showing 0.0 for listings that
@@ -85,6 +93,12 @@ export async function GET(
           : null,
         /** VGSI parcel pairing for the Admin panel; null outside Westport. */
         vision,
+        /**
+         * Display pin for listing maps. MLS when that point sits in the
+         * named town; otherwise a Census geocode of the street address.
+         * Does not overwrite `listing.latitude` / `listing.longitude`.
+         */
+        mapPoint,
         source: 'db',
       },
       { headers: listingCacheHeaders('db') },

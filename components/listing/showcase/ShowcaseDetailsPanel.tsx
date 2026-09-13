@@ -250,8 +250,8 @@ export default function ShowcaseDetailsPanel({
   }, []);
   const subject =
     !host.map.hidePin &&
-    listing.latitude != null &&
-    listing.longitude != null
+    host.map.latitude != null &&
+    host.map.longitude != null
       ? {
           key: listing.listingKey || listing.mlsId,
           address: host.street,
@@ -262,8 +262,8 @@ export default function ShowcaseDetailsPanel({
           beds: listing.beds,
           baths: listing.baths,
           sqft: listing.sqft,
-          latitude: listing.latitude,
-          longitude: listing.longitude,
+          latitude: host.map.latitude,
+          longitude: host.map.longitude,
           photoCount: listing.photoCount,
         }
       : null;
