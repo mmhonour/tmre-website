@@ -7,7 +7,7 @@ import {
   listVisionStreets,
   listVisionStreetTowns,
 } from '@/lib/db/vision-streets-repo'
-import { OwnerPortfolioHomes } from '@/components/OwnerPortfolioHomes'
+import { OwnerPortfoliosList } from '@/components/OwnerPortfoliosList'
 import { VISION_GIS_TOWNS } from '@/lib/vision-gis-towns'
 import type { VisionOwnerPortfolio } from '@/lib/vision-owner-keys'
 import {
@@ -129,8 +129,9 @@ export default async function StreetsOwnersPage({
             current (non-superseded) warranty of two or more homes. A later
             warranty replaces the prior buyer; a later quitclaim does not.
             An owner cluster is the same mailbox. Last paid close date
-            then price sit on the right; purchase total at the bottom of
-            the panel.
+            then price sit on the right — Date and Amount sort those
+            purchases by clock and dollars, not the printed string.
+            Purchase total at the bottom of the panel.
             {streetName
               ? ' Count is homes on this street.'
               : ` ${town} — add ?street= to scope one street.`}
@@ -157,36 +158,7 @@ export default async function StreetsOwnersPage({
               <span className="text-navy">npm run sync:owner-clusters</span>.
             </p>
           ) : (
-            <ol className="space-y-5">
-              {portfolios.map((row) => (
-                <li
-                  key={row.clusterId}
-                  className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-3">
-                    <h2 className="font-serif text-2xl text-navy">
-                      {row.displayName}
-                    </h2>
-                    <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
-                      {row.parcelCount}{' '}
-                      {row.parcelCount === 1 ? 'home' : 'homes'}
-                      {row.relationship === 'landlord'
-                        ? ' · landlord'
-                        : ' · same mailing'}
-                    </p>
-                  </div>
-                  {row.mailingLabel ? (
-                    <p className="mt-1 font-mono text-[12px] text-slate/70">
-                      {row.mailingLabel}
-                    </p>
-                  ) : null}
-                  <OwnerPortfolioHomes
-                    parcels={row.parcels}
-                    purchaseTotalLabel={row.lastPaidTotalLabel}
-                  />
-                </li>
-              ))}
-            </ol>
+            <OwnerPortfoliosList portfolios={portfolios} />
           )}
         </div>
       </section>
