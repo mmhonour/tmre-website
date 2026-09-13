@@ -40,6 +40,7 @@ import { evaluateIncrementalHealth } from "@/lib/incremental-sync-health";
 import { latestExploreFeedUrl } from "@/lib/explore-tab-prefetch";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 import { useCoverageTowns } from "@/components/CoverageTownsProvider";
+import { persistReturnNav } from "@/lib/listing-return-nav";
 
 type ApiResponse = {
   listings: LatestListingRow[];
@@ -310,30 +311,26 @@ export default function LatestClient({
     if (!groupByTown) setGroupByZip(false);
   }, [groupByTown]);
 
-  // Restore grouping / filters after listing Back (soft remount). Skip on hard
-  // refresh — sessionStorage survives reload and was re-applying a town filter
-  // (often Westport) after SSR painted the full multi-town ticker.
+  // Restore town-vs-day grouping and the selected town from the Latest cookie.
   useLayoutEffect(() => {
-    const nav = performance.getEntriesByType(
-      "navigation",
-    )[0] as PerformanceNavigationTiming | undefined;
-    const isReload = nav?.type === "reload";
-    if (!isReload) {
-      const stored = readLatestViewState();
-      if (stored) {
-        setGroupByTown(stored.groupByTown);
-        setGroupByZip(stored.groupByZip);
-        setTownStatsOpen(stored.townStatsOpen);
-        setSelectedTown(stored.selectedTown);
-        setSelectedZip(stored.selectedZip);
-        setCollapsedGroups(new Set(stored.collapsedGroups));
-        setCollapseTouched(stored.collapseTouched);
-        setExpandedGroups(new Set(stored.expandedGroups));
-        setGroupStatusFilter(stored.groupStatusFilter);
-        pendingScrollY.current = stored.scrollY;
-      }
+    const stored = readLatestViewState();
+    if (stored) {
+      setGroupByTown(stored.groupByTown);
+      setGroupByZip(stored.groupByZip);
+      setTownStatsOpen(stored.townStatsOpen);
+      setSelectedTown(stored.selectedTown);
+      setSelectedZip(stored.selectedZip);
+      setCollapsedGroups(new Set(stored.collapsedGroups));
+      setCollapseTouched(stored.collapseTouched);
+      setExpandedGroups(new Set(stored.expandedGroups));
+      setGroupStatusFilter(stored.groupStatusFilter);
+      pendingScrollY.current = stored.scrollY;
     }
     setViewHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    persistReturnNav({ href: "/latest", label: "Latest" });
   }, []);
 
   // Scroll restore waits until the feed has painted (height exists to scroll into).
