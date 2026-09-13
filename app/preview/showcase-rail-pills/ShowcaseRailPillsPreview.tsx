@@ -303,7 +303,7 @@ function SymbolRailDemo() {
           <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
         </div>
       </div>
-      <div className="absolute inset-y-0 right-0 flex flex-col items-end pr-3">
+      <div className="absolute inset-y-0 right-0 flex w-[min(24rem,calc(100%-0.75rem))] flex-col items-end pr-3">
         <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
           {deck ? null : (
             <button
@@ -331,7 +331,7 @@ function SymbolRailDemo() {
           {ifPill}
         </div>
         {card ? (
-          <div className="w-full max-w-sm">{card}</div>
+          <div className="w-full self-end">{card}</div>
         ) : (
           <div
             className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
