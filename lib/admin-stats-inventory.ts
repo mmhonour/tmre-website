@@ -801,8 +801,20 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows (t+6 upcoming + 1-year lookback)',
     owner: 'lib/open-houses-sync.ts',
     notes:
-      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today through today+6) is replaced so cancellations disappear, then open_houses_synced_at is stamped. Dates after that horizon are pruned. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. After a successful pull, the seven-day JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML, filtered to the Sunday-reset page window. A failed RETS pull must not empty a window.',
+      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today through today+6) is replaced so cancellations disappear, then open_houses_synced_at is stamped. Dates after that horizon are pruned. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. After a successful pull, the seven-day JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML, filtered to the Sunday-reset page window. A failed RETS pull must not empty a window. OH-kind visitor mail runs after a successful pull and stamps alerts:open-house:last-run.',
     live: { kind: 'postgres_table', table: 'open_houses' },
+  },
+  {
+    id: 'alert-job-last-run',
+    name: 'Listing / OH alert last run',
+    category: 'sync-control',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'alerts:listing:last-run · alerts:open-house:last-run',
+    owner: 'lib/saved-search-alerts.ts',
+    notes:
+      'Per-doorbell outcome so Admin can see Incremental listing send fail independently of the Open houses job. Written on success and failure. Survives hourly stats_cache rebuild (alerts: prefix). Shown on Admin → Communications → Listing alerts.',
+    live: { kind: 'stats_cache_prefix', prefix: 'alerts:' },
   },
   {
     id: 'sync-queue',

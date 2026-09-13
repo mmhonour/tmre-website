@@ -73,6 +73,15 @@ export type IncrementalSyncResult = FullSyncResult & {
   mode: 'incremental'
   totalInserted?: number
   totalUpdated?: number
+  /** Listing-kind alerts only — Incremental is not the OH doorbell. */
+  savedSearchAlerts?: {
+    kind: 'listing'
+    checked: number
+    sent: number
+    listings: number
+    ok: boolean
+    error?: string
+  } | null
 }
 
 const INCREMENTAL_OVERLAP_MS = 2 * 60 * 1000
@@ -455,25 +464,61 @@ export async function syncIncrementalListings(
       'rets-done',
       `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) everyTownSucceeded=${everyTownSucceeded}`,
     )
-    // Alerts must run in this process, before post-hooks and before the step
-    // log closes. They used to sit after finishIncrementalStepLog in the
-    // Railway/Netlify wrapper — Incremental looked done, then the child died
-    // or stats warm ate the budget, and no mail went out.
+    // Listing alerts only — this process, after RETS, before post-hooks and
+    // before the step log closes. OH signups are mailed by the OH job, not
+    // here. Netlify Lane 3 is not a backup doorbell.
+    let savedSearchAlerts: IncrementalSyncResult['savedSearchAlerts'] = null
     try {
       const { processDueSavedSearchAlerts } = await import(
         '@/lib/saved-search-alerts'
       )
-      const alerts = await processDueSavedSearchAlerts()
+      const alerts = await processDueSavedSearchAlerts({
+        kind: 'listing',
+        source: 'incremental',
+      })
+      savedSearchAlerts = {
+        kind: 'listing',
+        checked: alerts.checked,
+        sent: alerts.sent,
+        listings: alerts.listings,
+        ok: alerts.ok,
+        error: alerts.error,
+      }
       await appendIncrementalStep(
         'saved-search-alerts',
-        `checked=${alerts.checked} sent=${alerts.sent} listings=${alerts.listings}`,
+        `kind=listing source=incremental checked=${alerts.checked} sent=${alerts.sent} listings=${alerts.listings} ok=${alerts.ok}`,
       )
     } catch (err) {
       console.warn('[listings-sync/incremental] saved-search alerts failed', err)
-      await appendIncrementalStep(
-        'saved-search-alerts',
-        `failed — ${err instanceof Error ? err.message : String(err)}`,
-      )
+      const message = err instanceof Error ? err.message : String(err)
+      savedSearchAlerts = {
+        kind: 'listing',
+        checked: 0,
+        sent: 0,
+        listings: 0,
+        ok: false,
+        error: message,
+      }
+      try {
+        const { recordAlertJobLastRun } = await import(
+          '@/lib/saved-search-alerts'
+        )
+        await recordAlertJobLastRun({
+          kind: 'listing',
+          source: 'incremental',
+          checked: 0,
+          sent: 0,
+          listings: 0,
+          ok: false,
+          error: message,
+        })
+      } catch (stampErr) {
+        console.warn(
+          '[listings-sync/incremental] listing-alert last-run stamp failed',
+          stampErr,
+        )
+      }
+      await appendIncrementalStep('saved-search-alerts', `failed — ${message}`)
     }
     if (everyTownSucceeded && postHooks) {
       await stampIncrementalSyncLive({
@@ -578,6 +623,7 @@ export async function syncIncrementalListings(
       totalUpserted,
       totalInserted,
       totalUpdated,
+      savedSearchAlerts,
     }
   } catch (err) {
     await appendIncrementalStep(

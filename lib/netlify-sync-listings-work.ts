@@ -98,25 +98,13 @@ export type IncrementalSyncWorkOptions = {
   statusScope?: 'all' | 'active' | 'closed'
 }
 
-async function runSpotlightAndAlerts(): Promise<{
-  savedSearchAlerts: { checked: number; sent: number; listings: number } | null
-}> {
+async function runSpotlightRefresh(): Promise<void> {
   try {
     const { refreshSpotlightStatuses } = await import('@/lib/spotlight-status-sync')
     await refreshSpotlightStatuses()
   } catch (err) {
     console.warn('[sync-listings-work] spotlight status refresh failed', err)
   }
-
-  let savedSearchAlerts: { checked: number; sent: number; listings: number } | null =
-    null
-  try {
-    const { processDueSavedSearchAlerts } = await import('@/lib/saved-search-alerts')
-    savedSearchAlerts = await processDueSavedSearchAlerts()
-  } catch (err) {
-    console.warn('[sync-listings-work] saved-search alerts failed', err)
-  }
-  return { savedSearchAlerts }
 }
 
 /** Board/stats warm + digests — used when thin cron already did lean RETS. */
@@ -143,7 +131,10 @@ async function runIncrementalSideWork(): Promise<{
   } catch (err) {
     console.warn('[sync-listings-work] stats cache rebuild failed', err)
   }
-  return runSpotlightAndAlerts()
+  await runSpotlightRefresh()
+  // Listing mail is Incremental-only. Lane 3 used to call the same processor
+  // and hide a dead Railway doorbell.
+  return { savedSearchAlerts: null }
 }
 
 /**
@@ -530,27 +521,14 @@ export async function runIncrementalSyncListingsWork(
       console.warn('[sync-listings-work] Done/incremental audit failed', err)
     }
 
-    // On Netlify the RETS path already ran postHooks (board/stats), so only
-    // digests remain. On Railway, board/stats stay on the Netlify hop — but
-    // listing alerts are cheap (SQL + Resend) and used to die when that hop
-    // 429'd. Run them here so last-notified does not freeze for weeks.
-    let savedSearchAlerts: {
-      checked: number
-      sent: number
-      listings: number
-    } | null = null
+    // Listing alerts already ran inside syncIncrementalListings (kind=listing).
+    // Do not ring that doorbell again from Lane 3 or this wrapper — that hid
+    // a dead Incremental send behind a later Netlify/OH success.
+    const savedSearchAlerts = result.savedSearchAlerts ?? null
     let warmHandoff: NetlifyFunctionQueueResult | null = null
     if (warmInProcess) {
-      ;({ savedSearchAlerts } = await runSpotlightAndAlerts())
+      await runSpotlightRefresh()
     } else {
-      try {
-        const { processDueSavedSearchAlerts } = await import(
-          '@/lib/saved-search-alerts'
-        )
-        savedSearchAlerts = await processDueSavedSearchAlerts()
-      } catch (err) {
-        console.warn('[sync-listings-work] saved-search alerts (railway) failed', err)
-      }
       warmHandoff = await handOffWarmToNetlify(
         result.finishedAt || new Date().toISOString(),
       )

@@ -91,6 +91,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Open Houses signup is titled Open house alerts (optional new listings). Latest keeps listing alerts and can add open houses.",
   },
   {
+    slug: "alert-job-health",
+    title: "Alert doorbells — Incremental vs OH",
+    summary:
+      "Admin clocks for listing Incremental vs the Open houses job. One path can fail without the other looking fine.",
+  },
+  {
     slug: "open-houses-next-oh",
     title: "Open houses — next OH + alerts",
     summary:

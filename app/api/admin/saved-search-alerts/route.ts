@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import {
   deleteSavedSearchAlert,
+  getAlertJobLastRuns,
   listSavedSearchAlertsForAdmin,
   processDueSavedSearchAlerts,
   setSavedSearchAlertActive,
 } from '@/lib/saved-search-alerts'
+import type { AlertJobKind } from '@/lib/saved-search-alert-kinds'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,19 +19,49 @@ export async function POST(req: NextRequest) {
   }
 
   let force = false
+  let kind: AlertJobKind | 'both' = 'both'
   try {
-    const body = (await req.json()) as { force?: unknown }
+    const body = (await req.json()) as { force?: unknown; kind?: unknown }
     force = body.force === true
+    if (body.kind === 'listing' || body.kind === 'open_house') {
+      kind = body.kind
+    }
   } catch {
     force = false
   }
 
   try {
-    const result = await processDueSavedSearchAlerts({ force })
+    const listing =
+      kind === 'open_house'
+        ? null
+        : await processDueSavedSearchAlerts({
+            kind: 'listing',
+            source: 'admin',
+            force,
+          })
+    const openHouse =
+      kind === 'listing'
+        ? null
+        : await processDueSavedSearchAlerts({
+            kind: 'open_house',
+            source: 'admin',
+            force,
+          })
     const alerts = await listSavedSearchAlertsForAdmin(200)
+    const lastRuns = await getAlertJobLastRuns()
+    const checked = (listing?.checked ?? 0) + (openHouse?.checked ?? 0)
+    const sent = (listing?.sent ?? 0) + (openHouse?.sent ?? 0)
+    const listings = (listing?.listings ?? 0) + (openHouse?.listings ?? 0)
+    const ok = (listing?.ok ?? true) && (openHouse?.ok ?? true)
     return NextResponse.json({
-      ok: true,
-      ...result,
+      ok,
+      kind,
+      listing,
+      openHouse,
+      checked,
+      sent,
+      listings,
+      lastRuns,
       count: alerts.length,
       duplicateCount: alerts.filter((a) => a.isDuplicate).length,
       alerts,
@@ -55,11 +87,13 @@ export async function GET(req: NextRequest) {
     const alerts = await listSavedSearchAlertsForAdmin(
       Number.isFinite(limit) ? limit : 200,
     )
+    const lastRuns = await getAlertJobLastRuns()
     const duplicateCount = alerts.filter((a) => a.isDuplicate).length
     return NextResponse.json({
       ok: true,
       count: alerts.length,
       duplicateCount,
+      lastRuns,
       alerts,
     })
   } catch (err) {

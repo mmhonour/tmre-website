@@ -81,7 +81,10 @@ import {
 import { getMarketDigestConfigFresh } from "@/lib/market-digest-config";
 import { readPulseTaxQuorumAdmin } from "@/lib/market-pulse-tax-cache";
 import { getDeployNotifyConfigFresh } from "@/lib/deploy-notify-config";
-import { listSavedSearchAlertsForAdmin } from "@/lib/saved-search-alerts";
+import {
+  getAlertJobLastRuns,
+  listSavedSearchAlertsForAdmin,
+} from "@/lib/saved-search-alerts";
 import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
 import { getTownBudgetSourcesFresh } from "@/lib/town-budget-sources-config";
 import {
@@ -761,6 +764,11 @@ export default async function AdminPage() {
     () => listSavedSearchAlertsForAdmin(100),
     [],
   )
+  const listingAlertRuns = await safe(
+    "listing-alert-runs",
+    () => getAlertJobLastRuns(),
+    { listing: null, openHouse: null },
+  )
   const brokerageName = await safe(
     "brokerage-name",
     () => getBrokerageNameFresh(),
@@ -967,7 +975,10 @@ export default async function AdminPage() {
         <AdminSocialProfilesPanel initial={socialProfiles ?? undefined} />
       }
       listingAlerts={
-        <AdminListingAlertsPanel initial={listingAlerts ?? undefined} />
+        <AdminListingAlertsPanel
+          initial={listingAlerts ?? undefined}
+          initialLastRuns={listingAlertRuns ?? undefined}
+        />
       }
       mortgagePage={<AdminMortgagePagePanel />}
     />
