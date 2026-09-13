@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcasePremiereLights from "@/components/listing/showcase/ShowcasePremiereLights";
+import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
+import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { LISTING_PRODUCTION_PANEL_ID } from "@/components/listing/listing-section-ids";
@@ -251,27 +253,31 @@ export default function ListingShowcaseView({
                 <div className="pointer-events-auto mb-3">{host.propertyTabs}</div>
               ) : null}
               {host.hideStatusBadge ? null : (
-                <span className="inline-flex bg-[#0d1424]/85 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
-                  {status}
-                </span>
+                <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
+                  <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
+                    {status}
+                  </span>
+                </ListingShowcaseTypeWash>
               )}
-              <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                {visionHref ? (
-                  <ListingVisionAddressLink
-                    href={visionHref}
-                    className="pointer-events-auto"
-                  >
-                    {host.headline}
-                  </ListingVisionAddressLink>
-                ) : (
-                  host.headline
-                )}
-              </h1>
-              {host.locationLine ? (
-                <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-                  {host.locationLine}
-                </p>
-              ) : null}
+              <ListingShowcaseTypeWash className="mt-2 w-fit max-w-full px-5 py-2">
+                <h1 className="relative font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
+                  {visionHref ? (
+                    <ListingVisionAddressLink
+                      href={visionHref}
+                      className="pointer-events-auto"
+                    >
+                      {host.headline}
+                    </ListingVisionAddressLink>
+                  ) : (
+                    host.headline
+                  )}
+                </h1>
+                {host.locationLine ? (
+                  <p className="relative mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
+                    {host.locationLine}
+                  </p>
+                ) : null}
+              </ListingShowcaseTypeWash>
             </div>
 
             {headerPrice ? (
@@ -287,12 +293,10 @@ export default function ListingShowcaseView({
                     : undefined
                 }
               >
-                <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
-                  {priceIsClosed ? "Closed at" : "Offered at"}
-                </p>
-                <p className="mt-1 font-serif text-3xl font-bold tabular-nums leading-none text-gold lg:text-4xl">
-                  {headerPrice}
-                </p>
+                <ListingShowcasePriceBlock
+                  label={priceIsClosed ? "Closed at" : "Offered at"}
+                  amount={headerPrice}
+                />
               </div>
             ) : null}
           </div>

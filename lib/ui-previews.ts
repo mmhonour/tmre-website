@@ -138,6 +138,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Seller intake writes to Neon contacts, not data/contacts.json. Address autocomplete still uses the property directory.",
   },
+  {
+    slug: "showcase-rail-pills",
+    title: "Listing full-bleed rail pills",
+    summary:
+      "Glyphs for Comps and What if, Insight stacked above Details, mobile « to hide figures, and a lighter-blue wash behind status, address, and Offered at / Closed at.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {
