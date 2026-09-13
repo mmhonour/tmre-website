@@ -138,10 +138,10 @@ export default function AdminSyncSortPreviewClient() {
           Admin sync column sort
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
-          Click a heading to sort (Order, Frequency, Start, End, Next). Changing
-          Frequency in a row does not move that row — the order stays until you
-          click a heading again. Frequency is shortest cadence to longest, not
-          A–Z. Fixture rows — not the live sync table.
+          Sortable headings are links. The sorted column shows a single arrow
+          to the left of the label (up = ASC, down = DESC). Changing Frequency
+          in a row does not move that row until you click a heading again.
+          Fixture rows — not the live sync table.
         </p>
         <div className="overflow-x-auto rounded-2xl border border-charcoal/[0.08] bg-white">
           <table className="w-full border-collapse text-sm text-navy">
