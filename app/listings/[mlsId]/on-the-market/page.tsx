@@ -1,11 +1,8 @@
-import { redirect } from "next/navigation";
-import { LISTING_SALE_ON_MARKET_PANEL_ID } from "@/components/listing/listing-section-ids";
-import { listingSectionHref } from "@/lib/listing-url";
+import { ListingShowcaseRoute } from "@/app/listings/[mlsId]/ListingShowcaseRoute";
 
 export const dynamic = "force-dynamic";
 
-/** Legacy route — On The Market group removed; jump to Sold's for-sale on-market panel. */
-export default async function ListingOnTheMarketRedirectPage({
+export async function generateMetadata({
   params,
   searchParams,
 }: {
@@ -13,12 +10,29 @@ export default async function ListingOnTheMarketRedirectPage({
   searchParams: Promise<{ address?: string; city?: string }>;
 }) {
   const { mlsId } = await params;
-  const { address, city } = await searchParams;
-  const base = listingSectionHref(
-    mlsId,
-    "comparables",
-    address?.trim() || null,
-    city?.trim() || null,
+  const { address } = await searchParams;
+  const label = address?.trim() || `Listing ${mlsId}`;
+  return {
+    title: `${label} — On the market — TMRE`,
+    description: `On-the-market comparables for ${label.trim()}.`,
+  };
+}
+
+/** Legacy route — On The Market group removed; open the showcase comps panel. */
+export default async function ListingOnTheMarketPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ mlsId: string }>;
+  searchParams: Promise<{ address?: string; city?: string; panel?: string }>;
+}) {
+  const { mlsId } = await params;
+  const search = await searchParams;
+  return (
+    <ListingShowcaseRoute
+      mlsId={mlsId}
+      search={search}
+      initialTab="comparables"
+    />
   );
-  redirect(`${base}#${LISTING_SALE_ON_MARKET_PANEL_ID}`);
 }

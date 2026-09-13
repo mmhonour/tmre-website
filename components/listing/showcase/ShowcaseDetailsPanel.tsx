@@ -370,12 +370,25 @@ export default function ShowcaseDetailsPanel({
       goToPageAdmin();
       return;
     }
-    const section = (
+    const sectionFromId = (
       Object.entries(SHOWCASE_SECTION_IDS) as [
         keyof typeof SHOWCASE_SECTION_IDS,
         string,
       ][]
     ).find(([, id]) => id === hash)?.[0];
+    const tabAliases = new Set([
+      "photos",
+      "history",
+      "comparables",
+      "comparable-rentals",
+      "uag",
+      "if",
+      "map",
+    ]);
+    const sectionFromAlias = tabAliases.has(hash)
+      ? showcaseSectionForTab(hash as ListingTab)
+      : null;
+    const section = sectionFromId ?? sectionFromAlias;
     if (section) scrollToShowcaseSection(section);
     // Mount-only: deep links from /spotlight/photos etc.
     // eslint-disable-next-line react-hooks/exhaustive-deps

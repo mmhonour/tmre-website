@@ -5,6 +5,7 @@ import ListingDetailClient from "@/app/listings/[mlsId]/ListingDetailClient";
 import ListingShowcaseView, {
   ShowcaseMessage,
 } from "@/components/listing/showcase/ListingShowcaseView";
+import type { ListingTab } from "@/components/listing/ListingSubnav";
 import type { ShowcaseHost } from "@/components/listing/showcase/showcase-host";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
 import { buildListingDetailsPanelProps } from "@/lib/listing-detail-panel-props";
@@ -34,12 +35,17 @@ export default function ListingShowcaseClient({
   addressHint,
   townHint,
   productionPanel = false,
+  initialTab = null,
+  initialPhotoIndex = 0,
 }: {
   mlsId: string;
   addressHint?: string | null;
   townHint?: string | null;
   /** `?panel=production` — render the real Overview page below the photo. */
   productionPanel?: boolean;
+  /** Deep link from `/listings/{id}/photos` (and the other old tab paths). */
+  initialTab?: ListingTab | null;
+  initialPhotoIndex?: number;
 }) {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
@@ -166,6 +172,7 @@ export default function ListingShowcaseClient({
       postalCode: listing.address.postalCode,
     },
     hideMlsNumber: false,
+    initialTab,
   };
 
   return (
@@ -179,6 +186,7 @@ export default function ListingShowcaseClient({
       score={data ?? {}}
       vision={data?.vision ?? null}
       productionPanel={productionPanel}
+      initialPhotoIndex={initialPhotoIndex}
       productionPanelSlot={
         productionPanel ? (
           <ListingDetailClient
