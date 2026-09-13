@@ -179,7 +179,7 @@ export function ShowcaseRailPillsPreview() {
         <div className="listing-showcase-type relative overflow-hidden bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-10 sm:px-8">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <ListingShowcaseTypeWash className="w-fit px-5 py-1.5">
+              <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
                 <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
                   Active
                 </span>

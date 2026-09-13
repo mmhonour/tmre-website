@@ -253,7 +253,7 @@ export default function ListingShowcaseView({
                 <div className="pointer-events-auto mb-3">{host.propertyTabs}</div>
               ) : null}
               {host.hideStatusBadge ? null : (
-                <ListingShowcaseTypeWash className="w-fit px-5 py-1.5">
+                <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
                   <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
                     {status}
                   </span>
