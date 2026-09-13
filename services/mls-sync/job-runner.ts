@@ -180,6 +180,14 @@ function superviseChild(
     ...(typeof item.payload.stampWeek === 'boolean'
       ? { stampWeek: item.payload.stampWeek }
       : {}),
+    ...(Array.isArray(item.payload.kinds)
+      ? {
+          kinds: (item.payload.kinds as unknown[]).filter(
+            (k): k is 'listing' | 'open_house' =>
+              k === 'listing' || k === 'open_house',
+          ),
+        }
+      : {}),
   }
 
   const heapMb = childHeapMb()

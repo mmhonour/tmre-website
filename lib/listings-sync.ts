@@ -455,6 +455,26 @@ export async function syncIncrementalListings(
       'rets-done',
       `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) everyTownSucceeded=${everyTownSucceeded}`,
     )
+    // Data write is done. Mark listing alerts dirty and ring the Railway
+    // alerts job — Incremental does not send mail.
+    try {
+      const {
+        markListingAlertsDirty,
+        enqueueAlertsJob,
+      } = await import('@/lib/saved-search-alert-dirty')
+      await markListingAlertsDirty()
+      const queued = await enqueueAlertsJob({ trigger: 'incremental-dirty' })
+      await appendIncrementalStep(
+        'alerts-dirty',
+        `listing dirty — ${queued.reason ?? (queued.ok ? 'queued' : 'enqueue failed')}`,
+      )
+    } catch (err) {
+      console.warn('[listings-sync/incremental] alerts dirty stamp failed', err)
+      await appendIncrementalStep(
+        'alerts-dirty',
+        `failed — ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
     if (everyTownSucceeded && postHooks) {
       await stampIncrementalSyncLive({
         phase: 'post-hooks',

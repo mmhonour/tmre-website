@@ -63,6 +63,15 @@ import {
   type SyncScheduleWeekdayEt,
 } from "@/lib/sync-schedule-config-shared";
 import {
+  applyFrozenAdminSyncRowOrder,
+  nextAdminSyncColumnSort,
+  snapshotAdminSyncSortIds,
+  type AdminSyncColumnSortDir,
+  type AdminSyncColumnSortKey,
+  type AdminSyncSortableRow,
+} from "@/lib/admin-sync-table-sort";
+import AdminSyncSortTh from "@/components/admin/AdminSyncSortTh";
+import {
   SYNC_JOB_BUDGET_MAX_MINUTES,
   SYNC_JOB_BUDGET_MIN_MINUTES,
   emptySyncQueueSnapshot,
@@ -716,6 +725,7 @@ export type PanelStatus = {
   camaTaxHistorySyncedAt?: string | null;
   streetListingsSyncedAt?: string | null;
   lastDbSize?: string | null;
+  lastAlerts?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -1080,6 +1090,8 @@ function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
       return { started: null, finished: status.streetListingsSyncedAt ?? null };
     case "db-size":
       return { started: null, finished: status.lastDbSize ?? null };
+    case "alerts":
+      return { started: null, finished: status.lastAlerts ?? null };
     default:
       return { started: null, finished: null };
   }
@@ -1369,6 +1381,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "vision-addresses": "vision-addresses",
   "zip-boundaries": "zip-boundaries",
   "open-houses": "open-houses",
+  alerts: "alerts",
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
   "market-digest": "market-digest",
@@ -1926,6 +1939,44 @@ export default function AdminSyncTable({
     setLiveMeta(null);
   }, []);
   const [now, setNow] = useState(() => new Date());
+  const [sortKey, setSortKey] = useState<AdminSyncColumnSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<AdminSyncColumnSortDir>("asc");
+  const [sortedRowIds, setSortedRowIds] = useState<string[] | null>(null);
+  const toggleColumnSort = useCallback((column: AdminSyncColumnSortKey) => {
+    const next = nextAdminSyncColumnSort(sortKey, sortDir, column);
+    const nowMs = Date.now();
+    const metas: AdminSyncSortableRow[] = rows.map((row) => {
+      const jobId = SCHEDULED_SYNC_JOB_BY_ROW[row.id as AdminSyncPanelRowId];
+      const timing = timingWithLogFallback(
+        row,
+        status,
+        runTimings,
+        runSnapshot,
+        nowMs,
+      );
+      return {
+        id: row.id,
+        frequency: jobId ? scheduleConfig.jobs[jobId]?.frequency : undefined,
+        startMs: parseIsoMs(timing.started),
+        endMs: parseIsoMs(timing.finished),
+        nextMs: parseIsoMs(nextRunForRow(row, status)),
+        order:
+          orderByRow[row.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[row.id] ?? 999,
+      };
+    });
+    setSortKey(next.key);
+    setSortDir(next.dir);
+    setSortedRowIds(snapshotAdminSyncSortIds(metas, next.key, next.dir));
+  }, [
+    sortKey,
+    sortDir,
+    rows,
+    status,
+    runTimings,
+    runSnapshot,
+    scheduleConfig,
+    orderByRow,
+  ]);
 
   // Publish the run log to the dedicated panel rendered at the bottom of the DB
   // tab. While a run is active we surface its live snapshot; otherwise the last
@@ -3177,13 +3228,17 @@ export default function AdminSyncTable({
                   Pause
                 </th>
               ) : null}
-              <th
+              <AdminSyncSortTh
+                column="order"
+                label="Order"
+                title="Configure Sync-all order number. Sort is low ↔ high, and only when you click this heading."
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={toggleColumnSort}
                 className={`${TH} sticky z-30 bg-cream shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${
                   isConfigure ? "left-[3.25rem]" : "left-0"
                 }`}
-              >
-                Order
-              </th>
+              />
               {isDashboard ? <th className={TH}>Action</th> : null}
               {isDashboard ? (
                 <th
@@ -3198,14 +3253,24 @@ export default function AdminSyncTable({
                   </th>
               {isConfigure ? <th className={TH}>Description</th> : null}
               {isConfigure ? <th className={TH}>Pages</th> : null}
-              {isConfigure ? <th className={TH}>Frequency</th> : null}
+              {isConfigure ? (
+                <AdminSyncSortTh
+                  column="frequency"
+                  label="Frequency"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleColumnSort}
+                />
+              ) : null}
               {isDashboard ? (
-                <th
-                  className={TH}
-                  title="Cadence from Configure (interval, daily/weekly, or calendar event day)"
-                >
-                  Frequency
-                </th>
+                <AdminSyncSortTh
+                  column="frequency"
+                  label="Frequency"
+                  title="Cadence from Configure (interval, daily/weekly, or calendar event day). Sort is shortest ↔ longest, not A–Z."
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleColumnSort}
+                />
               ) : null}
               {isConfigure ? (
                 <th
@@ -3232,36 +3297,44 @@ export default function AdminSyncTable({
                 </th>
               ) : null}
               {isConfigure ? (
-                <th
-                  className={TH}
-                  title="Next practical cron wake — read-only from Frequency + Start time"
-                >
-                  Next start
-                </th>
+                <AdminSyncSortTh
+                  column="next"
+                  label="Next start"
+                  title="Next practical cron wake — read-only from Frequency + Start time. Sort is soonest ↔ latest."
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleColumnSort}
+                />
               ) : null}
               {isDashboard ? (
-                <th
-                  className={TH}
-                  title="Last run start — America/New_York (ET)"
-                >
-                  Start (ET)
-                </th>
+                <AdminSyncSortTh
+                  column="start"
+                  label="Start (ET)"
+                  title="Last run start — America/New_York (ET). Sort is by clock time, not the printed string."
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleColumnSort}
+                />
               ) : null}
               {isDashboard ? (
-                <th
-                  className={TH}
-                  title="Last run end — America/New_York (ET)"
-                >
-                  End (ET)
-                </th>
+                <AdminSyncSortTh
+                  column="end"
+                  label="End (ET)"
+                  title="Last run end — America/New_York (ET). Sort is by clock time, not the printed string."
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleColumnSort}
+                />
               ) : null}
               {isDashboard ? (
-                <th
-                  className={TH}
-                  title="Next scheduled run — America/New_York (ET)"
-                >
-                  Next (ET)
-                </th>
+                <AdminSyncSortTh
+                  column="next"
+                  label="Next (ET)"
+                  title="Next scheduled run — America/New_York (ET). Sort is soonest ↔ latest."
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={toggleColumnSort}
+                />
               ) : null}
               {isDashboard ? <th className={TH}>Status</th> : null}
               {isDashboard ? (
@@ -3327,22 +3400,29 @@ export default function AdminSyncTable({
                 return false;
               };
 
-              return [...rows]
-              .sort((a, b) => {
-                // Same Configure order on Dashboard so #5 Stats cache lines up.
-                // Running rows still pin to the top so in-flight work is visible.
-                if (!isConfigure) {
-                  const aRunning = rowIsRunningForSort(a);
-                  const bRunning = rowIsRunningForSort(b);
-                  if (aRunning !== bRunning) return aRunning ? -1 : 1;
-                }
+              const compareDefaultOrder = (a: AdminSyncRow, b: AdminSyncRow) => {
                 const aOrder =
                   orderByRow[a.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[a.id] ?? 999;
                 const bOrder =
                   orderByRow[b.id] ?? ADMIN_MANUAL_SYNC_ORDER_BY_ROW[b.id] ?? 999;
                 if (aOrder !== bOrder) return aOrder - bOrder;
                 return a.label.localeCompare(b.label);
-              })
+              };
+
+              const visibleRows = sortedRowIds
+                ? applyFrozenAdminSyncRowOrder(rows, sortedRowIds)
+                : [...rows].sort((a, b) => {
+                    // Same Configure order on Dashboard so #5 Stats cache lines up.
+                    // Running rows still pin to the top so in-flight work is visible.
+                    if (!isConfigure) {
+                      const aRunning = rowIsRunningForSort(a);
+                      const bRunning = rowIsRunningForSort(b);
+                      if (aRunning !== bRunning) return aRunning ? -1 : 1;
+                    }
+                    return compareDefaultOrder(a, b);
+                  });
+
+              return visibleRows
               .map((row, index) => {
               const nowMs = now.getTime();
               const visionLiveFresh =

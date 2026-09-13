@@ -7,6 +7,18 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "find-parcel-map",
+    title: "VGSI neighborhood map",
+    summary:
+      "Find / VGSI map chips on the upper right. Quiet streets (no parking / cemetery icons). Reset fills the town outline.",
+  },
+  {
+    slug: "admin-sync-sort",
+    title: "Admin sync column sort",
+    summary:
+      "Click a heading to sort (including Order). Edits in the row stay put until the next heading click.",
+  },
+  {
     slug: "listing-vision-address",
     title: "Listing address → Vision card",
     summary:
@@ -40,7 +52,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "owner-portfolios",
     title: "Owner portfolios (2+ homes)",
     summary:
-      "Admin landlord / owner aggregation: same current warranty name on 2+ homes, or the same mailbox. Close date to the left of the price; purchase total at the bottom.",
+      "Admin landlord / owner aggregation. Date and Amount sort purchases. Each panel is an invisible grid: address left, dates and amounts right-aligned.",
   },
   {
     slug: "open-houses-view-glyphs",
@@ -97,6 +109,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Open Houses signup is titled Open house alerts (optional new listings). Latest keeps listing alerts and can add open houses.",
   },
   {
+    slug: "alert-job-health",
+    title: "Alert doorbells — Incremental vs OH",
+    summary:
+      "Dirty from Incremental / OH, send from the Railway alerts job. One email if the visitor signed up for both.",
+  },
+  {
     slug: "open-houses-next-oh",
     title: "Open houses — next OH + alerts",
     summary:
@@ -137,6 +155,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     title: "List With Me",
     summary:
       "Seller intake writes to Neon contacts, not data/contacts.json. Address autocomplete still uses the property directory.",
+  },
+  {
+    slug: "listing-photo-focus",
+    title: "Listing photo full screen",
+    summary:
+      "On a phone, tap the full-bleed photo or a thumbnail to see just the photo. Close exits; rail and type stay hidden while it is open.",
   },
   {
     slug: "showcase-rail-pills",

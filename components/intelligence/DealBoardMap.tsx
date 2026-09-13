@@ -29,6 +29,11 @@ import { useLocationEstimateOverlay } from "@/components/intelligence/use-locati
 import { useLocationEstimateTownCenters } from "@/components/intelligence/use-location-estimate-town-centers";
 import { useLocationEstimateZipGrid } from "@/components/intelligence/use-location-estimate-zip-grid";
 import { locationEstimateOverlayShapes } from "@/lib/location-estimate-map-shapes";
+import {
+  MAP_LIGHT_TILE_MAX_ZOOM,
+  mapTileUrl,
+  type MapTileStyle,
+} from "@/lib/web-mercator-map";
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -99,7 +104,7 @@ export type DealBoardMapListing = {
 type LonLat = { lat: number; lon: number };
 type Ring = [number, number][];
 type ZipRings = { zip: string; rings: Ring[] };
-type GeoBounds = {
+export type GeoBounds = {
   minLat: number;
   maxLat: number;
   minLon: number;
@@ -112,8 +117,13 @@ type PlacedPin = {
   top: number;
 };
 
-function tileUrl(z: number, x: number, y: number): string {
-  return `/api/map/tile/${z}/${x}/${y}`;
+function tileUrl(
+  z: number,
+  x: number,
+  y: number,
+  style: MapTileStyle = "osm",
+): string {
+  return mapTileUrl(z, x, y, style);
 }
 
 function worldSize(zoom: number): number {
@@ -518,6 +528,12 @@ export default function DealBoardMap({
   subjectKey = null,
   fitZips,
   hideLocationOverlayButton = false,
+  overviewFit = false,
+  focusToken = null,
+  focusBounds = null,
+  overlay = null,
+  onResetView,
+  tileStyle = "osm",
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -560,6 +576,27 @@ export default function DealBoardMap({
   fitZips?: readonly string[];
   /** Showcase hosts Corridors on the Map label; hide the on-map duplicate. */
   hideLocationOverlayButton?: boolean;
+  /**
+   * Always frame the search-area outline (town / zip rings). Skips listing
+   * house-in-context and the phone street start. Find / VGSI uses this so
+   * Reset and first paint fill the panel with the town border.
+   */
+  overviewFit?: boolean;
+  /**
+   * When the token changes, fit `focusBounds` and mark the view adjusted so
+   * Reset returns to the overview. Do not send a token on first paint.
+   */
+  focusToken?: string | null;
+  focusBounds?: GeoBounds | null;
+  /** Drawn on the canvas (e.g. Find around-home chips, upper right). */
+  overlay?: ReactNode;
+  /** After Reset returns to the overview (Find clears the around-home chip). */
+  onResetView?: () => void;
+  /**
+   * `light` is the VGSI neighborhood canvas: streets without parking /
+   * cemetery amenity icons. Intelligence stays on OSM.
+   */
+  tileStyle?: MapTileStyle;
 }) {
   const locationOverlay = useLocationEstimateOverlay();
   const locationGrid = useLocationEstimateZipGrid();
@@ -833,6 +870,11 @@ export default function DealBoardMap({
 
   /** Listing maps: zip/town zoom, house centered. Intelligence stays town-wide. */
   const fit = useCallback(() => {
+    if (overviewFit) {
+      if (boundZips.length > 0 && !searchBounds) return;
+      fitOverview();
+      return;
+    }
     if (subjectListing && frameBounds && size.width > 0 && size.height > 0) {
       userMovedRef.current = false;
       setViewAdjusted(false);
@@ -856,21 +898,48 @@ export default function DealBoardMap({
     }
     fitOverview();
   }, [
+    boundZips.length,
     fitInset,
     fitOverview,
     fitStreetOnPhone,
     fitToNeighborhood,
     fitZips,
     frameBounds,
+    overviewFit,
+    searchBounds,
     size.height,
     size.width,
     subjectListing,
   ]);
 
+  const lastFocusTokenRef = useRef<string | null>(null);
+  const onResetViewRef = useRef<(() => void) | undefined>(undefined);
+  onResetViewRef.current = onResetView;
+
+  useEffect(() => {
+    if (!focusToken || !focusBounds) return;
+    if (size.width <= 0 || size.height <= 0) return;
+    if (lastFocusTokenRef.current === focusToken) return;
+    lastFocusTokenRef.current = focusToken;
+    const next = fitBounds(
+      focusBounds,
+      size.width,
+      size.height,
+      0,
+      FIT_PAD_PINS,
+      ZERO_FIT_INSET,
+    );
+    userMovedRef.current = true;
+    setViewAdjusted(true);
+    setCenter(next.center);
+    setZoom(next.zoom);
+  }, [focusBounds, focusToken, size.height, size.width]);
+
   /** Town / zip overview, even on a listing page that opened at street level. */
   const resetView = useCallback(() => {
     fitOverview();
     onSelectRef.current?.(null);
+    onResetViewRef.current?.();
   }, [fitOverview]);
 
   const areaSignature = `${boundKey}:${rings.length}`;
@@ -894,8 +963,19 @@ export default function DealBoardMap({
     fitSignatureRef.current = signature;
     fitAreaRef.current = areaSignature;
     if (userMovedRef.current && !areaChanged) return;
+    if (overviewFit && userMovedRef.current) return;
+    if (focusToken && lastFocusTokenRef.current !== focusToken) return;
     fit();
-  }, [areaSignature, fit, fitInset, placeable, size.height, size.width]);
+  }, [
+    areaSignature,
+    fit,
+    fitInset,
+    focusToken,
+    overviewFit,
+    placeable,
+    size.height,
+    size.width,
+  ]);
 
   const viewport = useMemo(() => {
     if (size.width <= 0 || size.height <= 0) return null;
@@ -908,7 +988,10 @@ export default function DealBoardMap({
   }, [center.lat, center.lon, size.height, size.width, zoom]);
 
   /** Whole tile level behind the fractional zoom, plus its scale factor. */
-  const tileZoom = clampZoom(Math.round(zoom));
+  const tileZoom = Math.min(
+    clampZoom(Math.round(zoom)),
+    tileStyle === "light" ? MAP_LIGHT_TILE_MAX_ZOOM : MAX_ZOOM,
+  );
 
   /**
    * Tiles for a whole zoom level, scaled into the current fractional viewport.
@@ -939,7 +1022,7 @@ export default function DealBoardMap({
           const x = ((col % n) + n) % n;
           out.push({
             key: `${level}/${x}/${row}`,
-            src: tileUrl(level, x, row),
+            src: tileUrl(level, x, row, tileStyle),
             left: col * tilePx - viewport.left,
             top: row * tilePx - viewport.top,
             // Half-pixel bleed: fractional tile sizes otherwise leave hairlines.
@@ -949,7 +1032,7 @@ export default function DealBoardMap({
       }
       return out;
     },
-    [size.height, size.width, viewport, zoom],
+    [size.height, size.width, tileStyle, viewport, zoom],
   );
 
   const tiles = useMemo(() => tilesFor(tileZoom), [tilesFor, tileZoom]);
@@ -1782,6 +1865,8 @@ export default function DealBoardMap({
           viewAdjusted={viewAdjusted}
         />
 
+        {overlay}
+
         {onFullscreenToggle || onExitToGrid ? (
           <div className="absolute right-2 top-2 z-30 flex flex-col items-stretch gap-1 md:hidden">
             {onFullscreenToggle ? (
@@ -1835,6 +1920,7 @@ export default function DealBoardMap({
         <div className="pointer-events-none absolute bottom-1.5 right-2 z-20 hidden rounded bg-white/85 px-1.5 py-0.5 font-mono text-[8px] tracking-wide text-charcoal/55 md:block">
           {placeable.length} mapped
           {missingCoords > 0 ? ` · ${missingCoords} without coordinates` : ""}
+          {tileStyle === "light" ? " · Esri · OSM" : ""}
         </div>
 
       </div>

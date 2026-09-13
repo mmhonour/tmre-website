@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  esriLightGrayTileUrl,
   fitMapBounds,
   latToWorldY,
   lonToWorldX,
+  mapTileUrl,
   screenToLonLat,
   worldToLonLat,
 } from './web-mercator-map'
@@ -28,6 +30,18 @@ describe('web-mercator-map', () => {
     )
     assert.ok(zoom >= 9)
     assert.ok(zoom <= 17)
+  })
+
+  it('keeps quiet tiles on a path segment, not a query', () => {
+    assert.equal(mapTileUrl(16, 19413, 24537), '/api/map/tile/16/19413/24537')
+    assert.equal(
+      mapTileUrl(16, 19413, 24537, 'light'),
+      '/api/map/tile/light/16/19413/24537',
+    )
+    assert.equal(
+      esriLightGrayTileUrl(16, 19413, 24537),
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/16/24537/19413',
+    )
   })
 
   it('reads the lon/lat under the panel centre', () => {

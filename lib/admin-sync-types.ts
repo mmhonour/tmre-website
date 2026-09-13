@@ -49,6 +49,11 @@ export const ADMIN_SYNC_ACTIONS = {
     description:
       'SmartMLS OpenHouse → open_houses (t+6 upcoming replace, then 1-year lookback in budgeted chunks) for /open-houses counts',
   },
+  alerts: {
+    label: 'Listing / OH alerts',
+    description:
+      'Railway mailer: listing matcher + open-house matcher. Incremental and OH jobs only mark dirty. One email if the visitor signed up for both.',
+  },
   'fomc-sync': {
     label: 'FOMC statement sync',
     description:
@@ -127,6 +132,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'vision-addresses': 7,
   'zip-boundaries': 8,
   'open-houses': 9,
+  alerts: 16,
   'fomc-sync': 10,
   'cpi-sync': 11,
   'market-digest': 12,

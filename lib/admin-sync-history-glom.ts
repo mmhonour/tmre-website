@@ -34,6 +34,7 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   vision: 'Vision addresses',
   'zip-maps': 'Zip boundaries',
   'open-houses': 'Open houses',
+  alerts: 'Listing / OH alerts',
   snapshot: 'Refresh finished',
   fomc: 'FOMC',
   cpi: 'CPI',

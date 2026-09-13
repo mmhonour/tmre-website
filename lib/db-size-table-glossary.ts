@@ -77,9 +77,9 @@ const TABLE_PURPOSE: Record<(typeof POSTGRES_KNOWN_TABLES)[number], string> = {
   site_user_sessions:
     'Active site-user sessions after a magic link is redeemed.',
   saved_search_alerts:
-    'Visitor listing-alert subscriptions (filters + delivery prefs).',
+    'Visitor listing-alert subscriptions (filters + delivery prefs). Listing vs OH last-send stamps are separate so Incremental and the OH job cannot skip each other.',
   saved_search_alert_deliveries:
-    'Which alert emails have already gone out, so the same listing is not re-sent.',
+    'Which alert emails have already gone out, keyed (alert, listing, event_kind listing|open_house).',
   sync_runs:
     'Audit log of sync jobs (start/finish, town, counts, errors) shown on Admin History.',
   schema_migrations:

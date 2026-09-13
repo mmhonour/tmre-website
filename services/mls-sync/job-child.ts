@@ -51,6 +51,7 @@ export type SyncJobChildSpec = {
    * real Monday brief.
    */
   stampWeek?: boolean
+  kinds?: Array<'listing' | 'open_house'>
 }
 
 export type SyncJobChildMessage =
@@ -118,6 +119,8 @@ async function main(): Promise<number> {
     ...(typeof spec.stampWeek === 'boolean'
       ? { stampWeek: spec.stampWeek }
       : {}),
+    ...(spec.kinds?.length ? { kinds: spec.kinds } : {}),
+    trigger: spec.trigger,
   })
 
   clearInterval(heartbeat)

@@ -1,4 +1,4 @@
-import { OwnerPortfolioHomes } from "@/components/OwnerPortfolioHomes";
+import { OwnerPortfoliosList } from "@/components/OwnerPortfoliosList";
 import { pickUniqueOwnerPortfolios } from "@/lib/vision-owner-keys";
 
 export const metadata = {
@@ -35,7 +35,7 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
       {
         town: "Westport",
         visionPid: "201",
-        siteAddress: "8 Beachside Ave",
+        siteAddress: "1189 Greens Farms Road Ext",
         lastPaidPrice: 3_400_000,
         lastPaidPriceLabel: "$3,400,000",
         lastPaidSaleDate: "07/22/2021",
@@ -92,7 +92,37 @@ const TOWN_FIXTURES = pickUniqueOwnerPortfolios([
         siteAddress: "88 Hillspoint Rd",
         lastPaidPrice: 1_200_000,
         lastPaidPriceLabel: "$1,200,000",
-        lastPaidSaleDate: "08/01/2018",
+        lastPaidSaleDate: null,
+      },
+    ],
+  },
+]);
+
+const STREET_FIXTURES = pickUniqueOwnerPortfolios([
+  {
+    clusterId: "mailing:2a stony pt rd|westport",
+    clusterKind: "mailing",
+    town: "Westport",
+    displayName: "CASTILLO EDWARD AND SNYDER CAMERON",
+    relationship: "owner",
+    mailingLabel: "2a stony pt rd, westport",
+    parcelCount: 2,
+    parcels: [
+      {
+        town: "Westport",
+        visionPid: "5384",
+        siteAddress: "2A STONY PT RD",
+        lastPaidPrice: 1_530_000,
+        lastPaidPriceLabel: "$1,530,000",
+        lastPaidSaleDate: "11/03/2014",
+      },
+      {
+        town: "Westport",
+        visionPid: "5385",
+        siteAddress: "2B STONY PT RD",
+        lastPaidPrice: 1_275_000,
+        lastPaidPriceLabel: "$1,275,000",
+        lastPaidSaleDate: "05/20/2015",
       },
     ],
   },
@@ -109,14 +139,11 @@ export default function OwnerPortfoliosPreviewPage() {
           Owner portfolios (2+ homes)
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture list — largest first. The current (non-superseded)
-          warranty name on two or more homes is a landlord (Denise
-          Penna). A later warranty replaces the prior buyer; a later
-          quitclaim does not. Same mailbox is an owner cluster. Last
-          paid close date sits to the left of the price on the right
-          side of each row; purchase total at the bottom of the panel.
-          Production (admin): /streets/owners or Find → Landlord /
-          owners.
+          Click Date or Amount to sort purchases in every panel (newest /
+          highest first; click again to reverse). Each panel is an invisible
+          three-column grid: address left, Date and Amount right-aligned so
+          figures line up even when a sale date is missing. Production
+          (admin): /streets/owners or Find → Landlord / owners.
         </p>
         <p className="mb-8 font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
           Find · Westport · Landlord / owners
@@ -124,78 +151,16 @@ export default function OwnerPortfoliosPreviewPage() {
         <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
           Town-wide
         </h2>
-        <ol className="mb-10 space-y-5">
-          {TOWN_FIXTURES.map((row) => (
-            <li
-              key={row.clusterId}
-              className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4"
-            >
-              <div className="flex flex-wrap items-baseline justify-between gap-3">
-                <h2 className="font-serif text-2xl text-navy">{row.displayName}</h2>
-                <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
-                  {row.parcelCount} homes
-                  {row.relationship === "landlord"
-                    ? " · landlord"
-                    : " · same mailing"}
-                </p>
-              </div>
-              <OwnerPortfolioHomes
-                parcels={row.parcels}
-                purchaseTotalLabel={row.lastPaidTotalLabel}
-              />
-            </li>
-          ))}
-        </ol>
+        <div className="mb-10">
+          <OwnerPortfoliosList portfolios={TOWN_FIXTURES} />
+        </div>
         <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-slate">
           On STONY PT RD (2+ on this street)
         </h2>
-        <ol className="space-y-5">
-          {pickUniqueOwnerPortfolios([
-            {
-              clusterId: "mailing:2a stony pt rd|westport",
-              clusterKind: "mailing",
-              town: "Westport",
-              displayName: "CASTILLO EDWARD AND SNYDER CAMERON",
-              relationship: "owner",
-              mailingLabel: "2a stony pt rd, westport",
-              parcelCount: 2,
-              parcels: [
-                {
-                  town: "Westport",
-                  visionPid: "5384",
-                  siteAddress: "2A STONY PT RD",
-                  lastPaidPrice: 1_530_000,
-                  lastPaidPriceLabel: "$1,530,000",
-                  lastPaidSaleDate: "11/03/2014",
-                },
-                {
-                  town: "Westport",
-                  visionPid: "5385",
-                  siteAddress: "2B STONY PT RD",
-                  lastPaidPrice: 1_275_000,
-                  lastPaidPriceLabel: "$1,275,000",
-                  lastPaidSaleDate: "05/20/2015",
-                },
-              ],
-            },
-          ]).map((row) => (
-            <li
-              key={row.clusterId}
-              className="rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4"
-            >
-              <div className="flex flex-wrap items-baseline justify-between gap-3">
-                <h2 className="font-serif text-2xl text-navy">{row.displayName}</h2>
-                <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-slate">
-                  {row.parcelCount} homes on this street
-                </p>
-              </div>
-              <OwnerPortfolioHomes
-                parcels={row.parcels}
-                purchaseTotalLabel={row.lastPaidTotalLabel}
-              />
-            </li>
-          ))}
-        </ol>
+        <OwnerPortfoliosList
+          portfolios={STREET_FIXTURES}
+          homesNote="on this street"
+        />
       </div>
     </div>
   );

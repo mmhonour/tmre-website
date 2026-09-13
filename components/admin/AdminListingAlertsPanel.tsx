@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminAlertJobHealth, {
+  type AlertDirtyStateClient,
+} from "@/components/admin/AdminAlertJobHealth";
+import type {
+  AlertJobKind,
+  AlertJobLastRuns,
+} from "@/lib/saved-search-alert-kinds";
 
 export type AdminListingAlertRow = {
   id: string;
@@ -13,6 +20,10 @@ export type AdminListingAlertRow = {
   channel: "email" | "sms";
   active: boolean;
   lastNotifiedAt: string | null;
+  lastListingNotifiedAt?: string | null;
+  lastOpenHouseNotifiedAt?: string | null;
+  wantsListing?: boolean;
+  wantsOpenHouse?: boolean;
   createdAt: string;
   isDuplicate?: boolean;
 };
@@ -80,15 +91,25 @@ function groupAlerts(alerts: AdminListingAlertRow[]): UserGroup[] {
  */
 export default function AdminListingAlertsPanel({
   initial,
+  initialLastRuns,
+  initialDirty,
 }: {
   initial?: AdminListingAlertRow[];
+  initialLastRuns?: AlertJobLastRuns;
+  initialDirty?: AlertDirtyStateClient;
 }) {
   const [alerts, setAlerts] = useState<AdminListingAlertRow[]>(initial ?? []);
+  const [lastRuns, setLastRuns] = useState<AlertJobLastRuns>(
+    initialLastRuns ?? { listing: null, openHouse: null },
+  );
+  const [dirty, setDirty] = useState<AlertDirtyStateClient>(
+    initialDirty ?? { listing: null, openHouse: null },
+  );
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const [processing, setProcessing] = useState<AlertJobKind | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(() => groupAlerts(alerts), [alerts]);
@@ -106,6 +127,8 @@ export default function AdminListingAlertsPanel({
       });
       const body = (await res.json()) as {
         alerts?: AdminListingAlertRow[];
+        lastRuns?: AlertJobLastRuns;
+        dirty?: AlertDirtyStateClient;
         error?: string;
       };
       if (!res.ok) {
@@ -113,6 +136,8 @@ export default function AdminListingAlertsPanel({
         return;
       }
       setAlerts(body.alerts ?? []);
+      if (body.lastRuns) setLastRuns(body.lastRuns);
+      if (body.dirty) setDirty(body.dirty);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load alerts");
     } finally {
@@ -125,24 +150,25 @@ export default function AdminListingAlertsPanel({
     void load();
   }, [initial, load]);
 
-  async function processDue() {
-    setProcessing(true);
+  async function processDue(kind: AlertJobKind) {
+    setProcessing(kind);
     setMessage(null);
     setError(null);
     try {
       const res = await fetch("/api/admin/saved-search-alerts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ kind }),
       });
       const raw = await res.text();
       let body: {
         ok?: boolean;
         error?: string;
-        checked?: number;
-        sent?: number;
-        listings?: number;
+        lastRuns?: AlertJobLastRuns;
+        dirty?: AlertDirtyStateClient;
         alerts?: AdminListingAlertRow[];
+        queued?: boolean;
+        reason?: string;
       };
       try {
         body = JSON.parse(raw);
@@ -152,22 +178,25 @@ export default function AdminListingAlertsPanel({
         );
         return;
       }
-      if (!res.ok || !body.ok) {
+      if (!res.ok) {
         setError(body.error ?? `Process failed (HTTP ${res.status})`);
         return;
       }
       if (body.alerts) setAlerts(body.alerts);
-      const sent = body.sent ?? 0;
-      const listings = body.listings ?? 0;
+      if (body.lastRuns) setLastRuns(body.lastRuns);
+      if (body.dirty) setDirty(body.dirty);
       setMessage(
-        sent > 0
-          ? `Sent ${sent} alert${sent === 1 ? "" : "s"} · ${listings} listing${listings === 1 ? "" : "s"} (checked ${body.checked ?? 0})`
-          : `No new matches to send (checked ${body.checked ?? 0} active alert${(body.checked ?? 0) === 1 ? "" : "s"})`,
+        body.queued
+          ? `Queued Railway alerts job (${body.reason ?? "queued"}) — mail does not send from Netlify`
+          : "Processed",
       );
+      if (body.ok === false) {
+        setError(body.error ?? "Could not queue the Railway alerts job.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Process failed");
     } finally {
-      setProcessing(false);
+      setProcessing(null);
     }
   }
 
@@ -248,27 +277,35 @@ export default function AdminListingAlertsPanel({
             Listing alerts
           </p>
           <p className="mt-1 text-sm text-slate max-w-3xl">
-            End-user alerts from Latest (Neon{" "}
-            <span className="font-mono text-[11px]">saved_search_alerts</span>
-            ). Grouped by email — expand to activate, disable, or delete.
-            Duplicates = same email + same search criteria. Last notified
-            updates when a digest actually goes out — Process now catches up
-            missed daily/weekly windows.
+            Incremental and Open houses only mark dirty. A Railway alerts
+            job sends — listing matcher and OH matcher, one email if the
+            visitor signed up for both. Process queues that job (not
+            Netlify mail). Dirty below means send now.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => void processDue()}
-            disabled={processing || loading}
+            onClick={() => void processDue("listing")}
+            disabled={processing != null || loading}
             className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-gold/40 text-navy bg-gold/10 hover:bg-gold/20 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {processing ? "Processing…" : "Process now"}
+            {processing === "listing"
+              ? "Listing…"
+              : "Process listing"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void processDue("open_house")}
+            disabled={processing != null || loading}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase rounded-full px-3 py-1.5 border border-gold/40 text-navy bg-gold/10 hover:bg-gold/20 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            {processing === "open_house" ? "Open house…" : "Process OH"}
           </button>
           <button
             type="button"
             onClick={() => void load()}
-            disabled={loading || processing}
+            disabled={loading || processing != null}
             className="bg-transparent p-0 m-0 border-0 cursor-pointer font-mono text-[11px] tracking-[0.12em] uppercase text-navy underline decoration-navy/25 underline-offset-2 hover:text-gold hover:decoration-gold/50 transition-colors disabled:opacity-40"
           >
             {loading ? "Loading…" : "Refresh"}
@@ -286,6 +323,10 @@ export default function AdminListingAlertsPanel({
           {message}
         </p>
       ) : null}
+
+      <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.06] bg-cream/20">
+        <AdminAlertJobHealth lastRuns={lastRuns} dirty={dirty} />
+      </div>
 
       <div className="overflow-x-auto">
         {loading && alerts.length === 0 ? (
@@ -342,7 +383,7 @@ export default function AdminListingAlertsPanel({
 
                   {open ? (
                     <div className="border-t border-charcoal/[0.05] bg-cream/15">
-                      <table className="w-full min-w-[52rem] text-left">
+                      <table className="w-full min-w-[60rem] text-left">
                         <thead>
                           <tr className="border-b border-charcoal/[0.06] font-mono text-[10px] tracking-[0.12em] uppercase text-charcoal/45">
                             <th className="px-4 sm:px-5 py-2 font-normal">
@@ -351,7 +392,10 @@ export default function AdminListingAlertsPanel({
                             <th className="px-3 py-2 font-normal">Cadence</th>
                             <th className="px-3 py-2 font-normal">Created</th>
                             <th className="px-3 py-2 font-normal">
-                              Last notified
+                              Listing sent
+                            </th>
+                            <th className="px-3 py-2 font-normal">
+                              OH sent
                             </th>
                             <th className="px-3 py-2 font-normal">Status</th>
                             <th className="px-4 sm:px-5 py-2 font-normal text-right">
@@ -381,7 +425,19 @@ export default function AdminListingAlertsPanel({
                                   {fmtWhen(row.createdAt)}
                                 </td>
                                 <td className="px-3 py-3 font-mono text-[11px] text-charcoal/55 whitespace-nowrap">
-                                  {fmtWhen(row.lastNotifiedAt)}
+                                  {row.wantsListing === false
+                                    ? "—"
+                                    : fmtWhen(
+                                        row.lastListingNotifiedAt ??
+                                          row.lastNotifiedAt,
+                                      )}
+                                </td>
+                                <td className="px-3 py-3 font-mono text-[11px] text-charcoal/55 whitespace-nowrap">
+                                  {row.wantsOpenHouse
+                                    ? fmtWhen(
+                                        row.lastOpenHouseNotifiedAt ?? null,
+                                      )
+                                    : "—"}
                                 </td>
                                 <td className="px-3 py-3">
                                   <span
