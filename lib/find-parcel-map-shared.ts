@@ -102,6 +102,130 @@ export function neighborMatchesAroundFilter(
   return neighbor.miles <= radiusMiles
 }
 
+export type FindParcelMapBounds = {
+  minLat: number
+  maxLat: number
+  minLon: number
+  maxLon: number
+}
+
+const MILES_PER_DEG_LAT = 69
+
+function lonMilesPerDeg(lat: number): number {
+  return MILES_PER_DEG_LAT * Math.max(0.2, Math.cos((lat * Math.PI) / 180))
+}
+
+function coordsOf(
+  pin: { latitude?: number | null; longitude?: number | null },
+): { lat: number; lon: number } | null {
+  if (pin.latitude == null || pin.longitude == null) return null
+  return { lat: pin.latitude, lon: pin.longitude }
+}
+
+export function boxFromLonLats(
+  points: readonly { lat: number; lon: number }[],
+): FindParcelMapBounds | null {
+  if (points.length === 0) return null
+  let minLat = Infinity
+  let maxLat = -Infinity
+  let minLon = Infinity
+  let maxLon = -Infinity
+  for (const point of points) {
+    if (point.lat < minLat) minLat = point.lat
+    if (point.lat > maxLat) maxLat = point.lat
+    if (point.lon < minLon) minLon = point.lon
+    if (point.lon > maxLon) maxLon = point.lon
+  }
+  return { minLat, maxLat, minLon, maxLon }
+}
+
+export function padBoundsMiles(
+  box: FindParcelMapBounds,
+  miles: number,
+): FindParcelMapBounds {
+  const midLat = (box.minLat + box.maxLat) / 2
+  const latPad = miles / MILES_PER_DEG_LAT
+  const lonPad = miles / lonMilesPerDeg(midLat)
+  return {
+    minLat: box.minLat - latPad,
+    maxLat: box.maxLat + latPad,
+    minLon: box.minLon - lonPad,
+    maxLon: box.maxLon + lonPad,
+  }
+}
+
+export function radiusBounds(
+  center: { lat: number; lon: number },
+  miles: number,
+): FindParcelMapBounds {
+  return padBoundsMiles(
+    {
+      minLat: center.lat,
+      maxLat: center.lat,
+      minLon: center.lon,
+      maxLon: center.lon,
+    },
+    miles,
+  )
+}
+
+function unionBounds(
+  a: FindParcelMapBounds,
+  b: FindParcelMapBounds,
+): FindParcelMapBounds {
+  return {
+    minLat: Math.min(a.minLat, b.minLat),
+    maxLat: Math.max(a.maxLat, b.maxLat),
+    minLon: Math.min(a.minLon, b.minLon),
+    maxLon: Math.max(a.maxLon, b.maxLon),
+  }
+}
+
+/**
+ * Camera box for an Around-this-home chip. Initial load / Reset stay on the
+ * town outline — this is only for a chip click.
+ */
+export function aroundFocusBounds(
+  filter: FindParcelMapAroundFilter,
+  subject: { latitude?: number | null; longitude?: number | null },
+  neighbors: readonly FindParcelMapNeighbor[],
+  radiusMiles = FIND_PARCEL_MAP_RADIUS_MILES,
+): FindParcelMapBounds | null {
+  const house = coordsOf(subject)
+  if (!house) return null
+  if (filter === 'radius') return radiusBounds(house, radiusMiles)
+
+  const rows =
+    filter === 'same_street'
+      ? neighbors.filter((row) => row.relation === 'same_street')
+      : filter === 'cross_street'
+        ? neighbors.filter(
+            (row) =>
+              row.relation === 'same_street' || row.relation === 'cross_street',
+          )
+        : neighbors
+
+  const points = [
+    house,
+    ...rows
+      .map((row) => coordsOf(row.pin))
+      .filter((point): point is { lat: number; lon: number } => point != null),
+  ]
+  const raw = boxFromLonLats(points)
+  if (!raw) {
+    return radiusBounds(house, filter === 'same_street' ? 0.08 : radiusMiles)
+  }
+
+  const padMiles =
+    filter === 'same_street' ? 0.05 : filter === 'cross_street' ? 0.08 : 0.06
+  const padded = padBoundsMiles(raw, padMiles)
+  if (filter !== 'cross_street') return padded
+
+  // Cross streets must read wider than the street itself even when only a
+  // couple of pins exist — keep at least a short-block look at the house.
+  return unionBounds(padded, radiusBounds(house, Math.min(radiusMiles, 0.22)))
+}
+
 export function criteriaFromParcelFacts(facts: {
   zip?: string | null
   beds?: number | null
