@@ -129,7 +129,7 @@ function SymbolRailDemo() {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex items-end gap-1">
+      <div className="flex items-start gap-1">
         <div className="flex flex-col items-end gap-1">
           <span className={railIcon} title="Insight">
             <InsightGlyph />

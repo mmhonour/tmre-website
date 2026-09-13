@@ -364,7 +364,7 @@ export default function ShowcaseSectionRail({
   );
 
   const chromeIcons = (
-    <div className="flex items-end gap-1">
+    <div className="flex items-start gap-1">
       {insightButton}
       {sideIcons}
     </div>
@@ -553,7 +553,7 @@ export default function ShowcaseSectionRail({
             </div>
           </>
         ) : overlay === "map" ? null : (
-          <div className="flex items-end gap-1">
+          <div className="flex items-start gap-1">
             <ShowcaseStepArrow
               direction="next"
               label="Next photo"
