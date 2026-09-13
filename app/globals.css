@@ -973,6 +973,18 @@ html.listing-split-test body {
   display: none;
 }
 
+/* Full-bleed Offered at / Closed at — lighter blue than the status chip
+   (`#0d1424/85`), strongest in the middle, transparent at the sides.
+   Type stays fully opaque; only the wash fades. */
+.listing-showcase-price-wash {
+  background: linear-gradient(
+    90deg,
+    rgb(91 125 181 / 0) 0%,
+    rgb(91 125 181 / 0.42) 50%,
+    rgb(91 125 181 / 0) 100%
+  );
+}
+
 /* Second line of defence for type sitting over a busy or blown-out photo. */
 .listing-showcase-type {
   text-shadow:

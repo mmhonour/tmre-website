@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { DealBoardMapListing } from "@/components/intelligence/DealBoardMap";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 import ListingSidebar from "@/components/listing/ListingSidebar";
@@ -13,6 +13,14 @@ import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
 import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
+import {
+  CompsGlyph,
+  DetailsGlyph,
+  InsightGlyph,
+  MapGlyph,
+  PulseGlyph,
+  WhatIfGlyph,
+} from "@/components/listing/showcase/showcase-rail-glyphs";
 import type { ShowcaseMapPresentation } from "@/components/listing/showcase/showcase-host";
 import {
   jumpToListingSection,
@@ -73,101 +81,6 @@ function CountChip({
   );
 }
 
-function InsightGlyph() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M9 18h6M10 21h4" />
-      <path d="M8 14.2C6.2 12.8 5 10.7 5 8.4A7 7 0 0 1 12 1.5 7 7 0 0 1 19 8.4c0 2.3-1.2 4.4-3 5.8" />
-      <path d="M9 14h6v2.2a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V14z" />
-    </svg>
-  );
-}
-
-function MapGlyph() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z" />
-      <path d="M9 4v13M15 6.5v13" />
-    </svg>
-  );
-}
-
-/**
- * Same 20×20 slot as Map / Insight / Details so the button chrome matches.
- * Gradients are unique per mount so two icon rows do not collide.
- */
-function PulseGlyph() {
-  const uid = useId().replace(/:/g, "");
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <defs>
-        <radialGradient id={`${uid}-yin`} cx="12" cy="7.8" r="8.4" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#4A7C6F" />
-          <stop offset="1" stopColor="#C8A951" />
-        </radialGradient>
-        <radialGradient id={`${uid}-eyeGreen`}>
-          <stop offset="0" stopColor="#FF2A22" />
-          <stop offset="1" stopColor="#4A7C6F" />
-        </radialGradient>
-        <radialGradient id={`${uid}-eyeRed`}>
-          <stop offset="0" stopColor="#C8A951" />
-          <stop offset="0.48" stopColor="#FF2A22" />
-          <stop offset="1" stopColor="#FF2A22" />
-        </radialGradient>
-      </defs>
-      <g transform="rotate(-60 12 12)">
-        <circle cx="12" cy="12" r="8.4" fill={`url(#${uid}-yin)`} />
-        <path
-          d="M12 3.6 A8.4 8.4 0 0 0 12 20.4 A4.2 4.2 0 0 0 12 12 A4.2 4.2 0 0 1 12 3.6 Z"
-          fill="#FF2A22"
-        />
-        <circle cx="12" cy="7.8" r="2.17" fill={`url(#${uid}-eyeGreen)`} />
-        <circle cx="12" cy="16.2" r="2.7" fill={`url(#${uid}-eyeRed)`} />
-      </g>
-    </svg>
-  );
-}
-
-function DetailsGlyph() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <path d="M4 7h10M4 12h16M4 17h12" />
-      <circle cx="19" cy="7" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="17" r="1.4" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 /** Icon-only rail control — same translucent navy as the tiles. */
 const railIconClass = (on: boolean) =>
   `inline-flex h-11 w-11 items-center justify-center shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors ${
@@ -181,6 +94,26 @@ function Chevron({ open }: { open: boolean }) {
     <span aria-hidden className="ml-3 font-mono text-white/60">
       {open ? "↑" : "↓"}
     </span>
+  );
+}
+
+function MinimizeGlyphButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="ml-2 shrink-0 px-1 font-mono text-white/70 transition-colors hover:text-white"
+    >
+      «
+    </button>
   );
 }
 
@@ -205,7 +138,7 @@ type IfAmounts = { sale: number | null; rent: number | null };
  * the matching section; Map takes over the right column.
  *
  * Below `lg` the figures are hidden behind a pulsing chevron — first tap
- * reveals them, second tap navigates — so the rail stays narrow on a phone.
+ * reveals them, the label jumps to the section, and « hides them again.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -320,7 +253,12 @@ export default function ShowcaseSectionRail({
 
   const toggle = (id: CardId) => setOpenCard((cur) => (cur === id ? null : id));
 
-  const cardPill = (id: CardId, label: string, body: React.ReactNode) => {
+  const cardPill = (
+    id: CardId,
+    label: string,
+    glyph: ReactNode,
+    body: ReactNode,
+  ) => {
     const open = openCard === id;
     return (
       <div className="flex w-full flex-col items-end lg:items-stretch">
@@ -330,6 +268,7 @@ export default function ShowcaseSectionRail({
           aria-expanded={open}
           className={pillClass(open)}
         >
+          <span className="mr-2.5 inline-flex">{glyph}</span>
           <span className="flex-1">{label}</span>
           <Chevron open={open} />
         </button>
@@ -349,55 +288,83 @@ export default function ShowcaseSectionRail({
   const figurePill = (
     id: string,
     label: string,
-    figures: React.ReactNode | null,
+    glyph: ReactNode,
+    figures: ReactNode | null,
     onActivate: () => void,
   ) => {
     const showFigures = isDesktop || revealed === id;
+    if (showFigures) {
+      return (
+        <div className="flex w-full flex-col items-end lg:items-stretch">
+          <div className={`${railRowClass({ interactive: false })} gap-2`}>
+            <button
+              type="button"
+              onClick={onActivate}
+              className="flex min-w-0 flex-1 items-center text-left transition-colors hover:text-gold"
+            >
+              <span className="mr-2.5 inline-flex">{glyph}</span>
+              <span className="shrink-0">{label}</span>
+              {figures ? (
+                <span className="ml-3 flex flex-1 items-center justify-end gap-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
+                  {figures}
+                </span>
+              ) : null}
+            </button>
+            {isDesktop ? null : (
+              <MinimizeGlyphButton
+                label={`Hide ${label}`}
+                onClick={() => setRevealed(null)}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex w-full flex-col items-end lg:items-stretch">
         <button
           type="button"
-          onClick={() => {
-            if (showFigures) {
-              onActivate();
-              return;
-            }
-            setRevealed(id);
-          }}
+          onClick={() => setRevealed(id)}
           className={pillClass(false)}
         >
+          <span className="mr-2.5 inline-flex">{glyph}</span>
           <span className="shrink-0">{label}</span>
-          {showFigures && figures ? (
-            <span className="ml-3 flex flex-1 items-center justify-end gap-3 whitespace-nowrap normal-case tracking-[0.08em] text-white">
-              {figures}
-            </span>
-          ) : null}
-          {!showFigures ? (
-            <span
-              aria-hidden
-              className="showcase-chevron-pulse ml-3 font-mono text-white/70"
-            >
-              »
-            </span>
-          ) : null}
+          <span
+            aria-hidden
+            className="showcase-chevron-pulse ml-3 font-mono text-white/70"
+          >
+            »
+          </span>
         </button>
       </div>
     );
   };
 
-  /* The four overlays share this row so they stay a group. */
+  /* Insight sits above Details; Map and Pulse stay beside that stack. */
   const iconRow = (
-    <div className="mt-1 flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => toggleOverlay("insight")}
-        aria-pressed={overlay === "insight"}
-        aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
-        title="Insight"
-        className={railIconClass(overlay === "insight")}
-      >
-        <InsightGlyph />
-      </button>
+    <div className="mt-1 flex items-end gap-1">
+      <div className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => toggleOverlay("insight")}
+          aria-pressed={overlay === "insight"}
+          aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
+          title="Insight"
+          className={railIconClass(overlay === "insight")}
+        >
+          <InsightGlyph />
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleOverlay("details")}
+          aria-pressed={overlay === "details"}
+          aria-label={overlay === "details" ? "Close details" : "Show details"}
+          title={overlay === "details" ? "Close details" : "Details"}
+          className={railIconClass(overlay === "details")}
+        >
+          <DetailsGlyph />
+        </button>
+      </div>
       <button
         type="button"
         onClick={() => toggleOverlay("map")}
@@ -417,16 +384,6 @@ export default function ShowcaseSectionRail({
         className={railIconClass(overlay === "pulse")}
       >
         <PulseGlyph />
-      </button>
-      <button
-        type="button"
-        onClick={() => toggleOverlay("details")}
-        aria-pressed={overlay === "details"}
-        aria-label={overlay === "details" ? "Close details" : "Show details"}
-        title={overlay === "details" ? "Close details" : "Details"}
-        className={railIconClass(overlay === "details")}
-      >
-        <DetailsGlyph />
       </button>
     </div>
   );
@@ -492,6 +449,9 @@ export default function ShowcaseSectionRail({
             onClick={() => setRevealed("comps")}
             className={pillClass(false)}
           >
+            <span className="mr-2.5 inline-flex">
+              <CompsGlyph />
+            </span>
             <span className="shrink-0">Comps</span>
             <span
               aria-hidden
@@ -509,8 +469,11 @@ export default function ShowcaseSectionRail({
           <button
             type="button"
             onClick={() => scrollToShowcaseSection("comps")}
-            className="shrink-0 transition-colors hover:text-gold"
+            className="inline-flex shrink-0 items-center transition-colors hover:text-gold"
           >
+            <span className="mr-2.5 inline-flex">
+              <CompsGlyph />
+            </span>
             Comps
           </button>
           <span className="flex flex-1 items-center justify-end gap-1">
@@ -529,6 +492,12 @@ export default function ShowcaseSectionRail({
               }
             />
           </span>
+          {isDesktop ? null : (
+            <MinimizeGlyphButton
+              label="Hide comps"
+              onClick={() => setRevealed(null)}
+            />
+          )}
         </div>
       </div>
     );
@@ -556,6 +525,15 @@ export default function ShowcaseSectionRail({
               aria-expanded
               className={`${pillClass(true, true)} mt-1`}
             >
+              <span className="mr-2.5 inline-flex">
+                {overlay === "insight" ? (
+                  <InsightGlyph />
+                ) : overlay === "pulse" ? (
+                  <PulseGlyph />
+                ) : (
+                  <DetailsGlyph />
+                )}
+              </span>
               <span className="flex-1">
                 {overlay === "insight"
                   ? "Insight"
@@ -586,6 +564,7 @@ export default function ShowcaseSectionRail({
         {cardPill(
           "details",
           "Details",
+          <DetailsGlyph />,
           <dl className="divide-y divide-white/10">
             {detailRows.map((row) => (
               <div key={row.label} className="flex items-baseline justify-between gap-4 py-2">
@@ -605,6 +584,7 @@ export default function ShowcaseSectionRail({
         {figurePill(
           "if",
           "What if",
+          <WhatIfGlyph />,
           ifLabel ? <span>{ifLabel}</span> : null,
           () => scrollToShowcaseSection("if"),
         )}

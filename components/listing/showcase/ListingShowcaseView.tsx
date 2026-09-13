@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcasePremiereLights from "@/components/listing/showcase/ShowcasePremiereLights";
+import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
 import { LISTING_PRODUCTION_PANEL_ID } from "@/components/listing/listing-section-ids";
@@ -287,12 +288,10 @@ export default function ListingShowcaseView({
                     : undefined
                 }
               >
-                <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
-                  {priceIsClosed ? "Closed at" : "Offered at"}
-                </p>
-                <p className="mt-1 font-serif text-3xl font-bold tabular-nums leading-none text-gold lg:text-4xl">
-                  {headerPrice}
-                </p>
+                <ListingShowcasePriceBlock
+                  label={priceIsClosed ? "Closed at" : "Offered at"}
+                  amount={headerPrice}
+                />
               </div>
             ) : null}
           </div>
