@@ -69,6 +69,7 @@ function MobileFigureDemo() {
           </span>
           <button
             type="button"
+            data-testid="preview-comps-hide"
             onClick={() => setRevealed(null)}
             aria-label="Hide comps"
             className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
@@ -79,6 +80,7 @@ function MobileFigureDemo() {
       ) : (
         <button
           type="button"
+          data-testid="preview-comps-open"
           onClick={() => setRevealed("comps")}
           className={railRow}
         >
@@ -108,6 +110,7 @@ function MobileFigureDemo() {
           </span>
           <button
             type="button"
+            data-testid="preview-if-hide"
             onClick={() => setRevealed(null)}
             aria-label="Hide What if"
             className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
@@ -118,6 +121,7 @@ function MobileFigureDemo() {
       ) : (
         <button
           type="button"
+          data-testid="preview-if-open"
           onClick={() => setRevealed("if")}
           className={railRow}
         >

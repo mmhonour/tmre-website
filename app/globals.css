@@ -979,9 +979,11 @@ html.listing-split-test body {
 .listing-showcase-price-wash {
   background: linear-gradient(
     90deg,
-    rgb(91 125 181 / 0) 0%,
-    rgb(91 125 181 / 0.42) 50%,
-    rgb(91 125 181 / 0) 100%
+    rgb(120 160 220 / 0) 0%,
+    rgb(120 160 220 / 0.38) 22%,
+    rgb(130 172 230 / 0.72) 50%,
+    rgb(120 160 220 / 0.38) 78%,
+    rgb(120 160 220 / 0) 100%
   );
 }
 

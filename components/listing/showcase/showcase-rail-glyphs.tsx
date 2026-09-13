@@ -1,3 +1,5 @@
+"use client";
+
 import { useId } from "react";
 
 const svgClass = "h-5 w-5 shrink-0";
