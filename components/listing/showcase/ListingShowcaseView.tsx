@@ -114,7 +114,6 @@ export default function ListingShowcaseView({
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [mapState, setMapState] = useState({ open: false, expanded: false });
-  const [railDetailsOnly, setRailDetailsOnly] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -215,20 +214,14 @@ export default function ListingShowcaseView({
           direction="prev"
           label="Previous photo"
           onClick={() => step(-1)}
-          className={`absolute left-3 z-20 sm:left-6 ${
-            railDetailsOnly
-              ? "top-[calc(50%-14rem)]"
-              : "top-1/2 -translate-y-1/2"
-          }`}
+          className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
         />
-        {railDetailsOnly ? (
-          <ShowcaseStepArrow
-            direction="next"
-            label="Next photo"
-            onClick={() => step(1)}
-            className="absolute right-3 top-[calc(50%-14rem)] z-20 sm:right-6"
-          />
-        ) : null}
+        <ShowcaseStepArrow
+          direction="next"
+          label="Next photo"
+          onClick={() => step(1)}
+          className="absolute right-3 top-1/2 z-20 -translate-y-1/2 sm:right-6"
+        />
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
           insight={insight}
@@ -238,9 +231,7 @@ export default function ListingShowcaseView({
           postalCode={host.map.postalCode}
           subject={subject}
           detailsPanelProps={detailsPanelProps}
-          onNext={() => step(1)}
           onMapStateChange={setMapState}
-          onDetailsOnlyChange={setRailDetailsOnly}
           compsFetchUrl={host.compsFetchUrl}
           uagFetchUrl={host.uagFetchUrl}
           map={host.map}
