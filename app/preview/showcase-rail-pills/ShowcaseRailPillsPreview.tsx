@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
 import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
 import {
@@ -8,6 +8,8 @@ import {
   DetailsGlyph,
   InsightGlyph,
   MapGlyph,
+  MaximizeGlyph,
+  MinimizeGlyph,
   PulseGlyph,
   SHOWCASE_RAIL_GLYPH_PROPOSAL,
   WhatIfGlyph,
@@ -18,6 +20,9 @@ const railRow =
 
 const railIcon =
   "inline-flex h-11 w-11 items-center justify-center bg-[#0d1424]/85 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
+
+const railLabel =
+  "flex w-fit items-center gap-2 bg-[#0d1424]/85 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
 
 function Glyph({ id }: { id: string }) {
   switch (id) {
@@ -47,11 +52,53 @@ function CountChip({ label, count }: { label: string; count: number }) {
   );
 }
 
-/** Default: symbols only. First tap reveals figures; « hides them. */
+function DemoControl({
+  label,
+  glyph,
+  showLabel,
+  onClick,
+  testId,
+}: {
+  label: string;
+  glyph: ReactNode;
+  showLabel: boolean;
+  onClick?: () => void;
+  testId?: string;
+}) {
+  const className = showLabel ? railLabel : railIcon;
+  const inner = (
+    <>
+      {glyph}
+      {showLabel ? <span>{label}</span> : null}
+    </>
+  );
+  if (!onClick) {
+    return (
+      <span className={className} title={label}>
+        {inner}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={className}
+    >
+      {inner}
+    </button>
+  );
+}
+
+/** Default: symbols only. Min/max reveals every word; a tap still opens a card. */
 function SymbolRailDemo() {
   const [revealed, setRevealed] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"summary" | "full">("summary");
+  const [labelsMax, setLabelsMax] = useState(false);
 
   const compsBtn =
     revealed === "comps" ? (
@@ -77,16 +124,13 @@ function SymbolRailDemo() {
         </button>
       </div>
     ) : (
-      <button
-        type="button"
-        data-testid="preview-comps-open"
+      <DemoControl
+        label="Comps"
+        glyph={<CompsGlyph />}
+        showLabel={labelsMax}
+        testId="preview-comps-open"
         onClick={() => setRevealed("comps")}
-        aria-label="Comps"
-        title="Comps"
-        className={railIcon}
-      >
-        <CompsGlyph />
-      </button>
+      />
     );
 
   const ifBtn =
@@ -112,28 +156,36 @@ function SymbolRailDemo() {
         </button>
       </div>
     ) : (
-      <button
-        type="button"
-        data-testid="preview-if-open"
+      <DemoControl
+        label="What if"
+        glyph={<WhatIfGlyph />}
+        showLabel={labelsMax}
+        testId="preview-if-open"
         onClick={() => setRevealed("if")}
-        aria-label="What if"
-        title="What if"
-        className={railIcon}
-      >
-        <WhatIfGlyph />
-      </button>
+      />
     );
 
   return (
     <div className="flex min-h-[22rem] flex-col items-end">
       <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
-        <span className={railIcon} title="Insight">
-          <InsightGlyph />
-        </span>
-        <div className="flex items-start gap-1">
-          {compsBtn}
-          {ifBtn}
-        </div>
+        <button
+          type="button"
+          data-testid="preview-rail-minmax"
+          onClick={() => setLabelsMax((open) => !open)}
+          aria-pressed={labelsMax}
+          aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+          title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+          className={railIcon}
+        >
+          {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+        </button>
+        <DemoControl
+          label="Insight"
+          glyph={<InsightGlyph />}
+          showLabel={labelsMax}
+        />
+        {compsBtn}
+        {ifBtn}
       </div>
       <div
         className="listing-showcase-arrow flex h-14 w-14 items-center justify-center rounded-xl text-[34px] font-bold text-white"
@@ -185,22 +237,20 @@ function SymbolRailDemo() {
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            data-testid="preview-details-open"
+          <DemoControl
+            label="Details"
+            glyph={<DetailsGlyph />}
+            showLabel={labelsMax}
+            testId="preview-details-open"
             onClick={() => setDetailsOpen(true)}
-            title="Details"
-            className={railIcon}
-          >
-            <DetailsGlyph />
-          </button>
+          />
         )}
-        <span className={railIcon} title="Town pulse">
-          <PulseGlyph />
-        </span>
-        <span className={railIcon} title="Map">
-          <MapGlyph />
-        </span>
+        <DemoControl
+          label="Pulse"
+          glyph={<PulseGlyph />}
+          showLabel={labelsMax}
+        />
+        <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
       </div>
     </div>
   );
@@ -304,10 +354,11 @@ export function ShowcaseRailPillsPreview() {
           Symbols around the right arrow
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Insight, Comps, and What if sit above the right arrow. Details,
-          Pulse, and Map sit below. A tap replaces the symbol with a card; ↑
-          restores the symbol. Details uses the gold folder tabs on an opaque
-          navy card.
+          Insight, Comps, then What if stack above the right arrow. Details,
+          Pulse, and Map sit below. The square min/max control expands every
+          icon to its word, or collapses them back. A tap still opens a card;
+          ↑ restores the control. Details uses the gold folder tabs on an
+          opaque navy card.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />

@@ -17,9 +17,10 @@ export default function ShowcaseRailPillsPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Fixture only — no live MLS. Right arrow stays opposite the left.
-          Insight / Comps / What if above it; Details / Pulse / Map below.
-          Cards replace their symbol and close with ↑. Gold folder tabs on
-          Details. Map filters sit under Full size.
+          Insight / Comps / What if stack above it; Details / Pulse / Map
+          below. Min/max expands icons to their words. Cards replace their
+          control and close with ↑. Gold folder tabs on Details. Map filters
+          sit under Full size.
         </p>
         <ShowcaseRailPillsPreview />
       </div>
