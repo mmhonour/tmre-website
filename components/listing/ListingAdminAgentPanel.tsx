@@ -161,6 +161,8 @@ export default function ListingAdminAgentPanel({
   frameClassName = "",
   /** When true, join the desktop card deck (header toggle + minimize). */
   deckMode = false,
+  /** Skip when a parent section already owns the scroll target. */
+  anchorId = "listing-admin",
 }: {
   contact: ListingAgentContact | null;
   /** VGSI parcel pairing from the listing / spotlight payload. */
@@ -169,6 +171,7 @@ export default function ListingAdminAgentPanel({
   mlsId?: string;
   frameClassName?: string;
   deckMode?: boolean;
+  anchorId?: string | null;
 }) {
   const deck = useListingDesktopDeck();
   const inDeck = deckMode && deck != null;
@@ -204,7 +207,7 @@ export default function ListingAdminAgentPanel({
   if (inDeck) {
     return (
       <section
-        id="listing-admin"
+        id={anchorId ?? undefined}
         className={`scroll-mt-[var(--listing-sticky-offset,6rem)] rounded-sm border border-gold/35 bg-cream/95 p-4 shadow-sm ${frameClassName}`}
         aria-label="Admin — listing agent contact"
       >
@@ -227,7 +230,7 @@ export default function ListingAdminAgentPanel({
 
   return (
     <section
-      id="listing-admin"
+      id={anchorId ?? undefined}
       className={`scroll-mt-[var(--listing-sticky-offset,6rem)] rounded-sm border border-gold/35 bg-cream/95 p-4 shadow-sm ${frameClassName}`}
       aria-label="Admin — listing agent contact"
     >
