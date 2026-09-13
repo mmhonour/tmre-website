@@ -228,8 +228,10 @@ type IfAmounts = { sale: number | null; rent: number | null };
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Insight, Comps, then
  * What if sit above that arrow; Details, Pulse, and Map sit below. A tap
- * replaces the symbol with a card; ↑ on the card restores the symbol. The
- * min/max control expands every icon to its word, or collapses them back.
+ * replaces the symbol with a card; ↑ on the card restores the symbol.
+ * Opening Details or Pulse hides the other icons under the arrow so the
+ * card never needs a scrollbar. The min/max control expands every icon
+ * to its word, or collapses them back.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -429,7 +431,7 @@ export default function ShowcaseSectionRail({
   const insightCard =
     overlay === "insight" ? (
       <CardChrome title="Insight" onCollapse={() => setOverlay(null)}>
-        <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424] p-4">
+        <div className="w-full bg-[#0d1424] p-4">
           <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
         </div>
       </CardChrome>
@@ -439,7 +441,7 @@ export default function ShowcaseSectionRail({
     overlay === "details" ? (
       <CardChrome title="Details" onCollapse={() => setOverlay(null)}>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
-        <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424]">
+        <div className="w-full bg-[#0d1424]">
           {detailsTab === "full" ? (
             <div className="p-3">
               <ListingSidebar details={detailsPanelProps} unframed />
@@ -466,7 +468,7 @@ export default function ShowcaseSectionRail({
   const pulseCard =
     overlay === "pulse" ? (
       <CardChrome title="Town pulse" onCollapse={() => setOverlay(null)}>
-        <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424] p-4">
+        <div className="w-full bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={townHint ?? ""} expanded />
         </div>
       </CardChrome>
@@ -591,9 +593,17 @@ export default function ShowcaseSectionRail({
 
   const belowIcons = (
     <div className="flex flex-col items-end gap-1">
-      {overlay === "details" ? detailsCard : detailsButton}
-      {overlay === "pulse" ? pulseCard : pulseButton}
-      {overlay === "map" ? null : mapButton}
+      {overlay === "details" ? (
+        detailsCard
+      ) : overlay === "pulse" ? (
+        pulseCard
+      ) : (
+        <>
+          {detailsButton}
+          {pulseButton}
+          {overlay === "map" ? null : mapButton}
+        </>
+      )}
     </div>
   );
 
@@ -608,11 +618,11 @@ export default function ShowcaseSectionRail({
       <div
         className={`pointer-events-none absolute inset-y-0 right-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6`}
       >
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-y-auto pb-1">
+        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
           {aboveIcons}
         </div>
         <div className="h-14 shrink-0" aria-hidden />
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-y-auto pt-1">
+        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
           {belowIcons}
         </div>
       </div>

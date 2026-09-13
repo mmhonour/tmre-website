@@ -237,20 +237,22 @@ function SymbolRailDemo() {
             </div>
           </div>
         ) : (
-          <DemoControl
-            label="Details"
-            glyph={<DetailsGlyph />}
-            showLabel={labelsMax}
-            testId="preview-details-open"
-            onClick={() => setDetailsOpen(true)}
-          />
+          <>
+            <DemoControl
+              label="Details"
+              glyph={<DetailsGlyph />}
+              showLabel={labelsMax}
+              testId="preview-details-open"
+              onClick={() => setDetailsOpen(true)}
+            />
+            <DemoControl
+              label="Pulse"
+              glyph={<PulseGlyph />}
+              showLabel={labelsMax}
+            />
+            <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
+          </>
         )}
-        <DemoControl
-          label="Pulse"
-          glyph={<PulseGlyph />}
-          showLabel={labelsMax}
-        />
-        <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
       </div>
     </div>
   );
@@ -355,7 +357,8 @@ export function ShowcaseRailPillsPreview() {
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
           Insight, Comps, then What if stack above the right arrow. Details,
-          Pulse, and Map sit below. The square min/max control expands every
+          Pulse, and Map sit below. Opening Details hides Pulse and Map so
+          the card has no scrollbar. The square min/max control expands every
           icon to its word, or collapses them back. A tap still opens a card;
           ↑ restores the control. Details uses the gold folder tabs on an
           opaque navy card.
