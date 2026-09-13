@@ -120,8 +120,9 @@ export default function FindParcelMapPreview() {
           Around chips sit on the upper-right of the map. Same street zooms
           the street; Cross streets pulls back to crossings; 0.35 mi frames
           the radius. Reset and first paint fill the panel with the town
-          outline. Like kind uses the criteria panel. Fixture pins — not a
-          live parcel. Production: /find/westport/{"{pid}"}.
+          outline. Streets without parking / cemetery icons. Assessor lot
+          lines are not in VGSI. Like kind uses the criteria panel. Fixture
+          pins — not a live parcel. Production: /find/westport/{"{pid}"}.
         </p>
         <FindParcelMap visionPid="preview" initial={FIXTURE} />
       </div>

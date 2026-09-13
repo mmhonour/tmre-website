@@ -29,6 +29,11 @@ import { useLocationEstimateOverlay } from "@/components/intelligence/use-locati
 import { useLocationEstimateTownCenters } from "@/components/intelligence/use-location-estimate-town-centers";
 import { useLocationEstimateZipGrid } from "@/components/intelligence/use-location-estimate-zip-grid";
 import { locationEstimateOverlayShapes } from "@/lib/location-estimate-map-shapes";
+import {
+  MAP_LIGHT_TILE_MAX_ZOOM,
+  mapTileUrl,
+  type MapTileStyle,
+} from "@/lib/web-mercator-map";
 
 /**
  * Multi-pin map for the Intelligence deal board.
@@ -112,8 +117,13 @@ type PlacedPin = {
   top: number;
 };
 
-function tileUrl(z: number, x: number, y: number): string {
-  return `/api/map/tile/${z}/${x}/${y}`;
+function tileUrl(
+  z: number,
+  x: number,
+  y: number,
+  style: MapTileStyle = "osm",
+): string {
+  return mapTileUrl(z, x, y, style);
 }
 
 function worldSize(zoom: number): number {
@@ -522,6 +532,7 @@ export default function DealBoardMap({
   focusBounds = null,
   overlay = null,
   onResetView,
+  tileStyle = "osm",
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -578,6 +589,11 @@ export default function DealBoardMap({
   overlay?: ReactNode;
   /** After Reset returns to the overview (Find clears the around-home chip). */
   onResetView?: () => void;
+  /**
+   * `light` is the VGSI neighborhood canvas: streets without parking /
+   * cemetery amenity icons. Intelligence stays on OSM.
+   */
+  tileStyle?: MapTileStyle;
 }) {
   const locationOverlay = useLocationEstimateOverlay();
   const locationGrid = useLocationEstimateZipGrid();
@@ -969,7 +985,10 @@ export default function DealBoardMap({
   }, [center.lat, center.lon, size.height, size.width, zoom]);
 
   /** Whole tile level behind the fractional zoom, plus its scale factor. */
-  const tileZoom = clampZoom(Math.round(zoom));
+  const tileZoom = Math.min(
+    clampZoom(Math.round(zoom)),
+    tileStyle === "light" ? MAP_LIGHT_TILE_MAX_ZOOM : MAX_ZOOM,
+  );
 
   /**
    * Tiles for a whole zoom level, scaled into the current fractional viewport.
@@ -1000,7 +1019,7 @@ export default function DealBoardMap({
           const x = ((col % n) + n) % n;
           out.push({
             key: `${level}/${x}/${row}`,
-            src: tileUrl(level, x, row),
+            src: tileUrl(level, x, row, tileStyle),
             left: col * tilePx - viewport.left,
             top: row * tilePx - viewport.top,
             // Half-pixel bleed: fractional tile sizes otherwise leave hairlines.
@@ -1010,7 +1029,7 @@ export default function DealBoardMap({
       }
       return out;
     },
-    [size.height, size.width, viewport, zoom],
+    [size.height, size.width, tileStyle, viewport, zoom],
   );
 
   const tiles = useMemo(() => tilesFor(tileZoom), [tilesFor, tileZoom]);
@@ -1898,6 +1917,7 @@ export default function DealBoardMap({
         <div className="pointer-events-none absolute bottom-1.5 right-2 z-20 hidden rounded bg-white/85 px-1.5 py-0.5 font-mono text-[8px] tracking-wide text-charcoal/55 md:block">
           {placeable.length} mapped
           {missingCoords > 0 ? ` · ${missingCoords} without coordinates` : ""}
+          {tileStyle === "light" ? " · Esri · OSM" : ""}
         </div>
 
       </div>

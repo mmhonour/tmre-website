@@ -221,6 +221,7 @@ export default function FindParcelMap({
           onSelect={setActiveKey}
           hrefFor={hrefFor}
           subjectKey={payload.subjectKey}
+          tileStyle="light"
           overviewFit
           focusToken={focus?.token ?? null}
           focusBounds={focus?.bounds ?? null}
