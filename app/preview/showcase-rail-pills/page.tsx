@@ -18,7 +18,8 @@ export default function ShowcaseRailPillsPreviewPage() {
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Fixture only — no live MLS. Glyphs for the remaining text pills,
           Insight stacked above Details, mobile « to hide What if and Comps,
-          and a lighter-blue fade behind Offered at / Closed at.
+          and a lighter-blue fade behind status, address, and Offered at /
+          Closed at.
         </p>
         <ShowcaseRailPillsPreview />
       </div>
