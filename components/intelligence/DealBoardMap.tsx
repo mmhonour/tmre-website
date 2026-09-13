@@ -527,6 +527,7 @@ export default function DealBoardMap({
   fitInset = ZERO_FIT_INSET,
   subjectKey = null,
   fitZips,
+  hideLocationOverlayButton = false,
   overviewFit = false,
   focusToken = null,
   focusBounds = null,
@@ -573,6 +574,8 @@ export default function DealBoardMap({
    * the house is centered — a border lot shows half the frame.
    */
   fitZips?: readonly string[];
+  /** Showcase hosts Corridors on the Map label; hide the on-map duplicate. */
+  hideLocationOverlayButton?: boolean;
   /**
    * Always frame the search-area outline (town / zip rings). Skips listing
    * house-in-context and the phone street start. Find / VGSI uses this so
@@ -1823,7 +1826,7 @@ export default function DealBoardMap({
           </PreviewCard>
         ) : null}
 
-        {locationOverlay.unlocked ? (
+        {locationOverlay.unlocked && !hideLocationOverlayButton ? (
           <button
             type="button"
             onClick={() => void locationOverlay.setEnabled(!locationOverlay.enabled)}

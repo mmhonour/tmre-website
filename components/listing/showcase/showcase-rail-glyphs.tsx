@@ -145,6 +145,41 @@ export function WhatIfGlyph() {
   );
 }
 
+/** Window maximize — expand rail icons to their words. */
+export function MaximizeGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={svgClass}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="5" y="5" width="14" height="14" rx="1.2" />
+    </svg>
+  );
+}
+
+/** Window minimize — collapse rail labels back to icons. */
+export function MinimizeGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={svgClass}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M6 18h12" />
+    </svg>
+  );
+}
+
 export const SHOWCASE_RAIL_GLYPH_PROPOSAL = [
   { id: "insight", label: "Insight", note: "Lightbulb (existing)" },
   { id: "details", label: "Details", note: "List lines with ticks (existing)" },

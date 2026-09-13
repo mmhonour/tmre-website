@@ -20,7 +20,6 @@ import {
   type ShowcaseHost,
 } from "@/components/listing/showcase/showcase-host";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
-import { useIsDesktop } from "@/components/listing/showcase/use-is-desktop";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
 import { ListingVisionAddressLink } from "@/components/listing/ListingVisionAddressLink";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
@@ -39,6 +38,25 @@ import { isRentalListing } from "@/lib/listing-kind";
 import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/ListingDetailsSchoolsPanel";
 
 const HOLD_MS = 6500;
+
+/** Push Offered at / Closed at left of an open right-rail card (Insight or Map). */
+function priceClearanceStyle(
+  open: boolean,
+  expanded: boolean,
+  kind: "map" | "insight" | null,
+): { marginRight: string } | undefined {
+  if (!open || !kind) return undefined;
+  const width =
+    kind === "map"
+      ? expanded
+        ? "min(50vw, 44rem)"
+        : "24rem"
+      : "min(24rem, calc(100vw - 3rem))";
+  const gutter = kind === "map" ? "3.5rem" : "0rem";
+  return {
+    marginRight: `max(0rem, calc(${width} + ${gutter} + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
+  };
+}
 
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -116,10 +134,17 @@ export default function ListingShowcaseView({
   const [index, setIndex] = useState(initialPhotoIndex);
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
-  const [mapState, setMapState] = useState({ open: false, expanded: false });
+  const [railClearance, setRailClearance] = useState<{
+    open: boolean;
+    expanded: boolean;
+    kind: "map" | "insight" | null;
+  }>({
+    open: false,
+    expanded: false,
+    kind: null,
+  });
   const [photoFocus, setPhotoFocus] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
-  const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
   const visionHref =
     siteUnlocked && !host.privacyMode
@@ -258,7 +283,7 @@ export default function ListingShowcaseView({
           postalCode={host.map.postalCode}
           subject={subject}
           detailsPanelProps={detailsPanelProps}
-          onMapStateChange={setMapState}
+          onMapStateChange={setRailClearance}
           compsFetchUrl={host.compsFetchUrl}
           uagFetchUrl={host.uagFetchUrl}
           map={host.map}
@@ -301,15 +326,11 @@ export default function ListingShowcaseView({
             {headerPrice ? (
               <div
                 className="shrink-0 overflow-visible text-right transition-[margin] duration-300"
-                style={
-                  isDesktop && mapState.open
-                    ? {
-                        marginRight: `max(0rem, calc(${
-                          mapState.expanded ? "min(50vw, 44rem)" : "24rem"
-                        } + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
-                      }
-                    : undefined
-                }
+                style={priceClearanceStyle(
+                  railClearance.open,
+                  railClearance.expanded,
+                  railClearance.kind,
+                )}
               >
                 <ListingShowcasePriceBlock
                   label={priceIsClosed ? "Closed at" : "Offered at"}

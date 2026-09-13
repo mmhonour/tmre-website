@@ -17,6 +17,8 @@ import {
   DetailsGlyph,
   InsightGlyph,
   MapGlyph,
+  MaximizeGlyph,
+  MinimizeGlyph,
   PulseGlyph,
   WhatIfGlyph,
 } from "@/components/listing/showcase/showcase-rail-glyphs";
@@ -32,8 +34,9 @@ import {
   roundIfRentMidpoint,
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 
-type DetailsTab = "summary" | "full";
+type DetailsTab = "full" | "other";
 
 const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 
@@ -88,6 +91,65 @@ const railIconClass = (on: boolean) =>
       : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
   }`;
 
+/** Labeled rail pill — glyph + original word, width of the text. */
+const railLabelClass = (on: boolean) =>
+  `flex w-fit items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
+    on
+      ? "bg-navy text-white"
+      : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
+  }`;
+
+function RailControl({
+  label,
+  glyph,
+  showLabel,
+  on,
+  onClick,
+  ariaLabel,
+}: {
+  label: string;
+  glyph: ReactNode;
+  showLabel: boolean;
+  on?: boolean;
+  onClick: () => void;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      aria-label={ariaLabel ?? label}
+      title={label}
+      className={showLabel ? railLabelClass(!!on) : railIconClass(!!on)}
+    >
+      {glyph}
+      {showLabel ? <span>{label}</span> : null}
+    </button>
+  );
+}
+
+function RailMinMaxButton({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={expanded}
+      aria-label={expanded ? "Show icons only" : "Show icon names"}
+      title={expanded ? "Minimize to icons" : "Maximize labels"}
+      className={railIconClass(expanded)}
+    >
+      {expanded ? <MinimizeGlyph /> : <MaximizeGlyph />}
+    </button>
+  );
+}
+
 function DetailsOverlayTabs({
   tab,
   onChange,
@@ -98,22 +160,22 @@ function DetailsOverlayTabs({
   return (
     <div
       role="tablist"
-      className="flex items-end gap-0.5 border-b border-gold bg-[#0d1424] px-3 pt-2"
+      className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
     >
-      {(["summary", "full"] as const).map((id) => (
+      {(["full", "other"] as const).map((id) => (
         <button
           key={id}
           type="button"
           role="tab"
           aria-selected={tab === id}
           onClick={() => onChange(id)}
-          className={`relative -mb-px shrink-0 rounded-t-md border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
+          className={`w-fit shrink-0 rounded-t-md px-3 py-1.5 text-left font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${
             tab === id
-              ? "z-[1] border-gold border-b-transparent bg-gold text-navy"
-              : "border-gold/50 bg-gold/25 text-gold hover:bg-gold/40 hover:text-navy"
+              ? "bg-gold text-navy"
+              : "bg-gold/25 text-gold hover:bg-gold/40 hover:text-navy"
           }`}
         >
-          {id === "summary" ? "Summary" : "Full"}
+          {id === "full" ? "Full" : "Other"}
         </button>
       ))}
     </div>
@@ -143,16 +205,20 @@ function CollapseArrow({
 function CardChrome({
   title,
   onCollapse,
+  afterTitle,
   children,
 }: {
   title: string;
   onCollapse: () => void;
+  afterTitle?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div className="flex w-full flex-col items-end">
       <div className={`${pillClass(true, true)} bg-[#0d1424]`}>
-        <span className="flex-1">{title}</span>
+        <span>{title}</span>
+        {afterTitle}
+        <span className="flex-1" />
         <CollapseArrow label={`Hide ${title}`} onClick={onCollapse} />
       </div>
       {children}
@@ -165,9 +231,12 @@ type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
- * arrow stays vertically opposite the previous arrow. Insight, Comps, and
+ * arrow stays vertically opposite the previous arrow. Insight, Comps, then
  * What if sit above that arrow; Details, Pulse, and Map sit below. A tap
  * replaces the symbol with a card; ↑ on the card restores the symbol.
+ * Opening Details or Pulse hides the other icons under the arrow so the
+ * card never needs a scrollbar. The min/max control expands every icon
+ * to its word, or collapses them back.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -192,8 +261,12 @@ export default function ShowcaseSectionRail({
   townHint?: string | null;
   postalCode?: string | null;
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
-  /** Lets the hero shift its price clear of the map column. */
-  onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
+  /** Lets the hero shift Offered at / Closed at clear of Insight or Map. */
+  onMapStateChange?: (state: {
+    open: boolean;
+    expanded: boolean;
+    kind: "map" | "insight" | null;
+  }) => void;
   compsFetchUrl?: string | null;
   uagFetchUrl?: string | null;
   /** Spotlight privacy: town-outline map instead of comps + pin. */
@@ -208,24 +281,35 @@ export default function ShowcaseSectionRail({
     "insight" | "map" | "pulse" | "details" | null
   >(null);
   const [mapExpanded, setMapExpanded] = useState(false);
+  const corridors = useLocationEstimateOverlay();
+
+  const reportClearance = (
+    next: "insight" | "map" | "pulse" | "details" | null,
+    expanded: boolean,
+  ) => {
+    const kind = next === "map" || next === "insight" ? next : null;
+    onMapStateChange?.({
+      open: kind != null,
+      expanded: next === "map" && expanded,
+      kind,
+    });
+  };
 
   const setOverlay = (
     next: "insight" | "map" | "pulse" | "details" | null,
   ) => {
     setOverlayState(next);
-    onMapStateChange?.({
-      open: next === "map",
-      expanded: next === "map" && mapExpanded,
-    });
+    reportClearance(next, mapExpanded);
   };
   const toggleOverlay = (id: "insight" | "map" | "pulse" | "details") =>
     setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
-    onMapStateChange?.({ open: overlay === "map", expanded });
+    reportClearance(overlay, expanded);
   };
-  const [detailsTab, setDetailsTab] = useState<DetailsTab>("summary");
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [labelsMax, setLabelsMax] = useState(false);
   const [counts, setCounts] = useState<CompsCounts | null>(null);
   const [amounts, setAmounts] = useState<IfAmounts | null>(null);
 
@@ -310,74 +394,63 @@ export default function ShowcaseSectionRail({
       );
     }
     return (
-      <button
-        type="button"
+      <RailControl
+        label={label}
+        glyph={glyph}
+        showLabel={labelsMax}
         onClick={() => setRevealed(id)}
-        aria-label={label}
-        title={label}
-        className={railIconClass(false)}
-      >
-        {glyph}
-      </button>
+      />
     );
   };
 
   const insightButton = (
-    <button
-      type="button"
+    <RailControl
+      label="Insight"
+      glyph={<InsightGlyph />}
+      showLabel={labelsMax}
+      on={overlay === "insight"}
       onClick={() => toggleOverlay("insight")}
-      aria-pressed={overlay === "insight"}
-      aria-label={overlay === "insight" ? "Close insight" : "Show insight"}
-      title="Insight"
-      className={railIconClass(overlay === "insight")}
-    >
-      <InsightGlyph />
-    </button>
+      ariaLabel={overlay === "insight" ? "Close insight" : "Show insight"}
+    />
   );
 
   const detailsButton = (
-    <button
-      type="button"
+    <RailControl
+      label="Details"
+      glyph={<DetailsGlyph />}
+      showLabel={labelsMax}
+      on={overlay === "details"}
       onClick={() => toggleOverlay("details")}
-      aria-pressed={overlay === "details"}
-      aria-label={overlay === "details" ? "Close details" : "Show details"}
-      title={overlay === "details" ? "Close details" : "Details"}
-      className={railIconClass(overlay === "details")}
-    >
-      <DetailsGlyph />
-    </button>
+      ariaLabel={overlay === "details" ? "Close details" : "Show details"}
+    />
   );
 
   const pulseButton = (
-    <button
-      type="button"
+    <RailControl
+      label="Pulse"
+      glyph={<PulseGlyph />}
+      showLabel={labelsMax}
+      on={overlay === "pulse"}
       onClick={() => toggleOverlay("pulse")}
-      aria-pressed={overlay === "pulse"}
-      aria-label={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
-      title="Town pulse"
-      className={railIconClass(overlay === "pulse")}
-    >
-      <PulseGlyph />
-    </button>
+      ariaLabel={overlay === "pulse" ? "Close town pulse" : "Show town pulse"}
+    />
   );
 
   const mapButton = (
-    <button
-      type="button"
+    <RailControl
+      label="Map"
+      glyph={<MapGlyph />}
+      showLabel={labelsMax}
+      on={overlay === "map"}
       onClick={() => toggleOverlay("map")}
-      aria-pressed={overlay === "map"}
-      aria-label={overlay === "map" ? "Close map" : "Open map"}
-      title="Map"
-      className={railIconClass(overlay === "map")}
-    >
-      <MapGlyph />
-    </button>
+      ariaLabel={overlay === "map" ? "Close map" : "Open map"}
+    />
   );
 
   const insightCard =
     overlay === "insight" ? (
       <CardChrome title="Insight" onCollapse={() => setOverlay(null)}>
-        <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424] p-4">
+        <div className="w-full bg-[#0d1424] p-4">
           <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
         </div>
       </CardChrome>
@@ -387,8 +460,12 @@ export default function ShowcaseSectionRail({
     overlay === "details" ? (
       <CardChrome title="Details" onCollapse={() => setOverlay(null)}>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
-        <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424]">
-          {detailsTab === "summary" ? (
+        <div className="w-full bg-[#0d1424]">
+          {detailsTab === "full" ? (
+            <div className="p-3">
+              <ListingSidebar details={detailsPanelProps} unframed />
+            </div>
+          ) : (
             <dl className="divide-y divide-white/10 px-4">
               {detailRows.map((row) => (
                 <div
@@ -402,10 +479,6 @@ export default function ShowcaseSectionRail({
                 </div>
               ))}
             </dl>
-          ) : (
-            <div className="p-3">
-              <ListingSidebar details={detailsPanelProps} unframed />
-            </div>
           )}
         </div>
       </CardChrome>
@@ -414,7 +487,7 @@ export default function ShowcaseSectionRail({
   const pulseCard =
     overlay === "pulse" ? (
       <CardChrome title="Town pulse" onCollapse={() => setOverlay(null)}>
-        <div className="max-h-[40vh] w-full overflow-y-auto bg-[#0d1424] p-4">
+        <div className="w-full overflow-x-hidden overflow-y-hidden bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={townHint ?? ""} expanded />
         </div>
       </CardChrome>
@@ -426,16 +499,35 @@ export default function ShowcaseSectionRail({
      * map. The header bar below carries the only exit, so it has to stay
      * pinned at the top of the sheet.
      *
-     * Desktop: a column beside the photo, offset to clear the fixed header
-     * (~85px); the usual pt-24 leaves its zip / mail / phone cluster (z-50)
-     * painting over the map.
+     * Desktop: flush to the page’s right edge. Rail glyphs sit in a column
+     * just to the left of this panel (`lg:right-96` / expanded width).
      */
     <div
-      className={`flex flex-col bg-[#0d1424] max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-16 lg:top-28 lg:z-30 ${
+      className={`flex flex-col bg-[#0d1424] max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-0 lg:top-28 lg:z-30 ${
         mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
-      <CardChrome title="Map" onCollapse={() => setOverlay(null)} />
+      <CardChrome
+        title="Map"
+        onCollapse={() => setOverlay(null)}
+        afterTitle={
+          corridors.unlocked ? (
+            <button
+              type="button"
+              onClick={() => void corridors.setEnabled(!corridors.enabled)}
+              disabled={corridors.busy}
+              aria-pressed={corridors.enabled}
+              className={`ml-2 shrink-0 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+                corridors.enabled
+                  ? "bg-sky/20 text-sky"
+                  : "text-white/50 hover:text-white"
+              }`}
+            >
+              Corridors
+            </button>
+          ) : null
+        }
+      />
       <div className="min-h-0 flex-1">
         {map?.hidePin ? (
           <ListingLocationMap
@@ -474,15 +566,12 @@ export default function ShowcaseSectionRail({
   const compsPill = (() => {
     if (revealed !== "comps") {
       return (
-        <button
-          type="button"
+        <RailControl
+          label="Comps"
+          glyph={<CompsGlyph />}
+          showLabel={labelsMax}
           onClick={() => setRevealed("comps")}
-          aria-label="Comps"
-          title="Comps"
-          className={railIconClass(false)}
-        >
-          <CompsGlyph />
-        </button>
+        />
       );
     }
     return (
@@ -524,25 +613,35 @@ export default function ShowcaseSectionRail({
 
   const aboveIcons = (
     <div className="flex flex-col items-end gap-1">
+      <RailMinMaxButton
+        expanded={labelsMax}
+        onToggle={() => setLabelsMax((open) => !open)}
+      />
       {overlay === "insight" ? insightCard : insightButton}
-      <div className="flex items-start gap-1">
-        {compsPill}
-        {figurePill(
-          "if",
-          "What if",
-          <WhatIfGlyph />,
-          ifLabel ? <span>{ifLabel}</span> : null,
-          () => scrollToShowcaseSection("if"),
-        )}
-      </div>
+      {compsPill}
+      {figurePill(
+        "if",
+        "What if",
+        <WhatIfGlyph />,
+        ifLabel ? <span>{ifLabel}</span> : null,
+        () => scrollToShowcaseSection("if"),
+      )}
     </div>
   );
 
   const belowIcons = (
     <div className="flex flex-col items-end gap-1">
-      {overlay === "details" ? detailsCard : detailsButton}
-      {overlay === "pulse" ? pulseCard : pulseButton}
-      {overlay === "map" ? null : mapButton}
+      {overlay === "details" ? (
+        detailsCard
+      ) : overlay === "pulse" ? (
+        pulseCard
+      ) : (
+        <>
+          {detailsButton}
+          {pulseButton}
+          {overlay === "map" ? null : mapButton}
+        </>
+      )}
     </div>
   );
 
@@ -551,19 +650,33 @@ export default function ShowcaseSectionRail({
       {mapOverlay}
       {/*
        * Full-height column so the middle gap lines up with the left/right
-       * photo arrows. Insight / Comps / What if sit above; Details / Pulse /
-       * Map sit below.
+       * photo arrows. Insight / Comps / What if stack above; Details / Pulse /
+       * Map sit below. Min/max expands every icon to its word.
        */}
       <div
-        className={`pointer-events-none absolute inset-y-0 right-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6`}
+        className={`pointer-events-none absolute inset-y-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${
+          overlay === "map"
+            ? mapExpanded
+              ? "lg:right-[min(50vw,44rem)]"
+              : "lg:right-96"
+            : "right-0"
+        }`}
       >
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-y-auto pb-1">
-          {aboveIcons}
-        </div>
-        <div className="h-14 shrink-0" aria-hidden />
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-y-auto pt-1">
-          {belowIcons}
-        </div>
+        {overlay === "pulse" || overlay === "details" ? (
+          <div className="pointer-events-auto mt-auto flex w-full flex-col items-end overflow-x-hidden overflow-y-hidden pb-3">
+            {overlay === "pulse" ? pulseCard : detailsCard}
+          </div>
+        ) : (
+          <>
+            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
+              {aboveIcons}
+            </div>
+            <div className="h-14 shrink-0" aria-hidden />
+            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
+              {belowIcons}
+            </div>
+          </>
+        )}
       </div>
     </>
   );

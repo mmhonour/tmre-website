@@ -166,7 +166,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Right arrow opposite the left. Insight/Comps/What if above; Details/Pulse/Map below. Cards close with ↑. Gold Details tabs. Map filters under Full size.",
+      "Right arrow opposite the left. Insight/Comps/What if stack above; Details/Pulse/Map below. Min/max shows icon names. Cards close with ↑. Gold Details tabs. Map filters under Full size.",
   },
 ];
 
