@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import ShowcaseDetailsPanel from "@/components/listing/showcase/ShowcaseDetailsPanel";
+import ShowcasePhotoFocus, {
+  isShowcasePhoneViewport,
+} from "@/components/listing/showcase/ShowcasePhotoFocus";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcasePremiereLights from "@/components/listing/showcase/ShowcasePremiereLights";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
@@ -114,6 +117,7 @@ export default function ListingShowcaseView({
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [mapState, setMapState] = useState({ open: false, expanded: false });
+  const [photoFocus, setPhotoFocus] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const isDesktop = useIsDesktop();
   const siteUnlocked = useSiteUnlocked();
@@ -131,6 +135,12 @@ export default function ListingShowcaseView({
   const total = livePhotos.length;
   const safeIndex = total > 0 ? index % total : 0;
 
+  const openPhotoFocus = useCallback((photoIndex?: number) => {
+    if (photoIndex != null) setIndex(photoIndex);
+    setPaused(true);
+    setPhotoFocus(true);
+  }, []);
+
   const step = useCallback(
     (delta: number) => {
       setIndex((current) => {
@@ -142,13 +152,19 @@ export default function ListingShowcaseView({
   );
 
   useEffect(() => {
-    if (paused || total < 2) return;
+    if (paused || photoFocus || total < 2) return;
     const timer = setTimeout(() => step(1), HOLD_MS);
     return () => clearTimeout(timer);
-  }, [paused, total, safeIndex, step]);
+  }, [paused, photoFocus, total, safeIndex, step]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && photoFocus) {
+        e.preventDefault();
+        setPhotoFocus(false);
+        return;
+      }
+      if (photoFocus) return;
       if (e.key === "ArrowRight") {
         step(1);
       } else if (e.key === "ArrowLeft") {
@@ -160,7 +176,7 @@ export default function ListingShowcaseView({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  }, [step, photoFocus]);
 
   const markFailed = useCallback(
     (photoIndex: number) => {
@@ -201,11 +217,22 @@ export default function ListingShowcaseView({
           photos={livePhotos}
           index={safeIndex}
           altBase={host.photoAlt}
-          drift={!reducedMotion && !paused}
+          drift={!reducedMotion && !paused && !photoFocus}
           onPhotoFailed={markFailed}
           obfuscatePhoto={host.obfuscatePhoto}
         />
 
+        {total > 0 && !photoFocus ? (
+          <button
+            type="button"
+            className="absolute inset-0 z-[15] lg:hidden"
+            aria-label="View photo full screen"
+            onClick={() => openPhotoFocus()}
+          />
+        ) : null}
+
+        {!photoFocus ? (
+          <>
         <div className="listing-showcase-scrim-bottom pointer-events-none absolute inset-0" aria-hidden />
         <div className="listing-showcase-scrim-top pointer-events-none absolute inset-0" aria-hidden />
         {host.premiereLights ? <ShowcasePremiereLights /> : null}
@@ -237,7 +264,7 @@ export default function ListingShowcaseView({
           map={host.map}
         />
 
-        <div className="listing-showcase-type pointer-events-none relative flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
+        <div className="listing-showcase-type pointer-events-none relative z-20 flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
           <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-3 sm:gap-6">
             <div className="min-w-0 max-w-xl flex-1">
               {host.propertyTabs ? (
@@ -367,6 +394,19 @@ export default function ListingShowcaseView({
             />
           </div>
         ) : null}
+          </>
+        ) : null}
+
+        {photoFocus && total > 0 ? (
+          <ShowcasePhotoFocus
+            photos={livePhotos}
+            index={safeIndex}
+            altBase={host.photoAlt}
+            onClose={() => setPhotoFocus(false)}
+            onStep={step}
+            obfuscatePhoto={host.obfuscatePhoto}
+          />
+        ) : null}
       </section>
 
       {productionPanel && productionPanelSlot ? (
@@ -388,6 +428,10 @@ export default function ListingShowcaseView({
           detailsPanelProps={detailsPanelProps}
           vision={vision}
           onSelectPhoto={(photoIndex) => {
+            if (isShowcasePhoneViewport()) {
+              openPhotoFocus(photoIndex);
+              return;
+            }
             setIndex(photoIndex);
             setPaused(true);
             window.scrollTo({ top: 0, behavior: "smooth" });

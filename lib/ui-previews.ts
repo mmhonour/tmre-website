@@ -151,6 +151,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Seller intake writes to Neon contacts, not data/contacts.json. Address autocomplete still uses the property directory.",
   },
   {
+    slug: "listing-photo-focus",
+    title: "Listing photo full screen",
+    summary:
+      "On a phone, tap the full-bleed photo or a thumbnail to see just the photo. Close exits; rail and type stay hidden while it is open.",
+  },
+  {
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
