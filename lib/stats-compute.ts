@@ -25,6 +25,10 @@ import {
   type VintageBucketId,
 } from '@/lib/vintage-buckets'
 import {
+  CLOSED_MEDIAN_LOOKBACK_MONTHS,
+  medianClosedInLookback,
+} from '@/lib/closed-median-12mo'
+import {
   closedListingTimestamp,
   closedSalePrice,
   inStatsClosedPeriod,
@@ -110,6 +114,13 @@ export type MarketStatsPayload = {
   priceDeltaCalc?: StatsValueCalc
   avgBeds: number | null
   sampleSize: number
+  /**
+   * Trailing 12-month closed median (sold price or closed rent).
+   * Deal of the Day reads this — not {@link medianPrice}, which is 2024–YTD.
+   */
+  medianPrice12Mo?: number | null
+  medianPrice12MoCount?: number
+  medianPrice12MoCalc?: StatsValueCalc
 }
 
 export type SalesByMonthPayload = {
@@ -511,16 +522,50 @@ export function marketStatsFromPools(
   }
 }
 
+function attachClosedMedian12Mo(
+  payload: MarketStatsPayload,
+  closedListings: Listing[],
+): MarketStatsPayload {
+  const { median, count } = medianClosedInLookback(closedListings, payload.kind)
+  const noun =
+    payload.kind === 'rental' ? 'closed lease rents' : 'closed sale prices'
+  return {
+    ...payload,
+    medianPrice12Mo: median,
+    medianPrice12MoCount: count,
+    medianPrice12MoCalc:
+      median != null
+        ? {
+            summary: `Median of ${count.toLocaleString()} ${noun} in ${payload.city} (trailing ${CLOSED_MEDIAN_LOOKBACK_MONTHS} months).`,
+            detail: [
+              'Close date within the last 12 months. Asks and still-active list prices are not used.',
+            ],
+            inputs: {
+              source: 'closed-12mo',
+              sampleSize: count,
+              months: CLOSED_MEDIAN_LOOKBACK_MONTHS,
+              city: payload.city,
+              kind: payload.kind,
+              medianPrice: median,
+            },
+          }
+        : undefined,
+  }
+}
+
 export function computeMarketStats(
   activeListings: Listing[],
   city: string,
   kind: ListingKind,
   closedListings: Listing[] = [],
 ): MarketStatsPayload {
-  return marketStatsFromPools(
-    marketStatsPoolsFromListings(activeListings, kind, closedListings),
-    city,
-    kind,
+  return attachClosedMedian12Mo(
+    marketStatsFromPools(
+      marketStatsPoolsFromListings(activeListings, kind, closedListings),
+      city,
+      kind,
+    ),
+    closedListings,
   )
 }
 

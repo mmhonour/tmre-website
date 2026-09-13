@@ -18,6 +18,7 @@ import {
   scoreActiveListingsForBoard,
   type DealPickPayload,
 } from '@/lib/deal-pick'
+import { loadTownClosedMedians12Mo } from '@/lib/deal-of-the-day-median'
 import { ensureDealPickPhotos, dealPickPhotosReady } from '@/lib/deal-hero-photo-warm'
 import { kindOf, SCORE_PEER_LIMIT } from '@/lib/goldilocks'
 import {
@@ -32,7 +33,7 @@ import { filterListingsToTmreTowns, TMRE_TOWNS, type TmreTown } from '@/lib/tmre
  * Rental fallback uses value-aesthetic (lower rent + finishes) when no
  * below-median pool exists. Default page load is sale + homes.
  */
-export const DEAL_OF_THE_DAY_CACHE_PREFIX = 'deal-of-the-day:v7'
+export const DEAL_OF_THE_DAY_CACHE_PREFIX = 'deal-of-the-day:v8'
 
 export type DealOfTheDayScope = TmreTown
 export type DealOfTheDayKind = 'sale' | 'rental'
@@ -210,6 +211,7 @@ async function cacheScopedKinds(
   allListings: Listing[],
   boardScored: Awaited<ReturnType<typeof scoreActiveListingsForBoard>>,
   town: TmreTown,
+  closedMedians: Map<string, number>,
 ): Promise<number> {
   let written = 0
 
@@ -222,7 +224,9 @@ async function cacheScopedKinds(
       )
       if (!scoped.length) continue
 
-      const payload = await pickDealOfTheDayFromBoardScored(scoped, boardScored)
+      const payload = await pickDealOfTheDayFromBoardScored(scoped, boardScored, {
+        closedMedians,
+      })
       if (!payload || !isStrictlyActiveListing(payload.listing)) continue
 
       const response: DealOfTheDayResponse = {
@@ -276,6 +280,7 @@ export async function rebuildDealOfTheDayCache(): Promise<{
   const t0 = Date.now()
   await clearCacheByPrefix(`${DEAL_OF_THE_DAY_CACHE_PREFIX}:`)
   // Drop legacy keys from earlier versions.
+  await clearCacheByPrefix('deal-of-the-day:v7:')
   await clearCacheByPrefix('deal-of-the-day:v5:')
   await clearCacheByPrefix('deal-of-the-day:v4:')
 
@@ -295,7 +300,14 @@ export async function rebuildDealOfTheDayCache(): Promise<{
     if (!activeAll.length) continue
 
     const boardScored = await scoreActiveListingsForBoard(activeAll, peerPool)
-    written += await cacheScopedKinds(town, allListings, boardScored, town)
+    const closedMedians = await loadTownClosedMedians12Mo(town)
+    written += await cacheScopedKinds(
+      town,
+      allListings,
+      boardScored,
+      town,
+      closedMedians,
+    )
   }
 
   const photosWarmed = await warmAllDealOfTheDayPhotos()
