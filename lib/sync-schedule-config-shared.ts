@@ -152,6 +152,23 @@ export function frequencyIntervalMs(
   )
 }
 
+/**
+ * Sort key for Frequency: shortest cadence first.
+ * Calendar jobs sit after intervals (daily < weekly < monthly < event).
+ */
+export function frequencySortRank(
+  id: SyncScheduleFrequencyId | null | undefined,
+): number {
+  if (!id) return Number.POSITIVE_INFINITY
+  const intervalMs = frequencyIntervalMs(id)
+  if (intervalMs != null) return intervalMs
+  if (id === 'daily') return 24 * 60 * 60 * 1000
+  if (id === 'weekly') return 7 * 24 * 60 * 60 * 1000
+  if (id === 'monthly') return 31 * 24 * 60 * 60 * 1000
+  if (id === 'event') return 32 * 24 * 60 * 60 * 1000
+  return Number.POSITIVE_INFINITY
+}
+
 /** HH:MM 24h. */
 export function isValidStartTimeEt(value: string): boolean {
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value.trim())

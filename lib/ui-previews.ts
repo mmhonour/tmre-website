@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "admin-sync-sort",
+    title: "Admin sync column sort",
+    summary:
+      "Frequency sorts shortest ↔ longest cadence (not A–Z). Start, End, and Next sort by clock time.",
+  },
+  {
     slug: "listing-vision-address",
     title: "Listing address → Vision card",
     summary:
