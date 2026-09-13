@@ -256,7 +256,7 @@ export default function ShowcaseSectionRail({
   townHint?: string | null;
   postalCode?: string | null;
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
-  /** Lets the hero shift its price clear of the map column. */
+  /** Lets the hero shift Offered at / Closed at clear of Insight or Map. */
   onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
   compsFetchUrl?: string | null;
   uagFetchUrl?: string | null;
@@ -278,7 +278,7 @@ export default function ShowcaseSectionRail({
   ) => {
     setOverlayState(next);
     onMapStateChange?.({
-      open: next === "map",
+      open: next === "map" || next === "insight",
       expanded: next === "map" && mapExpanded,
     });
   };
@@ -286,7 +286,10 @@ export default function ShowcaseSectionRail({
     setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
-    onMapStateChange?.({ open: overlay === "map", expanded });
+    onMapStateChange?.({
+      open: overlay === "map" || overlay === "insight",
+      expanded,
+    });
   };
   const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
   const [revealed, setRevealed] = useState<string | null>(null);

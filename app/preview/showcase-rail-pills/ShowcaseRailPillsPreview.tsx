@@ -97,6 +97,7 @@ function DemoControl({
 function SymbolRailDemo() {
   const [revealed, setRevealed] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [insightOpen, setInsightOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"full" | "other">("full");
   const [labelsMax, setLabelsMax] = useState(false);
 
@@ -167,6 +168,18 @@ function SymbolRailDemo() {
 
   return (
     <div className="flex min-h-[22rem] flex-col items-end">
+      <div
+        className="mb-3 w-full transition-[padding] duration-300"
+        style={
+          insightOpen
+            ? { paddingRight: "min(24rem, calc(100% - 3rem))" }
+            : undefined
+        }
+      >
+        <div className="flex justify-end">
+          <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
+        </div>
+      </div>
       <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
         <button
           type="button"
@@ -179,11 +192,33 @@ function SymbolRailDemo() {
         >
           {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
         </button>
-        <DemoControl
-          label="Insight"
-          glyph={<InsightGlyph />}
-          showLabel={labelsMax}
-        />
+        {insightOpen ? (
+          <div className="w-full max-w-sm bg-[#0d1424]">
+            <div className={`${railRow} w-full bg-[#0d1424]`}>
+              <span className="flex-1">Insight</span>
+              <button
+                type="button"
+                data-testid="preview-insight-hide"
+                onClick={() => setInsightOpen(false)}
+                aria-label="Hide Insight"
+                className="ml-2 px-1 font-mono text-white/70"
+              >
+                ↑
+              </button>
+            </div>
+            <div className="bg-[#0d1424] px-4 py-3 text-sm text-white/85">
+              Four beds on the harbor, listed this week.
+            </div>
+          </div>
+        ) : (
+          <DemoControl
+            label="Insight"
+            glyph={<InsightGlyph />}
+            showLabel={labelsMax}
+            testId="preview-insight-open"
+            onClick={() => setInsightOpen(true)}
+          />
+        )}
         {compsBtn}
         {ifBtn}
       </div>
@@ -364,8 +399,9 @@ export function ShowcaseRailPillsPreview() {
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
           Insight, Comps, then What if stack above the right arrow. Details,
-          Pulse, and Map sit below. Opening Details hides Pulse and Map so
-          the card has no scrollbar. The square min/max control expands every
+          Pulse, and Map sit below. Opening Insight shifts Offered at left of
+          the card. Opening Details hides Pulse and Map so the card has no
+          scrollbar. The square min/max control expands every
           icon to its word, or collapses them back. A tap still opens a card;
           ↑ restores the control. Details uses the gold folder tabs on an
           opaque navy card.
