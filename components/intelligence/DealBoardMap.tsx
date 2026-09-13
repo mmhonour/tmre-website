@@ -517,6 +517,7 @@ export default function DealBoardMap({
   fitInset = ZERO_FIT_INSET,
   subjectKey = null,
   fitZips,
+  hideLocationOverlayButton = false,
 }: {
   listings: readonly DealBoardMapListing[];
   /** TIGER ZCTA zips that frame the search (town, zip, or all towns). */
@@ -557,6 +558,8 @@ export default function DealBoardMap({
    * the house is centered — a border lot shows half the frame.
    */
   fitZips?: readonly string[];
+  /** Showcase hosts Corridors on the Map label; hide the on-map duplicate. */
+  hideLocationOverlayButton?: boolean;
 }) {
   const locationOverlay = useLocationEstimateOverlay();
   const locationGrid = useLocationEstimateZipGrid();
@@ -1740,7 +1743,7 @@ export default function DealBoardMap({
           </PreviewCard>
         ) : null}
 
-        {locationOverlay.unlocked ? (
+        {locationOverlay.unlocked && !hideLocationOverlayButton ? (
           <button
             type="button"
             onClick={() => void locationOverlay.setEnabled(!locationOverlay.enabled)}

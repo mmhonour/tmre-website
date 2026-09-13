@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import DealBoardMap, {
   type DealBoardMapListing,
 } from "@/components/intelligence/DealBoardMap";
-import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 import type { ComparableListing } from "@/lib/listing-comparables-shared";
 import { listingDetailHref } from "@/lib/listing-url";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
@@ -112,7 +111,6 @@ export default function ShowcaseCompsMap({
   const [uagData, setUagData] = useState<UagResponse | null>(null);
   const [pool, setPool] = useState<Pool>("active");
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const overlay = useLocationEstimateOverlay();
   const comparablesUrl =
     fetchUrl ?? `/api/listings/${encodeURIComponent(mlsId)}/comparables`;
   const uagUrl =
@@ -207,6 +205,7 @@ export default function ShowcaseCompsMap({
           }
           className="h-full"
           heightClass="h-full"
+          hideLocationOverlayButton
         />
         <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
           {onToggleExpanded ? (
@@ -245,21 +244,6 @@ export default function ShowcaseCompsMap({
             ))}
           </div>
         </div>
-        {overlay.unlocked ? (
-          <button
-            type="button"
-            onClick={() => void overlay.setEnabled(!overlay.enabled)}
-            disabled={overlay.busy}
-            aria-pressed={overlay.enabled}
-            className={`absolute left-2 top-2 z-20 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] transition-colors ${
-              overlay.enabled
-                ? "bg-sky/20 text-sky"
-                : "bg-[#0d1424] text-white/50 hover:text-white"
-            }`}
-          >
-            Corridors
-          </button>
-        ) : null}
         <Compass />
       </div>
     </div>

@@ -34,6 +34,7 @@ import {
   roundIfRentMidpoint,
 } from "@/lib/listing-if-estimates";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 
 type DetailsTab = "full" | "other";
 
@@ -204,16 +205,20 @@ function CollapseArrow({
 function CardChrome({
   title,
   onCollapse,
+  afterTitle,
   children,
 }: {
   title: string;
   onCollapse: () => void;
+  afterTitle?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div className="flex w-full flex-col items-end">
       <div className={`${pillClass(true, true)} bg-[#0d1424]`}>
-        <span className="flex-1">{title}</span>
+        <span>{title}</span>
+        {afterTitle}
+        <span className="flex-1" />
         <CollapseArrow label={`Hide ${title}`} onClick={onCollapse} />
       </div>
       {children}
@@ -257,7 +262,11 @@ export default function ShowcaseSectionRail({
   postalCode?: string | null;
   detailsPanelProps: ListingDetailsSchoolsPanelProps;
   /** Lets the hero shift Offered at / Closed at clear of Insight or Map. */
-  onMapStateChange?: (state: { open: boolean; expanded: boolean }) => void;
+  onMapStateChange?: (state: {
+    open: boolean;
+    expanded: boolean;
+    kind: "map" | "insight" | null;
+  }) => void;
   compsFetchUrl?: string | null;
   uagFetchUrl?: string | null;
   /** Spotlight privacy: town-outline map instead of comps + pin. */
@@ -272,24 +281,31 @@ export default function ShowcaseSectionRail({
     "insight" | "map" | "pulse" | "details" | null
   >(null);
   const [mapExpanded, setMapExpanded] = useState(false);
+  const corridors = useLocationEstimateOverlay();
+
+  const reportClearance = (
+    next: "insight" | "map" | "pulse" | "details" | null,
+    expanded: boolean,
+  ) => {
+    const kind = next === "map" || next === "insight" ? next : null;
+    onMapStateChange?.({
+      open: kind != null,
+      expanded: next === "map" && expanded,
+      kind,
+    });
+  };
 
   const setOverlay = (
     next: "insight" | "map" | "pulse" | "details" | null,
   ) => {
     setOverlayState(next);
-    onMapStateChange?.({
-      open: next === "map" || next === "insight",
-      expanded: next === "map" && mapExpanded,
-    });
+    reportClearance(next, mapExpanded);
   };
   const toggleOverlay = (id: "insight" | "map" | "pulse" | "details") =>
     setOverlay(overlay === id ? null : id);
   const setExpanded = (expanded: boolean) => {
     setMapExpanded(expanded);
-    onMapStateChange?.({
-      open: overlay === "map" || overlay === "insight",
-      expanded,
-    });
+    reportClearance(overlay, expanded);
   };
   const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
   const [revealed, setRevealed] = useState<string | null>(null);
@@ -471,7 +487,7 @@ export default function ShowcaseSectionRail({
   const pulseCard =
     overlay === "pulse" ? (
       <CardChrome title="Town pulse" onCollapse={() => setOverlay(null)}>
-        <div className="w-full bg-[#0d1424] p-4">
+        <div className="w-full overflow-hidden bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={townHint ?? ""} expanded />
         </div>
       </CardChrome>
@@ -483,16 +499,35 @@ export default function ShowcaseSectionRail({
      * map. The header bar below carries the only exit, so it has to stay
      * pinned at the top of the sheet.
      *
-     * Desktop: a column beside the photo, offset to clear the fixed header
-     * (~85px); the usual pt-24 leaves its zip / mail / phone cluster (z-50)
-     * painting over the map.
+     * Desktop: flush to the page’s right edge. Rail glyphs sit in a column
+     * just to the left of this panel (`lg:right-96` / expanded width).
      */
     <div
-      className={`flex flex-col bg-[#0d1424] max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-16 lg:top-28 lg:z-30 ${
+      className={`flex flex-col bg-[#0d1424] max-lg:fixed max-lg:inset-0 max-lg:z-[60] lg:absolute lg:bottom-0 lg:right-0 lg:top-28 lg:z-30 ${
         mapExpanded ? "lg:w-[min(50vw,44rem)]" : "lg:w-96"
       }`}
     >
-      <CardChrome title="Map" onCollapse={() => setOverlay(null)} />
+      <CardChrome
+        title="Map"
+        onCollapse={() => setOverlay(null)}
+        afterTitle={
+          corridors.unlocked ? (
+            <button
+              type="button"
+              onClick={() => void corridors.setEnabled(!corridors.enabled)}
+              disabled={corridors.busy}
+              aria-pressed={corridors.enabled}
+              className={`ml-2 shrink-0 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] transition-colors ${
+                corridors.enabled
+                  ? "bg-sky/20 text-sky"
+                  : "text-white/50 hover:text-white"
+              }`}
+            >
+              Corridors
+            </button>
+          ) : null
+        }
+      />
       <div className="min-h-0 flex-1">
         {map?.hidePin ? (
           <ListingLocationMap
@@ -619,7 +654,13 @@ export default function ShowcaseSectionRail({
        * Map sit below. Min/max expands every icon to its word.
        */}
       <div
-        className={`pointer-events-none absolute inset-y-0 right-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6`}
+        className={`pointer-events-none absolute inset-y-0 z-20 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${
+          overlay === "map"
+            ? mapExpanded
+              ? "lg:right-[min(50vw,44rem)]"
+              : "lg:right-96"
+            : "right-0"
+        }`}
       >
         <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
           {aboveIcons}

@@ -40,13 +40,18 @@ const HOLD_MS = 6500;
 function priceClearanceStyle(
   open: boolean,
   expanded: boolean,
+  kind: "map" | "insight" | null,
 ): { marginRight: string } | undefined {
-  if (!open) return undefined;
-  const width = expanded
-    ? "min(50vw, 44rem)"
-    : "min(24rem, calc(100vw - 3rem))";
+  if (!open || !kind) return undefined;
+  const width =
+    kind === "map"
+      ? expanded
+        ? "min(50vw, 44rem)"
+        : "24rem"
+      : "min(24rem, calc(100vw - 3rem))";
+  const gutter = kind === "map" ? "3.5rem" : "0rem";
   return {
-    marginRight: `max(0rem, calc(${width} + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
+    marginRight: `max(0rem, calc(${width} + ${gutter} + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
   };
 }
 
@@ -126,9 +131,14 @@ export default function ListingShowcaseView({
   const [index, setIndex] = useState(initialPhotoIndex);
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
-  const [railClearance, setRailClearance] = useState({
+  const [railClearance, setRailClearance] = useState<{
+    open: boolean;
+    expanded: boolean;
+    kind: "map" | "insight" | null;
+  }>({
     open: false,
     expanded: false,
+    kind: null,
   });
   const reducedMotion = usePrefersReducedMotion();
   const siteUnlocked = useSiteUnlocked();
@@ -292,6 +302,7 @@ export default function ListingShowcaseView({
                 style={priceClearanceStyle(
                   railClearance.open,
                   railClearance.expanded,
+                  railClearance.kind,
                 )}
               >
                 <ListingShowcasePriceBlock

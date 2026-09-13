@@ -303,31 +303,59 @@ function SymbolRailDemo() {
 function MapChromeDemo() {
   const [pool, setPool] = useState<"active" | "uag" | "sold">("active");
   return (
-    <div className="relative h-56 bg-[#1a2744]">
-      <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
-        <span className="rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85">
-          Full size
+    <div className="relative h-64 overflow-hidden bg-[#1a2744]">
+      <div
+        className="absolute right-0 top-3 z-10 transition-[margin]"
+        style={{ marginRight: "calc(24rem + 3.5rem)" }}
+      >
+        <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
+      </div>
+      <div className="absolute bottom-4 top-4 right-[calc(24rem+0.25rem)] flex w-11 flex-col items-end justify-center gap-1">
+        <span className={railIcon} title="Details">
+          <DetailsGlyph />
         </span>
-        <div className="flex flex-col bg-[#0d1424]">
-          {(
-            [
-              { id: "active" as const, label: "For sale", count: 6 },
-              { id: "uag" as const, label: "UAG", count: 2 },
-              { id: "sold" as const, label: "Closed", count: 21 },
-            ] as const
-          ).map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPool(p.id)}
-              className={`px-2.5 py-1.5 text-left font-mono text-[9px] uppercase tracking-[0.16em] ${
-                pool === p.id ? "bg-white/15 text-white" : "text-white/50"
-              }`}
-            >
-              {p.label}
-              <span className="ml-1.5 tabular-nums text-white/40">{p.count}</span>
-            </button>
-          ))}
+        <span className={railIcon} title="Pulse">
+          <PulseGlyph />
+        </span>
+      </div>
+      <div className="absolute bottom-0 right-0 top-0 flex w-96 flex-col bg-[#0d1424]">
+        <div className={`${railRow} w-full bg-[#0d1424]`}>
+          <span>Map</span>
+          <span className="ml-2 font-mono text-[9px] uppercase tracking-[0.14em] text-white/50">
+            Corridors
+          </span>
+          <span className="flex-1" />
+          <span className="px-1 font-mono text-white/70">↑</span>
+        </div>
+        <div className="relative min-h-0 flex-1">
+          <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
+            <span className="rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85">
+              Full size
+            </span>
+            <div className="flex flex-col bg-[#0d1424]">
+              {(
+                [
+                  { id: "active" as const, label: "For sale", count: 6 },
+                  { id: "uag" as const, label: "UAG", count: 2 },
+                  { id: "sold" as const, label: "Closed", count: 21 },
+                ] as const
+              ).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPool(p.id)}
+                  className={`px-2.5 py-1.5 text-left font-mono text-[9px] uppercase tracking-[0.16em] ${
+                    pool === p.id ? "bg-white/15 text-white" : "text-white/50"
+                  }`}
+                >
+                  {p.label}
+                  <span className="ml-1.5 tabular-nums text-white/40">
+                    {p.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -413,10 +441,13 @@ export function ShowcaseRailPillsPreview() {
 
       <section>
         <h2 className="mb-3 font-serif text-xl text-navy">
-          Map — filters under Full size
+          Map — flush right, glyphs to the left
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          For sale, UAG, and Closed stack under the Full size control.
+          Map sits on the page’s right edge. Rail glyphs stay to its left.
+          One Corridors control sits next to the Map label (admin). Offered
+          at shifts left of the map plus the glyph column. For sale, UAG,
+          and Closed stack under Full size.
         </p>
         <MapChromeDemo />
       </section>
