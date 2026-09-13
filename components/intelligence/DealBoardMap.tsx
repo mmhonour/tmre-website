@@ -663,7 +663,7 @@ export default function DealBoardMap({
 
   useEffect(() => {
     if (!boundKey) {
-      setZipRings([]);
+      setZipRings((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     let cancelled = false;

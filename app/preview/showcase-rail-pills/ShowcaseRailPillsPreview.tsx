@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
+import { mapBoundZipsForListing } from "@/lib/tmre-towns";
 import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
 import {
   CompsGlyph,
@@ -418,6 +419,7 @@ function MapChromeDemo() {
                 },
               ]}
               subjectKey="preview-harbor"
+              {...mapBoundZipsForListing("Westport", "06880")}
               className="h-full w-full"
               heightClass="h-full"
               hideLocationOverlayButton
