@@ -85,6 +85,7 @@ import {
   getAlertJobLastRuns,
   listSavedSearchAlertsForAdmin,
 } from "@/lib/saved-search-alerts";
+import { readAlertDirtyState } from "@/lib/saved-search-alert-dirty";
 import { getSocialProfilesFresh } from "@/lib/social-profiles-config";
 import { getTownBudgetSourcesFresh } from "@/lib/town-budget-sources-config";
 import {
@@ -388,6 +389,7 @@ export default async function AdminPage() {
   const camaTaxSyncedAt = getSyncMeta("cama_tax_history_synced_at");
   const streetListingsSyncedAt = getSyncMeta("street_listings_synced_at");
   const lastDbSize = getSyncMeta("last_db_size");
+  const lastAlerts = getSyncMeta("last_alerts");
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -590,6 +592,17 @@ export default async function AdminPage() {
       nextRunAt: nextRuns["open-houses"],
     },
     {
+      id: "alerts",
+      label: "Listing / OH alerts",
+      value: formatTimestamp(lastAlerts),
+      finishedAt: lastAlerts,
+      sortMs: timestampSortMs(lastAlerts),
+      detail:
+        "Railway mailer. Incremental and Open houses mark dirty; this job sends. One email if the visitor signed up for both.",
+      actionId: "alerts",
+      nextRunAt: nextRuns["alerts"],
+    },
+    {
       id: "fomc-sync",
       label: "FOMC statement sync",
       value: formatTimestamp(fomcLastSyncedAt),
@@ -682,6 +695,7 @@ export default async function AdminPage() {
     marketDigestLastSentAt,
     streetListingsSyncedAt,
     lastDbSize,
+    lastAlerts,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,
@@ -767,6 +781,11 @@ export default async function AdminPage() {
   const listingAlertRuns = await safe(
     "listing-alert-runs",
     () => getAlertJobLastRuns(),
+    { listing: null, openHouse: null },
+  )
+  const listingAlertDirty = await safe(
+    "listing-alert-dirty",
+    () => readAlertDirtyState(),
     { listing: null, openHouse: null },
   )
   const brokerageName = await safe(
@@ -978,6 +997,7 @@ export default async function AdminPage() {
         <AdminListingAlertsPanel
           initial={listingAlerts ?? undefined}
           initialLastRuns={listingAlertRuns ?? undefined}
+          initialDirty={listingAlertDirty ?? undefined}
         />
       }
       mortgagePage={<AdminMortgagePagePanel />}

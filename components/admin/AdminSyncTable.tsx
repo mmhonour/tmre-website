@@ -716,6 +716,7 @@ export type PanelStatus = {
   camaTaxHistorySyncedAt?: string | null;
   streetListingsSyncedAt?: string | null;
   lastDbSize?: string | null;
+  lastAlerts?: string | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -1080,6 +1081,8 @@ function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
       return { started: null, finished: status.streetListingsSyncedAt ?? null };
     case "db-size":
       return { started: null, finished: status.lastDbSize ?? null };
+    case "alerts":
+      return { started: null, finished: status.lastAlerts ?? null };
     default:
       return { started: null, finished: null };
   }
@@ -1369,6 +1372,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "vision-addresses": "vision-addresses",
   "zip-boundaries": "zip-boundaries",
   "open-houses": "open-houses",
+  alerts: "alerts",
   "fomc-sync": "fomc-sync",
   "cpi-sync": "cpi-sync",
   "market-digest": "market-digest",

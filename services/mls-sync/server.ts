@@ -115,6 +115,12 @@ const SWEEPS: {
     label: 'open houses',
   },
   {
+    jobId: 'alerts',
+    everyMs: 60_000,
+    bootDelayMs: 20_000,
+    label: 'listing / OH alerts',
+  },
+  {
     jobId: 'vision-addresses',
     everyMs: 10 * 60_000,
     bootDelayMs: 8 * 60_000,
@@ -229,6 +235,13 @@ async function jobIsDue(jobId: ScheduledSyncJobId): Promise<boolean> {
     if (await streetListingsNeedCatchUp()) return true
   }
 
+  if (jobId === 'alerts') {
+    const { alertsJobHasDirty } = await import(
+      '../../lib/saved-search-alert-dirty'
+    )
+    if (await alertsJobHasDirty()) return true
+  }
+
   const config = await readSyncScheduleConfigFresh()
   const lastFinishedAt = await getSyncMeta(lastFinishedMetaKey(jobId))
   return isJobDueBySchedule(config.jobs[jobId], lastFinishedAt)
@@ -241,6 +254,9 @@ async function jobHasWork(jobId: ScheduledSyncJobId): Promise<boolean> {
       '../../lib/street-listings-sync'
     )
     return streetListingsHaveWork()
+  }
+  if (jobId === 'alerts') {
+    return true
   }
   if (jobId === 'stats-cache') {
     // Dirtiness decides whether there is work; the slot decides when we may do

@@ -61,6 +61,10 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
     { label: "Latest", href: "/latest" },
   ],
   "open-houses": [{ label: "Open Houses", href: "/open-houses" }],
+  alerts: [
+    { label: "Latest", href: "/latest" },
+    { label: "Open Houses", href: "/open-houses" },
+  ],
   "fomc-sync": [{ label: "Fed Analysis", href: "/fed-analysis" }],
   "cpi-sync": [{ label: "Fed Analysis", href: "/fed-analysis" }],
   "market-digest": [{ label: "Market Pulse", href: "/market-pulse" }],

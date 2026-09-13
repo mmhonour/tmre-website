@@ -521,10 +521,7 @@ export async function runIncrementalSyncListingsWork(
       console.warn('[sync-listings-work] Done/incremental audit failed', err)
     }
 
-    // Listing alerts already ran inside syncIncrementalListings (kind=listing).
-    // Do not ring that doorbell again from Lane 3 or this wrapper — that hid
-    // a dead Incremental send behind a later Netlify/OH success.
-    const savedSearchAlerts = result.savedSearchAlerts ?? null
+    // Incremental only marks listing alerts dirty. Railway `alerts` sends.
     let warmHandoff: NetlifyFunctionQueueResult | null = null
     if (warmInProcess) {
       await runSpotlightRefresh()
@@ -549,7 +546,7 @@ export async function runIncrementalSyncListingsWork(
           : (options.source ?? 'cron'),
         warmedInProcess: warmInProcess,
         ...(warmHandoff ? { warmHandoff } : {}),
-        savedSearchAlerts,
+        savedSearchAlerts: null,
         stats: await getSyncStatus(),
         overdueCatchup: catchup.skipped
           ? { skipped: true, reason: catchup.reason }

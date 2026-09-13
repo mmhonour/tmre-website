@@ -801,7 +801,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'table rows (t+6 upcoming + 1-year lookback)',
     owner: 'lib/open-houses-sync.ts',
     notes:
-      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today through today+6) is replaced so cancellations disappear, then open_houses_synced_at is stamped. Dates after that horizon are pruned. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. After a successful pull, the seven-day JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML, filtered to the Sunday-reset page window. A failed RETS pull must not empty a window. OH-kind visitor mail runs after a successful pull and stamps alerts:open-house:last-run.',
+      'SmartMLS OpenHouse resource, synced hourly. Upcoming (today through today+6) is replaced so cancellations disappear, then open_houses_synced_at is stamped. Dates after that horizon are pruned. The prior year is upserted newest-first in 14-day slices under an 8-minute budget so a long lookback cannot hide a finished upcoming write. After a successful pull, the seven-day JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML, filtered to the Sunday-reset page window. A failed RETS pull must not empty a window. Then alerts_open_house_dirty is set; the Railway alerts job sends OH mail.',
     live: { kind: 'postgres_table', table: 'open_houses' },
   },
   {

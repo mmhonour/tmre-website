@@ -73,15 +73,6 @@ export type IncrementalSyncResult = FullSyncResult & {
   mode: 'incremental'
   totalInserted?: number
   totalUpdated?: number
-  /** Listing-kind alerts only — Incremental is not the OH doorbell. */
-  savedSearchAlerts?: {
-    kind: 'listing'
-    checked: number
-    sent: number
-    listings: number
-    ok: boolean
-    error?: string
-  } | null
 }
 
 const INCREMENTAL_OVERLAP_MS = 2 * 60 * 1000
@@ -464,61 +455,25 @@ export async function syncIncrementalListings(
       'rets-done',
       `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) everyTownSucceeded=${everyTownSucceeded}`,
     )
-    // Listing alerts only — this process, after RETS, before post-hooks and
-    // before the step log closes. OH signups are mailed by the OH job, not
-    // here. Netlify Lane 3 is not a backup doorbell.
-    let savedSearchAlerts: IncrementalSyncResult['savedSearchAlerts'] = null
+    // Data write is done. Mark listing alerts dirty and ring the Railway
+    // alerts job — Incremental does not send mail.
     try {
-      const { processDueSavedSearchAlerts } = await import(
-        '@/lib/saved-search-alerts'
-      )
-      const alerts = await processDueSavedSearchAlerts({
-        kind: 'listing',
-        source: 'incremental',
-      })
-      savedSearchAlerts = {
-        kind: 'listing',
-        checked: alerts.checked,
-        sent: alerts.sent,
-        listings: alerts.listings,
-        ok: alerts.ok,
-        error: alerts.error,
-      }
+      const {
+        markListingAlertsDirty,
+        enqueueAlertsJob,
+      } = await import('@/lib/saved-search-alert-dirty')
+      await markListingAlertsDirty()
+      const queued = await enqueueAlertsJob({ trigger: 'incremental-dirty' })
       await appendIncrementalStep(
-        'saved-search-alerts',
-        `kind=listing source=incremental checked=${alerts.checked} sent=${alerts.sent} listings=${alerts.listings} ok=${alerts.ok}`,
+        'alerts-dirty',
+        `listing dirty — ${queued.reason ?? (queued.ok ? 'queued' : 'enqueue failed')}`,
       )
     } catch (err) {
-      console.warn('[listings-sync/incremental] saved-search alerts failed', err)
-      const message = err instanceof Error ? err.message : String(err)
-      savedSearchAlerts = {
-        kind: 'listing',
-        checked: 0,
-        sent: 0,
-        listings: 0,
-        ok: false,
-        error: message,
-      }
-      try {
-        const { recordAlertJobLastRun } = await import(
-          '@/lib/saved-search-alerts'
-        )
-        await recordAlertJobLastRun({
-          kind: 'listing',
-          source: 'incremental',
-          checked: 0,
-          sent: 0,
-          listings: 0,
-          ok: false,
-          error: message,
-        })
-      } catch (stampErr) {
-        console.warn(
-          '[listings-sync/incremental] listing-alert last-run stamp failed',
-          stampErr,
-        )
-      }
-      await appendIncrementalStep('saved-search-alerts', `failed — ${message}`)
+      console.warn('[listings-sync/incremental] alerts dirty stamp failed', err)
+      await appendIncrementalStep(
+        'alerts-dirty',
+        `failed — ${err instanceof Error ? err.message : String(err)}`,
+      )
     }
     if (everyTownSucceeded && postHooks) {
       await stampIncrementalSyncLive({
@@ -623,7 +578,6 @@ export async function syncIncrementalListings(
       totalUpserted,
       totalInserted,
       totalUpdated,
-      savedSearchAlerts,
     }
   } catch (err) {
     await appendIncrementalStep(

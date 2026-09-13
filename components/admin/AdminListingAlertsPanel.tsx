@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AdminAlertJobHealth from "@/components/admin/AdminAlertJobHealth";
+import AdminAlertJobHealth, {
+  type AlertDirtyStateClient,
+} from "@/components/admin/AdminAlertJobHealth";
 import type {
   AlertJobKind,
   AlertJobLastRuns,
-  SavedSearchAlertProcessResult,
 } from "@/lib/saved-search-alert-kinds";
 
 export type AdminListingAlertRow = {
@@ -91,13 +92,18 @@ function groupAlerts(alerts: AdminListingAlertRow[]): UserGroup[] {
 export default function AdminListingAlertsPanel({
   initial,
   initialLastRuns,
+  initialDirty,
 }: {
   initial?: AdminListingAlertRow[];
   initialLastRuns?: AlertJobLastRuns;
+  initialDirty?: AlertDirtyStateClient;
 }) {
   const [alerts, setAlerts] = useState<AdminListingAlertRow[]>(initial ?? []);
   const [lastRuns, setLastRuns] = useState<AlertJobLastRuns>(
     initialLastRuns ?? { listing: null, openHouse: null },
+  );
+  const [dirty, setDirty] = useState<AlertDirtyStateClient>(
+    initialDirty ?? { listing: null, openHouse: null },
   );
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +128,7 @@ export default function AdminListingAlertsPanel({
       const body = (await res.json()) as {
         alerts?: AdminListingAlertRow[];
         lastRuns?: AlertJobLastRuns;
+        dirty?: AlertDirtyStateClient;
         error?: string;
       };
       if (!res.ok) {
@@ -130,6 +137,7 @@ export default function AdminListingAlertsPanel({
       }
       setAlerts(body.alerts ?? []);
       if (body.lastRuns) setLastRuns(body.lastRuns);
+      if (body.dirty) setDirty(body.dirty);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load alerts");
     } finally {
@@ -141,18 +149,6 @@ export default function AdminListingAlertsPanel({
     if (initial) return;
     void load();
   }, [initial, load]);
-
-  function summarizeKind(
-    label: string,
-    result: SavedSearchAlertProcessResult | null | undefined,
-  ): string | null {
-    if (!result) return null;
-    const fail = result.ok === false ? " · failed" : "";
-    if (result.sent > 0) {
-      return `${label}: sent ${result.sent} · ${result.listings} home${result.listings === 1 ? "" : "s"} (checked ${result.checked})${fail}`;
-    }
-    return `${label}: no new matches (checked ${result.checked})${fail}`;
-  }
 
   async function processDue(kind: AlertJobKind) {
     setProcessing(kind);
@@ -168,10 +164,11 @@ export default function AdminListingAlertsPanel({
       let body: {
         ok?: boolean;
         error?: string;
-        listing?: SavedSearchAlertProcessResult | null;
-        openHouse?: SavedSearchAlertProcessResult | null;
         lastRuns?: AlertJobLastRuns;
+        dirty?: AlertDirtyStateClient;
         alerts?: AdminListingAlertRow[];
+        queued?: boolean;
+        reason?: string;
       };
       try {
         body = JSON.parse(raw);
@@ -187,13 +184,14 @@ export default function AdminListingAlertsPanel({
       }
       if (body.alerts) setAlerts(body.alerts);
       if (body.lastRuns) setLastRuns(body.lastRuns);
-      const bits = [
-        summarizeKind("Listing Incremental", body.listing),
-        summarizeKind("Open houses", body.openHouse),
-      ].filter(Boolean);
-      setMessage(bits.join(" · ") || "Processed");
+      if (body.dirty) setDirty(body.dirty);
+      setMessage(
+        body.queued
+          ? `Queued Railway alerts job (${body.reason ?? "queued"}) — mail does not send from Netlify`
+          : "Processed",
+      );
       if (body.ok === false) {
-        setError(body.error ?? "One doorbell reported a failure — see last run.");
+        setError(body.error ?? "Could not queue the Railway alerts job.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Process failed");
@@ -279,11 +277,10 @@ export default function AdminListingAlertsPanel({
             Listing alerts
           </p>
           <p className="mt-1 text-sm text-slate max-w-3xl">
-            Listing mail is sent only by Incremental (Railway). Open-house
-            mail is sent only by the Open houses job (Railway). Process now
-            is a manual catch-up for one path — not a backup. Last run below
-            is how you tell which doorbell is dead. Grouped by email —
-            expand to activate, disable, or delete.
+            Incremental and Open houses only mark dirty. A Railway alerts
+            job sends — listing matcher and OH matcher, one email if the
+            visitor signed up for both. Process queues that job (not
+            Netlify mail). Dirty below means send now.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-3">
@@ -328,7 +325,7 @@ export default function AdminListingAlertsPanel({
       ) : null}
 
       <div className="px-5 sm:px-6 py-4 border-b border-charcoal/[0.06] bg-cream/20">
-        <AdminAlertJobHealth lastRuns={lastRuns} />
+        <AdminAlertJobHealth lastRuns={lastRuns} dirty={dirty} />
       </div>
 
       <div className="overflow-x-auto">

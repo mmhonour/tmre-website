@@ -94,7 +94,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "alert-job-health",
     title: "Alert doorbells — Incremental vs OH",
     summary:
-      "Admin clocks for listing Incremental vs the Open houses job. One path can fail without the other looking fine.",
+      "Dirty from Incremental / OH, send from the Railway alerts job. One email if the visitor signed up for both.",
   },
   {
     slug: "open-houses-next-oh",

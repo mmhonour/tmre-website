@@ -13,7 +13,7 @@ const FIXTURE_RUNS: AlertJobLastRuns = {
   listing: {
     at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
     kind: "listing",
-    source: "incremental",
+    source: "alerts",
     ok: true,
     checked: 12,
     sent: 2,
@@ -22,7 +22,7 @@ const FIXTURE_RUNS: AlertJobLastRuns = {
   openHouse: {
     at: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
     kind: "open_house",
-    source: "open-houses",
+    source: "alerts",
     ok: false,
     checked: 0,
     sent: 0,
@@ -80,16 +80,25 @@ export default function AlertJobHealthPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Listing mail is Incremental only. Open-house mail is the OH job
-          only. Fixture: Incremental ran 25 minutes ago (2 sent); the OH job
-          failed yesterday. Production: Admin → Communications → Listing
-          alerts.
+          only. Fixture:           Listing side is dirty (Incremental just wrote). OH side failed
+          yesterday and is clean. Production: Admin → Communications.
         </p>
         <div className="mb-8">
-          <AdminAlertJobHealth lastRuns={FIXTURE_RUNS} />
+          <AdminAlertJobHealth
+            lastRuns={FIXTURE_RUNS}
+            dirty={{
+              listing: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+              openHouse: null,
+            }}
+          />
         </div>
         <AdminListingAlertsPanel
           initial={FIXTURE_ALERTS}
           initialLastRuns={FIXTURE_RUNS}
+          initialDirty={{
+            listing: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+            openHouse: null,
+          }}
         />
       </div>
     </div>

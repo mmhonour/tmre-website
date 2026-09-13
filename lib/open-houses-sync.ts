@@ -35,15 +35,6 @@ export type OpenHouseSyncResult = {
   pruned: number
   durationMs: number
   error?: string
-  /** Open-house-kind alerts only — this job is not the listing doorbell. */
-  savedSearchAlerts?: {
-    kind: 'open_house'
-    checked: number
-    sent: number
-    listings: number
-    ok: boolean
-    error?: string
-  } | null
 }
 
 function uniqueEvents(events: readonly OpenHouseEvent[]): OpenHouseEvent[] {
@@ -118,20 +109,6 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
     upcoming = await fetchWindow(window, true)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    try {
-      const { recordAlertJobLastRun } = await import('@/lib/saved-search-alerts')
-      await recordAlertJobLastRun({
-        kind: 'open_house',
-        source: 'open-houses',
-        checked: 0,
-        sent: 0,
-        listings: 0,
-        ok: false,
-        error: `open-houses pull failed — ${message}`,
-      })
-    } catch (stampErr) {
-      console.warn('[open-houses-sync] OH-alert last-run stamp failed', stampErr)
-    }
     return {
       ok: false,
       window,
@@ -145,14 +122,6 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
       pruned: 0,
       durationMs: Date.now() - t0,
       error: message,
-      savedSearchAlerts: {
-        kind: 'open_house',
-        checked: 0,
-        sent: 0,
-        listings: 0,
-        ok: false,
-        error: `open-houses pull failed — ${message}`,
-      },
     }
   }
 
@@ -189,48 +158,15 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
     console.warn('[open-houses-sync] week cache rebuild failed', err)
   }
 
-  let savedSearchAlerts: OpenHouseSyncResult['savedSearchAlerts'] = null
   try {
-    const { processDueSavedSearchAlerts } = await import(
-      '@/lib/saved-search-alerts'
-    )
-    const alerts = await processDueSavedSearchAlerts({
-      kind: 'open_house',
-      source: 'open-houses',
-    })
-    savedSearchAlerts = {
-      kind: 'open_house',
-      checked: alerts.checked,
-      sent: alerts.sent,
-      listings: alerts.listings,
-      ok: alerts.ok,
-      error: alerts.error,
-    }
+    const {
+      markOpenHouseAlertsDirty,
+      enqueueAlertsJob,
+    } = await import('@/lib/saved-search-alert-dirty')
+    await markOpenHouseAlertsDirty()
+    await enqueueAlertsJob({ trigger: 'open-houses-dirty' })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.warn('[open-houses-sync] saved-search alerts failed', err)
-    savedSearchAlerts = {
-      kind: 'open_house',
-      checked: 0,
-      sent: 0,
-      listings: 0,
-      ok: false,
-      error: message,
-    }
-    try {
-      const { recordAlertJobLastRun } = await import('@/lib/saved-search-alerts')
-      await recordAlertJobLastRun({
-        kind: 'open_house',
-        source: 'open-houses',
-        checked: 0,
-        sent: 0,
-        listings: 0,
-        ok: false,
-        error: message,
-      })
-    } catch (stampErr) {
-      console.warn('[open-houses-sync] OH-alert last-run stamp failed', stampErr)
-    }
+    console.warn('[open-houses-sync] alerts dirty stamp failed', err)
   }
 
   return {
@@ -245,6 +181,5 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
     lookbackIncomplete,
     pruned,
     durationMs: Date.now() - t0,
-    savedSearchAlerts,
   }
 }

@@ -891,12 +891,34 @@ async function markDelivered(
   )
 }
 
-async function deliverKindAlert(
+function mergeAlertMatches(
+  listings: SavedSearchMatchListing[],
+  openHouses: SavedSearchMatchListing[],
+): SavedSearchMatchListing[] {
+  const byId = new Map<string, SavedSearchMatchListing>()
+  for (const row of listings) byId.set(row.id, row)
+  for (const row of openHouses) {
+    const existing = byId.get(row.id)
+    if (!existing) {
+      byId.set(row.id, row)
+      continue
+    }
+    byId.set(row.id, {
+      ...existing,
+      matchKind: 'open_house',
+      openHouseWhen: row.openHouseWhen ?? existing.openHouseWhen,
+    })
+  }
+  return [...byId.values()]
+}
+
+async function deliverCombinedAlert(
   alert: SavedSearchAlert,
-  matches: SavedSearchMatchListing[],
-  kind: AlertJobKind,
+  listingMatches: SavedSearchMatchListing[],
+  openHouseMatches: SavedSearchMatchListing[],
 ): Promise<number> {
-  if (!alert.email || matches.length === 0) return 0
+  const listings = mergeAlertMatches(listingMatches, openHouseMatches)
+  if (!alert.email || listings.length === 0) return 0
   const ok = await notifySavedSearchByEmail({
     to: alert.email,
     criteriaLabel: alert.criteriaLabel,
@@ -904,11 +926,16 @@ async function deliverKindAlert(
     searchHref: absoluteUrl(
       intelligenceSearchHrefFromCriteria(alert.criteria),
     ),
-    listings: matches,
+    listings,
   })
   if (!ok) return 0
-  await markDelivered(alert.id, matches, 'email', kind)
-  return matches.length
+  if (listingMatches.length > 0) {
+    await markDelivered(alert.id, listingMatches, 'email', 'listing')
+  }
+  if (openHouseMatches.length > 0) {
+    await markDelivered(alert.id, openHouseMatches, 'email', 'open_house')
+  }
+  return listings.length
 }
 
 function parseAlertJobLastRun(raw: unknown): AlertJobLastRun | null {
@@ -916,8 +943,7 @@ function parseAlertJobLastRun(raw: unknown): AlertJobLastRun | null {
   const row = raw as Partial<AlertJobLastRun>
   if (row.kind !== 'listing' && row.kind !== 'open_house') return null
   if (
-    row.source !== 'incremental' &&
-    row.source !== 'open-houses' &&
+    row.source !== 'alerts' &&
     row.source !== 'admin'
   ) {
     return null
@@ -990,74 +1016,203 @@ export async function getAlertJobLastRuns(): Promise<AlertJobLastRuns> {
   }
 }
 
+export type SavedSearchAlertJobResult = {
+  skipped: boolean
+  reason?: string
+  listing: SavedSearchAlertProcessResult | null
+  openHouse: SavedSearchAlertProcessResult | null
+  sent: number
+  listings: number
+  ok: boolean
+}
+
+function emptyKindResult(
+  kind: AlertJobKind,
+  source: AlertJobSource,
+): SavedSearchAlertProcessResult {
+  return { kind, source, checked: 0, sent: 0, listings: 0, ok: true }
+}
+
 /**
- * Process one doorbell only.
- * - Incremental must pass `kind: 'listing'`
- * - Open-houses sync must pass `kind: 'open_house'`
- * - Admin Process now picks one kind (or calls this twice)
- *
- * These are not backups for each other. A listing signup is mailed from
- * Incremental; an OH signup is mailed from the OH job.
+ * Railway alerts job — two matchers, one mailer.
+ * Incremental / OH only set dirty; this job sends.
+ * A visitor signed up for both gets one email (same listing + OH = one row).
  */
-export async function processDueSavedSearchAlerts(opts: {
-  kind: AlertJobKind
-  source: AlertJobSource
-  /** Ignore cadence clocks — still dedupes per listing and uses last notify as since. */
+export async function runSavedSearchAlertJob(opts?: {
   force?: boolean
-}): Promise<SavedSearchAlertProcessResult> {
-  const { kind, source } = opts
-  const force = opts.force === true
-  const result: SavedSearchAlertProcessResult = {
-    kind,
-    source,
-    checked: 0,
-    sent: 0,
-    listings: 0,
-    ok: true,
+  kinds?: AlertJobKind[]
+  source?: AlertJobSource
+  /** 15m Railway sweep — process daily/weekly even when Incremental/OH are clean. */
+  scheduled?: boolean
+}): Promise<SavedSearchAlertJobResult> {
+  const force = opts?.force === true
+  const scheduled = opts?.scheduled === true
+  const source: AlertJobSource = opts?.source ?? 'alerts'
+  const {
+    readAlertDirtyState,
+    clearListingAlertsDirty,
+    clearOpenHouseAlertsDirty,
+  } = await import('@/lib/saved-search-alert-dirty')
+  const dirty = await readAlertDirtyState()
+
+  const requested = new Set<AlertJobKind>(
+    opts?.kinds?.length ? opts.kinds : ['listing', 'open_house'],
+  )
+  const runListing =
+    requested.has('listing') &&
+    (force || scheduled || Boolean(dirty.listing))
+  const runOpenHouse =
+    requested.has('open_house') &&
+    (force || scheduled || Boolean(dirty.openHouse))
+
+  if (!runListing && !runOpenHouse) {
+    return {
+      skipped: true,
+      reason: 'not dirty',
+      listing: null,
+      openHouse: null,
+      sent: 0,
+      listings: 0,
+      ok: true,
+    }
   }
+
+  const listing = runListing ? emptyKindResult('listing', source) : null
+  const openHouse = runOpenHouse ? emptyKindResult('open_house', source) : null
 
   try {
     await ensureSavedSearchAlertTables()
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.warn('[saved-search-alerts] ensure tables failed', err)
-    result.ok = false
-    result.error = err instanceof Error ? err.message : String(err)
-    await recordAlertJobLastRun(result)
-    return result
+    if (listing) {
+      listing.ok = false
+      listing.error = message
+      await recordAlertJobLastRun(listing)
+    }
+    if (openHouse) {
+      openHouse.ok = false
+      openHouse.error = message
+      await recordAlertJobLastRun(openHouse)
+    }
+    return {
+      skipped: false,
+      listing,
+      openHouse,
+      sent: 0,
+      listings: 0,
+      ok: false,
+    }
   }
 
-  const alerts = (await loadActiveAlerts()).filter((alert) =>
-    kind === 'listing'
-      ? criteriaWantsListingAlerts(alert.criteria)
-      : criteriaWantsOpenHouseAlerts(alert.criteria),
-  )
-  result.checked = alerts.length
+  const alerts = await loadActiveAlerts()
+  if (listing) {
+    listing.checked = alerts.filter((a) =>
+      criteriaWantsListingAlerts(a.criteria),
+    ).length
+  }
+  if (openHouse) {
+    openHouse.checked = alerts.filter((a) =>
+      criteriaWantsOpenHouseAlerts(a.criteria),
+    ).length
+  }
+
+  let listingPendingCadence = false
+  let openHousePendingCadence = false
+  let sent = 0
+  let listingCount = 0
 
   for (const alert of alerts) {
     try {
-      if (!isCadenceDue(alert, force, kind)) continue
+      const wantsListing = criteriaWantsListingAlerts(alert.criteria)
+      const wantsOpenHouse = criteriaWantsOpenHouseAlerts(alert.criteria)
+      let listingMatches: SavedSearchMatchListing[] = []
+      let openHouseMatches: SavedSearchMatchListing[] = []
 
-      const since =
-        lastNotifiedForKind(alert, kind) ||
-        alert.createdAt ||
-        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      const matches =
-        kind === 'listing'
-          ? await findMatchingNewListings(alert, since)
-          : await findMatchingOpenHouseListings(alert)
-      if (matches.length === 0) continue
-      const n = await deliverKindAlert(alert, matches, kind)
+      if (runListing && wantsListing) {
+        if (isCadenceDue(alert, force, 'listing')) {
+          const since =
+            lastNotifiedForKind(alert, 'listing') ||
+            alert.createdAt ||
+            new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+          listingMatches = await findMatchingNewListings(alert, since)
+        } else if (alert.cadence !== 'immediate') {
+          listingPendingCadence = true
+        }
+      }
+      if (runOpenHouse && wantsOpenHouse) {
+        if (isCadenceDue(alert, force, 'open_house')) {
+          openHouseMatches = await findMatchingOpenHouseListings(alert)
+        } else if (alert.cadence !== 'immediate') {
+          openHousePendingCadence = true
+        }
+      }
+      if (listingMatches.length === 0 && openHouseMatches.length === 0) continue
+      const n = await deliverCombinedAlert(
+        alert,
+        listingMatches,
+        openHouseMatches,
+      )
       if (n > 0) {
-        result.sent += 1
-        result.listings += n
+        sent += 1
+        listingCount += n
+        if (listing && listingMatches.length > 0) {
+          listing.sent += 1
+          listing.listings += listingMatches.length
+        }
+        if (openHouse && openHouseMatches.length > 0) {
+          openHouse.sent += 1
+          openHouse.listings += openHouseMatches.length
+        }
       }
     } catch (err) {
       console.warn('[saved-search-alerts] process alert failed', alert.id, err)
     }
   }
 
-  await recordAlertJobLastRun(result)
-  return result
+  if (listing) await recordAlertJobLastRun(listing)
+  if (openHouse) await recordAlertJobLastRun(openHouse)
+
+  if (listing?.ok && !listingPendingCadence) {
+    await clearListingAlertsDirty()
+  }
+  if (openHouse?.ok && !openHousePendingCadence) {
+    await clearOpenHouseAlertsDirty()
+  }
+
+  return {
+    skipped: false,
+    listing,
+    openHouse,
+    sent,
+    listings: listingCount,
+    ok: (listing?.ok ?? true) && (openHouse?.ok ?? true),
+  }
+}
+
+/** One-kind helper (Admin force / tests). Prefer runSavedSearchAlertJob. */
+export async function processDueSavedSearchAlerts(opts: {
+  kind: AlertJobKind
+  source: AlertJobSource
+  force?: boolean
+}): Promise<SavedSearchAlertProcessResult> {
+  const result = await runSavedSearchAlertJob({
+    force: opts.force,
+    kinds: [opts.kind],
+    source: opts.source,
+  })
+  const row = opts.kind === 'listing' ? result.listing : result.openHouse
+  return (
+    row ?? {
+      kind: opts.kind,
+      source: opts.source,
+      checked: 0,
+      sent: 0,
+      listings: 0,
+      ok: true,
+      error: result.reason,
+    }
+  )
 }
 
 /** Validate phone shape for future SMS (not used for delivery yet). */

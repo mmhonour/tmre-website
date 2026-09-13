@@ -407,7 +407,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Saved search / listing alert',
     category: 'product',
     definition:
-      'Visitor alert from unique cookie searches (tmre_search_history + Intelligence filters). Signup on /latest (new listings, optional open houses) and /open-houses (open houses, optional new listings). Listing mail is Incremental-only (Railway, after RETS). Open-house mail is the Open houses job only. These are not backups for each other — Admin → Communications → Listing alerts shows last Incremental listing run vs last OH run (stats_cache alerts:listing:last-run / alerts:open-house:last-run). Cadence clocks are last_listing_notified_at and last_open_house_notified_at. Netlify Lane 3 does not send. Daily/weekly catch up after the scheduled ET time. SMS not wired yet. Tables: saved_search_alerts + deliveries (event_kind listing | open_house). Process listing / Process OH are manual catch-up, not a silent backup.',
+      'Visitor alert from unique cookie searches. Signup on /latest (listings, optional OH) and /open-houses (OH, optional listings). Incremental and the Open houses job only write data and mark dirty. A Railway alerts job (two matchers, one mailer) sends — one email if the visitor signed up for both (same listing + showing = one row). Netlify does not send. Dirty clocks and last send: Admin → Communications → Listing alerts. Cadence: last_listing_notified_at / last_open_house_notified_at. SMS not wired yet.',
   },
 
   // —— Sync / admin ——
@@ -841,7 +841,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Side-work-only',
     category: 'sync-admin',
     definition:
-      'A worker run that skips RETS entirely and does just the warm and digest half: latest town feeds, intelligence deal board, stats cache, spotlight statuses, saved-search alerts. Queued as `sideWorkOnly: true` on `/.netlify/functions/sync-listings-worker`. Two callers use it — Netlify’s thin cron after a lean in-process pull, and Railway mls-sync handing warm back to Netlify once its Neon write is done. If that handoff fails (missing NEXT_PUBLIC_SITE_URL / SYNC_CRON_SECRET on Railway, or a password gate), nothing breaks permanently: boards rebuild on the next stale read and digests catch up on the following run. Look for a `warm-handoff` step in the incremental step log to see which way it went. See postHooks, Railway mls-sync.',
+      'A worker run that skips RETS entirely and does just the warm half: latest town feeds, intelligence deal board, stats cache, spotlight statuses. Queued as `sideWorkOnly: true` on `/.netlify/functions/sync-listings-worker`. Two callers use it — Netlify’s thin cron after a lean in-process pull, and Railway mls-sync handing warm back to Netlify once its Neon write is done. Does not send listing or OH alert email. If that handoff fails (missing NEXT_PUBLIC_SITE_URL / SYNC_CRON_SECRET on Railway, or a password gate), nothing breaks permanently: boards rebuild on the next stale read. Look for a `warm-handoff` step in the incremental step log to see which way it went. See postHooks, Railway mls-sync.',
   },
   {
     term: 'MLS_SYNC_SERVICE_URL',

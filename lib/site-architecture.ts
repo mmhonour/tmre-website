@@ -69,7 +69,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Next.js host, serverless functions, crons, Blobs",
     kind: "core",
     note:
-      "Lane 3: site-cache warm + digests (sideWorkOnly after Railway handoff). Thin crons enqueue runner jobs onto sync_queue rather than pulling RETS themselves, and only rescue a stranded row when the Railway runner heartbeat is stale. DNS for the domain is the sibling Netlify DNS node.",
+      "Lane 3: site-cache warm only (sideWorkOnly after Railway handoff) — not email. Thin crons enqueue runner jobs onto sync_queue rather than pulling RETS themselves, and only rescue a stranded row when the Railway runner heartbeat is stale. DNS for the domain is the sibling Netlify DNS node.",
   },
   {
     id: "railway",

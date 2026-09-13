@@ -89,6 +89,7 @@ function overdueJobPauseKey(job: OverdueSyncJob): ScheduledSyncJobId | null {
     case 'cama-tax':
     case 'street-listings':
     case 'db-size':
+    case 'alerts':
       return job
     case 'publish-snapshot':
       return null

@@ -1,5 +1,5 @@
 export type AlertJobKind = 'listing' | 'open_house'
-export type AlertJobSource = 'incremental' | 'open-houses' | 'admin'
+export type AlertJobSource = 'alerts' | 'admin'
 
 /** stats_cache keys — survive the hourly market-stats rebuild. */
 export const ALERT_JOB_LAST_RUN_KEYS = {
@@ -38,7 +38,6 @@ export function alertJobKindLabel(kind: AlertJobKind): string {
 }
 
 export function alertJobSourceLabel(source: AlertJobSource): string {
-  if (source === 'incremental') return 'Incremental (Railway)'
-  if (source === 'open-houses') return 'Open houses (Railway)'
+  if (source === 'alerts') return 'Alerts (Railway)'
   return 'Admin Process now'
 }
