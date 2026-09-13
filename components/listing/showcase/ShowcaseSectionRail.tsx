@@ -487,7 +487,7 @@ export default function ShowcaseSectionRail({
   const pulseCard =
     overlay === "pulse" ? (
       <CardChrome title="Town pulse" onCollapse={() => setOverlay(null)}>
-        <div className="w-full overflow-hidden bg-[#0d1424] p-4">
+        <div className="w-full overflow-x-hidden overflow-y-hidden bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={townHint ?? ""} expanded />
         </div>
       </CardChrome>
@@ -662,13 +662,21 @@ export default function ShowcaseSectionRail({
             : "right-0"
         }`}
       >
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
-          {aboveIcons}
-        </div>
-        <div className="h-14 shrink-0" aria-hidden />
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
-          {belowIcons}
-        </div>
+        {overlay === "pulse" || overlay === "details" ? (
+          <div className="pointer-events-auto mt-auto flex w-full flex-col items-end overflow-x-hidden overflow-y-hidden pb-3">
+            {overlay === "pulse" ? pulseCard : detailsCard}
+          </div>
+        ) : (
+          <>
+            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
+              {aboveIcons}
+            </div>
+            <div className="h-14 shrink-0" aria-hidden />
+            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
+              {belowIcons}
+            </div>
+          </>
+        )}
       </div>
     </>
   );

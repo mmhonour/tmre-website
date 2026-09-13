@@ -97,6 +97,7 @@ function DemoControl({
 function SymbolRailDemo() {
   const [revealed, setRevealed] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [pulseOpen, setPulseOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"full" | "other">("full");
   const [labelsMax, setLabelsMax] = useState(false);
@@ -278,6 +279,29 @@ function SymbolRailDemo() {
               )}
             </div>
           </div>
+        ) : pulseOpen ? (
+          <div className="w-full max-w-sm overflow-x-hidden overflow-y-hidden bg-[#0d1424]">
+            <div className={`${railRow} w-full bg-[#0d1424]`}>
+              <span className="flex-1">Town pulse</span>
+              <button
+                type="button"
+                data-testid="preview-pulse-hide"
+                onClick={() => setPulseOpen(false)}
+                aria-label="Hide Town pulse"
+                className="ml-2 px-1 font-mono text-white/70"
+              >
+                ↑
+              </button>
+            </div>
+            <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+              <li>Inventory 42</li>
+              <li>Months supply 3.1 mo</li>
+              <li>Avg DOM 28d</li>
+              <li>Closed 21 · 12 mos</li>
+              <li>Median $1.85M</li>
+              <li>No scrollbar on this card</li>
+            </ul>
+          </div>
         ) : (
           <>
             <DemoControl
@@ -291,6 +315,8 @@ function SymbolRailDemo() {
               label="Pulse"
               glyph={<PulseGlyph />}
               showLabel={labelsMax}
+              testId="preview-pulse-open"
+              onClick={() => setPulseOpen(true)}
             />
             <DemoControl label="Map" glyph={<MapGlyph />} showLabel={labelsMax} />
           </>
