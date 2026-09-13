@@ -7,8 +7,12 @@
 export const MAP_TILE_SIZE = 256
 export const MAP_MIN_ZOOM = 9
 export const MAP_MAX_ZOOM = 17
+/** Esri World Light Gray Base stops at 16 — closer zoom scales these tiles. */
+export const MAP_LIGHT_TILE_MAX_ZOOM = 16
 export const MAP_FALLBACK_CENTER = { lat: 41.141, lon: -73.3579 }
 export const MAP_FALLBACK_ZOOM = 11
+
+export type MapTileStyle = 'osm' | 'light'
 
 export type MapLonLat = { lat: number; lon: number }
 export type MapRing = [number, number][]
@@ -19,8 +23,19 @@ export type MapGeoBounds = {
   maxLon: number
 }
 
-export function mapTileUrl(z: number, x: number, y: number): string {
+export function mapTileUrl(
+  z: number,
+  x: number,
+  y: number,
+  style: MapTileStyle = 'osm',
+): string {
+  if (style === 'light') return `/api/map/tile/light/${z}/${x}/${y}`
   return `/api/map/tile/${z}/${x}/${y}`
+}
+
+/** Esri Canvas Light Gray — streets without amenity icons. Path is z/y/x. */
+export function esriLightGrayTileUrl(z: number, x: number, y: number): string {
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/${z}/${y}/${x}`
 }
 
 export function worldSize(zoom: number): number {
