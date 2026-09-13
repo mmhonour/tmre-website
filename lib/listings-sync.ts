@@ -455,6 +455,26 @@ export async function syncIncrementalListings(
       'rets-done',
       `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) everyTownSucceeded=${everyTownSucceeded}`,
     )
+    // Alerts must run in this process, before post-hooks and before the step
+    // log closes. They used to sit after finishIncrementalStepLog in the
+    // Railway/Netlify wrapper — Incremental looked done, then the child died
+    // or stats warm ate the budget, and no mail went out.
+    try {
+      const { processDueSavedSearchAlerts } = await import(
+        '@/lib/saved-search-alerts'
+      )
+      const alerts = await processDueSavedSearchAlerts()
+      await appendIncrementalStep(
+        'saved-search-alerts',
+        `checked=${alerts.checked} sent=${alerts.sent} listings=${alerts.listings}`,
+      )
+    } catch (err) {
+      console.warn('[listings-sync/incremental] saved-search alerts failed', err)
+      await appendIncrementalStep(
+        'saved-search-alerts',
+        `failed — ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
     if (everyTownSucceeded && postHooks) {
       await stampIncrementalSyncLive({
         phase: 'post-hooks',

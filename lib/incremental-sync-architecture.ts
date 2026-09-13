@@ -167,7 +167,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'railway',
         title: 'Warm handoff',
         detail:
-          'After Neon upserts: processDueSavedSearchAlerts() on Railway (listing and open-house emails must not wait on the hop), then queue Netlify sync-listings-worker with sideWorkOnly + source=railway. Handoff is non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
+          'After Neon upserts: processDueSavedSearchAlerts() in the same Incremental process (step saved-search-alerts, before post-hooks and before the step log closes). Then queue Netlify sync-listings-worker with sideWorkOnly + source=railway. Handoff is non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
       },
       {
         id: 'thin-cron',

@@ -559,7 +559,10 @@ function appendListingCriteria(
  * Find Active listings matching criteria that look "new" since `sinceIso`
  * and have not already been delivered as a listing match for this alert.
  *
- * "New" = list_date after since, OR DOM ≤ 7 with modification after since.
+ * "New" = list_date on or after the ET calendar day of `since` (deliveries
+ * skip homes already mailed), OR DOM ≤ 7 with modification after since.
+ * Comparing `list_date > last_notified` misses the same ET day — a listing
+ * dated midnight is not after a 9am stamp.
  */
 export async function findMatchingNewListings(
   alert: SavedSearchAlert,
@@ -571,7 +574,9 @@ export async function findMatchingNewListings(
   const conditions: string[] = [
     `l.status_bucket = 'Active'`,
     `(
-       (l.list_date IS NOT NULL AND l.list_date > $2::timestamptz)
+       (l.list_date IS NOT NULL
+         AND (l.list_date AT TIME ZONE 'America/New_York')::date
+           >= ($2::timestamptz AT TIME ZONE 'America/New_York')::date)
        OR (
          l.dom IS NOT NULL AND l.dom <= 7
          AND l.modification_timestamp IS NOT NULL
