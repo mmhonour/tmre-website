@@ -415,7 +415,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Browser cookies (Admin)',
     category: 'sync-admin',
     definition:
-      'Admin → Cookies (top-level tab). Live jar for this browser + Show catalog lists every known cookie purpose from lib/browser-cookies-catalog.ts even when absent. Pref cookies (Intelligence/Stats/OH/NC/etc.) are written by lib/client-prefs.ts (~1 year, Path=/, SameSite=Lax). HttpOnly: tmre_site_pass (Admin unlock), tmre_vid (anonymous visitor id), tmre_user_session (magic-link). Same tab also documents sessionStorage/localStorage keys that are not cookies (e.g. tmre_latest_view for Latest Back restore, listing-return-nav). Clear all / Delete act on this browser only; clearing unlock logs you out. Catalog purposes must be updated when new writeClientPref keys ship.',
+      'Admin → Cookies (top-level tab). Live jar for this browser + Show catalog lists every known cookie purpose from lib/browser-cookies-catalog.ts even when absent. Pref cookies (Intelligence/Stats/OH/NC/Latest/etc.) are written by lib/client-prefs.ts (~1 year, Path=/, SameSite=Lax). HttpOnly: tmre_site_pass (Admin unlock), tmre_vid (anonymous visitor id), tmre_user_session (magic-link). Same tab also documents sessionStorage/localStorage keys that are not cookies (e.g. listing-return-nav). Clear all / Delete act on this browser only; clearing unlock logs you out. Catalog purposes must be updated when new writeClientPref keys ship.',
   },
   {
     term: 'Client prefs (cookies)',

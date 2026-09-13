@@ -1,6 +1,7 @@
+import { readClientPref, writeClientPref } from "@/lib/client-prefs";
 import { isTmreTown, normalizeZip } from "@/lib/tmre-towns";
 
-/** Session-only: restore /latest view after listing Back (or soft remount). */
+/** Cookie + leftover sessionStorage key (migrated on read). */
 export const LATEST_VIEW_STORAGE_KEY = "tmre_latest_view";
 
 const LATEST_STATUSES = [
@@ -40,14 +41,16 @@ function isLatestStatus(value: unknown): value is LatestStatus {
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  return value.filter(
+    (item): item is string => typeof item === "string" && item.length > 0,
+  );
 }
 
-export function readLatestViewState(): LatestViewState | null {
-  if (typeof window === "undefined") return null;
+export function parseLatestViewState(
+  raw: string | null | undefined,
+): LatestViewState | null {
+  if (!raw) return null;
   try {
-    const raw = sessionStorage.getItem(LATEST_VIEW_STORAGE_KEY);
-    if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<LatestViewState>;
     const selectedTown =
       typeof parsed.selectedTown === "string" && isTmreTown(parsed.selectedTown)
@@ -58,7 +61,10 @@ export function readLatestViewState(): LatestViewState | null {
         ? normalizeZip(parsed.selectedZip)
         : null;
     const groupStatusFilter: Partial<Record<string, LatestStatus>> = {};
-    if (parsed.groupStatusFilter && typeof parsed.groupStatusFilter === "object") {
+    if (
+      parsed.groupStatusFilter &&
+      typeof parsed.groupStatusFilter === "object"
+    ) {
       for (const [label, status] of Object.entries(parsed.groupStatusFilter)) {
         if (label && isLatestStatus(status)) groupStatusFilter[label] = status;
       }
@@ -84,13 +90,26 @@ export function readLatestViewState(): LatestViewState | null {
   }
 }
 
+export function readLatestViewState(): LatestViewState | null {
+  if (typeof window === "undefined") return null;
+  const fromCookie = parseLatestViewState(
+    readClientPref(LATEST_VIEW_STORAGE_KEY),
+  );
+  if (fromCookie) return fromCookie;
+  try {
+    const migrated = parseLatestViewState(
+      sessionStorage.getItem(LATEST_VIEW_STORAGE_KEY),
+    );
+    if (migrated) writeLatestViewState(migrated);
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
 export function writeLatestViewState(state: LatestViewState): void {
   if (typeof window === "undefined") return;
-  try {
-    sessionStorage.setItem(LATEST_VIEW_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    /* private mode / quota */
-  }
+  writeClientPref(LATEST_VIEW_STORAGE_KEY, JSON.stringify(state));
 }
 
 export function patchLatestViewScrollY(scrollY: number): void {

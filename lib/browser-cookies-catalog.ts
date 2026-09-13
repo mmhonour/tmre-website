@@ -14,6 +14,7 @@ export type CookieCategory =
   | "fixer"
   | "deal-of-the-day"
   | "listing"
+  | "latest"
   | "alerts"
   | "legacy";
 
@@ -195,6 +196,11 @@ export const KNOWN_SITE_COOKIES: Record<string, KnownCookieInfo> = {
     "open-houses",
   ),
 
+  tmre_latest_view: pref(
+    "Latest — By town or By day, selected town/zip, open groups, scroll",
+    "latest",
+  ),
+
   tmre_nc_status: pref("New construction — status filter", "new-construction"),
   tmre_nc_town: pref("New construction — town filter", "new-construction"),
   tmre_nc_tx: pref("New construction — sale / rental", "new-construction"),
@@ -246,6 +252,7 @@ export const COOKIE_CATEGORY_LABELS: Record<CookieCategory, string> = {
   fixer: "Fixer-uppers",
   "deal-of-the-day": "Deal of the Day",
   listing: "Listing / What If",
+  latest: "Latest",
   alerts: "Listing alerts",
   legacy: "Legacy",
 };
@@ -261,13 +268,6 @@ export type KnownBrowserStorageInfo = {
 };
 
 export const KNOWN_BROWSER_STORAGE: readonly KnownBrowserStorageInfo[] = [
-  {
-    key: "tmre_latest_view",
-    kind: "sessionStorage",
-    purpose:
-      "Latest — group-by-town/zip, selected town/zip, collapsed/expanded groups, status pills, scrollY (restored after listing Back; skipped on hard refresh; cleared when the tab closes)",
-    category: "Latest",
-  },
   {
     key: "listing-return-nav",
     kind: "sessionStorage",

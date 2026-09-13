@@ -9,7 +9,9 @@ import LatestTownMapHover from "@/components/latest/LatestTownMapHover";
 import LatestZipMapHover from "@/components/latest/LatestZipMapHover";
 import { normalizeTownName, zipAreaNickname } from "@/lib/tmre-towns";
 import { mlsTimestampMs } from "@/lib/mls-time";
+import { useCurrentReturnPath } from "@/components/listing/ListingReturnLink";
 import { listingDetailHref } from "@/lib/listing-url";
+import { appendReturnToHref } from "@/lib/listing-return-nav";
 import type { ClosedTownStat } from "@/lib/closed-shared";
 import type { TownUpdateStat, ZipUpdateStat } from "@/lib/latest-listings";
 
@@ -64,10 +66,18 @@ function LatestTownSidePanel({
   countNounPlural: string;
   latestCaption: string;
 }) {
+  const returnPath = useCurrentReturnPath();
   const label = normalizeTownName(row.town);
   const latestLabel = formatLatest(row.latestUpdate);
   const latestHref = row.latestListingId
-    ? listingDetailHref(row.latestListingId, row.latestListingAddress, row.town)
+    ? appendReturnToHref(
+        listingDetailHref(
+          row.latestListingId,
+          row.latestListingAddress,
+          row.town,
+        ),
+        returnPath,
+      )
     : null;
   const [expanded, setExpanded] = useState(selected);
 
