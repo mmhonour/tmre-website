@@ -76,4 +76,71 @@ describe('glomSyncHistoryRuns standalone job audits', () => {
     assert.match(glommed[2]?.error ?? '', /1,596\/1,732/)
     assert.ok((glommed[2]?.durationMs ?? 0) < 15 * 60 * 1000)
   })
+
+  it('does not glue two Incremental pulls into one 4pm–10am line', () => {
+    const rows: SyncHistoryRawRow[] = [
+      {
+        id: 10,
+        startedAt: '2026-09-12T20:00:51.000Z',
+        finishedAt: '2026-09-12T20:01:20.000Z',
+        town: 'Westport',
+        statusBucket: 'Active+Closed/incremental',
+        listingsCount: 32,
+        ok: true,
+        error: null,
+      },
+      {
+        id: 11,
+        startedAt: '2026-09-12T20:01:21.000Z',
+        finishedAt: '2026-09-12T20:02:10.000Z',
+        town: 'Norwalk',
+        statusBucket: 'Active+Closed/incremental',
+        listingsCount: 79,
+        ok: true,
+        error: null,
+      },
+      {
+        id: 12,
+        startedAt: '2026-09-12T20:10:00.000Z',
+        finishedAt: '2026-09-12T20:12:00.000Z',
+        town: 'Westport',
+        statusBucket: 'Done/vision',
+        listingsCount: 40,
+        ok: true,
+        error: 'Westport: 10,516 vision rows',
+      },
+      {
+        id: 13,
+        startedAt: '2026-09-14T14:00:22.000Z',
+        finishedAt: '2026-09-14T14:02:25.000Z',
+        town: 'Westport',
+        statusBucket: 'Active+Closed/incremental',
+        listingsCount: 28,
+        ok: true,
+        error: null,
+      },
+      {
+        id: 14,
+        startedAt: '2026-09-14T14:02:26.000Z',
+        finishedAt: '2026-09-14T14:03:10.000Z',
+        town: 'Norwalk',
+        statusBucket: 'Active+Closed/incremental',
+        listingsCount: 61,
+        ok: true,
+        error: null,
+      },
+    ]
+    const glommed = glomSyncHistoryRuns(rows)
+    const incremental = glommed.filter(
+      (r) => r.syncType === 'Incremental' && r.bucket === 'Active+Closed',
+    )
+    assert.equal(incremental.length, 2)
+    assert.equal(incremental[1]?.startedAt, '2026-09-12T20:00:51.000Z')
+    assert.equal(incremental[1]?.finishedAt, '2026-09-12T20:02:10.000Z')
+    assert.ok((incremental[1]?.durationMs ?? 0) < 10 * 60 * 1000)
+    assert.equal(incremental[0]?.startedAt, '2026-09-14T14:00:22.000Z')
+    assert.equal(incremental[0]?.finishedAt, '2026-09-14T14:03:10.000Z')
+    assert.match(incremental[1]?.townsLabel ?? '', /Norwalk \(79\)/)
+    assert.match(incremental[0]?.townsLabel ?? '', /Norwalk \(61\)/)
+  })
 })
