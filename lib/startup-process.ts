@@ -263,6 +263,15 @@ export function describeStartupProcess(): {
           statusLabel: latestSyncEnabled ? "Netlify warm" : "—",
         },
         {
+          id: "incremental-photo-warm",
+          title: "New-listing showcase photo warm (Lane 3)",
+          timing: "Netlify sideWorkOnly after handoff",
+          detail:
+            "Incremental upserts write new MLS ids to incremental_photo_warm_queue (ids only — no Media fetch on Railway). Lane 3 drains up to 12 listings per hop and pulls the first six full-size MediaURL photos, the same fetch opening the showcase would. Leftovers wait for the next hop. A cache miss still falls back to ?fetch=1.",
+          status: latestSyncEnabled ? "scheduled" : "skipped",
+          statusLabel: latestSyncEnabled ? "Netlify warm" : "—",
+        },
+        {
           id: "incremental-intel-board",
           title: "Intelligence deal-board warm (Lane 3)",
           timing: "Netlify sideWorkOnly after handoff",

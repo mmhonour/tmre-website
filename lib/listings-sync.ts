@@ -55,6 +55,8 @@ export type TownSyncResult = {
   inserted?: number
   /** Existing rows overwritten (incremental path). */
   updated?: number
+  /** MLS ids inserted this town — queued for Lane 3 photo warm. */
+  insertedIds?: string[]
   ok: boolean
   error?: string
   durationMs: number
@@ -219,6 +221,10 @@ export async function syncTownListingsIncremental(
       ...marketUpsert.priceChangedIds,
       ...closedUpsert.priceChangedIds,
     ]
+    const insertedIds = [
+      ...marketUpsert.insertedIds,
+      ...closedUpsert.insertedIds,
+    ]
 
     // The stats cache rebuilds off these marks instead of an hourly TTL.
     if (statsChanged > 0) {
@@ -256,6 +262,7 @@ export async function syncTownListingsIncremental(
       count,
       inserted,
       updated,
+      insertedIds,
       ok: true,
       durationMs: Date.now() - t0,
     }
@@ -455,6 +462,25 @@ export async function syncIncrementalListings(
       'rets-done',
       `${totalUpserted} upserts (${totalInserted} new, ${totalUpdated} updated) everyTownSucceeded=${everyTownSucceeded}`,
     )
+    const newListingIds = towns.flatMap((row) => row.insertedIds ?? [])
+    if (newListingIds.length > 0) {
+      try {
+        const { enqueueIncrementalPhotoWarm } = await import(
+          '@/lib/incremental-photo-warm'
+        )
+        const queued = await enqueueIncrementalPhotoWarm(newListingIds)
+        await appendIncrementalStep(
+          'photo-warm-queue',
+          `${newListingIds.length} new listings → ${queued} on Lane 3 queue`,
+        )
+      } catch (err) {
+        console.warn('[listings-sync/incremental] photo warm queue failed', err)
+        await appendIncrementalStep(
+          'photo-warm-queue',
+          `failed — ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
     // Data write is done. Mark listing alerts dirty and ring the Railway
     // alerts job — Incremental does not send mail.
     try {
@@ -536,6 +562,22 @@ export async function syncIncrementalListings(
         }
       }
       await appendIncrementalStep('post-hooks-end')
+      try {
+        const { drainIncrementalPhotoWarm } = await import(
+          '@/lib/incremental-photo-warm'
+        )
+        const photoWarm = await drainIncrementalPhotoWarm()
+        await appendIncrementalStep(
+          'photo-warm-drain',
+          `${photoWarm.warmed}/${photoWarm.attempted} listings (${photoWarm.remaining} left)`,
+        )
+      } catch (err) {
+        console.warn('[listings-sync/incremental] photo warm drain failed', err)
+        await appendIncrementalStep(
+          'photo-warm-drain',
+          `failed — ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
     } else if (!postHooks) {
       await appendIncrementalStep('post-hooks-skip', 'postHooks=false')
     }

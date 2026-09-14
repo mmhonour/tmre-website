@@ -13,6 +13,8 @@ import type { Listing } from '@/lib/rets'
 
 const DEFAULT_CONCURRENCY = 2
 const PHOTO_FETCH_DELAY_MS = 40
+/** Same window as opening the listing showcase (`warmListingPhotos` hero deck). */
+const SHOWCASE_HERO_MAX_INDEX = 5
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -41,6 +43,36 @@ async function syncOneListingPhotos(listing: Listing): Promise<number> {
     })
     if (hit && !hit.cacheHit) stored += 1
     if (index + 1 < photoCount) await sleep(PHOTO_FETCH_DELAY_MS)
+  }
+
+  return stored
+}
+
+/**
+ * First six full-size MediaURL photos — the same fetch a showcase hero does
+ * on first paint (size=full), so a new incremental listing is not a 404.
+ */
+export async function warmListingShowcasePhotos(
+  listing: Listing,
+): Promise<number> {
+  const cacheId = listingPhotoCacheId(listing)
+  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), 60)
+  if (!cacheId || photoCount <= 0) return 0
+
+  const listingKey = listing.listingKey?.trim() || listing.mlsId.trim()
+  const lastIndex = Math.min(Math.max(photoCount - 1, 0), SHOWCASE_HERO_MAX_INDEX)
+  let stored = 0
+
+  for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex++) {
+    const hit = await resolveListingPhotoBuffer({
+      mlsId: cacheId,
+      listingKey,
+      photoIndex,
+      photoCountHint: photoCount,
+      quality: 'full',
+    })
+    if (hit && !hit.cacheHit) stored += 1
+    if (photoIndex < lastIndex) await sleep(PHOTO_FETCH_DELAY_MS)
   }
 
   return stored
