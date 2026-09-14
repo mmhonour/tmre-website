@@ -146,8 +146,11 @@ const SWEEPS: {
   },
   {
     jobId: 'hero-photos',
-    everyMs: 10 * 60_000,
-    bootDelayMs: 12 * 60_000,
+    // Configure is 15m. A 10-minute sweep plus a 12-minute boot delay let a
+    // due slot sit until someone pressed Sync now. Poll often; jobIsDue still
+    // owns the 15-minute grid.
+    everyMs: 2 * 60_000,
+    bootDelayMs: 2 * 60_000,
     label: 'listing photos (heroes)',
   },
 ]
