@@ -1814,6 +1814,10 @@ async function runAdminSyncActionImpl(
       // Photo bodies belong in the forked queue child, never a Netlify
       // invoke — even catch-up with executeInProcess must enqueue.
       if (isServerlessRuntime() || options.executeInProcess !== true) {
+        const { stampHeroPhotosQueuedStatus } = await import(
+          '@/lib/hero-photo-inventory-backfill'
+        )
+        const snapshot = await stampHeroPhotosQueuedStatus()
         const { queued, via } = await queueSyncNowThroughQueue(
           'hero-photos',
           async () => ({
@@ -1832,8 +1836,11 @@ async function runAdminSyncActionImpl(
           durationMs: Date.now() - t0,
           backgroundQueued: true,
           message: queued.ok
-            ? `Listing photos (heroes) queued (${via}) — Status updates when the burst finishes`
+            ? snapshot.message
             : `Listing photos queue failed: ${queued.error ?? 'unknown'}`,
+          detail: queued.ok
+            ? `Queued (${via}) — runner fills photos; this line is % missing now`
+            : undefined,
         }
       }
       const { runHeroPhotoScavengeJob } = await import(

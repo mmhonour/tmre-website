@@ -42,8 +42,12 @@ async function writeCursor(cursor: HeroInventoryCursor): Promise<void> {
   )
 }
 
-async function persistStatus(status: HeroPhotosJobStatus): Promise<void> {
+async function persistProgress(status: HeroPhotosJobStatus): Promise<void> {
   await setSyncMetaDurable(HERO_PHOTOS_STATUS_KEY, JSON.stringify(status))
+}
+
+async function persistFinished(status: HeroPhotosJobStatus): Promise<void> {
+  await persistProgress(status)
   await setSyncMetaDurable(LAST_HERO_PHOTOS_META_KEY, status.generatedAt)
 }
 
@@ -54,10 +58,11 @@ function buildStatus(input: {
   filledListings: number
   filledPhotos: number
   idle: boolean
+  running?: boolean
 }): HeroPhotosJobStatus {
   const missingPctBefore = pctMissing(input.missingBefore, input.activeWithPhotos)
   const missingPctAfter = pctMissing(input.missingAfter, input.activeWithPhotos)
-  const complete = input.missingAfter === 0
+  const complete = input.missingAfter === 0 && !input.running
   const draft: HeroPhotosJobStatus = {
     generatedAt: new Date().toISOString(),
     activeWithPhotos: input.activeWithPhotos,
@@ -68,7 +73,8 @@ function buildStatus(input: {
     filledListings: input.filledListings,
     filledPhotos: input.filledPhotos,
     complete,
-    idle: input.idle || complete,
+    idle: !input.running && (input.idle || complete),
+    running: Boolean(input.running) && !complete,
     message: '',
   }
   draft.message = formatHeroPhotosJobMessage(draft)
@@ -84,7 +90,7 @@ async function warmIds(ids: string[]): Promise<{ listings: number; photos: numbe
       if (!listing) continue
       const stored = await warmListingShowcasePhotos(listing)
       photos += stored
-      listings += 1
+      if (stored > 0) listings += 1
     } catch (err) {
       console.warn(
         `[hero-photos] ${mlsId} failed`,
@@ -111,10 +117,22 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
       filledPhotos: 0,
       idle: true,
     })
-    await persistStatus(status)
+    await persistFinished(status)
     console.info(`[hero-photos] ${status.message}`)
     return status
   }
+
+  const started = buildStatus({
+    activeWithPhotos: before.withPhotos,
+    missingBefore: before.missing,
+    missingAfter: before.missing,
+    filledListings: 0,
+    filledPhotos: 0,
+    idle: false,
+    running: true,
+  })
+  await persistProgress(started)
+  console.info(`[hero-photos] ${started.message}`)
 
   const deadline = Date.now() + HERO_SCAVENGE_BURST_MS
   let filledListings = 0
@@ -128,6 +146,17 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     const warmed = await warmIds(ids)
     filledListings += warmed.listings
     filledPhotos += warmed.photos
+    const mid = buildStatus({
+      activeWithPhotos: before.withPhotos,
+      missingBefore: before.missing,
+      missingAfter: before.missing,
+      filledListings,
+      filledPhotos,
+      idle: false,
+      running: true,
+    })
+    await persistProgress(mid)
+    console.info(`[hero-photos] ${mid.message}`)
   }
 
   const after = await countActiveShowcaseHeroCoverage()
@@ -139,8 +168,28 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     filledPhotos,
     idle: after.missing === 0,
   })
-  await persistStatus(status)
+  await persistFinished(status)
   console.info(`[hero-photos] ${status.message}`)
+  return status
+}
+
+/** Coverage snapshot so Admin Status has % before the child starts fetching. */
+export async function stampHeroPhotosQueuedStatus(): Promise<HeroPhotosJobStatus> {
+  const before = await countActiveShowcaseHeroCoverage()
+  const status = buildStatus({
+    activeWithPhotos: before.withPhotos,
+    missingBefore: before.missing,
+    missingAfter: before.missing,
+    filledListings: 0,
+    filledPhotos: 0,
+    idle: before.missing === 0,
+    running: before.missing > 0,
+  })
+  if (before.missing === 0) {
+    await persistFinished(status)
+  } else {
+    await persistProgress(status)
+  }
   return status
 }
 

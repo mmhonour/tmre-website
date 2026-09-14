@@ -25,6 +25,8 @@ export type HeroPhotosJobStatus = {
   filledPhotos: number
   complete: boolean
   idle: boolean
+  /** True while a burst is queued or in flight — board should keep polling. */
+  running?: boolean
   message: string
 }
 
@@ -34,6 +36,17 @@ export function pctMissing(missing: number, total: number): number {
 }
 
 export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string {
+  const total = status.activeWithPhotos.toLocaleString()
+  const missingN = status.missingBefore.toLocaleString()
+  if (status.running) {
+    if (status.filledListings > 0 || status.filledPhotos > 0) {
+      return (
+        `running · was ${status.missingPctBefore}% missing (${missingN}/${total})` +
+        ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos so far`
+      )
+    }
+    return `running · ${status.missingPctBefore}% missing (${missingN}/${total}) · burst starting`
+  }
   if (status.idle || status.complete) {
     if (status.filledListings > 0) {
       return (
@@ -42,10 +55,10 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
         ` · now 0% missing · 100% complete`
       )
     }
-    return `idle · 0% missing · ${status.activeWithPhotos.toLocaleString()} Active with photos · 100% complete`
+    return `idle · 0% missing · ${total} Active with photos · 100% complete`
   }
   return (
-    `was ${status.missingPctBefore}% missing (${status.missingBefore.toLocaleString()}/${status.activeWithPhotos.toLocaleString()})` +
+    `was ${status.missingPctBefore}% missing (${missingN}/${total})` +
     ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos` +
     ` · now ${status.missingPctAfter}% missing`
   )
@@ -70,6 +83,7 @@ export function parseHeroPhotosJobStatus(
       filledPhotos: Number(parsed.filledPhotos) || 0,
       complete: Boolean(parsed.complete),
       idle: Boolean(parsed.idle),
+      running: Boolean(parsed.running),
       message: parsed.message,
     }
   } catch {

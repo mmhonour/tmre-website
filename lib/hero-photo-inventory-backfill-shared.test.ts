@@ -75,6 +75,17 @@ describe("formatHeroPhotosJobMessage", () => {
     );
   });
 
+  it("shows % immediately while a burst is running", () => {
+    assert.equal(
+      formatHeroPhotosJobMessage({ ...base, running: true, filledListings: 0, filledPhotos: 0 }),
+      "running · 87% missing (1,340/1,540) · burst starting",
+    );
+    assert.equal(
+      formatHeroPhotosJobMessage({ ...base, running: true }),
+      "running · was 87% missing (1,340/1,540) · filled 40 listings / 212 photos so far",
+    );
+  });
+
   it("idles at 100% complete without a fill this run", () => {
     assert.equal(
       formatHeroPhotosJobMessage({

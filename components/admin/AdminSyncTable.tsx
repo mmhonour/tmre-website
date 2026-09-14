@@ -77,6 +77,7 @@ import {
   emptySyncQueueSnapshot,
   isSyncQueueRunnerJob,
   syncQueueBudgetRemainingMs,
+  syncQueueItemForJob,
   syncQueueOutcomeLabel,
   syncQueuePositionForJob,
   type SyncQueueSnapshot,
@@ -1732,6 +1733,8 @@ export default function AdminSyncTable({
   const [runningId, setRunningId] = useState<AdminSyncActionId | "sync-all-caches" | null>(
     null,
   );
+  /** Keep Latest sync steps open after a queue ack until the runner writes End. */
+  const [queueWatchRowId, setQueueWatchRowId] = useState<string | null>(null);
   /** Adhoc Incremental town scope — empty string = All Towns. */
   const [incrementalTownScope, setIncrementalTownScope] = useState<string>("");
   const incrementalTownScopeRef = useRef(incrementalTownScope);
@@ -1989,7 +1992,7 @@ export default function AdminSyncTable({
   // completed run (which stays until the next run finishes).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const running = runningId != null;
+    const running = runningId != null || queueWatchRowId != null;
     // Keep the previous completed run visible until the new run has a meta frame
     // (avoids an empty flash).
     const snapshot: SyncRunLogSnapshot | null =
@@ -2006,7 +2009,7 @@ export default function AdminSyncTable({
         detail: { snapshot, running },
       }),
     );
-  }, [liveLog, liveMeta, runSnapshot, runningId]);
+  }, [liveLog, liveMeta, runSnapshot, runningId, queueWatchRowId]);
 
   const hasPendingRetries = Object.keys(pendingRetries).length > 0;
 
@@ -2135,7 +2138,14 @@ export default function AdminSyncTable({
     if (liveText) {
       setDescriptions((prev) => ({ ...prev, incremental: liveText }));
     }
-  }, []);
+    const heroLine = body.heroPhotosStatus?.message?.trim();
+    if (heroLine) {
+      setDescriptions((prev) => ({ ...prev, "hero-photos": heroLine }));
+      if (!body.heroPhotosStatus?.running) {
+        persistFinalStatus("hero-photos", heroLine);
+      }
+    }
+  }, [persistFinalStatus]);
 
   // Unconditional on mount — a cached RSC payload can carry a stale
   // initialPausedJobs after Communications flipped market-digest Enabled.
@@ -2344,13 +2354,79 @@ export default function AdminSyncTable({
     return Date.now() - startedMs < HANG_THRESHOLD_MS;
   })();
 
+  const heroPhotosInFlight = (() => {
+    if (queueWatchRowId === "hero-photos") return true;
+    if (status?.heroPhotosStatus?.running) return true;
+    const item = syncQueueItemForJob(syncQueue, "hero-photos");
+    return item?.state === "queued" || item?.state === "running";
+  })();
+
   useEffect(() => {
     void refreshStatus();
     const pollMs =
-      refreshing || runningId != null || incrementalInFlight ? 5_000 : 60_000;
+      refreshing || runningId != null || incrementalInFlight || heroPhotosInFlight
+        ? 5_000
+        : 60_000;
     const id = window.setInterval(() => void refreshStatus(), pollMs);
     return () => window.clearInterval(id);
-  }, [refreshStatus, refreshing, runningId, incrementalInFlight]);
+  }, [
+    refreshStatus,
+    refreshing,
+    runningId,
+    incrementalInFlight,
+    heroPhotosInFlight,
+  ]);
+
+  useEffect(() => {
+    if (queueWatchRowId !== "hero-photos") return;
+    const started = liveMetaRef.current?.startedAt;
+    if (!started) return;
+    const startedMs = Date.parse(started);
+    if (!Number.isFinite(startedMs)) return;
+    if (Date.now() - startedMs > 15 * 60_000) {
+      appendRunLog({
+        id: `hero-photos-watch-timeout-${startedMs}`,
+        label: "Listing photos (heroes)",
+        startedAt: started,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedMs,
+        status:
+          status?.heroPhotosStatus?.message?.trim() ||
+          "timed out waiting for the runner End",
+      });
+      commitRunLog();
+      setQueueWatchRowId(null);
+      return;
+    }
+    const item = syncQueueItemForJob(syncQueue, "hero-photos");
+    if (item && (item.state === "queued" || item.state === "running")) return;
+    const msg = status?.heroPhotosStatus;
+    const generatedMs = msg?.generatedAt ? Date.parse(msg.generatedAt) : NaN;
+    const finishedThisWatch =
+      Boolean(msg?.message) &&
+      !msg?.running &&
+      Number.isFinite(generatedMs) &&
+      generatedMs >= startedMs - 2000;
+    if (!finishedThisWatch) return;
+    appendRunLog({
+      id: `hero-photos-result-${msg!.generatedAt}`,
+      label: "Listing photos (heroes)",
+      startedAt: started,
+      finishedAt: msg!.generatedAt,
+      durationMs: Math.max(0, generatedMs - startedMs),
+      status: msg!.message,
+    });
+    persistFinalStatus("hero-photos", msg!.message);
+    commitRunLog();
+    setQueueWatchRowId(null);
+  }, [
+    queueWatchRowId,
+    status?.heroPhotosStatus,
+    syncQueue,
+    appendRunLog,
+    commitRunLog,
+    persistFinalStatus,
+  ]);
 
   const drainClickQueueRef = useRef<() => void>(() => {});
 
@@ -2458,6 +2534,7 @@ export default function AdminSyncTable({
 
       let succeeded = false;
       let lastError = "Sync failed";
+      let keepHeroPhotosLogOpen = false;
 
       try {
         for (let attempt = 1; attempt <= SYNC_MAX_ATTEMPTS; attempt++) {
@@ -2542,6 +2619,10 @@ export default function AdminSyncTable({
             setStatus(body);
             setRefreshing(body.refreshing);
             const queued = Boolean(body.backgroundQueued);
+            if (queued && row.id === "hero-photos") {
+              keepHeroPhotosLogOpen = true;
+              setQueueWatchRowId("hero-photos");
+            }
             setRunTimings((prev) => ({
               ...prev,
               [row.id]: {
@@ -2619,8 +2700,11 @@ export default function AdminSyncTable({
           setErrors((prev) => ({ ...prev, [row.id]: lastError }));
         }
       } finally {
-        commitRunLog();
-        // Release the queue only after success or the final failed attempt.
+        if (!keepHeroPhotosLogOpen) {
+          commitRunLog();
+        }
+        // Release the click slot. Latest sync steps stays open when the
+        // hero-photos runner still owes an End / % line.
         finishRunningJob();
       }
     },
@@ -3739,6 +3823,14 @@ export default function AdminSyncTable({
               })();
 
               const statusText = (() => {
+                if (row.id === "hero-photos") {
+                  const line =
+                    status?.heroPhotosStatus?.message?.trim() ||
+                    descriptions[row.id] ||
+                    finalStatuses[row.id] ||
+                    statusTextFromRunLog(row, runSnapshot);
+                  return [line, queueLine].filter(Boolean).join("\n");
+                }
                 if (isWaiting) {
                   return (
                     descriptions[row.id] ??
@@ -3872,14 +3964,6 @@ export default function AdminSyncTable({
                   return [lastRun, townQueue, queueLine]
                     .filter(Boolean)
                     .join("\n");
-                }
-                if (row.id === "hero-photos") {
-                  const line =
-                    status?.heroPhotosStatus?.message?.trim() ||
-                    descriptions[row.id] ||
-                    finalStatuses[row.id] ||
-                    statusTextFromRunLog(row, runSnapshot);
-                  return [line, queueLine].filter(Boolean).join("\n");
                 }
                 const prior =
                   descriptions[row.id] ??
