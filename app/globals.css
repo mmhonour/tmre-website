@@ -980,9 +980,9 @@ html.listing-split-test body {
   background: linear-gradient(
     90deg,
     rgb(13 20 36 / 0) 0%,
-    rgb(13 20 36 / 0.5) 22%,
-    rgb(13 20 36 / 0.85) 50%,
-    rgb(13 20 36 / 0.5) 78%,
+    rgb(13 20 36 / 0.68) 22%,
+    rgb(13 20 36 / 0.94) 50%,
+    rgb(13 20 36 / 0.68) 78%,
     rgb(13 20 36 / 0) 100%
   );
 }

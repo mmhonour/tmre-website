@@ -258,13 +258,13 @@ export default function ListingShowcaseView({
           direction="prev"
           label="Previous photo"
           onClick={() => step(-1)}
-          className="absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-6"
+          className="absolute left-3 top-1/2 z-40 -translate-y-1/2 sm:left-6"
         />
         <ShowcaseStepArrow
           direction="next"
           label="Next photo"
           onClick={() => step(1)}
-          className="absolute right-3 top-1/2 z-20 -translate-y-1/2 sm:right-6"
+          className="absolute right-3 top-1/2 z-40 -translate-y-1/2 sm:right-6"
         />
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
@@ -290,7 +290,7 @@ export default function ListingShowcaseView({
 
         <div className="listing-showcase-type pointer-events-none relative z-20 flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
           <div className="mx-auto flex w-full max-w-7xl items-start">
-            <div className="min-w-0 max-w-xl flex-1">
+            <div className="min-w-0 max-w-xl flex-1 max-lg:max-w-[12rem]">
               {host.propertyTabs ? (
                 <div className="pointer-events-auto mb-3">{host.propertyTabs}</div>
               ) : null}
