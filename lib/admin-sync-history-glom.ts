@@ -151,7 +151,12 @@ export type SyncHistoryGlomRow = {
   townCount: number
 }
 
-/** Towns synced within this gap of each other count as one incremental/full batch. */
+/**
+ * Towns synced within this gap of each other count as one incremental/full
+ * batch. Dashboard job audits (Done/Failed/Queued on town `(all)`) are not
+ * merged across that window — a 15-minute hero-photos burst must keep its
+ * own Start/End, not glom into a 4-hour Done with every burst note stacked.
+ */
 const BATCH_GAP_MS = 20 * 60 * 1000
 
 const BUCKET_ORDER = [
@@ -170,6 +175,88 @@ const BUCKET_ORDER = [
 function parseMs(iso: string | null | undefined): number {
   if (!iso) return NaN
   return Date.parse(iso)
+}
+
+/** One Admin Syncs job write — not a per-town RETS chunk. */
+function isStandaloneJobAudit(run: SyncHistoryRawRow): boolean {
+  return (
+    isSyntheticAuditTown(run.town) &&
+    isSyncLifecycleBucket(normalizeSyncStatusBucket(run.statusBucket))
+  )
+}
+
+function glomTypeBucketRows(
+  rows: SyncHistoryRawRow[],
+  batchIndex: number,
+): SyncHistoryGlomRow {
+  const syncType = normalizeSyncType(rows[0]?.statusBucket)
+  const bucket = normalizeSyncStatusBucket(rows[0]?.statusBucket)
+  const startedMs = Math.min(
+    ...rows.map((r) => parseMs(r.startedAt)).filter(Number.isFinite),
+  )
+  const finishedMsList = rows
+    .map((r) => parseMs(r.finishedAt))
+    .filter((n) => Number.isFinite(n))
+  const finishedMs =
+    finishedMsList.length > 0 ? Math.max(...finishedMsList) : NaN
+  const towns = rows
+    .filter((r) => r.town)
+    .map((r) => ({ town: r.town!, count: r.listingsCount }))
+    .reduce<{ town: string; count: number }[]>((acc, row) => {
+      const existing = acc.find((t) => t.town === row.town)
+      if (existing) {
+        existing.count = Math.max(existing.count, row.count)
+        return acc
+      }
+      acc.push({ ...row })
+      return acc
+    }, [])
+    .sort((a, b) => a.town.localeCompare(b.town))
+
+  const effectiveOk = rows.every(
+    (r) => r.ok || isSyncHistorySkipMessage(r.error),
+  )
+  const failErrors = rows
+    .filter((r) => !r.ok && !isSyncHistorySkipMessage(r.error) && r.error)
+    .map((r) => `${r.town ?? '?'}: ${r.error}`)
+  const noteDetails = rows
+    .filter(
+      (r) =>
+        r.error &&
+        isSyntheticAuditTown(r.town) &&
+        (r.ok || isSyncHistorySkipMessage(r.error)),
+    )
+    .map((r) => r.error!.trim())
+    .filter(Boolean)
+  const listingsCount = towns.reduce((sum, t) => sum + t.count, 0)
+
+  return {
+    key: `batch-${batchIndex}-${syncType}-${bucket}-${rows[0]?.id ?? 0}`,
+    startedAt: Number.isFinite(startedMs)
+      ? new Date(startedMs).toISOString()
+      : rows[0]!.startedAt,
+    finishedAt: Number.isFinite(finishedMs)
+      ? new Date(finishedMs).toISOString()
+      : null,
+    syncType,
+    bucket,
+    townsLabel: formatTownCountsGlom(towns),
+    listingsCount,
+    ok: effectiveOk,
+    error:
+      failErrors.length > 0
+        ? failErrors.join('\n')
+        : noteDetails.length > 0
+          ? [...new Set(noteDetails)].join('\n')
+          : null,
+    durationMs:
+      Number.isFinite(startedMs) &&
+      Number.isFinite(finishedMs) &&
+      finishedMs >= startedMs
+        ? finishedMs - startedMs
+        : null,
+    townCount: towns.length,
+  }
 }
 
 function bucketSortKey(a: string, b: string): number {
@@ -232,75 +319,13 @@ export function glomSyncHistoryRuns(runs: SyncHistoryRawRow[]): SyncHistoryGlomR
 
     for (const key of keys) {
       const rows = byTypeBucket.get(key)!
-      const syncType = normalizeSyncType(rows[0]?.statusBucket)
-      const bucket = normalizeSyncStatusBucket(rows[0]?.statusBucket)
-      const startedMs = Math.min(...rows.map((r) => parseMs(r.startedAt)).filter(Number.isFinite))
-      const finishedMsList = rows
-        .map((r) => parseMs(r.finishedAt))
-        .filter((n) => Number.isFinite(n))
-      const finishedMs =
-        finishedMsList.length > 0 ? Math.max(...finishedMsList) : NaN
-      const towns = rows
-        .filter((r) => r.town)
-        .map((r) => ({ town: r.town!, count: r.listingsCount }))
-        // Prefer higher count if a town appears twice in the batch window
-        .reduce<{ town: string; count: number }[]>((acc, row) => {
-          const existing = acc.find((t) => t.town === row.town)
-          if (existing) {
-            existing.count = Math.max(existing.count, row.count)
-            return acc
-          }
-          acc.push({ ...row })
-          return acc
-        }, [])
-        .sort((a, b) => a.town.localeCompare(b.town))
-
-      // Intentional skips (EventBridge owns Netlify cron, not-due, paused, …)
-      // may have been stored with ok=false — treat them as non-failures for
-      // History Status / Failed filter noise.
-      const effectiveOk = rows.every(
-        (r) => r.ok || isSyncHistorySkipMessage(r.error),
-      )
-      const failErrors = rows
-        .filter((r) => !r.ok && !isSyncHistorySkipMessage(r.error) && r.error)
-        .map((r) => `${r.town ?? '?'}: ${r.error}`)
-      // Queue/worker/cron audits store the human note in `error` even when ok.
-      const noteDetails = rows
-        .filter(
-          (r) =>
-            r.error &&
-            isSyntheticAuditTown(r.town) &&
-            (r.ok || isSyncHistorySkipMessage(r.error)),
-        )
-        .map((r) => r.error!.trim())
-        .filter(Boolean)
-      const listingsCount = towns.reduce((sum, t) => sum + t.count, 0)
-
-      out.push({
-        key: `batch-${bi}-${syncType}-${bucket}-${rows[0]?.id ?? 0}`,
-        startedAt: Number.isFinite(startedMs)
-          ? new Date(startedMs).toISOString()
-          : rows[0].startedAt,
-        finishedAt: Number.isFinite(finishedMs)
-          ? new Date(finishedMs).toISOString()
-          : null,
-        syncType,
-        bucket,
-        townsLabel: formatTownCountsGlom(towns),
-        listingsCount,
-        ok: effectiveOk,
-        error:
-          failErrors.length > 0
-            ? failErrors.join('\n')
-            : noteDetails.length > 0
-              ? [...new Set(noteDetails)].join('\n')
-              : null,
-        durationMs:
-          Number.isFinite(startedMs) && Number.isFinite(finishedMs) && finishedMs >= startedMs
-            ? finishedMs - startedMs
-            : null,
-        townCount: towns.length,
-      })
+      if (rows.every(isStandaloneJobAudit)) {
+        for (const run of rows) {
+          out.push(glomTypeBucketRows([run], bi))
+        }
+        continue
+      }
+      out.push(glomTypeBucketRows(rows, bi))
     }
   }
 
