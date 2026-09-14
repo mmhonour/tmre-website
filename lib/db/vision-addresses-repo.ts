@@ -238,11 +238,11 @@ export async function upsertVisionAddress(
       acres, zoning, last_sale_price, last_sale_date, last_sale_book_page,
       photo_url, parcel_url, field_card_r2_key, field_card_content_type,
       field_card_scraped_at, content_fingerprint, source_host, scraped_at, updated_at,
-      field_card, owner_mailing_address
+      field_card
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
       $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
-      $35,$36,$37,$38,$39,$40::jsonb, $43
+      $35,$36,$37,$38,$39,$40,$41::jsonb
     )
     ON CONFLICT (town, vision_pid) DO UPDATE SET
       account_number = EXCLUDED.account_number,
@@ -277,15 +277,15 @@ export async function upsertVisionAddress(
       photo_url = EXCLUDED.photo_url,
       parcel_url = EXCLUDED.parcel_url,
       field_card_r2_key = CASE
-        WHEN $41 THEN EXCLUDED.field_card_r2_key
+        WHEN $42 THEN EXCLUDED.field_card_r2_key
         ELSE COALESCE(vision_addresses.field_card_r2_key, EXCLUDED.field_card_r2_key)
       END,
       field_card_content_type = CASE
-        WHEN $41 THEN EXCLUDED.field_card_content_type
+        WHEN $42 THEN EXCLUDED.field_card_content_type
         ELSE COALESCE(vision_addresses.field_card_content_type, EXCLUDED.field_card_content_type)
       END,
       field_card_scraped_at = CASE
-        WHEN $41 THEN EXCLUDED.field_card_scraped_at
+        WHEN $42 THEN EXCLUDED.field_card_scraped_at
         ELSE COALESCE(vision_addresses.field_card_scraped_at, EXCLUDED.field_card_scraped_at)
       END,
       field_card = EXCLUDED.field_card,
@@ -293,7 +293,7 @@ export async function upsertVisionAddress(
       source_host = EXCLUDED.source_host,
       scraped_at = EXCLUDED.scraped_at,
       updated_at = CASE
-        WHEN $42 THEN EXCLUDED.updated_at
+        WHEN $43 THEN EXCLUDED.updated_at
         ELSE vision_addresses.updated_at
       END
     `,
@@ -312,6 +312,7 @@ export async function upsertVisionAddress(
       parsed.state,
       parsed.zip,
       parsed.ownerName,
+      parsed.ownerMailingAddress,
       parsed.assessedValue,
       parsed.appraisalValue,
       parsed.buildingCount,
@@ -340,7 +341,6 @@ export async function upsertVisionAddress(
       JSON.stringify(parsed.fieldCard),
       opts.rewriteBlob,
       opts.changed,
-      parsed.ownerMailingAddress,
     ],
   )
   const { refreshVisionOwnerKeysSafe } = await import(
