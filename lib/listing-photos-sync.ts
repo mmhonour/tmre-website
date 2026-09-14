@@ -2,6 +2,7 @@ import 'server-only'
 
 import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingPhotoMeta } from '@/lib/listing-photo-backend'
+import { cacheSatisfiesQuality } from '@/lib/listing-photo-quality'
 import { getListingPhotoTtlMsFresh } from '@/lib/listing-photo-ttl-config'
 import {
   isListingPhotoFresh,
@@ -15,6 +16,8 @@ const DEFAULT_CONCURRENCY = 2
 const PHOTO_FETCH_DELAY_MS = 40
 /** Same window as opening the listing showcase (`warmListingPhotos` hero deck). */
 const SHOWCASE_HERO_MAX_INDEX = 5
+
+export type ListingPhotoBackfillMode = 'hero' | 'all'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -78,6 +81,51 @@ export async function warmListingShowcasePhotos(
   return stored
 }
 
+/**
+ * True when the first six full-size shots are missing, stale, or only a
+ * mid/card JPEG — the usual "listing is in Postgres, showcase still 404s" gap.
+ */
+export async function listingShowcasePhotosIncomplete(
+  listing: Listing,
+): Promise<boolean> {
+  const cacheId = listingPhotoCacheId(listing)
+  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), 60)
+  if (!cacheId || photoCount <= 0) return false
+
+  const ttlMs = await getListingPhotoTtlMsFresh()
+  const lastIndex = Math.min(photoCount - 1, SHOWCASE_HERO_MAX_INDEX)
+  for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex++) {
+    const meta = await readListingPhotoMeta(cacheId, photoIndex)
+    if (!meta) return true
+    if (!isListingPhotoFresh(meta.syncedAt, ttlMs)) return true
+    if (!cacheSatisfiesQuality(meta.byteLength, 'full')) return true
+  }
+  return false
+}
+
+export async function listingNeedsPhotoBackfill(
+  listing: Listing,
+  mode: ListingPhotoBackfillMode,
+): Promise<boolean> {
+  const cacheId = listingPhotoCacheId(listing)
+  const photoCount = listing.photoCount ?? 0
+  if (!cacheId || photoCount <= 0) return false
+  if (mode === 'hero') return listingShowcasePhotosIncomplete(listing)
+  return listingPhotosNeedRefresh(cacheId, photoCount)
+}
+
+export async function listPhotoBackfillCandidates(
+  listings: Listing[],
+  mode: ListingPhotoBackfillMode,
+): Promise<Listing[]> {
+  const flags = await Promise.all(
+    listings.map(async (listing) =>
+      (await listingNeedsPhotoBackfill(listing, mode)) ? listing : null,
+    ),
+  )
+  return flags.filter((listing): listing is Listing => listing != null)
+}
+
 /** Warm photo blobs for active inventory after a town sync. */
 export async function syncListingPhotosForListings(
   listings: Listing[],
@@ -131,4 +179,80 @@ export async function syncListingPhotosForListings(
   await Promise.all(Array.from({ length: concurrency }, () => worker()))
 
   return { listings: listingsDone, photos: photosStored }
+}
+
+export type ListingPhotoBackfillResult = {
+  scanned: number
+  needed: number
+  listings: number
+  photos: number
+  /** Listings that still need bytes. Dry-run uses this for the sample log. */
+  candidates: Listing[]
+}
+
+/**
+ * Pull photos that Postgres already knows about but R2/index does not.
+ * `hero` = first six at size=full (showcase). `all` = every slot, display quality.
+ */
+export async function backfillListingPhotos(
+  listings: Listing[],
+  options: {
+    mode?: ListingPhotoBackfillMode
+    concurrency?: number
+    progressLabel?: string
+    dryRun?: boolean
+  } = {},
+): Promise<ListingPhotoBackfillResult> {
+  const mode = options.mode ?? 'hero'
+  const concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY)
+  const candidates = await listPhotoBackfillCandidates(listings, mode)
+  const scanned = listings.length
+  const needed = candidates.length
+
+  if (options.dryRun || candidates.length === 0) {
+    return { scanned, needed, listings: 0, photos: 0, candidates }
+  }
+
+  const label = options.progressLabel
+  const total = candidates.length
+  let index = 0
+  let listingsDone = 0
+  let photosStored = 0
+
+  async function worker(): Promise<void> {
+    while (index < candidates.length) {
+      const current = candidates[index]!
+      index += 1
+      const position = index
+      try {
+        const stored =
+          mode === 'hero'
+            ? await warmListingShowcasePhotos(current)
+            : await syncOneListingPhotos(current)
+        photosStored += stored
+        listingsDone += 1
+        if (label) {
+          const addr = current.address?.street?.trim() || listingRowId(current)
+          console.info(
+            `[listing-photos-sync] ${label} ${position}/${total} · ${addr} — ` +
+              `${stored} new (${photosStored} total this town)`,
+          )
+        }
+      } catch (err) {
+        console.warn(
+          `[listing-photos-sync] ${listingRowId(current)} failed`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()))
+  return {
+    scanned,
+    needed,
+    listings: listingsDone,
+    photos: photosStored,
+    candidates,
+  }
 }

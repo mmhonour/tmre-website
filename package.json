@@ -20,6 +20,7 @@
     "db:ping": "node --env-file=.env.local scripts/db-ping.mjs",
     "db:size": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/db-size-report.ts",
     "backfill:photo-index": "node --env-file=.env.local scripts/backfill-photo-index.mjs",
+    "backfill:listing-photos": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/backfill-listing-photos.ts",
     "backfill:content-views": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/backfill-content-views.ts",
     "import:khe-pta": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/import-khe-pta-directory.ts",
     "merge:pta": "tsx --env-file=.env.local --require ./scripts/stub-server-only.cjs scripts/merge-pta-directory.ts",
