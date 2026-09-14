@@ -133,19 +133,26 @@ function GlyphButton({
 
 export function ShowcaseRailAroundArrowStage({
   variant,
+  chrome = "fixture",
 }: {
   variant: "desktop" | "mobile";
+  /**
+   * `fixture` — fake header inside a 390×844 frame (laptop looking at the
+   * phone page). `site` — full viewport under the real `Navigation`.
+   */
+  chrome?: "fixture" | "site";
 }) {
   const [labelsMax, setLabelsMax] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const mobile = variant === "mobile";
   const showLabel = labelsMax;
   const pad = mobile ? "pr-3" : "pr-6";
+  const framed = mobile && chrome === "fixture";
 
   return (
     <div
       className={`listing-showcase-type relative overflow-hidden bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_48%,#243656_100%)] ${
-        mobile ? "h-[844px] w-[390px]" : "min-h-[100dvh] w-full"
+        framed ? "h-[844px] w-[390px]" : "min-h-[100dvh] w-full"
       }`}
     >
       <div
@@ -157,7 +164,7 @@ export function ShowcaseRailAroundArrowStage({
         aria-hidden
       />
 
-      {mobile ? <MobileHeaderFixture /> : null}
+      {framed ? <MobileHeaderFixture /> : null}
 
       {/*
         Status + address on the left. Phone uses the same top band as the
