@@ -1,7 +1,10 @@
 import 'server-only'
 
 import { listingRowId } from '@/lib/db/listings-repo'
-import { readListingPhotoMeta } from '@/lib/listing-photo-backend'
+import {
+  ensureListingPhotoIndexFromR2,
+  readListingPhotoMeta,
+} from '@/lib/listing-photo-backend'
 import {
   cacheSatisfiesQuality,
   fullCacheOutrankedByMid,
@@ -82,6 +85,10 @@ export async function warmListingShowcasePhotos(
         continue
       }
     }
+    if (await ensureListingPhotoIndexFromR2(cacheId, photoIndex)) {
+      stored += 1
+      continue
+    }
     const hit = await resolveListingPhotoBuffer({
       mlsId: cacheId,
       listingKey,
@@ -89,7 +96,12 @@ export async function warmListingShowcasePhotos(
       photoCountHint: photoCount,
       quality: 'full',
     })
-    if (hit && !hit.cacheHit) stored += 1
+    if (hit && !hit.cacheHit) {
+      const meta = await readListingPhotoMeta(cacheId, photoIndex)
+      if (meta && meta.byteLength >= 100) stored += 1
+    } else if (await ensureListingPhotoIndexFromR2(cacheId, photoIndex)) {
+      stored += 1
+    }
     if (photoIndex < lastIndex) await sleep(PHOTO_FETCH_DELAY_MS)
   }
 

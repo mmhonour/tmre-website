@@ -94,7 +94,11 @@ const RESET_KEYS: Record<AdminSyncActionId, readonly string[]> = {
   'cama-tax': ['cama_tax_history_synced_at'],
   'street-listings': ['street_listings_synced_at'],
   'db-size': ['last_db_size', 'db_size_report'],
-  'hero-photos': ['last_hero_photos', 'hero_photos_status'],
+  'hero-photos': [
+    'last_hero_photos',
+    'hero_photos_status',
+    'hero_photos_skip_mls_ids',
+  ],
 }
 
 /** Global refresh lock sources that belong to this job. */

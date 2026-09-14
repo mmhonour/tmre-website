@@ -13,6 +13,40 @@ export const HERO_SCAVENGE_BURST_MS = 9 * 60 * 1000
 
 export const HERO_PHOTOS_STATUS_KEY = 'hero_photos_status'
 export const LAST_HERO_PHOTOS_META_KEY = 'last_hero_photos'
+/** MLS ids that stored nothing last burst — next burst walks past them. */
+export const HERO_PHOTOS_SKIP_KEY = 'hero_photos_skip_mls_ids'
+export const HERO_PHOTOS_SKIP_MAX = 400
+
+export function parseHeroPhotosSkipMlsIds(
+  raw: string | null | undefined,
+): string[] {
+  if (!raw?.trim()) return []
+  try {
+    const parsed = JSON.parse(raw) as { ids?: unknown }
+    if (!Array.isArray(parsed.ids)) return []
+    return parsed.ids
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      .map((id) => id.trim())
+      .slice(0, HERO_PHOTOS_SKIP_MAX)
+  } catch {
+    return []
+  }
+}
+
+export function mergeHeroPhotosSkipMlsIds(
+  persisted: readonly string[],
+  triedThisBurst: readonly string[],
+): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const id of [...persisted, ...triedThisBurst]) {
+    const t = id.trim()
+    if (!t || seen.has(t)) continue
+    seen.add(t)
+    out.push(t)
+  }
+  return out.slice(-HERO_PHOTOS_SKIP_MAX)
+}
 
 export type HeroPhotosJobStatus = {
   generatedAt: string
@@ -23,6 +57,8 @@ export type HeroPhotosJobStatus = {
   missingPctAfter: number
   filledListings: number
   filledPhotos: number
+  /** MLS ids this burst tried that stored nothing — walked on, skipped next burst. */
+  walkedPast?: number
   complete: boolean
   idle: boolean
   /** True while a burst is queued or in flight — board should keep polling. */
@@ -46,6 +82,12 @@ export function formatHeroPhotosInterruptedMessage(
   return `interrupted — ${reason}`
 }
 
+function walkedPastClause(status: HeroPhotosJobStatus): string {
+  const n = status.walkedPast ?? 0
+  if (n <= 0) return ''
+  return ` · walked past ${n} that stored nothing`
+}
+
 export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string {
   if (status.interrupted) {
     return status.message.startsWith('interrupted')
@@ -54,11 +96,19 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
   }
   const total = status.activeWithPhotos.toLocaleString()
   const missingN = status.missingBefore.toLocaleString()
+  const walked = walkedPastClause(status)
   if (status.running) {
     if (status.filledListings > 0 || status.filledPhotos > 0) {
       return (
         `running · was ${status.missingPctBefore}% missing (${missingN}/${total})` +
-        ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos so far`
+        ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos so far` +
+        walked
+      )
+    }
+    if ((status.walkedPast ?? 0) > 0) {
+      return (
+        `running · ${status.missingPctBefore}% missing (${missingN}/${total})` +
+        walked
       )
     }
     return `running · ${status.missingPctBefore}% missing (${missingN}/${total}) · burst starting`
@@ -68,6 +118,7 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
       return (
         `idle · was ${status.missingPctBefore}% missing` +
         ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos` +
+        walked +
         ` · now 0% missing · 100% complete`
       )
     }
@@ -76,6 +127,7 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
   return (
     `was ${status.missingPctBefore}% missing (${missingN}/${total})` +
     ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos` +
+    walked +
     ` · now ${status.missingPctAfter}% missing`
   )
 }
@@ -97,6 +149,7 @@ export function parseHeroPhotosJobStatus(
       missingPctAfter: Number(parsed.missingPctAfter) || 0,
       filledListings: Number(parsed.filledListings) || 0,
       filledPhotos: Number(parsed.filledPhotos) || 0,
+      walkedPast: Number(parsed.walkedPast) || 0,
       complete: Boolean(parsed.complete),
       idle: Boolean(parsed.idle),
       running: Boolean(parsed.running),
