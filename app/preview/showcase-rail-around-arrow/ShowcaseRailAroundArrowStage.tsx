@@ -143,6 +143,48 @@ function ExpandedFigurePill({
   );
 }
 
+const PULSE_ROWS: readonly { label: string; value: string }[] = [
+  { label: "Inventory", value: "42" },
+  { label: "Months supply", value: "3.1 mo" },
+  { label: "Avg DOM", value: "28d" },
+  { label: "Closed 12 mos", value: "21" },
+  { label: "Median", value: "$1.85M" },
+  { label: "Delta", value: "+$40K" },
+  { label: "Average", value: "$2.01M" },
+  { label: "Sale to ask", value: "98.2%" },
+  { label: "Median tax", value: "$18,440" },
+];
+
+/** Full town pulse — hug the rows; no scroll viewport. */
+function TownPulseCard({ onHide }: { onHide: () => void }) {
+  return (
+    <div className="flex h-auto w-full flex-col bg-[#0d1424]">
+      <div
+        className={`relative flex w-full items-center px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-white ${PREVIEW_GLYPH_WASH}`}
+      >
+        <span>Town pulse</span>
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={onHide}
+          aria-label="Hide Town pulse"
+          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+        >
+          ↑
+        </button>
+      </div>
+      <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
+        {PULSE_ROWS.map((row) => (
+          <li key={row.label} className="flex justify-between gap-4">
+            <span className="text-white/45">{row.label}</span>
+            <span className="tabular-nums text-white">{row.value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function GlyphButton({
   label,
   glyph,
@@ -332,13 +374,15 @@ export function ShowcaseRailAroundArrowStage({
             onClick={() => setActive("what-if")}
           />
         )}
-        <GlyphButton
-          label="Town pulse"
-          glyph={<PulseGlyph />}
-          showLabel={showLabel}
-          pressed={active === "pulse"}
-          onClick={() => setActive((id) => (id === "pulse" ? null : "pulse"))}
-        />
+        {active === "pulse" ? null : (
+          <GlyphButton
+            label="Town pulse"
+            glyph={<PulseGlyph />}
+            showLabel={showLabel}
+            pressed={false}
+            onClick={() => setActive("pulse")}
+          />
+        )}
         <GlyphButton
           label="Map"
           glyph={<MapGlyph />}
@@ -361,6 +405,18 @@ export function ShowcaseRailAroundArrowStage({
           </button>
         ) : null}
       </div>
+
+      {active === "pulse" ? (
+        <div
+          className={`pointer-events-auto absolute z-20 -translate-y-1/2 ${
+            mobile
+              ? "left-0 right-14 top-1/2"
+              : "right-24 top-1/2 w-[min(24rem,calc(100%-8rem))]"
+          }`}
+        >
+          <TownPulseCard onHide={() => setActive(null)} />
+        </div>
+      ) : null}
 
       <ShowcaseStepArrow
         direction="prev"
