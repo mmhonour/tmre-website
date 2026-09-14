@@ -195,7 +195,7 @@ function SymbolRailDemo() {
         </div>
       </div>
     ) : deck === "pulse" ? (
-      <div className="flex h-[min(32rem,calc(100dvh-14rem))] w-full max-w-sm flex-col bg-[#0d1424]">
+      <div className="flex h-auto w-full max-w-sm flex-col bg-[#0d1424]">
         <div className={`${railRow} w-full bg-[#0d1424]`}>
           <span className="flex-1">Town pulse</span>
           <button
@@ -214,6 +214,10 @@ function SymbolRailDemo() {
           <li>Avg DOM 28d</li>
           <li>Closed 21 · 12 mos</li>
           <li>Median $1.85M</li>
+          <li>Delta +$40K</li>
+          <li>Average $2.01M</li>
+          <li>Sale to ask 98.2%</li>
+          <li>Median tax $18,440</li>
         </ul>
       </div>
     ) : deck === "map" ? (

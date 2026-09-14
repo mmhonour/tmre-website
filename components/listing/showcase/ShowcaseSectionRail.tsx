@@ -231,15 +231,20 @@ function CardChrome({
   onTitleClick,
   afterTitle,
   children,
+  fit,
 }: {
   title: string;
   onCollapse: () => void;
   onTitleClick?: () => void;
   afterTitle?: ReactNode;
   children?: ReactNode;
+  /** Town pulse — hug the metrics; do not fill a scroll viewport. */
+  fit?: boolean;
 }) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    <div
+      className={`flex w-full flex-col ${fit ? "h-auto" : "h-full min-h-0"}`}
+    >
       <div className={`${pillClass(true, true)} shrink-0 bg-[#0d1424]`}>
         {onTitleClick ? (
           <button
@@ -633,8 +638,8 @@ export default function ShowcaseSectionRail({
         </div>
       </CardChrome>
     ) : deck === "pulse" ? (
-      <CardChrome title="Town pulse" onCollapse={() => setDeck(null)}>
-        <div className="min-h-0 w-full flex-1 overflow-y-auto bg-[#0d1424] p-4">
+      <CardChrome title="Town pulse" onCollapse={() => setDeck(null)} fit>
+        <div className="w-full bg-[#0d1424] p-4">
           <ShowcaseTownPulse city={pulseCity} expanded />
         </div>
       </CardChrome>
@@ -700,7 +705,13 @@ export default function ShowcaseSectionRail({
           )}
         </div>
         {phone && deck && !mapFullscreen ? (
-          <div className="pointer-events-auto absolute left-0 right-0 top-1/2 z-20 flex h-[min(28rem,calc(100dvh-18rem))] -translate-y-1/2 flex-col overflow-hidden bg-[#0d1424] pr-3 sm:pr-6">
+          <div
+            className={`pointer-events-auto absolute left-0 right-0 top-1/2 z-20 flex -translate-y-1/2 flex-col bg-[#0d1424] pr-3 sm:pr-6 ${
+              deck === "pulse"
+                ? "h-auto"
+                : "h-[min(28rem,calc(100dvh-18rem))] overflow-hidden"
+            }`}
+          >
             {openCard}
           </div>
         ) : null}
@@ -708,7 +719,11 @@ export default function ShowcaseSectionRail({
       {deck && !mapFullscreen && !phone ? (
         <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-30 flex items-center justify-end pr-3 sm:pr-6">
           <div
-            className={`pointer-events-auto flex ${CARD_WIDTH} h-[min(32rem,calc(100dvh-14rem))] flex-col overflow-hidden bg-[#0d1424]`}
+            className={`pointer-events-auto flex ${CARD_WIDTH} flex-col bg-[#0d1424] ${
+              deck === "pulse"
+                ? "h-auto"
+                : "h-[min(32rem,calc(100dvh-14rem))] overflow-hidden"
+            }`}
           >
             {openCard}
           </div>
