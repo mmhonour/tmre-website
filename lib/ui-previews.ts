@@ -190,7 +190,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-mobile",
     title: "Showcase rail around the arrow — mobile",
     summary:
-      "Same stack in a 390×844 frame with the mobile site header over the photo, so status, price, and maximize can be checked for scrunching. Does not change the live listing page.",
+      "Open on a phone: full-bleed under the live site header. On a laptop, a 390×844 frame. Does not change the live listing page.",
   },
 ];
 
