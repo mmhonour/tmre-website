@@ -1085,7 +1085,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental queues brand-new MLS ids on `incremental_photo_warm_queue`; Lane 3 drains that queue and prefetches the first six full-size shots so the first showcase open is usually a hit. When the queue is empty, Lane 3 walks Active inventory for listings short of those six heroes (`hero_photo_inventory_cursor`, four listings per hop). Railway never fetches photo bodies. See Side-work-only.',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental queues brand-new MLS ids on `incremental_photo_warm_queue`; the Netlify listings worker drains that queue and prefetches the first six full-size shots. Active backlog catch-up is `npm run backfill:listing-photos` on an operator machine, not a site-hosted drip. See Side-work-only.',
   },
   {
     term: '?size=full',

@@ -77,7 +77,7 @@ export function describeIncrementalSyncArchitecture(): {
         id: 'lane-3',
         title: 'Lane 3 — Site warm',
         host: 'Netlify',
-        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, showcase photo warm for listings Incremental just inserted (first six full-size MediaURL shots), and when that queue is empty a slow Active-inventory hero walk (listings short of six full-size index rows). Also stale-read rebuild if the handoff hop fails. Does not send listing or OH alert mail.',
+        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, and showcase photo warm for listings Incremental just inserted (first six full-size MediaURL shots, same as opening the page). Also stale-read rebuild if the handoff hop fails. Does not send listing or OH alert mail. Does not walk the rest of Active inventory for photos.',
         doesNot:
           'The Incremental RETS pull, unless a queued row has sat unclaimed past the rescue grace — then the thin cron runs it in-process rather than let inventory go stale.',
       },
@@ -195,7 +195,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'worker',
         title: 'sync-listings-worker sideWorkOnly (Lane 3)',
         detail:
-          'Netlify background ≤~15m. No RETS. Latest feeds, deal board, stats cache, spotlight, showcase photo warm for Incremental’s new MLS ids (first six full-size shots), then a slow Active hero-gap walk when that queue is empty. Does not send alert email. Queued by Railway handoff (source=railway) or thin-cron lean fallback.',
+          'Netlify background ≤~15m. No RETS. Latest feeds, deal board, stats cache, spotlight, and showcase photo warm for Incremental’s new MLS ids (first six full-size shots). Does not send alert email. Queued by Railway handoff (source=railway) or thin-cron lean fallback.',
       },
       {
         id: 'worker-rets',

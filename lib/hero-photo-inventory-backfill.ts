@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { drainIncrementalPhotoWarm } from '@/lib/incremental-photo-warm'
 import { listActiveMlsIdsMissingShowcaseHeroes } from '@/lib/db/listing-photo-index-repo'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
@@ -36,10 +35,10 @@ async function writeCursor(cursor: HeroInventoryCursor): Promise<void> {
 }
 
 /**
- * Lane 3 only — walk Active inventory and pull the first six full-size shots
- * for listings the index says are short. Railway Incremental must not call
- * this (Media bodies OOM the puller). New inserts still go through
- * `incremental_photo_warm_queue` first.
+ * Operator / dedicated photo process only. Walk Active inventory and pull
+ * the first six full-size shots for listings the index says are short.
+ * Do not call this from the public website worker or from Incremental —
+ * Media downloads share the same DB and photo bucket visitors use.
  */
 export async function drainHeroInventoryBackfill(): Promise<{
   attempted: number
@@ -105,30 +104,4 @@ export async function drainHeroInventoryBackfill(): Promise<{
     town: cursor.town,
     remainingInTown,
   }
-}
-
-/**
- * New Incremental ids first. When that queue is empty, walk Active gaps.
- * Call only from Lane 3 / Netlify postHooks — never Railway.
- */
-export async function runLane3ShowcasePhotoWarm(): Promise<{
-  incremental: Awaited<ReturnType<typeof drainIncrementalPhotoWarm>>
-  inventory: Awaited<ReturnType<typeof drainHeroInventoryBackfill>> | null
-}> {
-  const incremental = await drainIncrementalPhotoWarm()
-  if (incremental.attempted > 0) {
-    console.info(
-      `[sync-listings-work] showcase photo warm ${incremental.warmed}/${incremental.attempted} listings (${incremental.remaining} left)`,
-    )
-  }
-  if (incremental.attempted > 0 || incremental.remaining > 0) {
-    return { incremental, inventory: null }
-  }
-  const inventory = await drainHeroInventoryBackfill()
-  if (inventory.attempted > 0) {
-    console.info(
-      `[sync-listings-work] hero inventory warm ${inventory.town} ${inventory.warmed}/${inventory.attempted} listings · ${inventory.photos} photos`,
-    )
-  }
-  return { incremental, inventory }
 }

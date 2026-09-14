@@ -133,12 +133,17 @@ async function runIncrementalSideWork(): Promise<{
   }
   await runSpotlightRefresh()
   try {
-    const { runLane3ShowcasePhotoWarm } = await import(
-      '@/lib/hero-photo-inventory-backfill'
+    const { drainIncrementalPhotoWarm } = await import(
+      '@/lib/incremental-photo-warm'
     )
-    await runLane3ShowcasePhotoWarm()
+    const photoWarm = await drainIncrementalPhotoWarm()
+    if (photoWarm.attempted > 0) {
+      console.info(
+        `[sync-listings-work] showcase photo warm ${photoWarm.warmed}/${photoWarm.attempted} listings (${photoWarm.remaining} left)`,
+      )
+    }
   } catch (err) {
-    console.warn('[sync-listings-work] showcase photo warm failed', err)
+    console.warn('[sync-listings-work] incremental photo warm failed', err)
   }
   // Listing mail is Incremental-only. Lane 3 used to call the same processor
   // and hide a dead Railway doorbell.
