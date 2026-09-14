@@ -307,7 +307,8 @@ async function readSyncQueueCooldown(jobId: string): Promise<string | null> {
  * syncQueueClaimYieldRank), then oldest-first within a priority band.
  *
  * Incremental is the most frequent job and will otherwise sit at the front of
- * the line forever while stats / edge / CAMA wait.
+ * the line forever while stats / edge / CAMA wait. hero-photos is last so a
+ * Media/R2 burst never jumps those.
  *
  * `SKIP LOCKED` means a second runner polling the same table walks past a row
  * another one is claiming rather than blocking on it.
@@ -330,7 +331,11 @@ export async function claimNextSyncJob(input: {
              WHERE running.state = 'running'
                AND running.job_id = sync_queue.job_id
           )
-        ORDER BY CASE WHEN job_id = 'incremental' THEN 1 ELSE 0 END,
+        ORDER BY CASE
+                   WHEN job_id = 'hero-photos' THEN 2
+                   WHEN job_id = 'incremental' THEN 1
+                   ELSE 0
+                 END,
                  priority ASC,
                  requested_at ASC
         LIMIT 1

@@ -262,6 +262,7 @@ const DASHBOARD_SYNC_AUDIT_SUFFIX: Record<AdminSyncActionId, string> = {
   'cama-tax': 'cama-tax',
   'street-listings': 'street-listings',
   'db-size': 'db-size',
+  'hero-photos': 'hero-photos',
 }
 
 /** Finalize-step → Sync History type (weekly full resync chain). */
@@ -1807,6 +1808,48 @@ async function runAdminSyncActionImpl(
         detail: report.listings
           ? `+${report.listings.listed1d} listed / −${report.listings.closed1d} closed (24h)`
           : undefined,
+      }
+    }
+    case 'hero-photos': {
+      // Photo bodies belong in the forked queue child, never a Netlify
+      // invoke — even catch-up with executeInProcess must enqueue.
+      if (isServerlessRuntime() || options.executeInProcess !== true) {
+        const { queued, via } = await queueSyncNowThroughQueue(
+          'hero-photos',
+          async () => ({
+            ok: false,
+            status: null,
+            base: 'sync_queue',
+            error:
+              'The sync runner is not reachable, so listing photo scavenge cannot run right now.',
+          }),
+        )
+        return {
+          ok: queued.ok,
+          action,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - t0,
+          backgroundQueued: true,
+          message: queued.ok
+            ? `Listing photos (heroes) queued (${via}) — Status updates when the burst finishes`
+            : `Listing photos queue failed: ${queued.error ?? 'unknown'}`,
+        }
+      }
+      const { runHeroPhotoScavengeJob } = await import(
+        '@/lib/hero-photo-inventory-backfill'
+      )
+      const status = await runHeroPhotoScavengeJob()
+      return {
+        ok: true,
+        action,
+        startedAt,
+        finishedAt: status.generatedAt,
+        durationMs: Date.now() - t0,
+        message: status.message,
+        detail: status.idle
+          ? 'No Media fetch — coverage already complete'
+          : `Oldest-first · ${status.filledListings} listings / ${status.filledPhotos} photos this burst`,
       }
     }
     default: {

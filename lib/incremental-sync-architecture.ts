@@ -63,7 +63,7 @@ export function describeIncrementalSyncArchitecture(): {
         host: 'Railway mls-sync',
         owns: 'Claim the sync_queue row → fork a child → open RETS → modified-since pull (7 towns) → upsert listings → enqueue new MLS ids on incremental_photo_warm_queue (ids only) → mark listing alerts dirty + enqueue the Railway alerts job → stamp End + last_mls_sync_heartbeat → logout (auto). The parent holds the child to Configure → Budget and records timeout / crashed if it blows it. Admin Sync now and the watchdog enqueue rather than calling a run endpoint directly.',
         doesNot:
-          'Deal board, latest town feeds, Media/R2 photo bytes, stats_cache rebuild, spotlight refresh, or sending alert email. Mail is the Railway alerts job. Photo bytes are Lane 3.',
+          'Deal board, latest town feeds, Media/R2 photo bytes, stats_cache rebuild, spotlight refresh, or sending alert email. Mail is the Railway alerts job. Photo bytes for new Incremental inserts are Lane 3. Walking the rest of Active inventory for missing heroes is the hero-photos queue job (own forked child, lowest claim rank).',
       },
       {
         id: 'lane-2',
@@ -77,7 +77,7 @@ export function describeIncrementalSyncArchitecture(): {
         id: 'lane-3',
         title: 'Lane 3 — Site warm',
         host: 'Netlify',
-        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, and showcase photo warm for listings Incremental just inserted (first six full-size MediaURL shots, same as opening the page). Also stale-read rebuild if the handoff hop fails. Does not send listing or OH alert mail.',
+        owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, and showcase photo warm for listings Incremental just inserted (first six full-size MediaURL shots, same as opening the page). Also stale-read rebuild if the handoff hop fails. Does not send listing or OH alert mail. Does not walk the rest of Active inventory for photos — that is the hero-photos sync-queue job.',
         doesNot:
           'The Incremental RETS pull, unless a queued row has sat unclaimed past the rescue grace — then the thin cron runs it in-process rather than let inventory go stale.',
       },

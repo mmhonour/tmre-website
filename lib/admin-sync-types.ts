@@ -85,6 +85,11 @@ export const ADMIN_SYNC_ACTIONS = {
     description:
       'Daily 6:00 AM ET Neon size, growth, and listings +/- by town. Writes one snapshot the Admin Size & growth page reads. Sync now / the schedule overwrite that same slot; Run again on the page is the ad-hoc path.',
   },
+  'hero-photos': {
+    label: 'Listing photos (heroes)',
+    description:
+      'Low-priority scavenge: oldest Active listings missing six full-size showcase heroes. Five at a time, ~10 minute bursts between higher-priority jobs. Idle when coverage is 100% — still counts and reports % missing on the run board.',
+  },
 } as const
 
 export type AdminSyncActionId = keyof typeof ADMIN_SYNC_ACTIONS
@@ -140,6 +145,7 @@ export const ADMIN_MANUAL_SYNC_ORDER_BY_ROW: Partial<Record<string, number>> = {
   'cama-tax': 13,
   'street-listings': 14,
   'db-size': 15,
+  'hero-photos': 17,
 }
 
 /** Skipped when full resync is queued on a Netlify background function (already chained). */

@@ -116,6 +116,8 @@ export function lastFinishedMetaKey(jobId: ScheduledSyncJobId): string {
       return 'street_listings_synced_at'
     case 'db-size':
       return 'last_db_size'
+    case 'hero-photos':
+      return 'last_hero_photos'
     default: {
       const _exhaustive: never = jobId
       return _exhaustive

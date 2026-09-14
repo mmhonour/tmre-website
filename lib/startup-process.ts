@@ -267,7 +267,7 @@ export function describeStartupProcess(): {
           title: "New-listing showcase photo warm (Lane 3)",
           timing: "Netlify sideWorkOnly after handoff",
           detail:
-            "Incremental upserts write new MLS ids to incremental_photo_warm_queue (ids only — no Media fetch on Railway). Lane 3 drains up to 12 listings per hop and pulls the first six full-size MediaURL photos, the same fetch opening the showcase would. Leftovers wait for the next hop. A cache miss still falls back to ?fetch=1.",
+            "Incremental upserts write new MLS ids to incremental_photo_warm_queue (ids only — no Media fetch on Railway). The Netlify listings worker drains up to 12 new listings per hop and pulls the first six full-size MediaURL photos. Leftovers wait for the next hop. A cache miss still falls back to ?fetch=1. Active-inventory catch-up is the operator CLI, not this hop.",
           status: latestSyncEnabled ? "scheduled" : "skipped",
           statusLabel: latestSyncEnabled ? "Netlify warm" : "—",
         },
@@ -491,7 +491,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET + sync-street-listings every 30m gated to weekly Wed ~2am ET (and 6h catch-up while unlinked street addresses remain) + sync-db-size every 30m gated to daily 6:00 AM ET. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA), Street listings (RETS), Size & growth and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET + sync-street-listings every 30m gated to weekly Wed ~2am ET (and 6h catch-up while unlinked street addresses remain) + sync-db-size every 30m gated to daily 6:00 AM ET + sync-hero-photos every 30m gated to every 15m. Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA), Street listings (RETS), Size & growth, Listing photos (heroes) and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -590,6 +590,24 @@ export function describeStartupProcess(): {
         timing: "30-min sweep → daily 06:00 ET (Configure)",
         detail:
           "loadDbSizeReport() + persistDbSizeReport(). The Railway 30-min sweep and the Netlify thin */30 (sync-db-size) enqueue on sync_queue at the configured daily slot. The runner claims one row into a forked child under Configure → Size & growth → Budget (default 15 min). Writes sync_meta keys db_size_report (full JSON) and last_db_size (ISO finish). Admin → NEON → Size & growth GET reads that snapshot; Run again on the page is POST ad-hoc and overwrites the same keys. Not stored anywhere else. Stamps last_db_size.",
+        status: "scheduled",
+        statusLabel: "Cron",
+      },
+    ],
+  });
+
+  lanes.push({
+    id: "hero-photos",
+    title: "Listing photos (heroes)",
+    subtitle:
+      "Oldest Active listings missing six full-size showcase heroes → R2 + listing_photo_index",
+    steps: [
+      {
+        id: "hero-photos-scavenge",
+        title: "Low-priority hero-six scavenge",
+        timing: "10-min sweep → every 15m (Configure), 10-min budget",
+        detail:
+          "runHeroPhotoScavengeJob(). Lowest claim rank so Incremental / stats / CAMA go first. Oldest list_date first, five listings per hop, ~9 minutes of Media/R2 then a recount. Writes hero_photos_status (% missing before, listings/photos filled, % remaining) and last_hero_photos. When every Active already has six full-size heroes the run is a count + idle report — no Media fetch. Railway 10-min sweep and Netlify thin */30 (sync-hero-photos) enqueue; the forked child downloads. Incremental still writes ids only. Not part of Sync all. Admin Syncs row shows the last message for eagle-eye.",
         status: "scheduled",
         statusLabel: "Cron",
       },

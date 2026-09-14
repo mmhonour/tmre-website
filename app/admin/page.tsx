@@ -173,6 +173,7 @@ import { describeRunningSqliteDatabases } from "@/lib/sqlite-schema-diagram";
 import { describeStartupProcess } from "@/lib/startup-process";
 import { describeStatsCacheArchitecture } from "@/lib/stats-cache-architecture";
 import { readAdminSyncPanelStatus } from "@/lib/admin-sync-actions";
+import { readHeroPhotosJobStatus } from "@/lib/hero-photo-inventory-backfill";
 import { collectAdminDatabaseSyncStats } from "@/lib/sqlite-sync-stats";
 import { readAllTableActivity } from "@/lib/db/inventory-table-activity";
 
@@ -390,6 +391,8 @@ export default async function AdminPage() {
   const streetListingsSyncedAt = getSyncMeta("street_listings_synced_at");
   const lastDbSize = getSyncMeta("last_db_size");
   const lastAlerts = getSyncMeta("last_alerts");
+  const lastHeroPhotos = getSyncMeta("last_hero_photos");
+  const heroPhotosStatus = readHeroPhotosJobStatus();
   const zipInventory = await safe(
     "zip-boundaries-inventory",
     () => zipBoundariesInventory(),
@@ -668,6 +671,21 @@ export default async function AdminPage() {
       actionId: "db-size",
       nextRunAt: nextRuns["db-size"],
     },
+    {
+      id: "hero-photos",
+      label: "Listing photos (heroes)",
+      value:
+        heroPhotosStatus?.message ??
+        (lastHeroPhotos
+          ? formatTimestamp(lastHeroPhotos)
+          : "never counted"),
+      finishedAt: lastHeroPhotos,
+      sortMs: timestampSortMs(lastHeroPhotos),
+      detail:
+        "Oldest Active listings missing six full-size showcase heroes. Low-priority queue job: 5 at a time, ~10 min burst. Idle when 100% complete — still counts and reports.",
+      actionId: "hero-photos",
+      nextRunAt: nextRuns["hero-photos"],
+    },
   ];
   rows.sort((a, b) => b.sortMs - a.sortMs);
 
@@ -696,6 +714,8 @@ export default async function AdminPage() {
     streetListingsSyncedAt,
     lastDbSize,
     lastAlerts,
+    lastHeroPhotos,
+    heroPhotosStatus,
     stats: {
       total: stats.total,
       lastFullSync: stats.lastFullSync,

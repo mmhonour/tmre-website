@@ -26,4 +26,5 @@ export const SCHEDULED_SYNC_JOB_BY_ROW: Partial<
   'cama-tax': 'cama-tax',
   'street-listings': 'street-listings',
   'db-size': 'db-size',
+  'hero-photos': 'hero-photos',
 }

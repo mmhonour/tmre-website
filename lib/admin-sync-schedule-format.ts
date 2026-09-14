@@ -18,6 +18,7 @@ export type AdminSyncPanelRowId =
   | 'cama-tax'
   | 'street-listings'
   | 'db-size'
+  | 'hero-photos'
 
 /** Wall clocks on Admin Sync (Start / End / Next / schedules). */
 export const ADMIN_SYNC_TZ = 'America/New_York'
