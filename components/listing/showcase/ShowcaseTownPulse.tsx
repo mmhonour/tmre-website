@@ -7,7 +7,27 @@ import {
   marketPulseStackedMetrics,
   type MarketPulseStackedMetricId,
 } from "@/lib/market-pulse-stacked-metrics";
-import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { loadTabJsonWithRetry } from "@/lib/tab-data-prefetch";
+import { normalizeTownName, resolveListingTown } from "@/lib/tmre-towns";
+
+/** MLS city / code → the town name the pulse API matches. */
+export function resolveShowcasePulseCity(raw: string | null | undefined): string {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return "";
+  return resolveListingTown(trimmed) ?? normalizeTownName(trimmed) ?? trimmed;
+}
+
+export function showcaseTownPulseUrl(
+  city: string,
+  propertyClass: ListingPropertyClass = "all",
+): string {
+  const params = new URLSearchParams({
+    city,
+    kind: "sale",
+    property: propertyClass,
+  });
+  return `/api/market-pulse/town?${params.toString()}`;
+}
 
 /** Mirrors the Market Pulse category tabs, minus the ones with no town slice. */
 const PROPERTY_TABS: { id: ListingPropertyClass; label: string }[] = [
@@ -107,20 +127,18 @@ export default function ShowcaseTownPulse({
   /** Property-type breakdown only appears once the tile is opened wide. */
   expanded: boolean;
 }) {
+  const town = resolveShowcasePulseCity(city);
   const [propertyClass, setPropertyClass] = useState<ListingPropertyClass>("all");
   const [data, setData] = useState<MarketPulseTownPayload | null>(null);
   const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    if (!city) return;
+    if (!town) return;
     let cancelled = false;
-    const params = new URLSearchParams({
-      city,
-      kind: "sale",
-      property: propertyClass,
-    });
-    void loadTabJson<MarketPulseTownPayload>(
-      `/api/market-pulse/town?${params.toString()}`,
+    void loadTabJsonWithRetry<MarketPulseTownPayload>(
+      showcaseTownPulseUrl(town, propertyClass),
+      { shouldContinue: () => !cancelled },
     )
       .then((d) => {
         if (cancelled) return;
@@ -133,7 +151,7 @@ export default function ShowcaseTownPulse({
     return () => {
       cancelled = true;
     };
-  }, [city, propertyClass]);
+  }, [town, propertyClass, retry]);
 
   // Derived rather than an effect-set flag: a class switch is pending until the
   // payload we hold matches the class that is selected.
@@ -148,18 +166,44 @@ export default function ShowcaseTownPulse({
     [data?.closedLookbackLabel, data?.taxReady, data?.taxYearLabel],
   );
 
+  if (!town) {
+    return (
+      <p className="text-sm text-white/50">No town on this listing.</p>
+    );
+  }
+
   if (pending && !data) {
     return (
       <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
-        Loading {city} pulse…
+        Loading {town} pulse…
       </p>
     );
   }
 
-  if (failed || !data?.row) {
+  if (failed) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-white/50">
+          Couldn&apos;t load {town} pulse.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setFailed(false);
+            setRetry((n) => n + 1);
+          }}
+          className="font-mono text-[10px] uppercase tracking-[0.16em] text-gold underline decoration-gold/40 underline-offset-4 hover:text-white"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  if (!data?.row) {
     return (
       <p className="text-sm text-white/50">
-        No market pulse for {city || "this town"} yet.
+        No market pulse for {town} yet.
       </p>
     );
   }

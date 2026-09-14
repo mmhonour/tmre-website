@@ -11,7 +11,10 @@ import {
 import ListingLocationMap from "@/components/listing/ListingLocationMap";
 import ShowcaseCompsMap from "@/components/listing/showcase/ShowcaseCompsMap";
 import ShowcaseInsightBody from "@/components/listing/showcase/ShowcaseInsightBody";
-import ShowcaseTownPulse from "@/components/listing/showcase/ShowcaseTownPulse";
+import ShowcaseTownPulse, {
+  resolveShowcasePulseCity,
+  showcaseTownPulseUrl,
+} from "@/components/listing/showcase/ShowcaseTownPulse";
 import {
   CompsGlyph,
   DetailsGlyph,
@@ -35,7 +38,7 @@ import {
   fmtIfSaleMoney,
   roundIfRentMidpoint,
 } from "@/lib/listing-if-estimates";
-import { loadTabJson } from "@/lib/tab-data-prefetch";
+import { loadTabJson, prefetchTabJson } from "@/lib/tab-data-prefetch";
 import { useLocationEstimateOverlay } from "@/components/intelligence/use-location-estimate-overlay";
 
 type DetailsTab = "full" | "other";
@@ -171,7 +174,7 @@ function DetailsOverlayTabs({
   return (
     <div
       role="tablist"
-      className="flex w-full justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
+      className="flex w-full shrink-0 justify-start gap-0.5 bg-[#0d1424] px-3 pt-2"
     >
       {(["full", "other"] as const).map((id) => (
         <button
@@ -336,6 +339,12 @@ export default function ShowcaseSectionRail({
     setMapExpanded(expanded);
     reportClearance(deck, expanded);
   };
+  const pulseCity = resolveShowcasePulseCity(townHint);
+  useEffect(() => {
+    if (!pulseCity) return;
+    prefetchTabJson(showcaseTownPulseUrl(pulseCity));
+  }, [pulseCity]);
+
   const [detailsTab, setDetailsTab] = useState<DetailsTab>("full");
   const [labelsMax, setLabelsMax] = useState(false);
   const showLabel = labelsMax && !hideLabels;
@@ -579,14 +588,14 @@ export default function ShowcaseSectionRail({
   const openCard =
     deck === "insight" ? (
       <CardChrome title="Insight" onCollapse={() => setDeck(null)}>
-        <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424] p-4">
+        <div className="min-h-0 w-full flex-1 overflow-y-auto bg-[#0d1424] p-4">
           <ShowcaseInsightBody insight={insight} facts={insightFacts ?? null} />
         </div>
       </CardChrome>
     ) : deck === "details" ? (
       <CardChrome title="Details" onCollapse={() => setDeck(null)}>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
-        <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424]">
+        <div className="min-h-0 w-full flex-1 overflow-y-auto bg-[#0d1424]">
           {detailsTab === "full" ? (
             <div className="p-3">
               <ListingSidebar details={detailsPanelProps} unframed />
@@ -610,8 +619,8 @@ export default function ShowcaseSectionRail({
       </CardChrome>
     ) : deck === "pulse" ? (
       <CardChrome title="Town pulse" onCollapse={() => setDeck(null)}>
-        <div className="min-h-0 w-full overflow-y-auto bg-[#0d1424] p-4">
-          <ShowcaseTownPulse city={townHint ?? ""} expanded />
+        <div className="min-h-0 w-full flex-1 overflow-y-auto bg-[#0d1424] p-4">
+          <ShowcaseTownPulse city={pulseCity} expanded />
         </div>
       </CardChrome>
     ) : deck === "map" ? (
@@ -648,11 +657,7 @@ export default function ShowcaseSectionRail({
         </div>
         {phone && deck && !mapFullscreen ? (
           <div
-            className={`pointer-events-auto flex min-h-0 w-full ${
-              deck === "map"
-                ? "h-[min(28rem,calc(100dvh-18rem))]"
-                : "max-h-[min(28rem,calc(100dvh-18rem))]"
-            } flex-col overflow-hidden bg-[#0d1424]`}
+            className="pointer-events-auto flex min-h-0 h-[min(28rem,calc(100dvh-18rem))] w-full flex-col overflow-hidden bg-[#0d1424]"
           >
             {openCard}
           </div>
@@ -668,11 +673,7 @@ export default function ShowcaseSectionRail({
       {deck && !mapFullscreen && !phone ? (
         <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-30 flex items-center justify-end pr-3 sm:pr-6">
           <div
-            className={`pointer-events-auto flex ${CARD_WIDTH} ${
-              deck === "map"
-                ? "h-[min(32rem,calc(100dvh-14rem))]"
-                : "max-h-full"
-            } flex-col overflow-hidden bg-[#0d1424]`}
+            className={`pointer-events-auto flex ${CARD_WIDTH} h-[min(32rem,calc(100dvh-14rem))] flex-col overflow-hidden bg-[#0d1424]`}
           >
             {openCard}
           </div>
