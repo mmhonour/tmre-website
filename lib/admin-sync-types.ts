@@ -6,7 +6,8 @@ export const ADMIN_SYNC_ACTIONS = {
   },
   incremental: {
     label: 'Incremental update',
-    description: 'Modified-since RETS pull across all towns',
+    description:
+      'Modified-since RETS pull across all towns (Active family + Closed + Expired)',
   },
   'listing-scores': {
     label: 'Goldilocks score rebuild (3a)',

@@ -156,6 +156,7 @@ const BUCKET_ORDER = [
   'Queued',
   'Worker',
   'Active+Closed',
+  'Active+Closed+Expired',
   'Active',
   'Closed',
   'Expired',

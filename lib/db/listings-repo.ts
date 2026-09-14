@@ -916,6 +916,18 @@ export async function countListings(): Promise<number> {
   return row?.n ?? 0
 }
 
+/** Rows in one town / status bucket (Expired catch-up checks this). */
+export async function countListingsForTownBucket(
+  town: string,
+  statusBucket: string,
+): Promise<number> {
+  const row = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n FROM listings WHERE town = $1 AND status_bucket = $2`,
+    [town, statusBucket],
+  )
+  return row?.n ?? 0
+}
+
 /** Active / Closed / Expired counts. */
 export async function countListingsByBucket(): Promise<Record<string, number>> {
   const rows = await query<{ bucket: string; n: number }>(
