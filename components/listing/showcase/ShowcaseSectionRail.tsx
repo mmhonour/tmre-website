@@ -227,7 +227,7 @@ function CardChrome({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col items-end">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <div className={`${pillClass(true, true)} shrink-0 bg-[#0d1424]`}>
         {onTitleClick ? (
           <button
@@ -459,33 +459,38 @@ export default function ShowcaseSectionRail({
     ) : null;
 
   const mapBody = (
-    <div className="min-h-0 flex-1">
-      {map?.hidePin ? (
-        <ListingLocationMap
-          latitude={map.latitude}
-          longitude={map.longitude}
-          addressQuery={map.addressQuery}
-          hidePin
-          hideLabel
-          outlineTown={map.outlineTown}
-          defaultZoom={map.defaultZoom}
-          variant="hero"
-          className="h-full"
-        />
-      ) : (
-        <ShowcaseCompsMap
-          mlsId={mlsId}
-          subject={subject}
-          townHint={townHint}
-          postalCode={postalCode}
-          expanded={mapExpanded}
-          onToggleExpanded={() => setExpanded(!mapExpanded)}
-          onExit={() => setDeck(null)}
-          fetchUrl={compsFetchUrl}
-          uagFetchUrl={uagFetchUrl}
-          hideSubject={map?.hidePin ?? false}
-        />
-      )}
+    <div className="relative min-h-0 w-full flex-1">
+      {/* Absolute fill: DealBoardMap / ListingLocationMap size via
+          ResizeObserver. In-flow `h-full` under a flex-1 parent collapses
+          to 0×0; the overlay widgets are `absolute` so they still paint. */}
+      <div className="absolute inset-0">
+        {map?.hidePin ? (
+          <ListingLocationMap
+            latitude={map.latitude}
+            longitude={map.longitude}
+            addressQuery={map.addressQuery}
+            hidePin
+            hideLabel
+            outlineTown={map.outlineTown}
+            defaultZoom={map.defaultZoom}
+            variant="hero"
+            className="h-full w-full"
+          />
+        ) : (
+          <ShowcaseCompsMap
+            mlsId={mlsId}
+            subject={subject}
+            townHint={townHint}
+            postalCode={postalCode}
+            expanded={mapExpanded}
+            onToggleExpanded={() => setExpanded(!mapExpanded)}
+            onExit={() => setDeck(null)}
+            fetchUrl={compsFetchUrl}
+            uagFetchUrl={uagFetchUrl}
+            hideSubject={map?.hidePin ?? false}
+          />
+        )}
+      </div>
     </div>
   );
 

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
+import { mapBoundZipsForListing } from "@/lib/tmre-towns";
 import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
 import {
   CompsGlyph,
@@ -375,6 +377,26 @@ function SymbolRailDemo() {
 
 function MapChromeDemo() {
   const [pool, setPool] = useState<"active" | "uag" | "sold">("active");
+  const previewBounds = useMemo(
+    () => mapBoundZipsForListing("Westport", "06880"),
+    [],
+  );
+  const previewListings = useMemo(
+    () => [
+      {
+        key: "preview-harbor",
+        address: "12 Harbor Rd",
+        city: "Westport",
+        price: 1_900_000,
+        score: 80,
+        isRental: false,
+        sqft: 2410,
+        latitude: 41.141,
+        longitude: -73.358,
+      },
+    ],
+    [],
+  );
   return (
     <div className="relative h-64 overflow-hidden bg-[#1a2744]">
       <div
@@ -400,7 +422,18 @@ function MapChromeDemo() {
           <span className="flex-1" />
           <span className="px-1 font-mono text-white/70">↑</span>
         </div>
-        <div className="relative min-h-0 flex-1">
+        <div className="relative min-h-0 w-full flex-1">
+          <div className="absolute inset-0">
+            <DealBoardMap
+              listings={previewListings}
+              subjectKey="preview-harbor"
+              boundZips={previewBounds.boundZips}
+              highlightZip={previewBounds.highlightZip}
+              className="h-full w-full"
+              heightClass="h-full"
+              hideLocationOverlayButton
+            />
+          </div>
           <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
             <span className="rounded-md border border-white/15 bg-[#0d1424] px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/85">
               Full size

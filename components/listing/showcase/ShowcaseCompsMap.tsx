@@ -185,10 +185,11 @@ export default function ShowcaseCompsMap({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0d1424]">
-      <div className="relative min-h-0 flex-1">
-        {/* DealBoardMap puts `heightClass` on an inner div, so its own outer
-            wrapper needs a height too or `h-full` resolves against auto. */}
+    <div className="relative h-full min-h-0 w-full bg-[#0d1424]">
+      <div className="absolute inset-0">
+        {/* Absolute fill so ResizeObserver sees a real box. DealBoardMap
+            puts `heightClass` on an inner div; in-flow `h-full` under a
+            flex-1 parent resolves against auto and the canvas goes 0×0. */}
         {/* All town zips draw. Camera frames the listing zip (or the town if
             there is only one) with the house centered — Reset is town-wide. */}
         <DealBoardMap
@@ -203,7 +204,7 @@ export default function ShowcaseCompsMap({
             hrefForOverride ??
             ((l) => listingDetailHref(l.key, l.address, l.city ?? townHint))
           }
-          className="h-full"
+          className="h-full w-full"
           heightClass="h-full"
           hideLocationOverlayButton
         />

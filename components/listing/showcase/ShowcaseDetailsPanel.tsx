@@ -412,30 +412,32 @@ export default function ShowcaseDetailsPanel({
   }, [isDesktop]);
 
   const listingMap = (heightClass: string) => (
-    <div className={heightClass}>
-      {host.map.hidePin ? (
-        <ListingLocationMap
-          latitude={host.map.latitude}
-          longitude={host.map.longitude}
-          addressQuery={host.map.addressQuery}
-          hidePin
-          hideLabel
-          outlineTown={host.map.outlineTown}
-          defaultZoom={host.map.defaultZoom}
-          variant="hero"
-          className="h-full"
-        />
-      ) : (
-        <ShowcaseCompsMap
-          mlsId={listing.mlsId}
-          subject={subject}
-          townHint={host.townHint ?? host.city}
-          postalCode={host.map.postalCode}
-          fetchUrl={host.compsFetchUrl}
-          uagFetchUrl={host.uagFetchUrl}
-          hideSubject={host.map.hidePin}
-        />
-      )}
+    <div className={`relative ${heightClass}`}>
+      <div className="absolute inset-0">
+        {host.map.hidePin ? (
+          <ListingLocationMap
+            latitude={host.map.latitude}
+            longitude={host.map.longitude}
+            addressQuery={host.map.addressQuery}
+            hidePin
+            hideLabel
+            outlineTown={host.map.outlineTown}
+            defaultZoom={host.map.defaultZoom}
+            variant="hero"
+            className="h-full w-full"
+          />
+        ) : (
+          <ShowcaseCompsMap
+            mlsId={listing.mlsId}
+            subject={subject}
+            townHint={host.townHint ?? host.city}
+            postalCode={host.map.postalCode}
+            fetchUrl={host.compsFetchUrl}
+            uagFetchUrl={host.uagFetchUrl}
+            hideSubject={host.map.hidePin}
+          />
+        )}
+      </div>
     </div>
   );
 
