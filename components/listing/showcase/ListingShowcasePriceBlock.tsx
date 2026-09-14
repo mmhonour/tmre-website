@@ -4,12 +4,19 @@ import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-s
 export function ListingShowcasePriceBlock({
   label,
   amount,
+  align = "right",
 }: {
   label: string;
   amount: string;
+  /** Phone stack sits under status; desktop price stays on the right. */
+  align?: "left" | "right";
 }) {
   return (
-    <ListingShowcaseTypeWash className="overflow-visible px-8 py-2.5 text-right">
+    <ListingShowcaseTypeWash
+      className={`overflow-visible px-8 py-2.5 ${
+        align === "left" ? "text-left" : "text-right"
+      }`}
+    >
       <p className="relative whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
         {label}
       </p>

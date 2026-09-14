@@ -302,6 +302,19 @@ export default function ListingShowcaseView({
                   </span>
                 </ListingShowcaseTypeWash>
               )}
+              {headerPrice ? (
+                <div
+                  className={`w-fit lg:hidden ${
+                    host.hideStatusBadge ? "" : "mt-2"
+                  }`}
+                >
+                  <ListingShowcasePriceBlock
+                    label={priceIsClosed ? "Closed at" : "Offered at"}
+                    amount={headerPrice}
+                    align="left"
+                  />
+                </div>
+              ) : null}
               <ListingShowcaseTypeWash className="mt-2 w-fit max-w-full px-5 py-2">
                 <h1 className="relative font-serif text-3xl leading-tight sm:text-4xl lg:text-5xl">
                   {visionHref ? (
@@ -325,7 +338,7 @@ export default function ListingShowcaseView({
 
             {headerPrice ? (
               <div
-                className="shrink-0 overflow-visible text-right transition-[margin] duration-300"
+                className="hidden shrink-0 overflow-visible text-right transition-[margin] duration-300 lg:block"
                 style={priceClearanceStyle(
                   railClearance.open,
                   railClearance.expanded,
