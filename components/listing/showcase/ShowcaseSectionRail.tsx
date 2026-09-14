@@ -258,9 +258,10 @@ type IfAmounts = { sale: number | null; rent: number | null };
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Offered at / Closed at
- * sits above min/max with a clearance gap. Insight, Details, then Comps sit
- * above that arrow; What if, Pulse, and Map sit below. One deck at a time
- * occupies the center-right of the bleed, above the type. Comps and What if
+ * sits over min/max in the top-right, same band as status. Insight, Details,
+ * then Comps sit above that arrow; What if, Pulse, and Map sit below. One
+ * deck at a time occupies the center-right of the bleed, above the type.
+ * Comps and What if
  * expand in place and can stay open with each other and with a deck. They
  * stay `w-fit` in the glyph stack — other icons do not shift left. On a
  * phone, opening either one closes the deck so the pills have room, leftover
@@ -647,26 +648,27 @@ export default function ShowcaseSectionRail({
       <div
         className={`pointer-events-none absolute inset-y-0 z-30 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${railRight}`}
       >
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end overflow-visible pb-1">
+        {/* Top-right: Offered at / Closed at over min/max, same band as status. */}
+        <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-4 pt-24 lg:pt-28">
           {price ? (
-            <div className="mb-4 hidden lg:block">
+            <div className="hidden lg:block">
               <ListingShowcasePriceBlock
                 label={price.label}
                 amount={price.amount}
               />
             </div>
           ) : null}
-          <div className="flex flex-col items-end gap-1">
-            {hideLabels ? null : (
-              <RailMinMaxButton
-                expanded={labelsMax}
-                onToggle={() => setLabelsMax((open) => !open)}
-              />
-            )}
-            {deck === "insight" ? null : insightButton}
-            {deck === "details" ? null : detailsButton}
-            {compsPill}
-          </div>
+          {hideLabels ? null : (
+            <RailMinMaxButton
+              expanded={labelsMax}
+              onToggle={() => setLabelsMax((open) => !open)}
+            />
+          )}
+        </div>
+        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
+          {deck === "insight" ? null : insightButton}
+          {deck === "details" ? null : detailsButton}
+          {compsPill}
         </div>
         {phone && deck && !mapFullscreen ? (
           <div

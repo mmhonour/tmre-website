@@ -178,7 +178,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Full-bleed rail: Offered at / Closed at above min/max with clearance. Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Glyphs share the address/status/price navy wash. Phone still stacks status, then price, then the address.",
+      "Full-bleed rail: desktop Offered at / Closed at sits over min/max in the top-right. Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Glyphs share the address/status/price navy wash. Phone still stacks status, then price, then the address.",
   },
 ];
 

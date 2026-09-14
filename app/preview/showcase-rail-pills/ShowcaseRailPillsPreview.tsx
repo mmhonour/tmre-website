@@ -294,46 +294,44 @@ function SymbolRailDemo() {
   return (
     <div className="relative min-h-[28rem]">
       <div className="absolute inset-y-0 right-0 flex w-[min(24rem,calc(100%-0.75rem))] flex-col items-end pr-3">
-        <div className="flex flex-1 flex-col items-end justify-end pb-1">
-          <div className="mb-4">
-            <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            {deck ? null : (
-              <button
-                type="button"
-                data-testid="preview-rail-minmax"
-                onClick={() => setLabelsMax((current) => !current)}
-                aria-pressed={labelsMax}
-                aria-label={labelsMax ? "Show icons only" : "Show icon names"}
-                title={labelsMax ? "Minimize to icons" : "Maximize labels"}
-                className={railIcon}
-              >
-                <span className="relative">
-                  {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
-                </span>
-              </button>
-            )}
-            {deck === "insight" ? null : (
-              <DemoControl
-                label="Insight"
-                glyph={<InsightGlyph />}
-                showLabel={labelsMax && !deck}
-                testId="preview-insight-open"
-                onClick={() => toggleDeck("insight")}
-              />
-            )}
-            {deck === "details" ? null : (
-              <DemoControl
-                label="Details"
-                glyph={<DetailsGlyph />}
-                showLabel={labelsMax && !deck}
-                testId="preview-details-open"
-                onClick={() => toggleDeck("details")}
-              />
-            )}
-            {compsPill}
-          </div>
+        <div className="flex shrink-0 flex-col items-end gap-4 pt-4">
+          <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
+          {deck ? null : (
+            <button
+              type="button"
+              data-testid="preview-rail-minmax"
+              onClick={() => setLabelsMax((current) => !current)}
+              aria-pressed={labelsMax}
+              aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+              title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+              className={railIcon}
+            >
+              <span className="relative">
+                {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+              </span>
+            </button>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
+          {deck === "insight" ? null : (
+            <DemoControl
+              label="Insight"
+              glyph={<InsightGlyph />}
+              showLabel={labelsMax && !deck}
+              testId="preview-insight-open"
+              onClick={() => toggleDeck("insight")}
+            />
+          )}
+          {deck === "details" ? null : (
+            <DemoControl
+              label="Details"
+              glyph={<DetailsGlyph />}
+              showLabel={labelsMax && !deck}
+              testId="preview-details-open"
+              onClick={() => toggleDeck("details")}
+            />
+          )}
+          {compsPill}
         </div>
         {card ? (
           <div className="w-full self-end">{card}</div>
@@ -564,11 +562,11 @@ export function ShowcaseRailPillsPreview() {
           Symbols around the right arrow
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Offered at sits above min/max with a clearance gap. Insight,
-          Details, then Comps stack above the right arrow; What if, Pulse,
-          and Map sit below. Glyphs use the same side-faded navy wash as
-          status, address, and price. Decks are exclusive. Comps and What if
-          expand in place.
+          Offered at sits in the top-right over min/max. Insight, Details,
+          then Comps stack above the right arrow; What if, Pulse, and Map
+          sit below. Glyphs use the same side-faded navy wash as status,
+          address, and price. Decks are exclusive. Comps and What if expand
+          in place.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
