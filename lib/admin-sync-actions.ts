@@ -621,7 +621,7 @@ async function runAdminSyncActionImpl(
           : 'all'
       const statusScopeLabel =
         statusScope === 'all'
-          ? 'Active+CS+UC+Closed'
+          ? 'Active+CS+UC+Closed+Expired'
           : statusScope === 'active'
             ? 'Active+CS+UC'
             : 'Closed'

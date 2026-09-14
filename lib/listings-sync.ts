@@ -1,6 +1,7 @@
 import {
   captureInventorySnapshot,
   countListings,
+  countListingsForTownBucket,
   emptyIncrementalUpsertResult,
   readListingsDbStats,
   readListingsFromDb,
@@ -34,8 +35,10 @@ import {
   CLOSED_LISTINGS_SINCE,
   COMING_SOON_MLS_STATUS,
   EXPIRED_LISTINGS_FETCH_LIMIT,
+  EXPIRED_MLS_STATUS,
   getActiveListingsFetchLimit,
   isClosedListing,
+  isExpiredListing,
   searchMarketListingsForTown,
   setSyncedActiveCount,
   UNDER_CONTRACT_CTS_MLS_STATUS,
@@ -129,13 +132,31 @@ async function fetchClosedListingsIncremental(
   return rows.filter(isClosedListing)
 }
 
+/**
+ * Recently modified Expired listings. Same date-window rule as Closed —
+ * MLSStatus=|X alone returns no rows.
+ */
+async function fetchExpiredListingsIncremental(
+  town: TmreTown,
+  modifiedAfter: string,
+): Promise<Listing[]> {
+  const rows = await searchListings({
+    city: town,
+    status: EXPIRED_MLS_STATUS,
+    modifiedAfter,
+    closedAfter: CLOSED_LISTINGS_SINCE,
+    limit: getActiveListingsFetchLimit(),
+  })
+  return rows.filter(isExpiredListing)
+}
+
 /** Adhoc Incremental status scope (Admin Sync now filters). */
 export type IncrementalStatusScope = 'all' | 'active' | 'closed'
 
 export type SyncTownIncrementalOptions = {
   /**
    * Which MLS families to pull. Default `all` =
-   * Active + Coming Soon + UC + UC-CTS + Closed (same as scheduled incremental).
+   * Active + Coming Soon + UC + UC-CTS + Closed + Expired (scheduled incremental).
    */
   statusScope?: IncrementalStatusScope
 }
@@ -143,7 +164,24 @@ export type SyncTownIncrementalOptions = {
 function incrementalStatusBucketLabel(scope: IncrementalStatusScope): string {
   if (scope === 'active') return 'Active/incremental'
   if (scope === 'closed') return 'Closed/incremental'
-  return 'Active+Closed/incremental'
+  return 'Active+Closed+Expired/incremental'
+}
+
+const EXPIRED_CATCHUP_COOLDOWN_MS = 24 * 60 * 60 * 1000
+
+function expiredCatchUpMetaKey(town: string): string {
+  return `expired_catchup:${town}`
+}
+
+/** Year-window Expired backfill when the town bucket is empty (at most once/day). */
+async function shouldCatchUpExpiredBucket(town: TmreTown): Promise<boolean> {
+  const existing = await countListingsForTownBucket(town, 'Expired')
+  if (existing > 0) return false
+  const raw = getSyncMeta(expiredCatchUpMetaKey(town))
+  if (!raw) return true
+  const t = Date.parse(raw)
+  if (!Number.isFinite(t)) return true
+  return Date.now() - t > EXPIRED_CATCHUP_COOLDOWN_MS
 }
 
 /** Pull only listings modified since the last incremental watermark. */
@@ -157,11 +195,14 @@ export async function syncTownListingsIncremental(
   const statusScope: IncrementalStatusScope = options.statusScope ?? 'all'
   const pullActive = statusScope === 'all' || statusScope === 'active'
   const pullClosed = statusScope === 'all' || statusScope === 'closed'
+  const pullExpired = statusScope === 'all'
   const statusBucket = incrementalStatusBucketLabel(statusScope)
 
   try {
     const limit = getActiveListingsFetchLimit()
     const empty: Listing[] = []
+    const expiredCatchUp =
+      pullExpired && (await shouldCatchUpExpiredBucket(town))
     const [active, comingSoon, underContract, underContractCts, closed] =
       await Promise.all([
         pullActive
@@ -203,21 +244,50 @@ export async function syncTownListingsIncremental(
           underContractCts,
         )
       : []
-    const [marketUpsert, closedUpsert] = await Promise.all([
+    let expired: Listing[] = empty
+    if (pullExpired) {
+      try {
+        expired = expiredCatchUp
+          ? await fetchExpiredListingsForTownYearWindows(town, {
+              limit: Math.max(EXPIRED_LISTINGS_FETCH_LIMIT, 2000),
+              parallel: true,
+            })
+          : await fetchExpiredListingsIncremental(town, modifiedAfter)
+      } catch (err) {
+        console.warn(
+          `[listings-sync/incremental] ${town} Expired pull failed (non-fatal)`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+      if (expiredCatchUp) {
+        await setSyncMetaDurable(
+          expiredCatchUpMetaKey(town),
+          new Date().toISOString(),
+        )
+      }
+    }
+    const [marketUpsert, closedUpsert, expiredUpsert] = await Promise.all([
       pullActive
         ? upsertListingsIncremental(town, 'Active', marketListings)
         : Promise.resolve(emptyIncrementalUpsertResult()),
       pullClosed
         ? upsertListingsIncremental(town, 'Closed', closed)
         : Promise.resolve(emptyIncrementalUpsertResult()),
+      pullExpired
+        ? upsertListingsIncremental(town, 'Expired', expired)
+        : Promise.resolve(emptyIncrementalUpsertResult()),
     ])
-    const count = marketUpsert.count + closedUpsert.count
-    const inserted = marketUpsert.inserted + closedUpsert.inserted
-    const updated = marketUpsert.updated + closedUpsert.updated
-    const statsChanged = marketUpsert.statsChanged + closedUpsert.statsChanged
+    const count = marketUpsert.count + closedUpsert.count + expiredUpsert.count
+    const inserted =
+      marketUpsert.inserted + closedUpsert.inserted + expiredUpsert.inserted
+    const updated =
+      marketUpsert.updated + closedUpsert.updated + expiredUpsert.updated
+    const statsChanged =
+      marketUpsert.statsChanged + closedUpsert.statsChanged + expiredUpsert.statsChanged
     const priceChangedIds = [
       ...marketUpsert.priceChangedIds,
       ...closedUpsert.priceChangedIds,
+      ...expiredUpsert.priceChangedIds,
     ]
 
     // The stats cache rebuilds off these marks instead of an hourly TTL.
@@ -302,7 +372,7 @@ export type SyncIncrementalOptions = {
    */
   towns?: readonly TmreTown[]
   /**
-   * Adhoc Admin status filter. Default `all` (Active family + Closed).
+   * Adhoc Admin status filter. Default `all` (Active family + Closed + Expired).
    * `active` = Active + Coming Soon + UC + UC-CTS. `closed` = Closed only.
    */
   statusScope?: IncrementalStatusScope
@@ -390,7 +460,7 @@ export async function syncIncrementalListings(
       : townsToRun.join(', ')
   const statusLabel =
     statusScope === 'all'
-      ? 'Active+CS+UC+Closed'
+      ? 'Active+CS+UC+Closed+Expired'
       : statusScope === 'active'
         ? 'Active+CS+UC'
         : 'Closed'

@@ -15,6 +15,7 @@ import {
   readListingMlsStatusById,
   readListingsFromDb,
 } from '@/lib/db/listings-repo'
+import { expiredRetsSearchParams } from '@/lib/rets-dmql'
 import {
   getSyncMeta,
   setSyncMeta,
@@ -433,18 +434,11 @@ type ExpiredSearchOptions = {
 }
 
 function expiredSearchParams(limit: number, options: ExpiredSearchOptions = {}) {
-  const params: SearchParams = {
-    status: EXPIRED_MLS_STATUS,
+  return expiredRetsSearchParams({
     limit,
-  }
-  const minAge = options.minAgeDays ?? 0
-  if (minAge > 0) {
-    params.closedAfter = '2000-01-01'
-    const d = new Date()
-    d.setDate(d.getDate() - minAge)
-    params.closedBefore = d.toISOString().slice(0, 10)
-  }
-  return params
+    minAgeDays: options.minAgeDays,
+    closedSince: CLOSED_LISTINGS_SINCE,
+  })
 }
 
 function applyExpiredTownFilter(listings: Listing[], city: string): Listing[] {
@@ -455,7 +449,7 @@ function applyExpiredTownFilter(listings: Listing[], city: string): Listing[] {
   return out
 }
 
-/** Expired inventory for one town — fetched from RETS (sync pulls all; page filters age in API). */
+/** Expired inventory for one town — RETS with a StatusChange window (never MLSStatus=|X alone). */
 export async function searchExpiredListingsForTown(
   town: TmreTown,
   limit: number,
@@ -476,26 +470,41 @@ export async function searchExpiredListingsForTown(
   return listings.slice(0, limit)
 }
 
-/** Expired listings — SQLite first, RETS fallback with upsert into Expired bucket. */
+/**
+ * Expired listings — Postgres first when the Expired bucket has rows.
+ *
+ * An empty Expired bucket is not "sync succeeded with zero rows". Full-resync
+ * is retired and Incremental did not pull Expired, so do not treat
+ * `last_full_sync` as proof the cache is complete. Live RETS year-windows
+ * belong on Incremental catch-up, not this page request.
+ */
 export async function fetchExpiredListingsForCity(
   city: string,
   limit: number,
 ): Promise<{ listings: Listing[]; source: ListingsSource }> {
   const bucket = 'Expired'
   const cached = await readDbListings(city, bucket, limit)
-  if (cached != null && (cached.length > 0 || getLastFullSync() != null)) {
+  if (cached != null && cached.length > 0) {
     return {
       listings: applyExpiredTownFilter(cached, city).slice(0, limit),
       source: 'db',
     }
   }
+  if (cached != null && (await hasListingsData())) {
+    return { listings: [], source: 'db' }
+  }
 
   let listings: Listing[]
   if (isTmreTown(city)) {
-    listings = await searchExpiredListingsForTown(city as TmreTown, limit)
+    listings = await searchExpiredListingsForTown(city as TmreTown, limit, {
+      minAgeDays: EXPIRED_MIN_AGE_DAYS,
+    })
   } else {
     listings = applyExpiredTownFilter(
-      await searchListings({ city, ...expiredSearchParams(limit) }),
+      await searchListings({
+        city,
+        ...expiredSearchParams(limit, { minAgeDays: EXPIRED_MIN_AGE_DAYS }),
+      }),
       city,
     )
   }

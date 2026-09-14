@@ -13,6 +13,7 @@ import {
 import { coalesceListingStatus } from '@/lib/listing-history'
 import { normalizeMlsDate, normalizeMlsTimestamp } from '@/lib/mls-time'
 import { getRetsCredentials } from '@/lib/rets-credentials'
+import { omitMlsStatusWithDateWindow } from '@/lib/rets-dmql'
 
 type RetsClientModule = typeof import('rets-client')
 
@@ -355,12 +356,13 @@ function resolveStatusCode(name: string): string | null {
 
 function buildDmql(params: SearchParams): string {
   const clauses: string[] = []
-  const statusKey = params.status?.trim().toLowerCase() ?? ''
   const closedWindow = Boolean(params.closedAfter || params.closedBefore)
   if (params.status) {
     const code = resolveStatusCode(params.status)
-    // SmartMLS throws NO_RECORDS_FOUND on MLSStatus=|C - use a date window for closed sales.
-    if (code && !(statusKey === 'closed' && closedWindow)) {
+    // SmartMLS throws NO_RECORDS_FOUND on MLSStatus=|C or |X alone (and with
+    // the status+window pair). Closed and Expired use a date window without
+    // the status clause, then filter in process.
+    if (code && !(closedWindow && omitMlsStatusWithDateWindow(params.status))) {
       clauses.push(`(MLSStatus=|${code})`)
     }
   }
