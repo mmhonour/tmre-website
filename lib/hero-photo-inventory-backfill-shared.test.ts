@@ -4,8 +4,11 @@ import {
   advanceHeroInventoryTown,
   formatHeroPhotosInterruptedMessage,
   formatHeroPhotosJobMessage,
+  HERO_PHOTOS_SKIP_MAX,
+  mergeHeroPhotosSkipMlsIds,
   parseHeroInventoryCursor,
   parseHeroPhotosJobStatus,
+  parseHeroPhotosSkipMlsIds,
   pctMissing,
   type HeroPhotosJobStatus,
 } from "./hero-photo-inventory-backfill-shared";
@@ -76,6 +79,23 @@ describe("formatHeroPhotosJobMessage", () => {
     );
   });
 
+  it("names listings this burst walked past because they stored nothing", () => {
+    assert.equal(
+      formatHeroPhotosJobMessage({ ...base, filledListings: 0, filledPhotos: 0, walkedPast: 15 }),
+      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · walked past 15 that stored nothing · now 84.4% missing",
+    );
+    assert.equal(
+      formatHeroPhotosJobMessage({
+        ...base,
+        running: true,
+        filledListings: 0,
+        filledPhotos: 0,
+        walkedPast: 10,
+      }),
+      "running · 87% missing (1,340/1,540) · walked past 10 that stored nothing",
+    );
+  });
+
   it("shows % immediately while a burst is running", () => {
     assert.equal(
       formatHeroPhotosJobMessage({ ...base, running: true, filledListings: 0, filledPhotos: 0 }),
@@ -139,6 +159,30 @@ describe("formatHeroPhotosJobMessage", () => {
       }),
       "idle · was 87% missing · filled 5 listings / 30 photos · now 0% missing · 100% complete",
     );
+  });
+});
+
+describe("parseHeroPhotosSkipMlsIds / mergeHeroPhotosSkipMlsIds", () => {
+  it("reads a persisted skip list and ignores junk", () => {
+    assert.deepEqual(parseHeroPhotosSkipMlsIds(null), []);
+    assert.deepEqual(parseHeroPhotosSkipMlsIds("{"), []);
+    assert.deepEqual(
+      parseHeroPhotosSkipMlsIds(JSON.stringify({ ids: [" a ", "", 3, "b"] })),
+      ["a", "b"],
+    );
+  });
+
+  it("appends this burst and keeps the newest ids when over the cap", () => {
+    assert.deepEqual(mergeHeroPhotosSkipMlsIds(["a", "b"], ["b", "c"]), [
+      "a",
+      "b",
+      "c",
+    ]);
+    const persisted = Array.from({ length: HERO_PHOTOS_SKIP_MAX - 1 }, (_, i) => `old-${i}`);
+    const merged = mergeHeroPhotosSkipMlsIds(persisted, ["new-1", "new-2"]);
+    assert.equal(merged.length, HERO_PHOTOS_SKIP_MAX);
+    assert.deepEqual(merged.slice(-2), ["new-1", "new-2"]);
+    assert.equal(merged.includes("old-0"), false);
   });
 });
 

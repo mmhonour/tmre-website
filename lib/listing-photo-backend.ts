@@ -103,6 +103,28 @@ export async function readListingPhotoBytes(
   return { data: row.data, contentType: row.contentType, syncedAt: row.syncedAt }
 }
 
+/**
+ * R2 already has the object, Neon does not — write the index row.
+ * Returns true when a missing/thin row was healed. Does not copy SQLite.
+ */
+export async function ensureListingPhotoIndexFromR2(
+  cacheId: string,
+  photoIndex: number,
+): Promise<boolean> {
+  if (!photoBackendUsesR2()) return false
+  const existing = await readListingPhotoIndexRow(cacheId, photoIndex)
+  if (existing && existing.byteLength >= 100) return false
+  const fromR2 = await getR2ListingPhoto(cacheId, photoIndex)
+  if (!fromR2 || fromR2.data.length < 100) return false
+  await upsertListingPhotoIndexRow(
+    cacheId,
+    photoIndex,
+    fromR2.contentType,
+    fromR2.data.length,
+  )
+  return true
+}
+
 /** Read one photo's metadata WITHOUT fetching bytes (freshness/skip checks). */
 export async function readListingPhotoMeta(
   cacheId: string,

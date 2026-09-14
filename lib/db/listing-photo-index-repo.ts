@@ -204,17 +204,26 @@ export async function countActiveShowcaseHeroCoverage(): Promise<{
 /** Oldest Active gaps first — they have been waiting the longest. */
 export async function listOldestActiveMlsIdsMissingShowcaseHeroes(
   limit: number,
+  options?: { excludeMlsIds?: readonly string[] },
 ): Promise<string[]> {
   const cap = Math.max(1, Math.min(Math.round(limit), 40))
+  const exclude = [
+    ...new Set(
+      (options?.excludeMlsIds ?? [])
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    ),
+  ]
   const rows = await query<{ mls_id: string }>(
     `SELECT l.mls_id
        FROM listings l
       WHERE l.status_bucket = 'Active'
         AND COALESCE(l.photo_count, 0) > 0
         AND ${missingHeroSql('l')}
+        AND NOT (l.mls_id = ANY($4::text[]))
       ORDER BY l.list_date ASC NULLS LAST, l.mls_id ASC
       LIMIT $3`,
-    [SHOWCASE_HERO_PHOTO_SLOTS, HERO_SLOT_INDEX_MIN_BYTES, cap],
+    [SHOWCASE_HERO_PHOTO_SLOTS, HERO_SLOT_INDEX_MIN_BYTES, cap, exclude],
   )
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
