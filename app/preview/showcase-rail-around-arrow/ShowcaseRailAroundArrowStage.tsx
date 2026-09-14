@@ -155,26 +155,45 @@ const PULSE_ROWS: readonly { label: string; value: string }[] = [
   { label: "Median tax", value: "$18,440" },
 ];
 
-/** Full town pulse — hug the rows; no scroll viewport. */
-function TownPulseCard({ onHide }: { onHide: () => void }) {
+const DETAILS_ROWS: readonly { label: string; value: string }[] = [
+  { label: "Beds", value: "4" },
+  { label: "Baths", value: "3" },
+  { label: "Living area", value: "2,410 sf" },
+  { label: "Lot", value: "0.42 ac" },
+  { label: "Assessed", value: "$1.12M" },
+  { label: "Tax", value: "$18,440" },
+  { label: "DOM", value: "12" },
+  { label: "Schools", value: "Coleytown / Staples" },
+];
+
+/** Town pulse / Details — hug the rows; grow top and bottom, no scroll box. */
+function FitDeckCard({
+  title,
+  rows,
+  onHide,
+}: {
+  title: string;
+  rows: readonly { label: string; value: string }[];
+  onHide: () => void;
+}) {
   return (
     <div className="flex h-auto w-full flex-col bg-[#0d1424]">
       <div
         className={`relative flex w-full items-center px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-white ${PREVIEW_GLYPH_WASH}`}
       >
-        <span>Town pulse</span>
+        <span>{title}</span>
         <span className="flex-1" />
         <button
           type="button"
           onClick={onHide}
-          aria-label="Hide Town pulse"
+          aria-label={`Hide ${title}`}
           className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
         >
           ↑
         </button>
       </div>
       <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
-        {PULSE_ROWS.map((row) => (
+        {rows.map((row) => (
           <li key={row.label} className="flex justify-between gap-4">
             <span className="text-white/45">{row.label}</span>
             <span className="tabular-nums text-white">{row.value}</span>
@@ -324,15 +343,15 @@ export function ShowcaseRailAroundArrowStage({
             setActive((id) => (id === "insight" ? null : "insight"))
           }
         />
-        <GlyphButton
-          label="Details"
-          glyph={<DetailsGlyph />}
-          showLabel={showLabel}
-          pressed={active === "details"}
-          onClick={() =>
-            setActive((id) => (id === "details" ? null : "details"))
-          }
-        />
+        {active === "details" ? null : (
+          <GlyphButton
+            label="Details"
+            glyph={<DetailsGlyph />}
+            showLabel={showLabel}
+            pressed={false}
+            onClick={() => setActive("details")}
+          />
+        )}
         {active === "comps" ? (
           <ExpandedFigurePill
             label="Comps"
@@ -406,7 +425,7 @@ export function ShowcaseRailAroundArrowStage({
         ) : null}
       </div>
 
-      {active === "pulse" ? (
+      {active === "pulse" || active === "details" ? (
         <div
           className={`pointer-events-auto absolute z-20 -translate-y-1/2 ${
             mobile
@@ -414,7 +433,11 @@ export function ShowcaseRailAroundArrowStage({
               : "right-24 top-1/2 w-[min(24rem,calc(100%-8rem))]"
           }`}
         >
-          <TownPulseCard onHide={() => setActive(null)} />
+          <FitDeckCard
+            title={active === "details" ? "Details" : "Town pulse"}
+            rows={active === "details" ? DETAILS_ROWS : PULSE_ROWS}
+            onHide={() => setActive(null)}
+          />
         </div>
       ) : null}
 
