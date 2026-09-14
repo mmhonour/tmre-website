@@ -17,7 +17,7 @@ export default function ShowcaseRailPillsPreviewPage() {
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Fixture only — no live MLS. Offered at / Closed at sits in the
-          top-right over min/max with a clearance gap. Insight, Details,
+          top-right over min/max on phones and desktop. Insight, Details,
           Comps stay above the right arrow; What if, Pulse, Map below. All
           glyphs use the same side-faded navy wash as the address, status,
           and price.

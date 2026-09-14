@@ -258,8 +258,9 @@ type IfAmounts = { sale: number | null; rent: number | null };
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Offered at / Closed at
- * sits over min/max in the top-right, same band as status. Insight, Details,
- * then Comps sit above that arrow; What if, Pulse, and Map sit below. One
+ * sits over min/max in the top-right, same band as status, on every
+ * screen. Insight, Details, then Comps sit above that arrow; What if,
+ * Pulse, and Map sit below. One
  * deck at a time occupies the center-right of the bleed, above the type.
  * Comps and What if
  * expand in place and can stay open with each other and with a deck. They
@@ -283,7 +284,7 @@ export default function ShowcaseSectionRail({
   map,
 }: {
   mlsId: string;
-  /** Desktop Offered at / Closed at — parked above min/max, not the header row. */
+  /** Offered at / Closed at — parked above min/max in the top-right, not the header row. */
   price?: { label: string; amount: string } | null;
   insight: string | null;
   /** Showcase-only facts line, rendered under the shared insight. */
@@ -651,12 +652,10 @@ export default function ShowcaseSectionRail({
         {/* Top-right: Offered at / Closed at over min/max, same band as status. */}
         <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-4 pt-24 lg:pt-28">
           {price ? (
-            <div className="hidden lg:block">
-              <ListingShowcasePriceBlock
-                label={price.label}
-                amount={price.amount}
-              />
-            </div>
+            <ListingShowcasePriceBlock
+              label={price.label}
+              amount={price.amount}
+            />
           ) : null}
           {hideLabels ? null : (
             <RailMinMaxButton

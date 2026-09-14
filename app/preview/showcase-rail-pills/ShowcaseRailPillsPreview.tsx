@@ -492,11 +492,9 @@ export function ShowcaseRailPillsPreview() {
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
           Status, street, and Offered at / Closed at sit on the same navy
-          wash — strongest in the middle, transparent at the edges. On
-          desktop, Offered at / Closed at lives in the rail above min/max.
-          On a phone it still stacks under status, then the address. On a phone the price
-          sits under status and the address follows, so the right rail keeps
-          the pane. Desktop keeps the price on the right.
+          wash — strongest in the middle, transparent at the edges. Offered
+          at / Closed at lives in the top-right over min/max on every
+          screen. Status and the address stay on the left.
         </p>
         <div className="grid gap-6 lg:grid-cols-2">
           <div>
@@ -504,26 +502,24 @@ export function ShowcaseRailPillsPreview() {
               Phone
             </h3>
             <div className="listing-showcase-type relative mx-auto max-w-[390px] bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-10">
-              <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
-                <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
-                  Active
-                </span>
-              </ListingShowcaseTypeWash>
-              <div className="mt-2 w-fit">
-                <ListingShowcasePriceBlock
-                  label="Offered at"
-                  amount="$1.90M"
-                  align="left"
-                />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
+                    <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
+                      Active
+                    </span>
+                  </ListingShowcaseTypeWash>
+                  <ListingShowcaseTypeWash className="mt-2 w-fit max-w-full px-5 py-2">
+                    <p className="relative font-serif text-3xl text-white">
+                      12 Harbor Rd
+                    </p>
+                    <p className="relative mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
+                      Westport, CT
+                    </p>
+                  </ListingShowcaseTypeWash>
+                </div>
+                <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
               </div>
-              <ListingShowcaseTypeWash className="mt-2 w-fit max-w-full px-5 py-2">
-                <p className="relative font-serif text-3xl text-white">
-                  12 Harbor Rd
-                </p>
-                <p className="relative mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-                  Westport, CT
-                </p>
-              </ListingShowcaseTypeWash>
             </div>
           </div>
           <div>
