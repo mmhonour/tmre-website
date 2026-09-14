@@ -103,6 +103,46 @@ function MobileHeaderFixture() {
   );
 }
 
+/** Expanded Comps / What if — solid navy so the photo cannot read through. */
+function ExpandedFigurePill({
+  label,
+  chips,
+  onHide,
+}: {
+  label: string;
+  chips: readonly { label: string; value: string }[];
+  onHide: () => void;
+}) {
+  return (
+    <div className="relative flex w-fit max-w-full items-center gap-2 bg-[#0d1424] px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-white shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] sm:text-xs">
+      <span className="underline decoration-white/35 underline-offset-4">
+        {label}
+      </span>
+      <span className="flex items-center gap-1">
+        {chips.map((chip) => (
+          <span
+            key={chip.label}
+            className="inline-flex shrink-0 items-center gap-1.5 bg-white/[0.08] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/65"
+          >
+            {chip.label}
+            <span className="tabular-nums normal-case tracking-[0.08em] text-white">
+              {chip.value}
+            </span>
+          </span>
+        ))}
+      </span>
+      <button
+        type="button"
+        onClick={onHide}
+        aria-label={`Hide ${label}`}
+        className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+      >
+        ↑
+      </button>
+    </div>
+  );
+}
+
 function GlyphButton({
   label,
   glyph,
@@ -251,27 +291,47 @@ export function ShowcaseRailAroundArrowStage({
             setActive((id) => (id === "details" ? null : "details"))
           }
         />
-        <GlyphButton
-          label="Comps"
-          glyph={<CompsGlyph />}
-          showLabel={showLabel}
-          pressed={active === "comps"}
-          onClick={() => setActive((id) => (id === "comps" ? null : "comps"))}
-        />
+        {active === "comps" ? (
+          <ExpandedFigurePill
+            label="Comps"
+            chips={[
+              { label: "On market", value: "6" },
+              { label: "Sold 12 in mos", value: "21" },
+            ]}
+            onHide={() => setActive(null)}
+          />
+        ) : (
+          <GlyphButton
+            label="Comps"
+            glyph={<CompsGlyph />}
+            showLabel={showLabel}
+            pressed={false}
+            onClick={() => setActive("comps")}
+          />
+        )}
       </div>
       <div
         className={`pointer-events-auto absolute inset-x-0 top-1/2 z-20 flex flex-col items-end justify-start ${RAIL_GAP} ${pad}`}
         style={{ paddingTop: ARROW_CLEAR }}
       >
-        <GlyphButton
-          label="What if"
-          glyph={<WhatIfGlyph />}
-          showLabel={showLabel}
-          pressed={active === "what-if"}
-          onClick={() =>
-            setActive((id) => (id === "what-if" ? null : "what-if"))
-          }
-        />
+        {active === "what-if" ? (
+          <ExpandedFigurePill
+            label="What if"
+            chips={[
+              { label: "Sale", value: "$1.4M" },
+              { label: "Rent", value: "$6.2K" },
+            ]}
+            onHide={() => setActive(null)}
+          />
+        ) : (
+          <GlyphButton
+            label="What if"
+            glyph={<WhatIfGlyph />}
+            showLabel={showLabel}
+            pressed={false}
+            onClick={() => setActive("what-if")}
+          />
+        )}
         <GlyphButton
           label="Town pulse"
           glyph={<PulseGlyph />}

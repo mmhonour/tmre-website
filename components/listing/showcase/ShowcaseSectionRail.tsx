@@ -66,12 +66,14 @@ const railRowClass = (opts: {
   /** Comps / What if — grow in place, never stretch like a deck. */
   fit?: boolean;
   interactive?: boolean;
+  /** Expanded Comps / What if — solid navy so the photo cannot read through. */
+  opaque?: boolean;
 }) =>
   `relative flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
     // `w-fit` rather than `w-auto`: a block-level flex box with auto width
     // still stretches to its container.
     opts.fit ? "w-fit max-w-full" : opts.fullWidth ? "w-full" : "w-fit lg:w-full"
-  } ${listingShowcaseWashClass} ${
+  } ${opts.opaque ? "bg-[#0d1424]" : listingShowcaseWashClass} ${
     opts.open
       ? "text-white"
       : `text-white/85 ${
@@ -545,7 +547,7 @@ export default function ShowcaseSectionRail({
   const compsPill = figures.has("comps") ? (
     <div className="flex w-fit max-w-full flex-col items-end">
       <div
-        className={`${railRowClass({ interactive: false, fit: true })} gap-2`}
+        className={`${railRowClass({ interactive: false, fit: true, opaque: true })} gap-2`}
       >
         <button
           type="button"
@@ -573,7 +575,7 @@ export default function ShowcaseSectionRail({
   const whatIfPill = figures.has("if") ? (
     <div className="flex w-fit max-w-full flex-col items-end">
       <div
-        className={`${railRowClass({ interactive: false, fit: true })} gap-2`}
+        className={`${railRowClass({ interactive: false, fit: true, opaque: true })} gap-2`}
       >
         <button
           type="button"
