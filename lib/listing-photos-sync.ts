@@ -67,6 +67,8 @@ export async function warmListingShowcasePhotos(
   let stored = 0
 
   for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex++) {
+    const already = await readListingPhotoMeta(cacheId, photoIndex)
+    if (already && already.byteLength >= 100) continue
     const hit = await resolveListingPhotoBuffer({
       mlsId: cacheId,
       listingKey,
