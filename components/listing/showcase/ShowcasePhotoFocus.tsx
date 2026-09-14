@@ -6,6 +6,32 @@ import {
   listingPhotoObfuscationImgClass,
   ListingPhotoObfuscationOverlay,
 } from "@/components/listing/ListingPhotoObfuscation";
+import { loadTabJson } from "@/lib/tab-data-prefetch";
+
+function FocusNavButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="flex h-11 min-w-11 items-center justify-center px-2 font-mono text-xl leading-none text-white transition-colors hover:text-gold disabled:text-white/25"
+    >
+      {children}
+    </button>
+  );
+}
 
 /**
  * Mobile full-screen listing photo. Covers the site header and all full-bleed
@@ -17,6 +43,9 @@ export default function ShowcasePhotoFocus({
   altBase,
   onClose,
   onStep,
+  onGoTo,
+  captions,
+  captionsUrl,
   obfuscatePhoto,
 }: {
   photos: readonly string[];
@@ -24,12 +53,22 @@ export default function ShowcasePhotoFocus({
   altBase: string;
   onClose: () => void;
   onStep: (delta: number) => void;
+  onGoTo?: (photoIndex: number) => void;
+  /** Same order as `photos`. Preview and tests can pass these directly. */
+  captions?: readonly (string | null)[];
+  /** Listing Media captions — fetched when the overlay opens. */
+  captionsUrl?: string | null;
   obfuscatePhoto?: (photoIndex: number) => boolean;
 }) {
   const startRef = useRef<{ x: number; y: number } | null>(null);
+  const [remoteCaptions, setRemoteCaptions] = useState<
+    readonly (string | null)[] | null
+  >(null);
   const src = photos[index];
   const total = photos.length;
   const obfuscate = obfuscatePhoto?.(index) ?? false;
+  const caption =
+    (captions?.[index] ?? remoteCaptions?.[index])?.trim() || null;
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -38,6 +77,22 @@ export default function ShowcasePhotoFocus({
       document.body.style.overflow = prev;
     };
   }, []);
+
+  useEffect(() => {
+    const url = captionsUrl?.trim();
+    if (!url || captions) return;
+    let cancelled = false;
+    void loadTabJson<{ captions?: (string | null)[] }>(url)
+      .then((data) => {
+        if (!cancelled) setRemoteCaptions(data?.captions ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteCaptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [captions, captionsUrl]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -50,13 +105,21 @@ export default function ShowcasePhotoFocus({
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
         onStep(-1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        onGoTo?.(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        onGoTo?.(total - 1);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onStep]);
+  }, [onClose, onGoTo, onStep, total]);
 
   if (typeof document === "undefined" || !src) return null;
+
+  const goTo = onGoTo ?? ((photoIndex: number) => onStep(photoIndex - index));
 
   return createPortal(
     <div
@@ -96,7 +159,11 @@ export default function ShowcasePhotoFocus({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt={`${altBase} — photo ${index + 1} of ${total}`}
+        alt={
+          caption
+            ? `${altBase} — ${caption}`
+            : `${altBase} — photo ${index + 1} of ${total}`
+        }
         className={listingPhotoObfuscationImgClass(
           obfuscate,
           "h-full w-full object-contain",
@@ -104,11 +171,44 @@ export default function ShowcasePhotoFocus({
         draggable={false}
       />
       {obfuscate ? <ListingPhotoObfuscationOverlay /> : null}
-      {total > 1 ? (
-        <p className="pointer-events-none absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] text-center font-mono text-[11px] tracking-[0.2em] text-white/70 tabular-nums">
-          {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-        </p>
-      ) : null}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[81] bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-16">
+        {caption ? (
+          <p className="mb-3 line-clamp-3 text-center font-serif text-lg leading-snug text-white">
+            {caption}
+          </p>
+        ) : null}
+        {total > 1 ? (
+          <div className="pointer-events-auto flex items-center justify-center gap-0.5">
+            <FocusNavButton
+              label="First photo"
+              disabled={index === 0}
+              onClick={() => goTo(0)}
+            >
+              «
+            </FocusNavButton>
+            <FocusNavButton
+              label="Previous photo"
+              onClick={() => onStep(-1)}
+            >
+              ‹
+            </FocusNavButton>
+            <p className="min-w-[5.5rem] text-center font-mono text-[11px] tracking-[0.2em] text-white/70 tabular-nums">
+              {String(index + 1).padStart(2, "0")} /{" "}
+              {String(total).padStart(2, "0")}
+            </p>
+            <FocusNavButton label="Next photo" onClick={() => onStep(1)}>
+              ›
+            </FocusNavButton>
+            <FocusNavButton
+              label="Last photo"
+              disabled={index === total - 1}
+              onClick={() => goTo(total - 1)}
+            >
+              »
+            </FocusNavButton>
+          </div>
+        ) : null}
+      </div>
     </div>,
     document.body,
   );
