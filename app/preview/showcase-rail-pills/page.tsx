@@ -16,11 +16,10 @@ export default function ShowcaseRailPillsPreviewPage() {
           Listing full-bleed rail pills
         </h1>
         <p className="mb-8 text-sm leading-relaxed text-slate">
-          Fixture only — no live MLS. Right arrow stays opposite the left.
-          Insight / Comps / What if stack above it; Details / Pulse / Map
-          below. Min/max expands icons to their words. Cards replace their
-          control and close with ↑. Gold folder tabs on Details. Map filters
-          sit under Full size.
+          Fixture only — no live MLS. Offered at / Closed at sits above
+          min/max with room to clear it. Insight, Details, Comps above the
+          right arrow; What if, Pulse, Map below. All glyphs use the same
+          side-faded navy wash as the address, status, and price.
         </p>
         <ShowcaseRailPillsPreview />
       </div>
