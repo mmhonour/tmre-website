@@ -156,11 +156,22 @@ export function listingSectionHref(
 export function listingPhotoProxyUrl(
   mlsId: string,
   index: number,
-  opts?: { size?: "full" | "mid" },
+  opts?: { size?: "full" | "mid"; fetch?: boolean },
 ): string {
   const base = `/api/listings/${encodeURIComponent(mlsId)}/photos/${index}`;
-  if (opts?.size === "full") return `${base}?size=full`;
-  return `${base}?size=mid`;
+  const params = new URLSearchParams();
+  params.set("size", opts?.size === "full" ? "full" : "mid");
+  if (opts?.fetch) params.set("fetch", "1");
+  return `${base}?${params.toString()}`;
+}
+
+/**
+ * Listing-alert mail. Gmail fetches the img once and cannot append
+ * `?fetch=1` after a cache-only 404 — Incremental photo warm often
+ * finishes after the Railway alerts job already sent.
+ */
+export function listingAlertEmailPhotoPath(mlsId: string): string {
+  return listingPhotoProxyUrl(mlsId, 0, { size: "full", fetch: true });
 }
 
 /** Ensure a photo-proxy URL requests full CDN MediaURL quality (gallery / full-view). */

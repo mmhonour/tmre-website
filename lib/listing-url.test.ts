@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  listingAlertEmailPhotoPath,
   listingDetailHref,
   listingPhotoProxyUrl,
   listingPhotoProxyUrlAsFull,
@@ -24,6 +25,17 @@ describe("listingPhotoProxyUrl", () => {
     assert.equal(
       listingPhotoProxyUrl("24201214", 0, { size: "full" }),
       "/api/listings/24201214/photos/0?size=full",
+    );
+  });
+
+  it("can allow a first-request Media fetch for email clients", () => {
+    assert.equal(
+      listingPhotoProxyUrl("24206418", 0, { size: "full", fetch: true }),
+      "/api/listings/24206418/photos/0?size=full&fetch=1",
+    );
+    assert.equal(
+      listingAlertEmailPhotoPath("24206418"),
+      "/api/listings/24206418/photos/0?size=full&fetch=1",
     );
   });
 });
