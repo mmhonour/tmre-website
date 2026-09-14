@@ -1,8 +1,10 @@
 import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
-import { FULL_QUALITY_MIN_BYTES } from '@/lib/listing-photo-quality'
 import { SHOWCASE_HERO_PHOTO_SLOTS } from '@/lib/hero-photo-inventory-backfill-shared'
+
+/** Match upsertListingPhotoIndexRow — ignore junk / empty objects. */
+const HERO_SLOT_INDEX_MIN_BYTES = 100
 
 /**
  * Metadata-only index for listing photos whose bytes live in Cloudflare R2.
@@ -132,7 +134,8 @@ export async function countFreshListingPhotosFromDb(
 }
 
 /**
- * Active listings in one town whose first six full-size index rows are short.
+ * Active listings in one town whose first six hero slots are not in the index.
+ * Size is not a completion gate — vintage MLS "full" JPEGs can be under 80KB.
  * `cache_id` matches `listingPhotoCacheId` (listing_key, else mls_id).
  */
 export async function listActiveMlsIdsMissingShowcaseHeroes(options: {
@@ -161,7 +164,7 @@ export async function listActiveMlsIdsMissingShowcaseHeroes(options: {
         ) < LEAST($4, l.photo_count)
       ORDER BY l.mls_id
       LIMIT $3`,
-    [town, after, limit, SHOWCASE_HERO_PHOTO_SLOTS, FULL_QUALITY_MIN_BYTES],
+    [town, after, limit, SHOWCASE_HERO_PHOTO_SLOTS, HERO_SLOT_INDEX_MIN_BYTES],
   )
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
@@ -190,7 +193,7 @@ export async function countActiveShowcaseHeroCoverage(): Promise<{
         )::int AS missing
        FROM listings l
       WHERE l.status_bucket = 'Active'`,
-    [SHOWCASE_HERO_PHOTO_SLOTS, FULL_QUALITY_MIN_BYTES],
+    [SHOWCASE_HERO_PHOTO_SLOTS, HERO_SLOT_INDEX_MIN_BYTES],
   )
   return {
     withPhotos: row?.with_photos ?? 0,
@@ -211,7 +214,7 @@ export async function listOldestActiveMlsIdsMissingShowcaseHeroes(
         AND ${missingHeroSql('l')}
       ORDER BY l.list_date ASC NULLS LAST, l.mls_id ASC
       LIMIT $3`,
-    [SHOWCASE_HERO_PHOTO_SLOTS, FULL_QUALITY_MIN_BYTES, cap],
+    [SHOWCASE_HERO_PHOTO_SLOTS, HERO_SLOT_INDEX_MIN_BYTES, cap],
   )
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
