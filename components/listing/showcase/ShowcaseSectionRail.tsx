@@ -27,6 +27,8 @@ import {
 } from "@/components/listing/showcase/showcase-rail-glyphs";
 import { useShowcasePhoneViewport } from "@/components/listing/showcase/ShowcasePhotoFocus";
 import type { ShowcaseMapPresentation } from "@/components/listing/showcase/showcase-host";
+import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
+import { listingShowcaseWashClass } from "@/components/listing/showcase/listing-showcase-wash";
 import {
   jumpToIfScenario,
   jumpToListingSection,
@@ -58,15 +60,15 @@ const railRowClass = (opts: {
   fit?: boolean;
   interactive?: boolean;
 }) =>
-  `flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
+  `relative flex items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
     // `w-fit` rather than `w-auto`: a block-level flex box with auto width
     // still stretches to its container.
     opts.fit ? "w-fit max-w-full" : opts.fullWidth ? "w-full" : "w-fit lg:w-full"
-  } ${
+  } ${listingShowcaseWashClass} ${
     opts.open
-      ? "bg-navy text-white"
-      : `bg-[#0d1424]/85 text-white/85 ${
-          opts.interactive === false ? "" : "hover:bg-navy hover:text-white"
+      ? "text-white"
+      : `text-white/85 ${
+          opts.interactive === false ? "" : "hover:text-white"
         }`
   }`;
 
@@ -97,20 +99,16 @@ function CountChip({
   );
 }
 
-/** Icon-only rail control — same translucent navy as the tiles. */
+/** Icon-only rail control — same side-faded navy wash as address / price. */
 const railIconClass = (on: boolean) =>
-  `inline-flex h-11 w-11 items-center justify-center shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors ${
-    on
-      ? "bg-navy text-white"
-      : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
+  `relative inline-flex h-11 min-w-[2.75rem] items-center justify-center px-3 ${listingShowcaseWashClass} shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors ${
+    on ? "text-white" : "text-white/85 hover:text-white"
   }`;
 
 /** Labeled rail pill — glyph + original word, width of the text. */
 const railLabelClass = (on: boolean) =>
-  `flex w-fit items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
-    on
-      ? "bg-navy text-white"
-      : "bg-[#0d1424]/85 text-white/85 hover:bg-navy hover:text-white"
+  `relative flex w-fit items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] ${listingShowcaseWashClass} shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] transition-colors sm:text-xs ${
+    on ? "text-white" : "text-white/85 hover:text-white"
   }`;
 
 function RailControl({
@@ -137,8 +135,8 @@ function RailControl({
       title={label}
       className={showLabel ? railLabelClass(!!on) : railIconClass(!!on)}
     >
-      {glyph}
-      {showLabel ? <span>{label}</span> : null}
+      <span className="relative">{glyph}</span>
+      {showLabel ? <span className="relative">{label}</span> : null}
     </button>
   );
 }
@@ -159,7 +157,9 @@ function RailMinMaxButton({
       title={expanded ? "Minimize to icons" : "Maximize labels"}
       className={railIconClass(expanded)}
     >
-      {expanded ? <MinimizeGlyph /> : <MaximizeGlyph />}
+      <span className="relative">
+        {expanded ? <MinimizeGlyph /> : <MaximizeGlyph />}
+      </span>
     </button>
   );
 }
@@ -257,17 +257,18 @@ type IfAmounts = { sale: number | null; rent: number | null };
 
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
- * arrow stays vertically opposite the previous arrow. Insight, Comps, then
- * What if sit above that arrow; Details, Pulse, and Map sit below. One
- * deck at a time occupies the center-right of the bleed, above the type.
- * Comps and What if expand in place and can stay open with each other and
- * with a deck. They stay `w-fit` in the glyph stack — other icons do not
- * shift left. On a phone, opening either one closes the deck so the pills
- * have room, leftover glyphs stay on the deck’s right edge, and min/max
- * hides while a deck is up.
+ * arrow stays vertically opposite the previous arrow. Offered at / Closed at
+ * sits above min/max with a clearance gap. Insight, Details, then Comps sit
+ * above that arrow; What if, Pulse, and Map sit below. One deck at a time
+ * occupies the center-right of the bleed, above the type. Comps and What if
+ * expand in place and can stay open with each other and with a deck. They
+ * stay `w-fit` in the glyph stack — other icons do not shift left. On a
+ * phone, opening either one closes the deck so the pills have room, leftover
+ * glyphs stay on the deck’s right edge, and min/max hides while a deck is up.
  */
 export default function ShowcaseSectionRail({
   mlsId,
+  price = null,
   insight,
   insightFacts,
   detailRows,
@@ -281,6 +282,8 @@ export default function ShowcaseSectionRail({
   map,
 }: {
   mlsId: string;
+  /** Desktop Offered at / Closed at — parked above min/max, not the header row. */
+  price?: { label: string; amount: string } | null;
   insight: string | null;
   /** Showcase-only facts line, rendered under the shared insight. */
   insightFacts?: string | null;
@@ -532,7 +535,7 @@ export default function ShowcaseSectionRail({
   const compsPill = figures.has("comps") ? (
     <div className="flex w-fit max-w-full flex-col items-end">
       <div
-        className={`${railRowClass({ interactive: false, fit: true })} gap-2 bg-[#0d1424]`}
+        className={`${railRowClass({ interactive: false, fit: true })} gap-2`}
       >
         <button
           type="button"
@@ -560,7 +563,7 @@ export default function ShowcaseSectionRail({
   const whatIfPill = figures.has("if") ? (
     <div className="flex w-fit max-w-full flex-col items-end">
       <div
-        className={`${railRowClass({ interactive: false, fit: true })} gap-2 bg-[#0d1424]`}
+        className={`${railRowClass({ interactive: false, fit: true })} gap-2`}
       >
         <button
           type="button"
@@ -644,16 +647,26 @@ export default function ShowcaseSectionRail({
       <div
         className={`pointer-events-none absolute inset-y-0 z-30 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${railRight}`}
       >
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
-          {hideLabels ? null : (
-            <RailMinMaxButton
-              expanded={labelsMax}
-              onToggle={() => setLabelsMax((open) => !open)}
-            />
-          )}
-          {deck === "insight" ? null : insightButton}
-          {compsPill}
-          {whatIfPill}
+        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end overflow-visible pb-1">
+          {price ? (
+            <div className="mb-4 hidden lg:block">
+              <ListingShowcasePriceBlock
+                label={price.label}
+                amount={price.amount}
+              />
+            </div>
+          ) : null}
+          <div className="flex flex-col items-end gap-1">
+            {hideLabels ? null : (
+              <RailMinMaxButton
+                expanded={labelsMax}
+                onToggle={() => setLabelsMax((open) => !open)}
+              />
+            )}
+            {deck === "insight" ? null : insightButton}
+            {deck === "details" ? null : detailsButton}
+            {compsPill}
+          </div>
         </div>
         {phone && deck && !mapFullscreen ? (
           <div
@@ -665,7 +678,7 @@ export default function ShowcaseSectionRail({
           <div className="h-14 shrink-0" aria-hidden />
         )}
         <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
-          {deck === "details" ? null : detailsButton}
+          {whatIfPill}
           {deck === "pulse" ? null : pulseButton}
           {deck === "map" ? null : mapButton}
         </div>

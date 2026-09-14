@@ -43,25 +43,6 @@ import type { ListingDetailsSchoolsPanelProps } from "@/components/listing/Listi
 
 const HOLD_MS = 6500;
 
-/** Push Offered at / Closed at left of an open right-rail card (Insight or Map). */
-function priceClearanceStyle(
-  open: boolean,
-  expanded: boolean,
-  kind: "map" | "insight" | null,
-): { marginRight: string } | undefined {
-  if (!open || !kind) return undefined;
-  const width =
-    kind === "map"
-      ? expanded
-        ? "min(50vw, 44rem)"
-        : "min(24rem, calc(100vw - 3.75rem))"
-      : "min(24rem, calc(100vw - 3.75rem))";
-  const gutter = "3.5rem";
-  return {
-    marginRight: `max(0rem, calc(${width} + ${gutter} + 0.75rem - (100vw - min(80rem, 100vw - 6rem)) / 2))`,
-  };
-}
-
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -138,15 +119,6 @@ export default function ListingShowcaseView({
   const [index, setIndex] = useState(initialPhotoIndex);
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
-  const [railClearance, setRailClearance] = useState<{
-    open: boolean;
-    expanded: boolean;
-    kind: "map" | "insight" | null;
-  }>({
-    open: false,
-    expanded: false,
-    kind: null,
-  });
   const [photoFocus, setPhotoFocus] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const siteUnlocked = useSiteUnlocked();
@@ -297,6 +269,14 @@ export default function ListingShowcaseView({
         />
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
+          price={
+            headerPrice
+              ? {
+                  label: priceIsClosed ? "Closed at" : "Offered at",
+                  amount: headerPrice,
+                }
+              : null
+          }
           insight={insight}
           insightFacts={insightFacts}
           detailRows={detailRows}
@@ -304,14 +284,13 @@ export default function ListingShowcaseView({
           postalCode={host.map.postalCode}
           subject={subject}
           detailsPanelProps={detailsPanelProps}
-          onMapStateChange={setRailClearance}
           compsFetchUrl={host.compsFetchUrl}
           uagFetchUrl={host.uagFetchUrl}
           map={host.map}
         />
 
         <div className="listing-showcase-type pointer-events-none relative z-20 flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
-          <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-3 sm:gap-6">
+          <div className="mx-auto flex w-full max-w-7xl items-start">
             <div className="min-w-0 max-w-xl flex-1">
               {host.propertyTabs ? (
                 <div className="pointer-events-auto mb-3">{host.propertyTabs}</div>
@@ -356,22 +335,6 @@ export default function ListingShowcaseView({
                 ) : null}
               </ListingShowcaseTypeWash>
             </div>
-
-            {headerPrice ? (
-              <div
-                className="hidden shrink-0 overflow-visible text-right transition-[margin] duration-300 lg:block"
-                style={priceClearanceStyle(
-                  railClearance.open,
-                  railClearance.expanded,
-                  railClearance.kind,
-                )}
-              >
-                <ListingShowcasePriceBlock
-                  label={priceIsClosed ? "Closed at" : "Offered at"}
-                  amount={headerPrice}
-                />
-              </div>
-            ) : null}
           </div>
 
           <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-end gap-5 sm:grid-cols-[1fr_auto_1fr]">

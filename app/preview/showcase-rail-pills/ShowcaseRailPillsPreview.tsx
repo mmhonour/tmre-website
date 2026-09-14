@@ -4,7 +4,10 @@ import { useMemo, useState, type ReactNode } from "react";
 import DealBoardMap from "@/components/intelligence/DealBoardMap";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
 import { mapBoundZipsForListing } from "@/lib/tmre-towns";
-import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
+import {
+  ListingShowcaseTypeWash,
+  listingShowcaseWashClass,
+} from "@/components/listing/showcase/listing-showcase-wash";
 import {
   CompsGlyph,
   DetailsGlyph,
@@ -17,14 +20,11 @@ import {
   WhatIfGlyph,
 } from "@/components/listing/showcase/showcase-rail-glyphs";
 
-const railRow =
-  "flex w-fit items-center justify-start bg-[#0d1424]/85 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
+const railRow = `relative flex w-fit items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${listingShowcaseWashClass}`;
 
-const railIcon =
-  "inline-flex h-11 w-11 items-center justify-center bg-[#0d1424]/85 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
+const railIcon = `relative inline-flex h-11 min-w-[2.75rem] items-center justify-center px-3 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${listingShowcaseWashClass}`;
 
-const railLabel =
-  "flex w-fit items-center gap-2 bg-[#0d1424]/85 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)]";
+const railLabel = `relative flex w-fit items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${listingShowcaseWashClass}`;
 
 function Glyph({ id }: { id: string }) {
   switch (id) {
@@ -78,8 +78,8 @@ function DemoControl({
   const className = showLabel ? railLabel : railIcon;
   const inner = (
     <>
-      {glyph}
-      {showLabel ? <span>{label}</span> : null}
+      <span className="relative">{glyph}</span>
+      {showLabel ? <span className="relative">{label}</span> : null}
     </>
   );
   if (!onClick) {
@@ -293,44 +293,47 @@ function SymbolRailDemo() {
 
   return (
     <div className="relative min-h-[28rem]">
-      <div
-        className="mb-3 w-full transition-[padding] duration-300"
-        style={
-          deck
-            ? { paddingRight: "min(24rem, calc(100% - 3.75rem))" }
-            : undefined
-        }
-      >
-        <div className="flex justify-end">
-          <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
-        </div>
-      </div>
       <div className="absolute inset-y-0 right-0 flex w-[min(24rem,calc(100%-0.75rem))] flex-col items-end pr-3">
-        <div className="flex flex-1 flex-col items-end justify-end gap-1 pb-1">
-          {deck ? null : (
-            <button
-              type="button"
-              data-testid="preview-rail-minmax"
-              onClick={() => setLabelsMax((current) => !current)}
-              aria-pressed={labelsMax}
-              aria-label={labelsMax ? "Show icons only" : "Show icon names"}
-              title={labelsMax ? "Minimize to icons" : "Maximize labels"}
-              className={railIcon}
-            >
-              {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
-            </button>
-          )}
-          {deck === "insight" ? null : (
-            <DemoControl
-              label="Insight"
-              glyph={<InsightGlyph />}
-              showLabel={labelsMax && !deck}
-              testId="preview-insight-open"
-              onClick={() => toggleDeck("insight")}
-            />
-          )}
-          {compsPill}
-          {ifPill}
+        <div className="flex flex-1 flex-col items-end justify-end pb-1">
+          <div className="mb-4">
+            <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {deck ? null : (
+              <button
+                type="button"
+                data-testid="preview-rail-minmax"
+                onClick={() => setLabelsMax((current) => !current)}
+                aria-pressed={labelsMax}
+                aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+                title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+                className={railIcon}
+              >
+                <span className="relative">
+                  {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+                </span>
+              </button>
+            )}
+            {deck === "insight" ? null : (
+              <DemoControl
+                label="Insight"
+                glyph={<InsightGlyph />}
+                showLabel={labelsMax && !deck}
+                testId="preview-insight-open"
+                onClick={() => toggleDeck("insight")}
+              />
+            )}
+            {deck === "details" ? null : (
+              <DemoControl
+                label="Details"
+                glyph={<DetailsGlyph />}
+                showLabel={labelsMax && !deck}
+                testId="preview-details-open"
+                onClick={() => toggleDeck("details")}
+              />
+            )}
+            {compsPill}
+          </div>
         </div>
         {card ? (
           <div className="w-full self-end">{card}</div>
@@ -343,15 +346,7 @@ function SymbolRailDemo() {
           </div>
         )}
         <div className="flex flex-1 flex-col items-end justify-start gap-1 pt-1">
-          {deck === "details" ? null : (
-            <DemoControl
-              label="Details"
-              glyph={<DetailsGlyph />}
-              showLabel={labelsMax && !deck}
-              testId="preview-details-open"
-              onClick={() => toggleDeck("details")}
-            />
-          )}
+          {ifPill}
           {deck === "pulse" ? null : (
             <DemoControl
               label="Pulse"
@@ -498,9 +493,10 @@ export function ShowcaseRailPillsPreview() {
           Full-bleed status, address, and price
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Status, street, and Offered at / Closed at sit on the same navy as
-          the rail pills — strongest in the middle, transparent at the edges.
-          Compact prices keep the M; labels keep At. On a phone the price
+          Status, street, and Offered at / Closed at sit on the same navy
+          wash — strongest in the middle, transparent at the edges. On
+          desktop, Offered at / Closed at lives in the rail above min/max.
+          On a phone it still stacks under status, then the address. On a phone the price
           sits under status and the address follows, so the right rail keeps
           the pane. Desktop keeps the price on the right.
         </p>
@@ -568,12 +564,11 @@ export function ShowcaseRailPillsPreview() {
           Symbols around the right arrow
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Decks (Insight / Details / Pulse / Map) are exclusive. Comps and
-          What if expand in place and can stay open together. Other glyphs
-          stay in the right-hand stack — they do not shift left. On a phone,
-          opening either one closes the deck so the pills have room, leftover
-          glyphs stay on the deck’s right edge, and min/max hides while a
-          deck is up.
+          Offered at sits above min/max with a clearance gap. Insight,
+          Details, then Comps stack above the right arrow; What if, Pulse,
+          and Map sit below. Glyphs use the same side-faded navy wash as
+          status, address, and price. Decks are exclusive. Comps and What if
+          expand in place.
         </p>
         <div className="bg-[linear-gradient(135deg,#1a2744_0%,#0d1424_50%,#243656_100%)] px-4 py-8">
           <SymbolRailDemo />
