@@ -12,6 +12,7 @@ import {
 } from '@/lib/listing-property-tax'
 import { coalesceListingStatus } from '@/lib/listing-history'
 import { normalizeMlsDate, normalizeMlsTimestamp } from '@/lib/mls-time'
+import { listingPhotoCaptionsFromMedia } from '@/lib/listing-photo-captions'
 import { getRetsCredentials } from '@/lib/rets-credentials'
 
 type RetsClientModule = typeof import('rets-client')
@@ -834,6 +835,29 @@ export async function discoverListingPhotoCount(
 
   const preferred = await fetchPreferredPhotoUrl(id, mid)
   return preferred ? 1 : 0
+}
+
+/** Agent-entered MLS caption per photo, same order as the gallery. */
+export async function fetchListingPhotoCaptions(
+  listingKey: string,
+  mlsId?: string | null,
+): Promise<(string | null)[]> {
+  const key = listingKey.trim()
+  const id = mlsId?.trim() ?? ''
+  if (!key && !id) return []
+  const cacheKey = `photo:captions:${key}:${id}`
+  const cached = getCached<(string | null)[]>(cacheKey)
+  if (cached) return cached
+  if (!isRetsConfigured()) return []
+
+  try {
+    const media = await fetchMediaRecordsForListing(key, id, 250)
+    const captions = listingPhotoCaptionsFromMedia(sortMediaRecords(media))
+    setCached(cacheKey, captions, PHOTO_TTL_MS)
+    return captions
+  } catch {
+    return []
+  }
 }
 
 /** Media CDN URL for one photo index (full, mid, or thumb). */

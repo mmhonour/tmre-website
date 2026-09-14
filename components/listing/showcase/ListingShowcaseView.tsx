@@ -176,6 +176,14 @@ export default function ListingShowcaseView({
     [total],
   );
 
+  const goToPhoto = useCallback(
+    (photoIndex: number) => {
+      if (total <= 0) return;
+      setIndex(Math.max(0, Math.min(total - 1, photoIndex)));
+    },
+    [total],
+  );
+
   useEffect(() => {
     if (paused || photoFocus || total < 2) return;
     const timer = setTimeout(() => step(1), HOLD_MS);
@@ -425,6 +433,8 @@ export default function ListingShowcaseView({
             altBase={host.photoAlt}
             onClose={() => setPhotoFocus(false)}
             onStep={step}
+            onGoTo={goToPhoto}
+            captionsUrl={`/api/listings/${encodeURIComponent(listing.mlsId)}/photo-captions`}
             obfuscatePhoto={host.obfuscatePhoto}
           />
         ) : null}

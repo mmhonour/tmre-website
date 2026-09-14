@@ -182,6 +182,8 @@ export function prefetchListingTabApis(
     prefetchTabJson(`/api/listings/${encodeURIComponent(mlsId)}/if`)
   }
 
+  prefetchTabJson(`/api/listings/${encodeURIComponent(mlsId)}/photo-captions`)
+
   // History is listing-API backed for both surfaces today.
   const historyParams = new URLSearchParams()
   if (town) historyParams.set('town', town)

@@ -172,7 +172,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "listing-photo-focus",
     title: "Listing photo full screen",
     summary:
-      "On a phone, tap the full-bleed photo or a thumbnail to see just the photo. Close exits to the still-playing carousel unless the user hit pause. Rail and type stay hidden while it is open.",
+      "On a phone, tap the full-bleed photo or a thumbnail to see just the photo, first/previous/next/last, and the MLS caption when the agent entered one. Close exits to the still-playing carousel unless the user hit pause. Rail and type stay hidden while it is open.",
   },
   {
     slug: "showcase-rail-pills",

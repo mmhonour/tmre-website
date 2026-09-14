@@ -15,12 +15,18 @@ const PHOTOS = [
   swatch("#2c4a3a", "Garden"),
 ];
 
+const CAPTIONS = ["Living room", "Kitchen", "Garden"];
+
 export default function ListingPhotoFocusPreview() {
   const [index, setIndex] = useState(0);
   const [photoFocus, setPhotoFocus] = useState(false);
 
   const step = useCallback((delta: number) => {
     setIndex((current) => (current + delta + PHOTOS.length) % PHOTOS.length);
+  }, []);
+
+  const goTo = useCallback((photoIndex: number) => {
+    setIndex(Math.max(0, Math.min(PHOTOS.length - 1, photoIndex)));
   }, []);
 
   const openFocus = (photoIndex?: number) => {
@@ -39,8 +45,10 @@ export default function ListingPhotoFocusPreview() {
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Phone-width demo. Tap the full-bleed photo or a thumbnail. Rail
-          glyphs and type hide; Close (or swipe down) exits to the carousel
-          still playing. Fixture swatches — not a live listing.
+          glyphs and type hide. First / previous / next / last sit under the
+          MLS caption (Kitchen, Living room, …). Close or swipe down exits
+          to the carousel still playing. Fixture swatches — not a live
+          listing.
         </p>
 
         <div className="relative min-h-[70vh] overflow-hidden bg-navy-dark text-white">
@@ -104,6 +112,8 @@ export default function ListingPhotoFocusPreview() {
             altBase="12 Preview Lane"
             onClose={() => setPhotoFocus(false)}
             onStep={step}
+            onGoTo={goTo}
+            captions={CAPTIONS}
           />
         ) : null}
       </div>
