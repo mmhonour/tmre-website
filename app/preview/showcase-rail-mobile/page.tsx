@@ -17,11 +17,11 @@ export default function ShowcaseRailMobilePreviewPage() {
           Showcase rail around the right arrow
         </h1>
         <p className="mb-3 text-sm leading-relaxed text-slate">
-          Fixture only — 390×844 phone frame. Same arrow-centered stack as
-          desktop. Status and Offered at sit higher and stay top-aligned.
-          Price is right-aligned to the screen so it does not cover the
-          address. Glyph wash is a little more opaque. Toggle maximize for
-          labels.
+          Fixture only — 390×844 phone frame. Same even spacing as desktop:
+          Comps-to-arrow equals arrow-to-What if, and that gap runs through
+          the column. Status and Offered at sit higher and stay top-aligned.
+          Price is right-aligned so it does not cover the address. Toggle
+          maximize for labels.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Desktop:{" "}

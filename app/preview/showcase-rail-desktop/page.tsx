@@ -17,10 +17,12 @@ export default function ShowcaseRailDesktopPreviewPage() {
           Showcase rail around the right arrow
         </h1>
         <p className="mb-3 text-sm leading-relaxed text-slate">
-          Fixture only. The glyph column is one stack centered on the right
-          photo arrow: maximize, Insight, Details, Comps, arrow, What if,
-          Town pulse, Map. Price stays top-right. Glyph wash is a little
-          more opaque than production. Toggle maximize to read the labels.
+          Fixture only. The right photo arrow stays on the vertical midpoint.
+          Maximize, Insight, Details, and Comps sit above it; What if, Town
+          pulse, and Map sit below. The gap from Comps to the arrow equals
+          the gap from the arrow to What if, and that same gap runs through
+          the rest of the column. Price stays top-right. Toggle maximize to
+          read the labels.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone frame:{" "}

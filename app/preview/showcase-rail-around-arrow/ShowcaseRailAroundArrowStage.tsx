@@ -26,6 +26,14 @@ const glyphIcon = `relative inline-flex h-11 min-w-[2.75rem] items-center justif
 
 const glyphLabel = `relative flex w-fit items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/90 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${PREVIEW_GLYPH_WASH}`;
 
+/** Same gap between every rail tile, including comps ↔ arrow ↔ What if. */
+const RAIL_GAP = "gap-3";
+/**
+ * Half the 3.5rem arrow plus one RAIL_GAP (0.75rem) so the tiles sit off
+ * the arrow by the same amount they sit off each other.
+ */
+const ARROW_CLEAR = "2.5rem";
+
 function GlyphButton({
   label,
   glyph,
@@ -115,78 +123,79 @@ export function ShowcaseRailAroundArrowStage({
       </div>
 
       {/*
-        Glyph column is one centered stack. The h-14 slot in the middle is
-        the right-arrow hole — same height as ShowcaseStepArrow — so nothing
-        overlays the arrow and there is no empty gap under maximize.
+        Arrow stays on the vertical midpoint. Tiles above grow up from it,
+        tiles below grow down. One gap everywhere — comps-to-arrow equals
+        arrow-to-What if equals maximize-to-Insight, and so on.
       */}
       <div
-        className={`pointer-events-none absolute inset-y-0 right-0 z-20 flex flex-col items-end justify-center gap-1 ${pad}`}
+        className={`pointer-events-auto absolute inset-x-0 bottom-1/2 z-20 flex flex-col items-end justify-end ${RAIL_GAP} ${pad}`}
+        style={{ paddingBottom: ARROW_CLEAR }}
       >
-        <div className="pointer-events-auto flex flex-col items-end gap-1">
-          <button
-            type="button"
-            aria-pressed={labelsMax}
-            aria-label={labelsMax ? "Show icons only" : "Show icon names"}
-            title={labelsMax ? "Minimize to icons" : "Maximize labels"}
-            onClick={() => setLabelsMax((open) => !open)}
-            className={glyphIcon}
-          >
-            <span className="relative">
-              {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
-            </span>
-          </button>
-          <GlyphButton
-            label="Insight"
-            glyph={<InsightGlyph />}
-            showLabel={showLabel}
-            pressed={active === "insight"}
-            onClick={() =>
-              setActive((id) => (id === "insight" ? null : "insight"))
-            }
-          />
-          <GlyphButton
-            label="Details"
-            glyph={<DetailsGlyph />}
-            showLabel={showLabel}
-            pressed={active === "details"}
-            onClick={() =>
-              setActive((id) => (id === "details" ? null : "details"))
-            }
-          />
-          <GlyphButton
-            label="Comps"
-            glyph={<CompsGlyph />}
-            showLabel={showLabel}
-            pressed={active === "comps"}
-            onClick={() => setActive((id) => (id === "comps" ? null : "comps"))}
-          />
-        </div>
-        <div className="h-14 w-14 shrink-0" aria-hidden />
-        <div className="pointer-events-auto flex flex-col items-end gap-1">
-          <GlyphButton
-            label="What if"
-            glyph={<WhatIfGlyph />}
-            showLabel={showLabel}
-            pressed={active === "what-if"}
-            onClick={() =>
-              setActive((id) => (id === "what-if" ? null : "what-if"))
-            }
-          />
-          <GlyphButton
-            label="Town pulse"
-            glyph={<PulseGlyph />}
-            showLabel={showLabel}
-            pressed={active === "pulse"}
-            onClick={() => setActive((id) => (id === "pulse" ? null : "pulse"))}
-          />
-          <GlyphButton
-            label="Map"
-            glyph={<MapGlyph />}
-            showLabel={showLabel}
-            pressed={active === "map"}
-            onClick={() => setActive((id) => (id === "map" ? null : "map"))}
-          />
-        </div>
+        <button
+          type="button"
+          aria-pressed={labelsMax}
+          aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+          title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+          onClick={() => setLabelsMax((open) => !open)}
+          className={glyphIcon}
+        >
+          <span className="relative">
+            {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+          </span>
+        </button>
+        <GlyphButton
+          label="Insight"
+          glyph={<InsightGlyph />}
+          showLabel={showLabel}
+          pressed={active === "insight"}
+          onClick={() =>
+            setActive((id) => (id === "insight" ? null : "insight"))
+          }
+        />
+        <GlyphButton
+          label="Details"
+          glyph={<DetailsGlyph />}
+          showLabel={showLabel}
+          pressed={active === "details"}
+          onClick={() =>
+            setActive((id) => (id === "details" ? null : "details"))
+          }
+        />
+        <GlyphButton
+          label="Comps"
+          glyph={<CompsGlyph />}
+          showLabel={showLabel}
+          pressed={active === "comps"}
+          onClick={() => setActive((id) => (id === "comps" ? null : "comps"))}
+        />
+      </div>
+      <div
+        className={`pointer-events-auto absolute inset-x-0 top-1/2 z-20 flex flex-col items-end justify-start ${RAIL_GAP} ${pad}`}
+        style={{ paddingTop: ARROW_CLEAR }}
+      >
+        <GlyphButton
+          label="What if"
+          glyph={<WhatIfGlyph />}
+          showLabel={showLabel}
+          pressed={active === "what-if"}
+          onClick={() =>
+            setActive((id) => (id === "what-if" ? null : "what-if"))
+          }
+        />
+        <GlyphButton
+          label="Town pulse"
+          glyph={<PulseGlyph />}
+          showLabel={showLabel}
+          pressed={active === "pulse"}
+          onClick={() => setActive((id) => (id === "pulse" ? null : "pulse"))}
+        />
+        <GlyphButton
+          label="Map"
+          glyph={<MapGlyph />}
+          showLabel={showLabel}
+          pressed={active === "map"}
+          onClick={() => setActive((id) => (id === "map" ? null : "map"))}
+        />
       </div>
 
       <ShowcaseStepArrow
