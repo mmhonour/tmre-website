@@ -35,6 +35,7 @@ export async function warmDealListingPhotos(
           listingKey,
           photoIndex,
           photoCountHint: photoCount,
+          quality: 'full',
         }).catch(() => null),
       ),
     )

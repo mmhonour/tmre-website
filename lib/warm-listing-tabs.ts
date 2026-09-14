@@ -57,6 +57,7 @@ async function warmListingPhotos(
           listingKey,
           photoIndex,
           photoCountHint: photoCount,
+          quality: 'full',
         }).catch(() => null),
       ),
     )
