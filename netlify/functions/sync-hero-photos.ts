@@ -11,9 +11,9 @@ import {
 
 /**
  * Thin hero-photos trigger (NO background).
- * Dense every-30m cron; Configure Frequency/Start (default every 15m)
- * gate the work. A due slot goes on sync_queue for the Railway runner —
- * Media/R2 photo bodies must not download inside a Netlify invoke.
+ * Dense every-15m cron so a due Configure slot is not waiting on a 30-minute tick.
+ * Frequency/Start still gate the work. A due slot goes on sync_queue for
+ * the Railway runner — Media/R2 photo bodies must not download here.
  */
 export default async function handler() {
   try {
@@ -44,5 +44,5 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  schedule: '*/30 * * * *',
+  schedule: '*/15 * * * *',
 }

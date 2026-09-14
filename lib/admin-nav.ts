@@ -1025,7 +1025,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
     label: "sync-hero-photos",
     detail:
       "Thin hero-photos trigger — enqueues hero-photos on the sync runner when Configure is due (default every 15m). Oldest Active listings missing six full-size showcase heroes; idle when 100% complete. No Netlify worker.",
-    schedule: "Every 30 min (15m-gated)",
+    schedule: "Every 15 min (Configure-gated)",
   },
   {
     label: "sync-zip-boundaries",
