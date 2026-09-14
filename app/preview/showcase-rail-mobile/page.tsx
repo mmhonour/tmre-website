@@ -25,9 +25,11 @@ export default function ShowcaseRailMobilePreviewPage() {
             Showcase rail around the right arrow
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            On a phone, this same URL is full-bleed under the live header —
-            open it there to check scrunching. This laptop view keeps a
-            390×844 frame with a fixture header.
+            Same chrome as the live listing: Maximize sits under Map, status
+            and Offered at / Closed at rise and stay top-aligned, and the
+            price is flush to the right edge. On a phone this URL is
+            full-bleed under the live header. This laptop view keeps a
+            390×844 frame.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}

@@ -22,6 +22,9 @@ import {
 
 const railRow = `relative flex w-fit items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${listingShowcaseWashClass}`;
 
+/** Expanded Comps / What if — solid navy, same as the Insight / Details decks. */
+const railRowOpaque = `relative flex w-fit items-center justify-start px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] bg-[#0d1424]`;
+
 const railIcon = `relative inline-flex h-11 min-w-[2.75rem] items-center justify-center px-3 text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${listingShowcaseWashClass}`;
 
 const railLabel = `relative flex w-fit items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.18em] text-white/85 shadow-[-6px_3px_16px_-6px_rgba(0,0,0,0.65)] ${listingShowcaseWashClass}`;
@@ -234,7 +237,7 @@ function SymbolRailDemo() {
     ) : null;
 
   const compsPill = compsOpen ? (
-    <div className={`${railRow} w-fit max-w-full gap-2`}>
+    <div className={`${railRowOpaque} w-fit max-w-full gap-2`}>
       <span className="underline decoration-white/35 underline-offset-4">
         Comps
       </span>
@@ -263,7 +266,7 @@ function SymbolRailDemo() {
   );
 
   const ifPill = ifOpen ? (
-    <div className={`${railRow} w-fit max-w-full gap-2`}>
+    <div className={`${railRowOpaque} w-fit max-w-full gap-2`}>
       <span className="underline decoration-white/35 underline-offset-4">
         What if
       </span>

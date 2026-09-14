@@ -178,19 +178,19 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Full-bleed rail: Offered at / Closed at sits over min/max in the top-right on every screen. Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Glyphs share the address/status/price navy wash. Phone status and address stay on the left.",
+      "Full-bleed rail: Offered at / Closed at sits in the top-right, same band as status. Desktop: Maximize, Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Phone: Maximize under Map; status and price rise and top-align, price flush to the right edge. Expanded Comps / What if use solid navy on every screen.",
   },
   {
     slug: "showcase-rail-desktop",
     title: "Showcase rail around the arrow — desktop",
     summary:
-      "Proposal: maximize → Insight → Details → Comps → right arrow → What if → Town pulse → Map, centered on the arrow. Price top-right. Glyph wash a bit more opaque. Does not change the live listing page.",
+      "Desktop listing chrome: Maximize → Insight → Details → Comps above the right arrow; What if → Town pulse → Map below. Price top-right.",
   },
   {
     slug: "showcase-rail-mobile",
     title: "Showcase rail around the arrow — mobile",
     summary:
-      "Open on a phone: full-bleed under the live site header. On a laptop, a 390×844 frame. Does not change the live listing page.",
+      "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. Expanded Comps / What if use solid navy. On a laptop, a 390×844 frame.",
   },
 ];
 
