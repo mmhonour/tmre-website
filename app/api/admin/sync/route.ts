@@ -23,6 +23,7 @@ import {
 import { collectAdminDatabaseSyncStats } from '@/lib/sqlite-sync-stats'
 import { readSyncQueueSnapshot } from '@/lib/sync-queue'
 import { readIncrementalPartialRun } from '@/lib/incremental-partial-run'
+import { readHeroPhotosJobStatus } from '@/lib/hero-photo-inventory-backfill'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -96,6 +97,8 @@ export async function GET(req: NextRequest) {
     streetListingsSyncedAt: getSyncMeta('street_listings_synced_at'),
     lastDbSize: getSyncMeta('last_db_size'),
     lastAlerts: getSyncMeta('last_alerts'),
+    lastHeroPhotos: getSyncMeta('last_hero_photos'),
+    heroPhotosStatus: readHeroPhotosJobStatus(),
     stats,
     nextRuns,
     nextOverrides,
@@ -280,7 +283,9 @@ export async function POST(req: NextRequest) {
       camaTaxHistorySyncedAt: getSyncMeta('cama_tax_history_synced_at'),
       streetListingsSyncedAt: getSyncMeta('street_listings_synced_at'),
       lastDbSize: getSyncMeta('last_db_size'),
-    lastAlerts: getSyncMeta('last_alerts'),
+      lastAlerts: getSyncMeta('last_alerts'),
+      lastHeroPhotos: getSyncMeta('last_hero_photos'),
+      heroPhotosStatus: readHeroPhotosJobStatus(),
       refreshing: readListingsRefreshStatus().refreshing,
       lastRefreshFinished: getSyncMeta('last_refresh_finished_at'),
       lastRefreshStarted: getSyncMeta('last_refresh_started_at'),

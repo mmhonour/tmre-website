@@ -31,6 +31,7 @@ export const SYNC_QUEUE_RUNNER_JOBS: readonly ScheduledSyncJobId[] = [
   'cama-tax',
   'street-listings',
   'db-size',
+  'hero-photos',
 ]
 
 export function isSyncQueueRunnerJob(
@@ -48,7 +49,9 @@ export function isSyncQueueRunnerJob(
  * with the CASE in claimNextSyncJob.
  */
 export function syncQueueClaimYieldRank(jobId: string): number {
-  return jobId === 'incremental' ? 1 : 0
+  if (jobId === 'hero-photos') return 2
+  if (jobId === 'incremental') return 1
+  return 0
 }
 
 export const SYNC_QUEUE_STATES = ['queued', 'running', 'done', 'failed'] as const
@@ -155,6 +158,9 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     // Growth scans the largest tables; 15 minutes is well above a typical run
     // and keeps a wedged child from looking like a silent hang.
     'db-size': 15,
+    // Oldest-first Active hero six. Short burst so Incremental / stats / CAMA
+    // stay ahead; idle runs only recount coverage.
+    'hero-photos': 10,
   }
 
 export const SYNC_JOB_BUDGET_MIN_MINUTES = 1

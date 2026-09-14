@@ -18,6 +18,7 @@ export const SCHEDULED_SYNC_JOB_IDS = [
   'cama-tax',
   'street-listings',
   'db-size',
+  'hero-photos',
 ] as const
 
 export type ScheduledSyncJobId = (typeof SCHEDULED_SYNC_JOB_IDS)[number]
@@ -66,5 +67,6 @@ export function emptyScheduledSyncPausedJobs(): ScheduledSyncPausedJobs {
     'cama-tax': false,
     'street-listings': false,
     'db-size': false,
+    'hero-photos': false,
   }
 }

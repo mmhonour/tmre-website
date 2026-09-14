@@ -1,21 +1,29 @@
 import 'server-only'
 
-import { listActiveMlsIdsMissingShowcaseHeroes } from '@/lib/db/listing-photo-index-repo'
+import {
+  countActiveShowcaseHeroCoverage,
+  listActiveMlsIdsMissingShowcaseHeroes,
+  listOldestActiveMlsIdsMissingShowcaseHeroes,
+} from '@/lib/db/listing-photo-index-repo'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
   advanceHeroInventoryTown,
+  formatHeroPhotosJobMessage,
   HERO_INVENTORY_BACKFILL_BATCH,
   HERO_INVENTORY_CURSOR_KEY,
+  HERO_PHOTOS_STATUS_KEY,
+  HERO_SCAVENGE_BATCH,
+  HERO_SCAVENGE_BURST_MS,
+  LAST_HERO_PHOTOS_META_KEY,
   parseHeroInventoryCursor,
+  parseHeroPhotosJobStatus,
+  pctMissing,
   type HeroInventoryCursor,
+  type HeroPhotosJobStatus,
 } from '@/lib/hero-photo-inventory-backfill-shared'
 import { warmListingShowcasePhotos } from '@/lib/listing-photos-sync'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
-
-function railwayMustNotFetchPhotos(): boolean {
-  return process.env.MLS_SYNC_SERVICE === '1'
-}
 
 async function readCursor(): Promise<HeroInventoryCursor> {
   return parseHeroInventoryCursor(
@@ -34,12 +42,113 @@ async function writeCursor(cursor: HeroInventoryCursor): Promise<void> {
   )
 }
 
+async function persistStatus(status: HeroPhotosJobStatus): Promise<void> {
+  await setSyncMetaDurable(HERO_PHOTOS_STATUS_KEY, JSON.stringify(status))
+  await setSyncMetaDurable(LAST_HERO_PHOTOS_META_KEY, status.generatedAt)
+}
+
+function buildStatus(input: {
+  activeWithPhotos: number
+  missingBefore: number
+  missingAfter: number
+  filledListings: number
+  filledPhotos: number
+  idle: boolean
+}): HeroPhotosJobStatus {
+  const missingPctBefore = pctMissing(input.missingBefore, input.activeWithPhotos)
+  const missingPctAfter = pctMissing(input.missingAfter, input.activeWithPhotos)
+  const complete = input.missingAfter === 0
+  const draft: HeroPhotosJobStatus = {
+    generatedAt: new Date().toISOString(),
+    activeWithPhotos: input.activeWithPhotos,
+    missingBefore: input.missingBefore,
+    missingAfter: input.missingAfter,
+    missingPctBefore,
+    missingPctAfter,
+    filledListings: input.filledListings,
+    filledPhotos: input.filledPhotos,
+    complete,
+    idle: input.idle || complete,
+    message: '',
+  }
+  draft.message = formatHeroPhotosJobMessage(draft)
+  return draft
+}
+
+async function warmIds(ids: string[]): Promise<{ listings: number; photos: number }> {
+  let listings = 0
+  let photos = 0
+  for (const mlsId of ids) {
+    try {
+      const { listing } = await readListingFromDbByMlsId(mlsId)
+      if (!listing) continue
+      const stored = await warmListingShowcasePhotos(listing)
+      photos += stored
+      listings += 1
+    } catch (err) {
+      console.warn(
+        `[hero-photos] ${mlsId} failed`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
+  return { listings, photos }
+}
+
 /**
- * Operator / dedicated photo process only. Walk Active inventory and pull
- * the first six full-size shots for listings the index says are short.
- * Do not call this from the public website worker or from Incremental —
- * Media downloads share the same DB and photo bucket visitors use.
+ * Low-priority sync-queue job. Oldest Active gaps first. Short bursts so
+ * Incremental / stats / CAMA stay ahead. When every Active already has six
+ * full-size heroes, the run is a count + status write (idle).
  */
+export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
+  const before = await countActiveShowcaseHeroCoverage()
+  if (before.missing === 0) {
+    const status = buildStatus({
+      activeWithPhotos: before.withPhotos,
+      missingBefore: 0,
+      missingAfter: 0,
+      filledListings: 0,
+      filledPhotos: 0,
+      idle: true,
+    })
+    await persistStatus(status)
+    console.info(`[hero-photos] ${status.message}`)
+    return status
+  }
+
+  const deadline = Date.now() + HERO_SCAVENGE_BURST_MS
+  let filledListings = 0
+  let filledPhotos = 0
+
+  while (Date.now() < deadline) {
+    const ids = await listOldestActiveMlsIdsMissingShowcaseHeroes(
+      HERO_SCAVENGE_BATCH,
+    )
+    if (ids.length === 0) break
+    const warmed = await warmIds(ids)
+    filledListings += warmed.listings
+    filledPhotos += warmed.photos
+  }
+
+  const after = await countActiveShowcaseHeroCoverage()
+  const status = buildStatus({
+    activeWithPhotos: after.withPhotos,
+    missingBefore: before.missing,
+    missingAfter: after.missing,
+    filledListings,
+    filledPhotos,
+    idle: after.missing === 0,
+  })
+  await persistStatus(status)
+  console.info(`[hero-photos] ${status.message}`)
+  return status
+}
+
+export function readHeroPhotosJobStatus(): HeroPhotosJobStatus | null {
+  return parseHeroPhotosJobStatus(getSyncMeta(HERO_PHOTOS_STATUS_KEY))
+}
+
+/** Town-cursor burst — used by the operator CLI, not the website worker. */
 export async function drainHeroInventoryBackfill(): Promise<{
   attempted: number
   warmed: number
@@ -54,7 +163,6 @@ export async function drainHeroInventoryBackfill(): Promise<{
     town: '',
     remainingInTown: false,
   }
-  if (railwayMustNotFetchPhotos()) return empty
 
   let cursor = await readCursor()
   let ids: string[] = []
@@ -74,23 +182,7 @@ export async function drainHeroInventoryBackfill(): Promise<{
     return { ...empty, town: cursor.town }
   }
 
-  let warmed = 0
-  let photos = 0
-  for (const mlsId of ids) {
-    try {
-      const { listing } = await readListingFromDbByMlsId(mlsId)
-      if (!listing) continue
-      const stored = await warmListingShowcasePhotos(listing)
-      photos += stored
-      if (stored > 0) warmed += 1
-    } catch (err) {
-      console.warn(
-        `[hero-inventory-backfill] ${mlsId} failed`,
-        err instanceof Error ? err.message : err,
-      )
-    }
-  }
-
+  const warmed = await warmIds(ids)
   const remainingInTown = ids.length >= HERO_INVENTORY_BACKFILL_BATCH
   const next: HeroInventoryCursor = remainingInTown
     ? { ...cursor, afterMlsId: ids[ids.length - 1]! }
@@ -99,8 +191,8 @@ export async function drainHeroInventoryBackfill(): Promise<{
 
   return {
     attempted: ids.length,
-    warmed,
-    photos,
+    warmed: warmed.listings,
+    photos: warmed.photos,
     town: cursor.town,
     remainingInTown,
   }

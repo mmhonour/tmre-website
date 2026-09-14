@@ -26,6 +26,11 @@ describe('SYNC_QUEUE_RUNNER_JOBS', () => {
     assert.equal(isSyncQueueRunnerJob('db-size'), true)
     assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('db-size'))
   })
+
+  it('claims hero-photos so Active hero catch-up is a forked child, not the website worker', () => {
+    assert.equal(isSyncQueueRunnerJob('hero-photos'), true)
+    assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('hero-photos'))
+  })
 })
 
 describe('syncQueueClaimYieldRank', () => {
@@ -34,5 +39,11 @@ describe('syncQueueClaimYieldRank', () => {
     assert.equal(syncQueueClaimYieldRank('edge-scores'), 0)
     assert.equal(syncQueueClaimYieldRank('cama-tax'), 0)
     assert.equal(syncQueueClaimYieldRank('incremental'), 1)
+  })
+
+  it('yields hero-photos behind Incremental and every other runner job', () => {
+    assert.equal(syncQueueClaimYieldRank('hero-photos'), 2)
+    assert.ok(syncQueueClaimYieldRank('hero-photos') > syncQueueClaimYieldRank('incremental'))
+    assert.ok(syncQueueClaimYieldRank('incremental') > syncQueueClaimYieldRank('stats-cache'))
   })
 })

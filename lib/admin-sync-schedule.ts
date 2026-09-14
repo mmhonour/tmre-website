@@ -538,6 +538,8 @@ function lastFinishedForJob(
       return getSyncMeta('street_listings_synced_at')
     case 'db-size':
       return getSyncMeta('last_db_size')
+    case 'hero-photos':
+      return getSyncMeta('last_hero_photos')
     default:
       return null
   }
@@ -665,6 +667,10 @@ export function buildAdminSyncNextRuns(
     naturalFor('db-size'),
     SCHEDULED_SYNC_JOB_BY_ROW['db-size'],
   )
+  const nextHeroPhotosIso = applySyncNextOverride(
+    naturalFor('hero-photos'),
+    SCHEDULED_SYNC_JOB_BY_ROW['hero-photos'],
+  )
 
   const nextIncrementalDate = nextIncrementalIso ? new Date(nextIncrementalIso) : null
   const nextFullResyncDate = nextFullResyncIso ? new Date(nextFullResyncIso) : null
@@ -690,6 +696,7 @@ export function buildAdminSyncNextRuns(
     'cama-tax': nextCamaTaxIso,
     'street-listings': nextStreetListingsIso,
     'db-size': nextDbSizeIso,
+    'hero-photos': nextHeroPhotosIso,
   }
 }
 

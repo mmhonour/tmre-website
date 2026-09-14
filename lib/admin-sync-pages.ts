@@ -72,6 +72,10 @@ export const ADMIN_SYNC_IMPACTED_PAGES: Record<AdminSyncPanelRowId, AdminSyncImp
   "cama-tax": [{ label: "Properties", href: "/properties" }],
   "street-listings": [{ label: "Streets", href: "/streets" }],
   "db-size": [{ label: "Size & growth", href: "/admin?tab=postgres&panel=size" }],
+  "hero-photos": [
+    { label: "Listings", href: "/listings" },
+    { label: "Latest", href: "/latest" },
+  ],
 };
 
 export function adminSyncImpactedPages(rowId: string): AdminSyncImpactedPage[] {

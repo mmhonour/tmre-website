@@ -93,6 +93,7 @@ import {
   groupTownResultsByBucket,
 } from "@/lib/admin-sync-progress";
 import { formatTownCountsGlom } from "@/lib/admin-sync-history-glom";
+import type { HeroPhotosJobStatus } from "@/lib/hero-photo-inventory-backfill-shared";
 
 function emptyPausedJobs(): ScheduledSyncPausedJobs {
   return emptyScheduledSyncPausedJobs();
@@ -726,6 +727,8 @@ export type PanelStatus = {
   streetListingsSyncedAt?: string | null;
   lastDbSize?: string | null;
   lastAlerts?: string | null;
+  lastHeroPhotos?: string | null;
+  heroPhotosStatus?: HeroPhotosJobStatus | null;
   stats: SyncStats;
   nextRuns?: Partial<Record<AdminSyncPanelRowId, string | null>>;
   /** Admin-set Next times that preempt the natural schedule. */
@@ -1090,6 +1093,8 @@ function liveTimingForRow(row: AdminSyncRow, status: PanelStatus): SyncTiming {
       return { started: null, finished: status.streetListingsSyncedAt ?? null };
     case "db-size":
       return { started: null, finished: status.lastDbSize ?? null };
+    case "hero-photos":
+      return { started: null, finished: status.lastHeroPhotos ?? null };
     case "alerts":
       return { started: null, finished: status.lastAlerts ?? null };
     default:
@@ -1388,6 +1393,7 @@ const ACTION_ROW_ID: Record<AdminSyncActionId, string> = {
   "cama-tax": "cama-tax",
   "street-listings": "street-listings",
   "db-size": "db-size",
+  "hero-photos": "hero-photos",
 };
 
 function pauseJobForSyncAllAction(
@@ -3866,6 +3872,14 @@ export default function AdminSyncTable({
                   return [lastRun, townQueue, queueLine]
                     .filter(Boolean)
                     .join("\n");
+                }
+                if (row.id === "hero-photos") {
+                  const line =
+                    status?.heroPhotosStatus?.message?.trim() ||
+                    descriptions[row.id] ||
+                    finalStatuses[row.id] ||
+                    statusTextFromRunLog(row, runSnapshot);
+                  return [line, queueLine].filter(Boolean).join("\n");
                 }
                 const prior =
                   descriptions[row.id] ??

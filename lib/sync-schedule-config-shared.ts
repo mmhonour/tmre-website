@@ -212,6 +212,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'cama-tax',
       'street-listings',
       'db-size',
+      'hero-photos',
     ],
     jobs: {
       'full-resync': {
@@ -302,6 +303,12 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'db-size': {
         frequency: 'daily',
         startTimeEt: '06:00',
+      },
+      // Oldest Active gaps first. 15m so idle coverage % stays current on
+      // the run board; each claimed burst is ~10 minutes, then it yields.
+      'hero-photos': {
+        frequency: '15m',
+        startTimeEt: '00:00',
       },
     },
   }

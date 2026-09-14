@@ -166,6 +166,56 @@ export async function listActiveMlsIdsMissingShowcaseHeroes(options: {
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
 
+function missingHeroSql(alias = 'l'): string {
+  return `(
+          SELECT COUNT(*)::int
+            FROM listing_photo_index i
+           WHERE i.cache_id = COALESCE(NULLIF(BTRIM(${alias}.listing_key), ''), ${alias}.mls_id)
+             AND i.photo_index >= 0
+             AND i.photo_index < LEAST($1, ${alias}.photo_count)
+             AND i.byte_length >= $2
+        ) < LEAST($1, ${alias}.photo_count)`
+}
+
+export async function countActiveShowcaseHeroCoverage(): Promise<{
+  withPhotos: number
+  missing: number
+}> {
+  const row = await queryOne<{ with_photos: number; missing: number }>(
+    `SELECT
+        COUNT(*) FILTER (WHERE COALESCE(l.photo_count, 0) > 0)::int AS with_photos,
+        COUNT(*) FILTER (
+          WHERE COALESCE(l.photo_count, 0) > 0
+            AND ${missingHeroSql('l')}
+        )::int AS missing
+       FROM listings l
+      WHERE l.status_bucket = 'Active'`,
+    [SHOWCASE_HERO_PHOTO_SLOTS, FULL_QUALITY_MIN_BYTES],
+  )
+  return {
+    withPhotos: row?.with_photos ?? 0,
+    missing: row?.missing ?? 0,
+  }
+}
+
+/** Oldest Active gaps first — they have been waiting the longest. */
+export async function listOldestActiveMlsIdsMissingShowcaseHeroes(
+  limit: number,
+): Promise<string[]> {
+  const cap = Math.max(1, Math.min(Math.round(limit), 40))
+  const rows = await query<{ mls_id: string }>(
+    `SELECT l.mls_id
+       FROM listings l
+      WHERE l.status_bucket = 'Active'
+        AND COALESCE(l.photo_count, 0) > 0
+        AND ${missingHeroSql('l')}
+      ORDER BY l.list_date ASC NULLS LAST, l.mls_id ASC
+      LIMIT $3`,
+    [SHOWCASE_HERO_PHOTO_SLOTS, FULL_QUALITY_MIN_BYTES, cap],
+  )
+  return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
+}
+
 export async function deleteListingPhotoIndexRows(cacheId: string): Promise<void> {
   const id = cacheId.trim()
   if (!id) return

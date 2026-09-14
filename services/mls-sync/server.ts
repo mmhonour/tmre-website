@@ -144,6 +144,12 @@ const SWEEPS: {
     bootDelayMs: 11 * 60_000,
     label: 'size & growth',
   },
+  {
+    jobId: 'hero-photos',
+    everyMs: 10 * 60_000,
+    bootDelayMs: 12 * 60_000,
+    label: 'listing photos (heroes)',
+  },
 ]
 
 function readBearer(req: IncomingMessage): string | null {
@@ -419,6 +425,7 @@ const LEGACY_ENDPOINTS: Record<string, ScheduledSyncJobId> = {
   '/cama-tax': 'cama-tax',
   '/street-listings': 'street-listings',
   '/db-size': 'db-size',
+  '/hero-photos': 'hero-photos',
 }
 
 async function handleRequest(

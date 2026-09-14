@@ -320,6 +320,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Railway queue job (`db-size`) that runs the Neon size & growth report and writes one snapshot (`db_size_report` + `last_db_size`) for Admin → NEON → Size & growth. Default daily 06:00 ET, 15-minute budget. Thin cron: `sync-db-size`. Admin Sync now enqueues the runner; Run again on the page is the ad-hoc POST and overwrites the same slot. Not part of Sync all. CLI: `npm run db:size` (does not persist unless you hit the Admin path).',
   },
   {
+    term: 'hero-photos (sync)',
+    category: 'sync-admin',
+    definition:
+      'Railway queue job (`hero-photos`) that scavenges Active listings missing six full-size showcase heroes (`?size=full`, ≥80KB in `listing_photo_index`). Oldest `list_date` first, five listings at a time, ~10-minute burst, lowest claim rank so Incremental / stats / CAMA go first. Writes `hero_photos_status` (percent missing before, listings/photos filled, percent remaining) and `last_hero_photos`. When coverage is 100% the job still runs, only recounts, and reports idle / 100% complete on the Syncs run board. Not part of Sync all. Thin cron: `sync-hero-photos`. Catch-up CLI: `npm run backfill:listing-photos`. Incremental still queues ids only — it does not download photo bodies.',
+  },
+  {
     term: 'street-listings (sync)',
     category: 'sync-admin',
     definition:

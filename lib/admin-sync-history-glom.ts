@@ -40,6 +40,8 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   cpi: 'CPI',
   digest: 'Market brief',
   'cama-tax': 'CAMA tax',
+  'db-size': 'Size & growth',
+  'hero-photos': 'Listing photos (heroes)',
 }
 
 /** Display label for the Bucket column / subgroup (adds sync type on lifecycle rows). */
