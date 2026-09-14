@@ -1097,7 +1097,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: '?size=full',
     category: 'photos-cdn',
     definition:
-      'Gallery / full-view photo proxy flag. Serves full MediaURL from the MLS CDN (not RETS Thumbnail objects) and refuses undersized thumb cache hits.',
+      'Gallery / full-view photo proxy flag. Serves full MediaURL from the MLS CDN (not RETS Thumbnail objects) and refuses undersized thumb cache hits, including a fresh `full` blob that is smaller than its `__card` mid sibling (thumb stored as full).',
   },
   {
     term: '?size=mid',

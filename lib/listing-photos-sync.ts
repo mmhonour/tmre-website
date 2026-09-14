@@ -2,7 +2,11 @@ import 'server-only'
 
 import { listingRowId } from '@/lib/db/listings-repo'
 import { readListingPhotoMeta } from '@/lib/listing-photo-backend'
-import { cacheSatisfiesQuality } from '@/lib/listing-photo-quality'
+import {
+  cacheSatisfiesQuality,
+  fullCacheOutrankedByMid,
+  listingPhotoCardCacheId,
+} from '@/lib/listing-photo-quality'
 import { getListingPhotoTtlMsFresh } from '@/lib/listing-photo-ttl-config'
 import {
   isListingPhotoFresh,
@@ -43,6 +47,7 @@ async function syncOneListingPhotos(listing: Listing): Promise<number> {
       listingKey,
       photoIndex: index,
       photoCountHint: photoCount,
+      quality: 'full',
     })
     if (hit && !hit.cacheHit) stored += 1
     if (index + 1 < photoCount) await sleep(PHOTO_FETCH_DELAY_MS)
@@ -68,7 +73,15 @@ export async function warmListingShowcasePhotos(
 
   for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex++) {
     const already = await readListingPhotoMeta(cacheId, photoIndex)
-    if (already && already.byteLength >= 100) continue
+    if (already && already.byteLength >= 100) {
+      const mid = await readListingPhotoMeta(
+        listingPhotoCardCacheId(cacheId),
+        photoIndex,
+      )
+      if (!fullCacheOutrankedByMid(already.byteLength, mid?.byteLength)) {
+        continue
+      }
+    }
     const hit = await resolveListingPhotoBuffer({
       mlsId: cacheId,
       listingKey,
@@ -101,6 +114,11 @@ export async function listingShowcasePhotosIncomplete(
     if (!meta) return true
     if (!isListingPhotoFresh(meta.syncedAt, ttlMs)) return true
     if (!cacheSatisfiesQuality(meta.byteLength, 'full')) return true
+    const mid = await readListingPhotoMeta(
+      listingPhotoCardCacheId(cacheId),
+      photoIndex,
+    )
+    if (fullCacheOutrankedByMid(meta.byteLength, mid?.byteLength)) return true
   }
   return false
 }
@@ -194,7 +212,7 @@ export type ListingPhotoBackfillResult = {
 
 /**
  * Pull photos that Postgres already knows about but R2/index does not.
- * `hero` = first six at size=full (showcase). `all` = every slot, display quality.
+ * `hero` = first six at size=full (showcase). `all` = every slot, also MediaURL full.
  */
 export async function backfillListingPhotos(
   listings: Listing[],

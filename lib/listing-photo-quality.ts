@@ -6,7 +6,11 @@ export const LISTING_PHOTO_CARD_CACHE_SUFFIX = "__card";
 
 /**
  * Cached thumbs for index > 0 are often ~10–60KB. Full CDN MediaURL JPEGs are
- * typically much larger — use this floor so `size=full` does not reuse a thumb.
+ * typically much larger — use this floor so `size=full` does not reuse a *tiny*
+ * thumb. Modern CDN thumbs can still clear this floor (~85KB) while a mid
+ * sibling is larger; use `fullCacheOutrankedByMid` for that case. Do not raise
+ * this floor to "real full" megabytes — 2017 MediaURL originals can be ~36KB
+ * (hero-photos job / PR #154).
  */
 export const FULL_QUALITY_MIN_BYTES = 80_000;
 
@@ -31,6 +35,21 @@ export function listingPhotoQualityFromSizeParam(
   if (size === "full") return "full";
   if (size === "display") return "display";
   return "mid";
+}
+
+/**
+ * True when the gallery/`full` blob is actually a thumb: the card/mid sibling
+ * is larger. MLS 24196339 photos 1–2 stored ~85KB under `full` while `__card`
+ * mid was ~170KB — full-bleed then upscaled the thumb. Vintage ~36KB MediaURL
+ * originals stay valid when no larger mid exists.
+ */
+export function fullCacheOutrankedByMid(
+  fullBytes: number,
+  midBytes: number | null | undefined,
+): boolean {
+  if (!Number.isFinite(fullBytes) || fullBytes < 100) return false;
+  if (midBytes == null || !Number.isFinite(midBytes)) return false;
+  return midBytes > fullBytes;
 }
 
 export function cacheSatisfiesQuality(
