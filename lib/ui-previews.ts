@@ -196,13 +196,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day town bleeds — desktop",
     summary:
-      "Full-bleed wash from the town name to the town filter. Carousel paints: edges meet in the center, center lines paint out, then a line from the top paints down. Repeats on town 4.",
+      "Live weekly Deal of the Day picks. Full-bleed from the town name to the town filter. Three carousel paints. No old hero + thumbnail strip.",
   },
   {
     slug: "dod-town-bleed-mobile",
     title: "Deal of the Day town bleeds — mobile",
     summary:
-      "Same three town-to-filter paints on a phone. Full-bleed under the live header on a phone; 390×844 frame on a laptop.",
+      "Live weekly picks on a phone. Same Deal of the Day chrome. Full-bleed under the site header on a phone; 390 frame on a laptop.",
   },
 ];
 

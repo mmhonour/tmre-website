@@ -797,59 +797,6 @@ export default function DealOfTheWeekHero({
               <br />
               <span className="italic text-white/85">One listing.</span>
             </h1>
-              <div className="max-w-xl space-y-3">
-                <div
-                  key={`photo-${slideKey}`}
-                  className={`relative ${
-                    dayEmpty || !animateDealContent
-                      ? ""
-                      : "animate-deal-copy-refresh"
-                  }`}
-                >
-                  {dayEmpty || (loadingState && !showing) ? (
-                    <div className="relative w-full aspect-[16/9] rounded-2xl border border-white/10 bg-gradient-to-br from-navy-light to-navy-dark shadow-xl shadow-black/30 flex items-center justify-center px-6 overflow-hidden">
-                      <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
-                        {loadingState && !showing
-                          ? dayTxFilter === "rental"
-                            ? carousel.currentTown
-                              ? `Loading rental pick in ${carousel.currentTown}…`
-                              : "Loading rental picks…"
-                            : carousel.currentTown
-                              ? `Loading ${dayClassLabel}for-sale pick in ${carousel.currentTown}…`
-                              : `Loading ${dayClassLabel}for-sale picks…`
-                          : dayTxFilter === "rental"
-                            ? carousel.currentTown || city
-                              ? `No below-median rental pick in ${carousel.currentTown || city} right now.`
-                              : "No below-median rental picks available right now."
-                            : carousel.currentTown || city
-                              ? `No below-median ${dayClassLabel}for-sale pick in ${carousel.currentTown || city} right now.`
-                              : `No below-median ${dayClassLabel}for-sale picks available right now.`}
-                      </p>
-                    </div>
-                  ) : l ? (
-                    <PhotoBanner
-                      src={showing?.photoUrl ?? null}
-                      alt={l.address.street || l.address.full}
-                      loading={loadingState}
-                      reveal={false}
-                      priority
-                      framed
-                      onPhotoHover={carousel.pauseForPhotoHover}
-                      detailHref={detailHref}
-                      photoDeck={
-                        photosHref && l.mlsId && l.mlsId !== "—"
-                          ? {
-                              mlsId: l.mlsId,
-                              photoCount: l.photoCount,
-                              photosHref,
-                              address: l.address.street || l.address.full,
-                              priority: true,
-                            }
-                          : null
-                      }
-                    />
-                  ) : null}
-                </div>
                 <DealDayChooserBar
                   townLabel={carousel.currentTown}
                   carouselControls={
@@ -876,7 +823,6 @@ export default function DealOfTheWeekHero({
                     dayTxFilter === "sale" ? setDayPropertyClass : undefined
                   }
                 />
-              </div>
                 </div>
               </div>
             ) : (
@@ -989,7 +935,28 @@ export default function DealOfTheWeekHero({
               }
               scoreExplains={!loadingState && Boolean(showing) && !(isDay && dayEmpty)}
               valueDealMode={mode === "day"}
-              hidePhoto={isDay}
+              hidePhoto={false}
+              hideThumbs={isDay}
+              transactionFilter={isDay ? dayTxFilter : undefined}
+              propertyClass={
+                isDay && dayTxFilter === "sale" ? dayPropertyClass : undefined
+              }
+              townLabel={carousel.currentTown}
+              carouselControls={
+                isDay && !city && carousel.carouselTowns.length > 0
+                  ? {
+                      paused: carousel.paused,
+                      onTogglePause: carousel.togglePause,
+                      onPrev: carousel.goPrev,
+                      onNext: carousel.goNext,
+                      onPhotoHover: carousel.pauseForPhotoHover,
+                      canStep: carousel.canNavigate,
+                      townLabel: carousel.currentTown,
+                      carouselIndex: carousel.carouselIndex,
+                      carouselTotal: carousel.carouselTowns.length,
+                    }
+                  : null
+              }
             />
           </div>
         </div>
@@ -1200,6 +1167,7 @@ function DealCard({
   onPropertyClassChange,
   empty = false,
   hidePhoto = false,
+  hideThumbs = false,
 }: {
   detailHref?: string | null;
   photosHref?: string | null;
@@ -1235,6 +1203,8 @@ function DealCard({
   onPropertyClassChange?: (value: DealSalePropertyClass) => void;
   empty?: boolean;
   hidePhoto?: boolean;
+  /** Day page — listing photo only, no hero + thumbnail strip. */
+  hideThumbs?: boolean;
 }) {
   const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
   const showWeights = useSiteUnlocked();
@@ -1371,9 +1341,9 @@ function DealCard({
                   priority
                   onPhotoHover={carouselControls?.onPhotoHover}
                   photoDeck={
-                    photosHref && mlsId
-                      ? { mlsId, photoCount, photosHref, address, priority: true }
-                      : null
+                    hideThumbs || !photosHref || !mlsId
+                      ? null
+                      : { mlsId, photoCount, photosHref, address, priority: true }
                   }
                 />
                 {detailHref ? (

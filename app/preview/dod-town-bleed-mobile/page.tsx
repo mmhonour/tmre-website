@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DodTownBleedStage } from "@/app/preview/dod-town-bleed/DodTownBleedStage";
+import { DodTownBleedLive } from "@/app/preview/dod-town-bleed/DodTownBleedLive";
 
 export const metadata = {
   title: "Preview — DOD town bleed mobile — TMRE",
@@ -10,7 +10,7 @@ export default function DodTownBleedMobilePreviewPage() {
   return (
     <>
       <div className="lg:hidden">
-        <DodTownBleedStage variant="mobile" chrome="site" />
+        <DodTownBleedLive />
       </div>
       <div className="hidden min-h-screen bg-cream lg:block">
         <div className="mx-auto max-w-lg px-4 pb-8 pt-28 sm:px-6">
@@ -21,8 +21,8 @@ export default function DodTownBleedMobilePreviewPage() {
             Deal of the Day town bleeds
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            Same three paints as desktop, full-bleed on a phone. On a laptop
-            this URL keeps a 390×844 frame. On a phone it fills the screen.
+            Live weekly picks in a phone frame. On a phone this URL is the
+            real Deal of the Day chrome under the site header.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}
@@ -34,7 +34,7 @@ export default function DodTownBleedMobilePreviewPage() {
             </Link>
           </p>
           <div className="mx-auto w-[390px] overflow-hidden rounded-[1.75rem] border border-charcoal/15 shadow-[0_24px_60px_-28px_rgba(13,20,36,0.65)]">
-            <DodTownBleedStage variant="mobile" chrome="fixture" />
+            <DodTownBleedLive />
           </div>
         </div>
       </div>
