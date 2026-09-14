@@ -20,6 +20,10 @@ import {
   type ShowcaseHost,
 } from "@/components/listing/showcase/showcase-host";
 import { scrollToShowcaseSection } from "@/components/listing/showcase/showcase-sections";
+import {
+  listingPhotoCaptionsUrl,
+  useListingPhotoCaptions,
+} from "@/components/listing/showcase/use-listing-photo-captions";
 import type { ShowcaseListing } from "@/components/listing/showcase/showcase-types";
 import { ListingVisionAddressLink } from "@/components/listing/ListingVisionAddressLink";
 import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
@@ -159,6 +163,15 @@ export default function ListingShowcaseView({
 
   const total = livePhotos.length;
   const safeIndex = total > 0 ? index % total : 0;
+  const photoCaptions = useListingPhotoCaptions(listing.mlsId);
+  const liveCaptions = useMemo(() => {
+    if (!photoCaptions) return undefined;
+    return livePhotos.map((url) => {
+      const slot = photos.indexOf(url);
+      return (slot >= 0 ? photoCaptions[slot] : null) ?? null;
+    });
+  }, [livePhotos, photoCaptions, photos]);
+  const heroCaption = liveCaptions?.[safeIndex]?.trim() || null;
 
   const openPhotoFocus = useCallback((photoIndex?: number) => {
     if (photoIndex != null) setIndex(photoIndex);
@@ -363,23 +376,30 @@ export default function ListingShowcaseView({
               </span>
             </button>
 
-            <div className="flex items-center justify-center gap-3">
-              {total > 0 ? (
-                <>
-                  <ControlButton
-                    label={paused ? "Resume slideshow" : "Pause slideshow"}
-                    onClick={() => setPaused((p) => !p)}
-                  >
-                    <span aria-hidden className="text-xs leading-none">
-                      {paused ? "▶" : "❚❚"}
-                    </span>
-                  </ControlButton>
-                  <span className="font-mono text-xs tracking-[0.2em] text-white/70 tabular-nums">
-                    {String(safeIndex + 1).padStart(2, "0")} /{" "}
-                    {String(total).padStart(2, "0")}
-                  </span>
-                </>
+            <div className="flex flex-col items-center gap-2">
+              {heroCaption ? (
+                <p className="hidden max-w-md text-center font-serif text-base leading-snug text-white lg:block">
+                  {heroCaption}
+                </p>
               ) : null}
+              <div className="flex items-center justify-center gap-3">
+                {total > 0 ? (
+                  <>
+                    <ControlButton
+                      label={paused ? "Resume slideshow" : "Pause slideshow"}
+                      onClick={() => setPaused((p) => !p)}
+                    >
+                      <span aria-hidden className="text-xs leading-none">
+                        {paused ? "▶" : "❚❚"}
+                      </span>
+                    </ControlButton>
+                    <span className="font-mono text-xs tracking-[0.2em] text-white/70 tabular-nums">
+                      {String(safeIndex + 1).padStart(2, "0")} /{" "}
+                      {String(total).padStart(2, "0")}
+                    </span>
+                  </>
+                ) : null}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-4 sm:justify-end">
@@ -434,7 +454,8 @@ export default function ListingShowcaseView({
             onClose={() => setPhotoFocus(false)}
             onStep={step}
             onGoTo={goToPhoto}
-            captionsUrl={`/api/listings/${encodeURIComponent(listing.mlsId)}/photo-captions`}
+            captions={liveCaptions}
+            captionsUrl={listingPhotoCaptionsUrl(listing.mlsId)}
             obfuscatePhoto={host.obfuscatePhoto}
           />
         ) : null}
