@@ -180,6 +180,18 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Full-bleed rail: Offered at / Closed at sits over min/max in the top-right on every screen. Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Glyphs share the address/status/price navy wash. Phone status and address stay on the left.",
   },
+  {
+    slug: "showcase-rail-desktop",
+    title: "Showcase rail around the arrow — desktop",
+    summary:
+      "Proposal: maximize → Insight → Details → Comps → right arrow → What if → Town pulse → Map, centered on the arrow. Price top-right. Glyph wash a bit more opaque. Does not change the live listing page.",
+  },
+  {
+    slug: "showcase-rail-mobile",
+    title: "Showcase rail around the arrow — mobile",
+    summary:
+      "Same stack in a 390×844 frame with the mobile site header over the photo, so status, price, and maximize can be checked for scrunching. Does not change the live listing page.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {
