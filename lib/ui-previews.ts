@@ -178,7 +178,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Decks are exclusive. Comps and What if expand in place (w-fit) and do not shift other glyphs left. On a phone, opening either closes the deck so the pills have room; leftover glyphs stay on the deck’s right edge; min/max hides while a deck is up.",
+      "Decks are exclusive. Comps and What if expand in place (w-fit) and do not shift other glyphs left. On a phone, opening either closes the deck so the pills have room; leftover glyphs stay on the deck’s right edge; min/max hides while a deck is up. Phone type stacks status, then Offered at / Closed at, then the address.",
   },
 ];
 
