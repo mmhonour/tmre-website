@@ -47,7 +47,8 @@ export default function ListingPhotoFocusPreview() {
           Phone-width demo. Tap the full-bleed photo or a thumbnail. Rail
           glyphs and type hide. First / previous / next / last sit under the
           MLS caption (Kitchen, Living room, …). Close or swipe down exits
-          to the carousel still playing. Fixture swatches — not a live
+          to the carousel still playing. On desktop the same caption sits
+          above play and the photo count. Fixture swatches — not a live
           listing.
         </p>
 
@@ -116,6 +117,45 @@ export default function ListingPhotoFocusPreview() {
             captions={CAPTIONS}
           />
         ) : null}
+      </div>
+
+      <div className="mx-auto hidden max-w-5xl px-6 pb-16 lg:block">
+        <h2 className="mb-2 font-serif text-2xl text-navy">
+          Desktop — caption above play
+        </h2>
+        <p className="mb-4 text-sm leading-relaxed text-slate">
+          After the hero there is room: the MLS caption sits above pause and
+          the count. Phone keeps that text in full-screen focus instead.
+        </p>
+        <div className="relative min-h-[22rem] overflow-hidden bg-navy-dark text-white">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={PHOTOS[index]}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="relative z-20 flex min-h-[22rem] flex-col justify-end px-8 pb-10">
+            <div className="flex flex-col items-center gap-2">
+              <p className="max-w-md text-center font-serif text-base leading-snug text-white">
+                {CAPTIONS[index]}
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => step(1)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/25 font-mono text-xs text-white/85"
+                  aria-label="Next photo"
+                >
+                  ❚❚
+                </button>
+                <span className="font-mono text-xs tracking-[0.2em] text-white/70 tabular-nums">
+                  {String(index + 1).padStart(2, "0")} /{" "}
+                  {String(PHOTOS.length).padStart(2, "0")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
