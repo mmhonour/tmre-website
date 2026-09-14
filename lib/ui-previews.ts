@@ -190,7 +190,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-mobile",
     title: "Showcase rail around the arrow — mobile",
     summary:
-      "Same stack in a 390×844 frame. Status and price sit higher and stay top-aligned; price is right-aligned so it does not cover the address. Does not change the live listing page.",
+      "Same stack in a 390×844 frame with the mobile site header over the photo, so status, price, and maximize can be checked for scrunching. Does not change the live listing page.",
   },
 ];
 

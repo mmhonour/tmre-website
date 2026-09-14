@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Image from "next/image";
 import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
 import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
@@ -33,6 +34,74 @@ const RAIL_GAP = "gap-3";
  * the arrow by the same amount they sit off each other.
  */
 const ARROW_CLEAR = "2.5rem";
+
+/** Same chrome as `Navigation` on a phone — in-frame so `fixed` does not escape. */
+function MobileHeaderFixture() {
+  const [open, setOpen] = useState(false);
+  return (
+    <header
+      className={`absolute inset-x-0 top-0 z-50 ${
+        open ? "bg-navy border-b border-white/10" : "bg-transparent"
+      }`}
+    >
+      <div className="px-6 py-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="relative block h-10 w-10 shrink-0 overflow-hidden rounded-lg shadow-lg shadow-gold/20 ring-1 ring-gold/40">
+              <Image
+                src="/timothy-tmre.png"
+                alt="Timothy Marks"
+                fill
+                sizes="40px"
+                className="object-cover grayscale"
+              />
+            </span>
+            <span className="flex min-w-0 flex-col gap-0">
+              <span className="font-serif text-xl leading-tight tracking-[0.15em] text-white">
+                TMRE
+              </span>
+              <span className="font-serif text-[11px] leading-tight tracking-wide text-white/75">
+                Timothy Marks
+                <br />
+                Real Estate
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label="Toggle navigation"
+            aria-expanded={open}
+            className="flex flex-col gap-1.5 p-2"
+          >
+            <span
+              className={`block h-px w-6 bg-white transition-transform ${
+                open ? "translate-y-2 rotate-45" : ""
+              }`}
+            />
+            <span
+              className={`block h-px w-6 bg-white transition-opacity ${
+                open ? "opacity-0" : ""
+              }`}
+            />
+            <span
+              className={`block h-px w-6 bg-white transition-transform ${
+                open ? "-translate-y-2 -rotate-45" : ""
+              }`}
+            />
+          </button>
+        </div>
+        {open ? (
+          <nav className="mt-3 border-t border-white/10 bg-navy pb-4 pt-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white/80">
+            <p>Latest</p>
+            <p className="mt-2">Open Houses</p>
+            <p className="mt-2">Find</p>
+          </nav>
+        ) : null}
+      </div>
+    </header>
+  );
+}
 
 function GlyphButton({
   label,
@@ -88,10 +157,15 @@ export function ShowcaseRailAroundArrowStage({
         aria-hidden
       />
 
-      {/* Status + address on the left. Phone sits a bit higher than production pt-24. */}
+      {mobile ? <MobileHeaderFixture /> : null}
+
+      {/*
+        Status + address on the left. Phone uses the same top band as the
+        live listing (pt-24) so it clears the in-frame header.
+      */}
       <div
         className={`absolute left-4 z-20 ${
-          mobile ? "top-14 max-w-[11.5rem]" : "top-24 max-w-xl sm:left-8 lg:left-12"
+          mobile ? "top-24 max-w-[11.5rem]" : "top-24 max-w-xl sm:left-8 lg:left-12"
         }`}
       >
         <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
@@ -116,7 +190,7 @@ export function ShowcaseRailAroundArrowStage({
       {/* Price right-aligned to the screen, top-aligned with status. */}
       <div
         className={`absolute z-30 ${pad} ${
-          mobile ? "top-14 right-0" : "top-24 right-0"
+          mobile ? "top-24 right-0" : "top-24 right-0"
         }`}
       >
         <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
