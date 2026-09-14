@@ -192,6 +192,18 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. Expanded Comps / What if use solid navy. Town pulse and Details are content-sized cards that grow top and bottom. On a laptop, a 390×844 frame.",
   },
+  {
+    slug: "dod-town-bleed-desktop",
+    title: "Deal of the Day town bleeds — desktop",
+    summary:
+      "Full-bleed wash from the town name to the town filter. Carousel paints: edges meet in the center, center lines paint out, then a line from the top paints down. Repeats on town 4.",
+  },
+  {
+    slug: "dod-town-bleed-mobile",
+    title: "Deal of the Day town bleeds — mobile",
+    summary:
+      "Same three town-to-filter paints on a phone. Full-bleed under the live header on a phone; 390×844 frame on a laptop.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {

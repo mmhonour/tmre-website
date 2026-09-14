@@ -533,6 +533,127 @@ body {
   will-change: transform, opacity;
 }
 
+/* DOTD town-name → town-filter full bleed. Three paints cycle with the carousel. */
+.dod-town-bleed-rest {
+  background: linear-gradient(
+    90deg,
+    rgb(200 169 81 / 0) 0%,
+    rgb(200 169 81 / 0.07) 18%,
+    rgb(200 169 81 / 0.12) 50%,
+    rgb(200 169 81 / 0.07) 82%,
+    rgb(200 169 81 / 0) 100%
+  );
+}
+
+.dod-town-bleed-fill {
+  background: linear-gradient(
+    180deg,
+    rgb(200 169 81 / 0.34) 0%,
+    rgb(27 42 74 / 0.42) 55%,
+    rgb(200 169 81 / 0.22) 100%
+  );
+}
+
+@keyframes dodBleedMeetLeft {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedMeetRight {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedOutLeft {
+  0% {
+    transform: scaleX(0.012);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedOutRight {
+  0% {
+    transform: scaleX(0.012);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedTopDown {
+  0% {
+    transform: scaleY(0.012);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleY(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+.animate-dod-bleed-meet-left {
+  animation: dodBleedMeetLeft 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-meet-right {
+  animation: dodBleedMeetRight 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-out-left {
+  animation: dodBleedOutLeft 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-out-right {
+  animation: dodBleedOutRight 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-top-down {
+  animation: dodBleedTopDown 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-deal-showcase-next,
   .animate-deal-showcase-prev,
@@ -542,7 +663,12 @@ body {
   .animate-deal-copy-refresh,
   .animate-deal-town-exit-next,
   .animate-deal-town-exit-prev,
-  .animate-deal-town-enter {
+  .animate-deal-town-enter,
+  .animate-dod-bleed-meet-left,
+  .animate-dod-bleed-meet-right,
+  .animate-dod-bleed-out-left,
+  .animate-dod-bleed-out-right,
+  .animate-dod-bleed-top-down {
     animation: fadeIn 0.35s ease-out both;
   }
 }

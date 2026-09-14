@@ -11,6 +11,7 @@ import { coverageTownsLabel, FALLBACK_COVERAGE_TOWNS } from "@/lib/active-covera
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import DealDayTownBleed from "@/components/DealDayTownBleed";
 import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
@@ -770,45 +771,32 @@ export default function DealOfTheWeekHero({
                 )}
               </span>
             </div>
-            {mode === "day" && (
-              <DealDayTownList
-                activeTown={city ?? carousel.currentTown}
-                slideDir={carousel.slideDir}
-                onSelectTown={
-                  !city && !listingParam ? carousel.selectTown : undefined
-                }
-              />
-            )}
-            <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
-              {mode === "day" ? (
-                <>
-                  Today&apos;s{" "}
-                  <span className="italic gold-shimmer">
-                    {showing
-                      ? `${showing.score.composite.toFixed(1)}.`
-                      : loadingState
-                        ? "…"
-                        : "—"}
-                  </span>
-                  <br />
-                  <span className="italic text-white/85">One listing.</span>
-                </>
-              ) : (
-                <>
-                  {headlineLead}{" "}
-                  <span className="italic gold-shimmer">
-                    {showing
-                      ? `${showing.score.composite.toFixed(1)}.`
-                      : loadingState
-                        ? "…"
-                        : "—"}
-                  </span>
-                  <br />
-                  <span className="italic text-white/85">One listing.</span>
-                </>
-              )}
-            </h1>
             {isDay ? (
+              <div className="relative">
+                <DealDayTownBleed
+                  carouselIndex={carousel.carouselIndex}
+                  slideDir={carousel.slideDir}
+                />
+                <div className="relative z-[1] space-y-3">
+            <DealDayTownList
+              activeTown={city ?? carousel.currentTown}
+              slideDir={carousel.slideDir}
+              onSelectTown={
+                !city && !listingParam ? carousel.selectTown : undefined
+              }
+            />
+            <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
+              Today&apos;s{" "}
+              <span className="italic gold-shimmer">
+                {showing
+                  ? `${showing.score.composite.toFixed(1)}.`
+                  : loadingState
+                    ? "…"
+                    : "—"}
+              </span>
+              <br />
+              <span className="italic text-white/85">One listing.</span>
+            </h1>
               <div className="max-w-xl space-y-3">
                 <div
                   key={`photo-${slideKey}`}
@@ -889,7 +877,22 @@ export default function DealOfTheWeekHero({
                   }
                 />
               </div>
-            ) : null}
+                </div>
+              </div>
+            ) : (
+              <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
+                {headlineLead}{" "}
+                <span className="italic gold-shimmer">
+                  {showing
+                    ? `${showing.score.composite.toFixed(1)}.`
+                    : loadingState
+                      ? "…"
+                      : "—"}
+                </span>
+                <br />
+                <span className="italic text-white/85">One listing.</span>
+              </h1>
+            )}
             {isDay ? (
               <div
                 key={animateDealContent ? `insight-${slideKey}` : "insight-instant"}
