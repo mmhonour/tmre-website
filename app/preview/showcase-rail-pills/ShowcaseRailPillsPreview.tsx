@@ -192,7 +192,7 @@ function SymbolRailDemo() {
         </div>
       </div>
     ) : deck === "pulse" ? (
-      <div className="w-full max-w-sm bg-[#0d1424]">
+      <div className="flex h-[min(32rem,calc(100dvh-14rem))] w-full max-w-sm flex-col bg-[#0d1424]">
         <div className={`${railRow} w-full bg-[#0d1424]`}>
           <span className="flex-1">Town pulse</span>
           <button

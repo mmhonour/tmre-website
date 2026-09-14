@@ -20,7 +20,11 @@ import type {
   MarketDigestTaxTownCount,
 } from '@/lib/market-digest-types'
 import { readMarketPulseTaxByTown } from '@/lib/market-pulse-tax-cache'
-import { TMRE_TOWNS } from '@/lib/tmre-towns'
+import {
+  normalizeTownName,
+  resolveListingTown,
+  TMRE_TOWNS,
+} from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -122,13 +126,16 @@ export async function GET(req: Request) {
           ),
         })),
       ),
+      // Cache only — computing Closed / CAMA on this embed path is what
+      // 500'd Market Pulse on Netlify. Stale beats a timeout that leaves
+      // the listing showcase Pulse deck empty.
       readMarketPulseClosedCounts(
         { kind, propertyClass, lookbackId },
-        { allowCompute: true },
+        { allowCompute: false },
       ),
       readMarketPulseTaxByTown(
         { kind, propertyClass },
-        { allowCompute: true },
+        { allowCompute: false },
       ),
     ])
 
@@ -164,14 +171,16 @@ export async function GET(req: Request) {
       taxRows,
     )
 
-    const wanted = city.trim().toLowerCase()
+    const resolved =
+      resolveListingTown(city) ?? normalizeTownName(city) ?? city.trim()
+    const wanted = resolved.toLowerCase()
     const row = combined.find((r) => r.city.trim().toLowerCase() === wanted) ?? null
     const allRow =
       combined.find((r) => r.city.trim().toLowerCase() === 'all') ?? null
     const peers = combined.filter((r) => r.city.trim().toLowerCase() !== 'all')
 
     const payload: MarketPulseTownPayload = {
-      city: row?.city ?? city,
+      city: row?.city ?? resolved,
       kind,
       propertyClass,
       closedLookbackLabel: closed.payload.lookbackLabel,
