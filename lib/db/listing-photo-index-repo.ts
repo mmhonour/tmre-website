@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
+import { FULL_QUALITY_MIN_BYTES } from '@/lib/listing-photo-quality'
+import { SHOWCASE_HERO_PHOTO_SLOTS } from '@/lib/hero-photo-inventory-backfill-shared'
 
 /**
  * Metadata-only index for listing photos whose bytes live in Cloudflare R2.
@@ -127,6 +129,41 @@ export async function countFreshListingPhotosFromDb(
     [id, expectedCount, freshAfterIso],
   )
   return row ? Number(row.count) : 0
+}
+
+/**
+ * Active listings in one town whose first six full-size index rows are short.
+ * `cache_id` matches `listingPhotoCacheId` (listing_key, else mls_id).
+ */
+export async function listActiveMlsIdsMissingShowcaseHeroes(options: {
+  town: string
+  afterMlsId?: string
+  limit: number
+}): Promise<string[]> {
+  const town = options.town.trim()
+  const limit = Math.max(1, Math.min(Math.round(options.limit), 40))
+  if (!town) return []
+  const after = options.afterMlsId?.trim() ?? ''
+  const rows = await query<{ mls_id: string }>(
+    `SELECT l.mls_id
+       FROM listings l
+      WHERE l.status_bucket = 'Active'
+        AND l.town = $1
+        AND COALESCE(l.photo_count, 0) > 0
+        AND ($2 = '' OR l.mls_id > $2)
+        AND (
+          SELECT COUNT(*)::int
+            FROM listing_photo_index i
+           WHERE i.cache_id = COALESCE(NULLIF(BTRIM(l.listing_key), ''), l.mls_id)
+             AND i.photo_index >= 0
+             AND i.photo_index < LEAST($4, l.photo_count)
+             AND i.byte_length >= $5
+        ) < LEAST($4, l.photo_count)
+      ORDER BY l.mls_id
+      LIMIT $3`,
+    [town, after, limit, SHOWCASE_HERO_PHOTO_SLOTS, FULL_QUALITY_MIN_BYTES],
+  )
+  return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
 
 export async function deleteListingPhotoIndexRows(cacheId: string): Promise<void> {

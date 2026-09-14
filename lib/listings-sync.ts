@@ -563,13 +563,16 @@ export async function syncIncrementalListings(
       }
       await appendIncrementalStep('post-hooks-end')
       try {
-        const { drainIncrementalPhotoWarm } = await import(
-          '@/lib/incremental-photo-warm'
+        const { runLane3ShowcasePhotoWarm } = await import(
+          '@/lib/hero-photo-inventory-backfill'
         )
-        const photoWarm = await drainIncrementalPhotoWarm()
+        const photoWarm = await runLane3ShowcasePhotoWarm()
+        const inventory = photoWarm.inventory
         await appendIncrementalStep(
           'photo-warm-drain',
-          `${photoWarm.warmed}/${photoWarm.attempted} listings (${photoWarm.remaining} left)`,
+          inventory
+            ? `inventory ${inventory.town} ${inventory.warmed}/${inventory.attempted}`
+            : `${photoWarm.incremental.warmed}/${photoWarm.incremental.attempted} listings (${photoWarm.incremental.remaining} left)`,
         )
       } catch (err) {
         console.warn('[listings-sync/incremental] photo warm drain failed', err)

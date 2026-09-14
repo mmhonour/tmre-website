@@ -1079,13 +1079,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Hero (photo)',
     category: 'photos-cdn',
     definition:
-      'Lead thumbnail (usually photo index 0) in list rows — not the marketing “hero section” unless stated.',
+      'Two uses: (1) list/card lead thumb, usually photo index 0; (2) showcase hero six — the first six `size=full` MediaURL shots Lane 3 warms so a listing page is not a 404. Not the marketing “hero section” unless stated.',
   },
   {
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental queues brand-new MLS ids on `incremental_photo_warm_queue`; Lane 3 drains that queue and prefetches the first six full-size shots so the first showcase open is usually a hit. See Side-work-only.',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental queues brand-new MLS ids on `incremental_photo_warm_queue`; Lane 3 drains that queue and prefetches the first six full-size shots so the first showcase open is usually a hit. When the queue is empty, Lane 3 walks Active inventory for listings short of those six heroes (`hero_photo_inventory_cursor`, four listings per hop). Railway never fetches photo bodies. See Side-work-only.',
   },
   {
     term: '?size=full',
