@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   advanceHeroInventoryTown,
+  formatHeroPhotosInterruptedMessage,
   formatHeroPhotosJobMessage,
   parseHeroInventoryCursor,
   parseHeroPhotosJobStatus,
@@ -100,6 +101,28 @@ describe("formatHeroPhotosJobMessage", () => {
         idle: true,
       }),
       "idle · 0% missing · 1,540 Active with photos · 100% complete",
+    );
+  });
+
+  it("keeps the previous % line when the runner vanishes mid-burst", () => {
+    assert.equal(
+      formatHeroPhotosInterruptedMessage(base, "runner stopped reporting — reaped"),
+      "interrupted — runner stopped reporting — reaped",
+    );
+    assert.equal(
+      formatHeroPhotosInterruptedMessage(
+        { ...base, message: "was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 84.4% missing" },
+        "runner stopped reporting — reaped",
+      ),
+      "interrupted — runner stopped reporting — reaped · last: was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 84.4% missing",
+    );
+    assert.equal(
+      formatHeroPhotosJobMessage({
+        ...base,
+        interrupted: true,
+        message: "interrupted — runner vanished · last: was 87% missing",
+      }),
+      "interrupted — runner vanished · last: was 87% missing",
     );
   });
 

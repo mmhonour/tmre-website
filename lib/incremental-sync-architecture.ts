@@ -153,7 +153,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'data',
         title: 'sync_queue (the waiting line)',
         detail:
-          'One waiting row and one running row per job, enforced by partial unique indexes, so four enqueuers cannot stack four pulls. Claims take FOR UPDATE SKIP LOCKED. A timeout or crash cools the job down for 30 minutes instead of re-queueing the same fatal work every boot; an operator pressing Sync now skips that cooldown on purpose.',
+          'One waiting row and one running row per job, enforced by partial unique indexes, so four enqueuers cannot stack four pulls. Claims take FOR UPDATE SKIP LOCKED. A timeout or a real child crash cools the job down for 30 minutes instead of re-queueing the same fatal work every boot. A host-loss reap (runner vanished / deploy) does not cool down. An operator pressing Sync now skips that cooldown on purpose.',
       },
       {
         id: 'railway',

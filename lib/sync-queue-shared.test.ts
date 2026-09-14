@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  SYNC_QUEUE_REAP_DETAIL,
   SYNC_QUEUE_RUNNER_JOBS,
+  isSyncQueueHostLossReap,
   isSyncQueueRunnerJob,
   syncQueueClaimYieldRank,
+  syncQueueOutcomeCoolsDown,
+  syncQueueOutcomeLabel,
 } from './sync-queue-shared'
 
 describe('SYNC_QUEUE_RUNNER_JOBS', () => {
@@ -45,5 +49,29 @@ describe('syncQueueClaimYieldRank', () => {
     assert.equal(syncQueueClaimYieldRank('hero-photos'), 2)
     assert.ok(syncQueueClaimYieldRank('hero-photos') > syncQueueClaimYieldRank('incremental'))
     assert.ok(syncQueueClaimYieldRank('incremental') > syncQueueClaimYieldRank('stats-cache'))
+  })
+})
+
+describe('sync queue host-loss reap', () => {
+  it('does not cool down a runner-vanished reap', () => {
+    assert.equal(isSyncQueueHostLossReap(SYNC_QUEUE_REAP_DETAIL), true)
+    assert.equal(syncQueueOutcomeCoolsDown('crashed', SYNC_QUEUE_REAP_DETAIL), false)
+    assert.equal(syncQueueOutcomeCoolsDown('timeout', SYNC_QUEUE_REAP_DETAIL), true)
+    assert.equal(
+      syncQueueOutcomeCoolsDown(
+        'crashed',
+        'child was SIGKILLed before reporting — most likely out of memory',
+      ),
+      true,
+    )
+    assert.equal(syncQueueOutcomeCoolsDown('failed', 'RETS said no'), false)
+  })
+
+  it('labels a reap as runner vanished, not child died', () => {
+    assert.equal(
+      syncQueueOutcomeLabel('crashed', SYNC_QUEUE_REAP_DETAIL),
+      'Stopped — runner vanished',
+    )
+    assert.equal(syncQueueOutcomeLabel('crashed', null), 'Crashed — child died')
   })
 })

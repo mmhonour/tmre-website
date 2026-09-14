@@ -146,7 +146,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Neon Postgres',
             source: 'lib/sync-queue.ts → SYNC_QUEUE_FAILURE_COOLDOWN_MS',
             detail:
-              'A run that timed out or crashed holds the job back for 30 minutes. Without it, a rebuild fatal enough to kill its child would be re-enqueued on every sweep and starve everything behind it. An honest failure — a real error, an empty result — is not cooled down; it retries on the next slot like it always did. Admin "Sync now" skips the cooldown, because somebody pressed the button precisely because they did not believe it.',
+              'A run that timed out or whose child crashed (OOM / SIGKILL) holds the job back for 30 minutes. Without it, a rebuild fatal enough to kill its child would be re-enqueued on every sweep and starve everything behind it. A host-loss reap — runner stopped reporting, typically a deploy or a dead parent — is not cooled down; the next Configure slot may enqueue. An honest failure — a real error, an empty result — also retries on the next slot. Admin "Sync now" skips the cooldown, because somebody pressed the button precisely because they did not believe it.',
             status: 'guard',
             statusLabel: 'Guard',
           },

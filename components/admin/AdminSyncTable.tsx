@@ -3761,7 +3761,7 @@ export default function AdminSyncTable({
                 }
                 if (queueRecent?.outcome && queueRecent.outcome !== "done") {
                   return [
-                    `Queue: ${syncQueueOutcomeLabel(queueRecent.outcome)}`,
+                    `Queue: ${syncQueueOutcomeLabel(queueRecent.outcome, queueRecent.detail)}`,
                     queueRecent.finishedAt
                       ? (formatAgeAgo(queueRecent.finishedAt, nowMs) ?? null)
                       : null,
@@ -4306,7 +4306,10 @@ export default function AdminSyncTable({
                               : queueWaiting
                                 ? `Queued${queuePosition ? ` #${queuePosition}` : ""}`
                                 : queueRecent
-                                  ? syncQueueOutcomeLabel(queueRecent.outcome)
+                                  ? syncQueueOutcomeLabel(
+                                      queueRecent.outcome,
+                                      queueRecent.detail,
+                                    )
                                   : "Idle"}
                           </span>
                           {queueWaiting ? (

@@ -8,6 +8,7 @@ import {
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
   advanceHeroInventoryTown,
+  formatHeroPhotosInterruptedMessage,
   formatHeroPhotosJobMessage,
   HERO_INVENTORY_BACKFILL_BATCH,
   HERO_INVENTORY_CURSOR_KEY,
@@ -195,6 +196,37 @@ export async function stampHeroPhotosQueuedStatus(): Promise<HeroPhotosJobStatus
 
 export function readHeroPhotosJobStatus(): HeroPhotosJobStatus | null {
   return parseHeroPhotosJobStatus(getSyncMeta(HERO_PHOTOS_STATUS_KEY))
+}
+
+/**
+ * Reaper hook: the parent vanished mid-burst. Keep last_hero_photos (last
+ * successful End) and rewrite Status so the board does not keep showing the
+ * previous Done counts next to "Crashed".
+ */
+export async function stampHeroPhotosInterruptedStatus(
+  reason = 'runner vanished',
+): Promise<HeroPhotosJobStatus> {
+  const { getSyncMeta: getSyncMetaFresh } = await import('@/lib/db/sync-meta')
+  const prev = parseHeroPhotosJobStatus(
+    await getSyncMetaFresh(HERO_PHOTOS_STATUS_KEY),
+  )
+  const status: HeroPhotosJobStatus = {
+    generatedAt: new Date().toISOString(),
+    activeWithPhotos: prev?.activeWithPhotos ?? 0,
+    missingBefore: prev?.missingBefore ?? 0,
+    missingAfter: prev?.missingAfter ?? prev?.missingBefore ?? 0,
+    missingPctBefore: prev?.missingPctBefore ?? 0,
+    missingPctAfter: prev?.missingPctAfter ?? prev?.missingPctBefore ?? 0,
+    filledListings: prev?.filledListings ?? 0,
+    filledPhotos: prev?.filledPhotos ?? 0,
+    complete: false,
+    idle: false,
+    running: false,
+    interrupted: true,
+    message: formatHeroPhotosInterruptedMessage(prev, reason),
+  }
+  await persistProgress(status)
+  return status
 }
 
 /** Town-cursor burst — used by the operator CLI, not the website worker. */
