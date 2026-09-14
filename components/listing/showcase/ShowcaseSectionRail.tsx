@@ -238,7 +238,7 @@ function CardChrome({
   onTitleClick?: () => void;
   afterTitle?: ReactNode;
   children?: ReactNode;
-  /** Town pulse — hug the metrics; do not fill a scroll viewport. */
+  /** Town pulse / Details — hug the body; do not fill a scroll viewport. */
   fit?: boolean;
 }) {
   return (
@@ -613,9 +613,9 @@ export default function ShowcaseSectionRail({
         </div>
       </CardChrome>
     ) : deck === "details" ? (
-      <CardChrome title="Details" onCollapse={() => setDeck(null)}>
+      <CardChrome title="Details" onCollapse={() => setDeck(null)} fit>
         <DetailsOverlayTabs tab={detailsTab} onChange={setDetailsTab} />
-        <div className="min-h-0 w-full flex-1 overflow-y-auto bg-[#0d1424]">
+        <div className="w-full bg-[#0d1424]">
           {detailsTab === "full" ? (
             <div className="p-3">
               <ListingSidebar details={detailsPanelProps} unframed />
@@ -648,6 +648,7 @@ export default function ShowcaseSectionRail({
     ) : null;
 
   const mapFullscreen = deck === "map" && mapExpanded;
+  const fitDeck = deck === "pulse" || deck === "details";
   const railRight = mapFullscreen
     ? "max-lg:hidden lg:right-[min(50vw,44rem)]"
     : deck && !phone
@@ -709,7 +710,9 @@ export default function ShowcaseSectionRail({
             className={`pointer-events-auto absolute left-0 right-0 top-1/2 z-20 flex -translate-y-1/2 flex-col bg-[#0d1424] pr-3 sm:pr-6 ${
               deck === "pulse"
                 ? "h-auto"
-                : "h-[min(28rem,calc(100dvh-18rem))] overflow-hidden"
+                : fitDeck
+                  ? "h-auto max-h-[calc(100dvh-8rem)] overflow-y-auto"
+                  : "h-[min(28rem,calc(100dvh-18rem))] overflow-hidden"
             }`}
           >
             {openCard}
@@ -722,7 +725,9 @@ export default function ShowcaseSectionRail({
             className={`pointer-events-auto flex ${CARD_WIDTH} flex-col bg-[#0d1424] ${
               deck === "pulse"
                 ? "h-auto"
-                : "h-[min(32rem,calc(100dvh-14rem))] overflow-hidden"
+                : fitDeck
+                  ? "h-auto max-h-full overflow-y-auto"
+                  : "h-[min(32rem,calc(100dvh-14rem))] overflow-hidden"
             }`}
           >
             {openCard}
