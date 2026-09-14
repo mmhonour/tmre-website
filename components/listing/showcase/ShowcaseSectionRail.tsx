@@ -265,15 +265,16 @@ type IfAmounts = { sale: number | null; rent: number | null };
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Offered at / Closed at
- * sits in the top-right, same band as status. Maximize, Insight, Details,
- * then Comps sit above the right photo arrow; What if, Pulse, and Map sit
- * below, with one even gap through the column. One
- * deck at a time occupies the center-right of the bleed, above the type.
- * Comps and What if
- * expand in place and can stay open with each other and with a deck. They
- * stay `w-fit` in the glyph stack — other icons do not shift left. On a
- * phone, opening either one closes the deck so the pills have room, leftover
- * glyphs stay on the deck’s right edge, and min/max hides while a deck is up.
+ * sits in the top-right, same band as status (phone: one raised row, price
+ * flush to the screen edge). Desktop: Maximize, Insight, Details, then Comps
+ * sit above the right photo arrow; What if, Pulse, and Map sit below. Phone:
+ * Maximize drops under Map so the headline has the top band. One even gap
+ * through the column. One deck at a time occupies the center-right of the
+ * bleed, above the type. Comps and What if expand in place and can stay open
+ * with each other and with a deck. They stay `w-fit` in the glyph stack —
+ * other icons do not shift left. On a phone, opening either one closes the
+ * deck so the pills have room, leftover glyphs stay on the deck’s right
+ * edge, and min/max hides while a deck is up.
  */
 export default function ShowcaseSectionRail({
   mlsId,
@@ -291,7 +292,7 @@ export default function ShowcaseSectionRail({
   map,
 }: {
   mlsId: string;
-  /** Offered at / Closed at — parked above min/max in the top-right, not the header row. */
+  /** Offered at / Closed at — desktop top-right. Phone renders it in the header row. */
   price?: { label: string; amount: string } | null;
   insight: string | null;
   /** Showcase-only facts line, rendered under the shared insight. */
@@ -657,7 +658,7 @@ export default function ShowcaseSectionRail({
         className={`pointer-events-none absolute inset-y-0 z-30 ${RAIL_WIDTH} ${railRight}`}
       >
         {price ? (
-          <div className="pointer-events-auto absolute top-0 right-0 z-10 pt-24 pr-3 sm:pr-6 lg:pt-28">
+          <div className="pointer-events-auto absolute top-0 right-0 z-10 hidden pt-24 pr-3 sm:pr-6 lg:block lg:pt-28">
             <ListingShowcasePriceBlock
               label={price.label}
               amount={price.amount}
@@ -669,10 +670,12 @@ export default function ShowcaseSectionRail({
           style={{ paddingBottom: ARROW_CLEAR }}
         >
           {hideLabels ? null : (
-            <RailMinMaxButton
-              expanded={labelsMax}
-              onToggle={() => setLabelsMax((open) => !open)}
-            />
+            <div className="max-lg:hidden">
+              <RailMinMaxButton
+                expanded={labelsMax}
+                onToggle={() => setLabelsMax((open) => !open)}
+              />
+            </div>
           )}
           {deck === "insight" ? null : insightButton}
           {deck === "details" ? null : detailsButton}
@@ -685,6 +688,14 @@ export default function ShowcaseSectionRail({
           {whatIfPill}
           {deck === "pulse" ? null : pulseButton}
           {deck === "map" ? null : mapButton}
+          {hideLabels ? null : (
+            <div className="lg:hidden">
+              <RailMinMaxButton
+                expanded={labelsMax}
+                onToggle={() => setLabelsMax((open) => !open)}
+              />
+            </div>
+          )}
         </div>
         {phone && deck && !mapFullscreen ? (
           <div className="pointer-events-auto absolute left-0 right-0 top-1/2 z-20 flex h-[min(28rem,calc(100dvh-18rem))] -translate-y-1/2 flex-col overflow-hidden bg-[#0d1424] pr-3 sm:pr-6">

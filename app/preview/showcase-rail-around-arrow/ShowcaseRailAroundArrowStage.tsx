@@ -167,41 +167,48 @@ export function ShowcaseRailAroundArrowStage({
       {framed ? <MobileHeaderFixture /> : null}
 
       {/*
-        Status + address on the left. Phone uses the same top band as the
-        live listing (pt-24) so it clears the in-frame header.
+        Status + address on the left. Phone raises the band (top-20) so
+        status and price sit above Insight; price is flush to the right
+        edge and top-aligned with status.
       */}
       <div
         className={`absolute left-4 z-20 ${
-          mobile ? "top-24 max-w-[11.5rem]" : "top-24 max-w-xl sm:left-8 lg:left-12"
+          mobile
+            ? "top-20 right-0 flex items-start justify-between gap-3"
+            : "top-24 max-w-xl sm:left-8 lg:left-12"
         }`}
       >
-        <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
-          <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
-            Active
-          </span>
-        </ListingShowcaseTypeWash>
-        <ListingShowcaseTypeWash className="mt-2 w-fit max-w-full px-5 py-2">
-          <p
-            className={`relative font-serif leading-tight text-white ${
-              mobile ? "text-2xl" : "text-4xl lg:text-5xl"
-            }`}
-          >
-            12 Harbor Rd
-          </p>
-          <p className="relative mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-            Westport, CT
-          </p>
-        </ListingShowcaseTypeWash>
+        <div className={mobile ? "min-w-0 flex-1" : undefined}>
+          <ListingShowcaseTypeWash className="w-fit min-w-[8rem] px-8 py-1.5 text-center">
+            <span className="relative font-mono text-[10px] uppercase tracking-[0.25em] text-gold">
+              Active
+            </span>
+          </ListingShowcaseTypeWash>
+          <ListingShowcaseTypeWash className="mt-2 w-fit max-w-full px-5 py-2">
+            <p
+              className={`relative font-serif leading-tight text-white ${
+                mobile ? "text-2xl" : "text-4xl lg:text-5xl"
+              }`}
+            >
+              12 Harbor Rd
+            </p>
+            <p className="relative mt-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
+              Westport, CT
+            </p>
+          </ListingShowcaseTypeWash>
+        </div>
+        {mobile ? (
+          <div className="shrink-0 self-start">
+            <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
+          </div>
+        ) : null}
       </div>
 
-      {/* Price right-aligned to the screen, top-aligned with status. */}
-      <div
-        className={`absolute z-30 ${pad} ${
-          mobile ? "top-24 right-0" : "top-24 right-0"
-        }`}
-      >
-        <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
-      </div>
+      {mobile ? null : (
+        <div className={`absolute top-24 right-0 z-30 ${pad}`}>
+          <ListingShowcasePriceBlock label="Offered at" amount="$1.90M" />
+        </div>
+      )}
 
       {/*
         Arrow stays on the vertical midpoint. Tiles above grow up from it,
@@ -212,18 +219,20 @@ export function ShowcaseRailAroundArrowStage({
         className={`pointer-events-auto absolute inset-x-0 bottom-1/2 z-20 flex flex-col items-end justify-end ${RAIL_GAP} ${pad}`}
         style={{ paddingBottom: ARROW_CLEAR }}
       >
-        <button
-          type="button"
-          aria-pressed={labelsMax}
-          aria-label={labelsMax ? "Show icons only" : "Show icon names"}
-          title={labelsMax ? "Minimize to icons" : "Maximize labels"}
-          onClick={() => setLabelsMax((open) => !open)}
-          className={glyphIcon}
-        >
-          <span className="relative">
-            {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
-          </span>
-        </button>
+        {mobile ? null : (
+          <button
+            type="button"
+            aria-pressed={labelsMax}
+            aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+            title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+            onClick={() => setLabelsMax((open) => !open)}
+            className={glyphIcon}
+          >
+            <span className="relative">
+              {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+            </span>
+          </button>
+        )}
         <GlyphButton
           label="Insight"
           glyph={<InsightGlyph />}
@@ -277,6 +286,20 @@ export function ShowcaseRailAroundArrowStage({
           pressed={active === "map"}
           onClick={() => setActive((id) => (id === "map" ? null : "map"))}
         />
+        {mobile ? (
+          <button
+            type="button"
+            aria-pressed={labelsMax}
+            aria-label={labelsMax ? "Show icons only" : "Show icon names"}
+            title={labelsMax ? "Minimize to icons" : "Maximize labels"}
+            onClick={() => setLabelsMax((open) => !open)}
+            className={glyphIcon}
+          >
+            <span className="relative">
+              {labelsMax ? <MinimizeGlyph /> : <MaximizeGlyph />}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       <ShowcaseStepArrow

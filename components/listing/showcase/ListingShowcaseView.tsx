@@ -8,6 +8,7 @@ import ShowcasePhotoFocus, {
 } from "@/components/listing/showcase/ShowcasePhotoFocus";
 import ShowcasePhotoStage from "@/components/listing/showcase/ShowcasePhotoStage";
 import ShowcasePremiereLights from "@/components/listing/showcase/ShowcasePremiereLights";
+import { ListingShowcasePriceBlock } from "@/components/listing/showcase/ListingShowcasePriceBlock";
 import { ListingShowcaseTypeWash } from "@/components/listing/showcase/listing-showcase-wash";
 import ShowcaseSectionRail from "@/components/listing/showcase/ShowcaseSectionRail";
 import ShowcaseStepArrow from "@/components/listing/showcase/ShowcaseStepArrow";
@@ -288,9 +289,9 @@ export default function ListingShowcaseView({
           map={host.map}
         />
 
-        <div className="listing-showcase-type pointer-events-none relative z-20 flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-24 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
-          <div className="mx-auto flex w-full max-w-7xl items-start">
-            <div className="min-w-0 max-w-xl flex-1 max-lg:max-w-[12rem]">
+        <div className="listing-showcase-type pointer-events-none relative z-20 flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-20 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
+          <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-3">
+            <div className="min-w-0 max-w-xl flex-1">
               {host.propertyTabs ? (
                 <div className="pointer-events-auto mb-3">{host.propertyTabs}</div>
               ) : null}
@@ -321,6 +322,14 @@ export default function ListingShowcaseView({
                 ) : null}
               </ListingShowcaseTypeWash>
             </div>
+            {headerPrice ? (
+              <div className="pointer-events-auto -mr-4 shrink-0 self-start sm:-mr-8 lg:hidden">
+                <ListingShowcasePriceBlock
+                  label={priceIsClosed ? "Closed at" : "Offered at"}
+                  amount={headerPrice}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-end gap-5 sm:grid-cols-[1fr_auto_1fr]">

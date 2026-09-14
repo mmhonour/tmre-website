@@ -9,7 +9,7 @@ export function ListingShowcasePriceBlock({
   amount: string;
 }) {
   return (
-    <ListingShowcaseTypeWash className="overflow-visible px-8 py-2.5 text-right">
+    <ListingShowcaseTypeWash className="overflow-visible px-8 py-1.5 text-right max-lg:pr-3 lg:py-2.5">
       <p className="relative whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.25em] text-white/65">
         {label}
       </p>
