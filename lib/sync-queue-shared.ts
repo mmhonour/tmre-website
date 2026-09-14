@@ -60,8 +60,33 @@ export type SyncQueueState = (typeof SYNC_QUEUE_STATES)[number]
 /**
  * How a run ended.
  * - timeout: the parent killed a child that outlived its budget
- * - crashed: the child died without reporting (OOM kill, container restart)
+ * - crashed: the child died without reporting (OOM kill), or the parent
+ *   vanished and the reaper closed the row
  */
+
+/** Written when reapAbandonedSyncQueueItems closes a silent running row. */
+export const SYNC_QUEUE_REAP_DETAIL = 'runner stopped reporting — reaped'
+
+export function isSyncQueueHostLossReap(
+  detail: string | null | undefined,
+): boolean {
+  return (detail ?? '').includes('runner stopped reporting')
+}
+
+/**
+ * Timeout and a real child crash cool down. A host-loss reap does not —
+ * that is a deploy or a dead parent, not a poisonous job. Holding the next
+ * 15-minute slot for 30 minutes after a Railway bounce is how Listing photos
+ * sat Overdue with no RETS error.
+ */
+export function syncQueueOutcomeCoolsDown(
+  outcome: string | null | undefined,
+  detail?: string | null,
+): boolean {
+  if (outcome === 'timeout') return true
+  if (outcome === 'crashed' && !isSyncQueueHostLossReap(detail)) return true
+  return false
+}
 export const SYNC_QUEUE_OUTCOMES = [
   'done',
   'failed',
@@ -178,7 +203,10 @@ export function clampJobBudgetMinutes(value: number): number {
   )
 }
 
-export function syncQueueOutcomeLabel(outcome: SyncQueueOutcome | null): string {
+export function syncQueueOutcomeLabel(
+  outcome: SyncQueueOutcome | null,
+  detail?: string | null,
+): string {
   switch (outcome) {
     case 'done':
       return 'Done'
@@ -187,7 +215,9 @@ export function syncQueueOutcomeLabel(outcome: SyncQueueOutcome | null): string 
     case 'timeout':
       return 'Killed — over budget'
     case 'crashed':
-      return 'Crashed — child died'
+      return isSyncQueueHostLossReap(detail)
+        ? 'Stopped — runner vanished'
+        : 'Crashed — child died'
     case 'cancelled':
       return 'Cancelled'
     default:
@@ -198,7 +228,7 @@ export function syncQueueOutcomeLabel(outcome: SyncQueueOutcome | null): string 
 export function syncQueueStateLabel(item: SyncQueueItem): string {
   if (item.state === 'queued') return 'Queued'
   if (item.state === 'running') return 'Running'
-  return syncQueueOutcomeLabel(item.outcome)
+  return syncQueueOutcomeLabel(item.outcome, item.detail)
 }
 
 /** 1-based position of this job in the waiting line, or null when absent. */

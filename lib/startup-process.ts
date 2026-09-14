@@ -607,7 +607,7 @@ export function describeStartupProcess(): {
         title: "Low-priority hero-six scavenge",
         timing: "10-min sweep → every 15m (Configure), 10-min budget",
         detail:
-          "runHeroPhotoScavengeJob(). Lowest claim rank so Incremental / stats / CAMA go first. Oldest list_date first, five listings per hop, ~9 minutes of Media/R2 then a recount. Writes hero_photos_status (% missing before, listings/photos filled, % remaining) and last_hero_photos. When every Active already has six full-size heroes the run is a count + idle report — no Media fetch. Railway 10-min sweep and Netlify thin */30 (sync-hero-photos) enqueue; the forked child downloads. Incremental still writes ids only. Not part of Sync all. Admin Syncs row shows the last message for eagle-eye.",
+          "runHeroPhotoScavengeJob(). Lowest claim rank so Incremental / stats / CAMA go first. Oldest list_date first, five listings per hop, ~9 minutes of Media/R2 then a recount. Writes hero_photos_status (% missing before, listings/photos filled, % remaining) and last_hero_photos. When every Active already has six full-size heroes the run is a count + idle report — no Media fetch. Railway 10-min sweep and Netlify thin */30 (sync-hero-photos) enqueue; the forked child downloads. Incremental still writes ids only. Not part of Sync all. A host-loss reap (runner vanished) does not start the 30-minute failure cooldown — the next 15m slot may enqueue. Admin Syncs row shows the last message for eagle-eye.",
         status: "scheduled",
         statusLabel: "Cron",
       },

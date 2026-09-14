@@ -27,6 +27,8 @@ export type HeroPhotosJobStatus = {
   idle: boolean
   /** True while a burst is queued or in flight — board should keep polling. */
   running?: boolean
+  /** True when the runner vanished mid-burst (reaped). End stamp stays. */
+  interrupted?: boolean
   message: string
 }
 
@@ -35,7 +37,21 @@ export function pctMissing(missing: number, total: number): number {
   return Math.round((missing / total) * 1000) / 10
 }
 
+export function formatHeroPhotosInterruptedMessage(
+  prev: HeroPhotosJobStatus | null,
+  reason = 'runner vanished',
+): string {
+  const last = prev?.message?.trim()
+  if (last) return `interrupted — ${reason} · last: ${last}`
+  return `interrupted — ${reason}`
+}
+
 export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string {
+  if (status.interrupted) {
+    return status.message.startsWith('interrupted')
+      ? status.message
+      : formatHeroPhotosInterruptedMessage(status)
+  }
   const total = status.activeWithPhotos.toLocaleString()
   const missingN = status.missingBefore.toLocaleString()
   if (status.running) {
@@ -84,6 +100,7 @@ export function parseHeroPhotosJobStatus(
       complete: Boolean(parsed.complete),
       idle: Boolean(parsed.idle),
       running: Boolean(parsed.running),
+      interrupted: Boolean(parsed.interrupted),
       message: parsed.message,
     }
   } catch {

@@ -4,6 +4,8 @@ import { execute, query, queryOne, withTransaction } from '@/lib/db/postgres'
 import {
   emptySyncQueueSnapshot,
   SYNC_QUEUE_PRIORITY_SWEEP,
+  SYNC_QUEUE_REAP_DETAIL,
+  syncQueueOutcomeCoolsDown,
   type SyncQueueItem,
   type SyncQueueOutcome,
   type SyncQueueSnapshot,
@@ -279,19 +281,25 @@ export async function enqueueSyncJob(input: {
 /**
  * Why this job is being held back, or null when it is free to queue.
  *
- * Only kills and crashes cool down. An honest `failed` (RETS said no, 0 rows)
- * should retry on the next slot like it always did.
+ * Only budget kills and real child crashes cool down. An honest `failed`
+ * (RETS said no, 0 rows) retries on the next slot. A host-loss reap
+ * (`runner stopped reporting`) is a dead parent / deploy, not a poisonous
+ * job — the next Configure slot may enqueue.
  */
 async function readSyncQueueCooldown(jobId: string): Promise<string | null> {
-  const row = await queryOne<{ outcome: string | null; finished_at: Date | string }>(
-    `SELECT outcome, finished_at FROM sync_queue
+  const row = await queryOne<{
+    outcome: string | null
+    detail: string | null
+    finished_at: Date | string
+  }>(
+    `SELECT outcome, detail, finished_at FROM sync_queue
       WHERE job_id = $1 AND finished_at IS NOT NULL
       ORDER BY finished_at DESC
       LIMIT 1`,
     [jobId],
   )
   if (!row) return null
-  if (row.outcome !== 'timeout' && row.outcome !== 'crashed') return null
+  if (!syncQueueOutcomeCoolsDown(row.outcome, row.detail)) return null
   const finishedMs = Date.parse(iso(row.finished_at) ?? '')
   if (!Number.isFinite(finishedMs)) return null
   const waitedMs = Date.now() - finishedMs
@@ -413,18 +421,30 @@ export async function finishSyncQueueItem(
  */
 export async function reapAbandonedSyncQueueItems(): Promise<number> {
   await ensureSyncQueueTable()
-  return execute(
+  const reaped = await query<{ job_id: string }>(
     `UPDATE sync_queue
         SET state = 'failed',
             finished_at = now(),
             ok = false,
             outcome = 'crashed',
-            detail = COALESCE(detail, 'runner stopped reporting — reaped')
+            detail = COALESCE(detail, $2)
       WHERE state = 'running'
         AND COALESCE(heartbeat_at, claimed_at, requested_at)
-            < now() - ($1::bigint * interval '1 millisecond')`,
-    [String(SYNC_QUEUE_HEARTBEAT_STALE_MS)],
+            < now() - ($1::bigint * interval '1 millisecond')
+      RETURNING job_id`,
+    [String(SYNC_QUEUE_HEARTBEAT_STALE_MS), SYNC_QUEUE_REAP_DETAIL],
   )
+  if (reaped.some((row) => row.job_id === 'hero-photos')) {
+    try {
+      const { stampHeroPhotosInterruptedStatus } = await import(
+        '@/lib/hero-photo-inventory-backfill'
+      )
+      await stampHeroPhotosInterruptedStatus(SYNC_QUEUE_REAP_DETAIL)
+    } catch (err) {
+      console.warn('[sync-queue] could not stamp hero-photos interrupt', err)
+    }
+  }
+  return reaped.length
 }
 
 export async function pruneSyncQueueHistory(): Promise<number> {

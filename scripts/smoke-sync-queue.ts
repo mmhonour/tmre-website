@@ -210,7 +210,7 @@ async function checkBacklog(): Promise<void> {
           : item.detail
       : null
     console.info(
-      `      recent: ${item.jobId} → ${syncQueueOutcomeLabel(item.outcome)}${
+      `      recent: ${item.jobId} → ${syncQueueOutcomeLabel(item.outcome, item.detail)}${
         detail ? ` (${detail})` : ''
       }`,
     )
@@ -266,7 +266,7 @@ async function roundTrip(jobId: string, waitMin: number): Promise<void> {
       check(
         ok,
         `${jobId} finished: ${row.detail ?? 'done'}`,
-        `${jobId} ended as ${syncQueueOutcomeLabel(row.outcome as never)} — ${row.detail ?? 'no detail'}`,
+        `${jobId} ended as ${syncQueueOutcomeLabel(row.outcome as never, row.detail)} — ${row.detail ?? 'no detail'}`,
       )
       return
     }
