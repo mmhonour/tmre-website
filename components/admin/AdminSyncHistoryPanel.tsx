@@ -60,7 +60,8 @@ function formatSyncTime(iso: string | null | undefined): string {
 /**
  * Durable log of every MLS town/bucket sync written to Postgres `sync_runs`
  * (admin, cron, overdue catch-up). Loads ≥1 year by default; display collapses
- * by sync type (Full / Incremental / Cron), then by status bucket.
+ * per-town Incremental rows by sync type then status bucket. Each dashboard
+ * job audit (Done/Failed/Queued on `(all)`) stays its own Start/End.
  */
 export default function AdminSyncHistoryPanel({
   initial,
