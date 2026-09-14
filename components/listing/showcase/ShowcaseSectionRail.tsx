@@ -261,8 +261,8 @@ type IfAmounts = { sale: number | null; rent: number | null };
  * sits over min/max in the top-right, same band as status. Insight, Details,
  * then Comps sit above that arrow; What if, Pulse, and Map sit below. One
  * deck at a time occupies the center-right of the bleed, above the type.
- * Comps and What if
- * expand in place and can stay open with each other and with a deck. They
+ * Comps and What if expand in place and can stay open with each other and
+ * with a deck. They
  * stay `w-fit` in the glyph stack — other icons do not shift left. On a
  * phone, opening either one closes the deck so the pills have room, leftover
  * glyphs stay on the deck’s right edge, and min/max hides while a deck is up.
