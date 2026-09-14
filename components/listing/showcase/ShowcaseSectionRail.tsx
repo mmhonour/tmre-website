@@ -51,6 +51,13 @@ const RAIL_WIDTH = "w-[min(24rem,calc(100vw-3rem))]";
 /** Shared pop-out — leaves a glyph gutter so the rail hugs the card’s left edge. */
 const CARD_WIDTH = "w-[min(24rem,calc(100vw-3.75rem))]";
 const CARD_RIGHT = "right-[min(24rem,calc(100vw-3.75rem))]";
+/** Same gap between every rail tile, including Comps ↔ arrow ↔ What if. */
+const RAIL_GAP = "gap-3";
+/**
+ * Half the 3.5rem photo arrow plus one RAIL_GAP (0.75rem) so tiles sit off
+ * the arrow by the same amount they sit off each other.
+ */
+const ARROW_CLEAR = "2.5rem";
 
 /** Shared tile geometry; `interactive` adds the hover the whole-row tiles use. */
 const railRowClass = (opts: {
@@ -258,9 +265,9 @@ type IfAmounts = { sale: number | null; rent: number | null };
 /**
  * Rail of flush rectangular tiles over the right of the photo. The next-photo
  * arrow stays vertically opposite the previous arrow. Offered at / Closed at
- * sits over min/max in the top-right, same band as status, on every
- * screen. Insight, Details, then Comps sit above that arrow; What if,
- * Pulse, and Map sit below. One
+ * sits in the top-right, same band as status. Maximize, Insight, Details,
+ * then Comps sit above the right photo arrow; What if, Pulse, and Map sit
+ * below, with one even gap through the column. One
  * deck at a time occupies the center-right of the bleed, above the type.
  * Comps and What if
  * expand in place and can stay open with each other and with a deck. They
@@ -647,42 +654,43 @@ export default function ShowcaseSectionRail({
        * is a separate center-right panel and the column shifts left.
        */}
       <div
-        className={`pointer-events-none absolute inset-y-0 z-30 flex ${RAIL_WIDTH} flex-col items-end pr-3 sm:pr-6 ${railRight}`}
+        className={`pointer-events-none absolute inset-y-0 z-30 ${RAIL_WIDTH} ${railRight}`}
       >
-        {/* Top-right: Offered at / Closed at over min/max, same band as status. */}
-        <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-4 pt-24 lg:pt-28">
-          {price ? (
+        {price ? (
+          <div className="pointer-events-auto absolute top-0 right-0 z-10 pt-24 pr-3 sm:pr-6 lg:pt-28">
             <ListingShowcasePriceBlock
               label={price.label}
               amount={price.amount}
             />
-          ) : null}
+          </div>
+        ) : null}
+        <div
+          className={`pointer-events-auto absolute bottom-1/2 right-0 flex flex-col items-end ${RAIL_GAP} pr-3 sm:pr-6`}
+          style={{ paddingBottom: ARROW_CLEAR }}
+        >
           {hideLabels ? null : (
             <RailMinMaxButton
               expanded={labelsMax}
               onToggle={() => setLabelsMax((open) => !open)}
             />
           )}
-        </div>
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-end gap-1 overflow-visible pb-1">
           {deck === "insight" ? null : insightButton}
           {deck === "details" ? null : detailsButton}
           {compsPill}
         </div>
-        {phone && deck && !mapFullscreen ? (
-          <div
-            className="pointer-events-auto flex min-h-0 h-[min(28rem,calc(100dvh-18rem))] w-full flex-col overflow-hidden bg-[#0d1424]"
-          >
-            {openCard}
-          </div>
-        ) : (
-          <div className="h-14 shrink-0" aria-hidden />
-        )}
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col items-end justify-start gap-1 overflow-visible pt-1">
+        <div
+          className={`pointer-events-auto absolute top-1/2 right-0 flex flex-col items-end ${RAIL_GAP} pr-3 sm:pr-6`}
+          style={{ paddingTop: ARROW_CLEAR }}
+        >
           {whatIfPill}
           {deck === "pulse" ? null : pulseButton}
           {deck === "map" ? null : mapButton}
         </div>
+        {phone && deck && !mapFullscreen ? (
+          <div className="pointer-events-auto absolute left-0 right-0 top-1/2 z-20 flex h-[min(28rem,calc(100dvh-18rem))] -translate-y-1/2 flex-col overflow-hidden bg-[#0d1424] pr-3 sm:pr-6">
+            {openCard}
+          </div>
+        ) : null}
       </div>
       {deck && !mapFullscreen && !phone ? (
         <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-30 flex items-center justify-end pr-3 sm:pr-6">

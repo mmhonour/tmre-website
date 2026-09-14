@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  * globals.css has not rebuilt yet.
  */
 export const listingShowcaseWashClass =
-  "listing-showcase-type-wash bg-[linear-gradient(90deg,rgb(13_20_36/0)_0%,rgb(13_20_36/0.5)_22%,rgb(13_20_36/0.85)_50%,rgb(13_20_36/0.5)_78%,rgb(13_20_36/0)_100%)]";
+  "listing-showcase-type-wash bg-[linear-gradient(90deg,rgb(13_20_36/0)_0%,rgb(13_20_36/0.68)_22%,rgb(13_20_36/0.94)_50%,rgb(13_20_36/0.68)_78%,rgb(13_20_36/0)_100%)]";
 
 export function ListingShowcaseTypeWash({
   children,
