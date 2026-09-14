@@ -132,6 +132,19 @@ async function runIncrementalSideWork(): Promise<{
     console.warn('[sync-listings-work] stats cache rebuild failed', err)
   }
   await runSpotlightRefresh()
+  try {
+    const { drainIncrementalPhotoWarm } = await import(
+      '@/lib/incremental-photo-warm'
+    )
+    const photoWarm = await drainIncrementalPhotoWarm()
+    if (photoWarm.attempted > 0) {
+      console.info(
+        `[sync-listings-work] showcase photo warm ${photoWarm.warmed}/${photoWarm.attempted} listings (${photoWarm.remaining} left)`,
+      )
+    }
+  } catch (err) {
+    console.warn('[sync-listings-work] incremental photo warm failed', err)
+  }
   // Listing mail is Incremental-only. Lane 3 used to call the same processor
   // and hide a dead Railway doorbell.
   return { savedSearchAlerts: null }

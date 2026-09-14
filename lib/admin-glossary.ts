@@ -841,7 +841,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Side-work-only',
     category: 'sync-admin',
     definition:
-      'A worker run that skips RETS entirely and does just the warm half: latest town feeds, intelligence deal board, stats cache, spotlight statuses. Queued as `sideWorkOnly: true` on `/.netlify/functions/sync-listings-worker`. Two callers use it — Netlify’s thin cron after a lean in-process pull, and Railway mls-sync handing warm back to Netlify once its Neon write is done. Does not send listing or OH alert email. If that handoff fails (missing NEXT_PUBLIC_SITE_URL / SYNC_CRON_SECRET on Railway, or a password gate), nothing breaks permanently: boards rebuild on the next stale read. Look for a `warm-handoff` step in the incremental step log to see which way it went. See postHooks, Railway mls-sync.',
+      'A worker run that skips RETS entirely and does just the warm half: latest town feeds, intelligence deal board, stats cache, spotlight statuses, and showcase photo warm for listings Incremental just inserted. Queued as `sideWorkOnly: true` on `/.netlify/functions/sync-listings-worker`. Two callers use it — Netlify’s thin cron after a lean in-process pull, and Railway mls-sync handing warm back to Netlify once its Neon write is done. Does not send listing or OH alert email. If that handoff fails (missing NEXT_PUBLIC_SITE_URL / SYNC_CRON_SECRET on Railway, or a password gate), nothing breaks permanently: boards rebuild on the next stale read. Look for a `warm-handoff` step in the incremental step log to see which way it went. See postHooks, Railway mls-sync, Photo 404 / ?fetch=1.',
   },
   {
     term: 'MLS_SYNC_SERVICE_URL',
@@ -1085,7 +1085,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image.',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental queues brand-new MLS ids on `incremental_photo_warm_queue`; Lane 3 drains that queue and prefetches the first six full-size shots so the first showcase open is usually a hit. See Side-work-only.',
   },
   {
     term: '?size=full',

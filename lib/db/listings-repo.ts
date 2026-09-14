@@ -639,6 +639,8 @@ export type IncrementalUpsertResult = {
   inserted: number
   updated: number
   priceChangedIds: string[]
+  /** MLS ids of brand-new rows — Lane 3 showcase photo warm. */
+  insertedIds: string[]
   /** Rows whose write moved a stats input. > 0 means this town is dirty. */
   statsChanged: number
 }
@@ -648,12 +650,13 @@ const EMPTY_INCREMENTAL_UPSERT: IncrementalUpsertResult = {
   inserted: 0,
   updated: 0,
   priceChangedIds: [],
+  insertedIds: [],
   statsChanged: 0,
 }
 
 /** Zeroed result for callers that skip a bucket. */
 export function emptyIncrementalUpsertResult(): IncrementalUpsertResult {
-  return { ...EMPTY_INCREMENTAL_UPSERT, priceChangedIds: [] }
+  return { ...EMPTY_INCREMENTAL_UPSERT, priceChangedIds: [], insertedIds: [] }
 }
 
 /** Upsert changed listings without deleting the rest of the bucket (incremental sync). */
@@ -672,19 +675,23 @@ export async function upsertListingsIncremental(
   let updated = 0
   let statsChanged = 0
   const priceChangedIds: string[] = []
+  const insertedIds: string[] = []
   for (const listing of rows) {
     const result = await upsertListing(listing, town, statusBucket)
     if (!result.upserted) continue
     count += 1
-    if (result.inserted) inserted += 1
-    else updated += 1
+    if (result.inserted) {
+      inserted += 1
+      const mlsId = listing.mlsId?.trim()
+      if (mlsId) insertedIds.push(mlsId)
+    } else updated += 1
     if (result.statsChanged) statsChanged += 1
     if (result.priceChanged) {
       const id = listingRowId(listing)
       if (id) priceChangedIds.push(id)
     }
   }
-  return { count, inserted, updated, priceChangedIds, statsChanged }
+  return { count, inserted, updated, priceChangedIds, insertedIds, statsChanged }
 }
 
 // ---------------------------------------------------------------------------
