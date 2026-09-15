@@ -389,7 +389,7 @@ async function fillMissingStreetParcelOwners(
 ): Promise<number> {
   const remaining = maxParcels - counts.fetched
   if (remaining <= 0) return 0
-  const missing = await listVisionStreetPidsMissingOwner(cfg.town, remaining)
+  const missing = await listVisionStreetPidsMissingOwner(cfg.town, remaining, 'fill')
   if (missing.length === 0) return 0
   console.info(
     `[vision-gis-sync] street owners ${cfg.town}: ${missing.length} pid(s) missing owner_name`,
@@ -666,7 +666,7 @@ export async function syncVisionAddresses(
   options: SyncVisionAddressesOptions = {},
 ): Promise<VisionAddressesSyncResult> {
   const started = Date.now()
-  const syncedAt = new Date().toISOString()
+  const chunkStartedAt = new Date().toISOString()
   const townName = options.town?.trim() || VISION_GIS_TOWNS[0]!.town
   const cfg = visionGisTownConfig(townName)
   if (!cfg) {
@@ -684,7 +684,7 @@ export async function syncVisionAddresses(
       totalRows: 0,
       townComplete: false,
       durationMs: Date.now() - started,
-      syncedAt,
+      syncedAt: new Date().toISOString(),
       detail: `No VGSI host configured for town "${townName}"`,
     }
   }
@@ -725,7 +725,7 @@ export async function syncVisionAddresses(
     address: null,
     street: null,
     letter: null,
-    updatedAt: syncedAt,
+    updatedAt: chunkStartedAt,
     status: 'running',
   })
 
@@ -793,7 +793,7 @@ export async function syncVisionAddresses(
 
       if (state.letterIndex >= VISION_GIS_STREET_LETTERS.length) {
         state.phase = 'incremental'
-        state.lastFullCompletedAt = syncedAt
+        state.lastFullCompletedAt = chunkStartedAt
         state.incrementalAfterPid = null
         state.streetsForLetter = undefined
         state.letterIndex = 0
@@ -811,7 +811,7 @@ export async function syncVisionAddresses(
       )
       if (pids.length === 0) {
         state.incrementalAfterPid = null
-        state.lastIncrementalPassAt = syncedAt
+        state.lastIncrementalPassAt = chunkStartedAt
       } else {
         for (const pid of pids) {
           if (counts.fetched >= maxParcels) break
@@ -873,6 +873,7 @@ export async function syncVisionAddresses(
       updatedAt: new Date().toISOString(),
       status: 'error',
     })
+    const finishedAt = new Date().toISOString()
     const result: VisionAddressesSyncResult = {
       ok: false,
       town: cfg.town,
@@ -887,10 +888,10 @@ export async function syncVisionAddresses(
       totalRows,
       townComplete: false,
       durationMs: Date.now() - started,
-      syncedAt,
+      syncedAt: finishedAt,
       detail,
     }
-    setSyncMeta(SYNCED_AT_META_KEY, syncedAt)
+    setSyncMeta(SYNCED_AT_META_KEY, finishedAt)
     setSyncMeta(LAST_STATS_META_KEY, JSON.stringify(result))
     return result
   }
@@ -941,6 +942,7 @@ export async function syncVisionAddresses(
     .filter(Boolean)
     .join(' · ')
 
+  const finishedAt = new Date().toISOString()
   const result: VisionAddressesSyncResult = {
     ok: true,
     town: cfg.town,
@@ -955,11 +957,11 @@ export async function syncVisionAddresses(
     totalRows,
     townComplete,
     durationMs: Date.now() - started,
-    syncedAt,
+    syncedAt: finishedAt,
     detail,
   }
 
-  setSyncMeta(SYNCED_AT_META_KEY, syncedAt)
+  setSyncMeta(SYNCED_AT_META_KEY, finishedAt)
   setSyncMeta(LAST_STATS_META_KEY, JSON.stringify(result))
   stampLiveProgress({
     town: cfg.town,

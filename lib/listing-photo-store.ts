@@ -128,21 +128,32 @@ async function fetchPhotoFromSources(
     return null
   }
 
-  // Gallery / full-view: MLS MediaURL only. Never persist mid/thumb as full —
-  // that is how showcase full-bleed got ~85KB thumbs for MLS 24196339 1–2.
+  // Gallery / full-view: MLS MediaURL first. If Media has no full URL
+  // (vintage listings) or the CDN fetch fails, RETS Photo/LargePhoto/HiRes
+  // is the same object the old gallery used — never Thumbnail, never mid.
   if (quality === 'full') {
-    const fullUrl = await fetchMediaPhotoUrlForIndex(
-      listingKey,
-      id,
-      photoIndex,
-      'full',
-      { allowFallback: false },
-    )
+    let fullUrl: string | null = null
+    try {
+      fullUrl = await fetchMediaPhotoUrlForIndex(
+        listingKey,
+        id,
+        photoIndex,
+        'full',
+        { allowFallback: false },
+      )
+    } catch (err) {
+      console.warn(
+        `[listing-photo-store] MediaURL lookup failed ${id}#${photoIndex}`,
+        err instanceof Error ? err.message : err,
+      )
+    }
     if (fullUrl) {
       const fromFull = await fetchListingPhotoBufferFromUrl(fullUrl)
       if (fromFull) return fromFull
     }
-    return null
+    return fetchListingPhotoBufferFromRets(listingKey, photoIndex, {
+      preferThumbnail: false,
+    })
   }
 
   const isThumbSlot = photoIndex > 0
@@ -185,10 +196,11 @@ export type ResolveListingPhotoOptions = {
   /** When true, only return already-cached bytes (no RETS/media fetch). */
   sqliteOnly?: boolean
   /**
-   * `full` — gallery / full-view: MediaURL only; refuse a cache hit smaller
-   * than its mid sibling. `mid` — card / list thumbs from MediaMidsizeURL,
-   * stored under a separate `__card` cache id so they never overwrite full.
-   * `display` — may fetch a thumb, but does not persist it over the original.
+   * `full` — gallery / full-view: MediaURL first, then RETS Photo/LargePhoto/HiRes
+   * when Media has no full URL. Never persist mid/thumb as full. `mid` — card /
+   * list thumbs from MediaMidsizeURL, stored under a separate `__card` cache id
+   * so they never overwrite full. `display` — may fetch a thumb, but does not
+   * persist it over the original.
    */
   quality?: ListingPhotoQuality
   /** Extra cache ids to probe (e.g. MLS id when primary key is listingKey). */

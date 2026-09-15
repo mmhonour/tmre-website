@@ -22,6 +22,8 @@ import {
   parseHeroPhotosJobStatus,
   parseHeroPhotosSkipMlsIds,
   pctMissing,
+  heroMissingPctAfter,
+  shouldAbortHeroScavengeEmptyBurst,
   type HeroInventoryCursor,
   type HeroPhotosJobStatus,
 } from '@/lib/hero-photo-inventory-backfill-shared'
@@ -70,7 +72,8 @@ async function writeSkipMlsIds(ids: string[]): Promise<void> {
 }
 
 function buildStatus(input: {
-  activeWithPhotos: number
+  withPhotosBefore: number
+  withPhotosAfter: number
   missingBefore: number
   missingAfter: number
   filledListings: number
@@ -78,13 +81,24 @@ function buildStatus(input: {
   idle: boolean
   running?: boolean
   walkedPast?: number
+  stalledEmpty?: boolean
 }): HeroPhotosJobStatus {
-  const missingPctBefore = pctMissing(input.missingBefore, input.activeWithPhotos)
-  const missingPctAfter = pctMissing(input.missingAfter, input.activeWithPhotos)
+  const missingPctBefore = pctMissing(input.missingBefore, input.withPhotosBefore)
+  const missingPctAfter = heroMissingPctAfter({
+    missingAfter: input.missingAfter,
+    withPhotosBefore: input.withPhotosBefore,
+    withPhotosAfter: input.withPhotosAfter,
+    filledListings: input.filledListings,
+    filledPhotos: input.filledPhotos,
+  })
   const complete = input.missingAfter === 0 && !input.running
   const draft: HeroPhotosJobStatus = {
     generatedAt: new Date().toISOString(),
-    activeWithPhotos: input.activeWithPhotos,
+    activeWithPhotos: input.withPhotosBefore,
+    activeWithPhotosAfter:
+      input.withPhotosAfter !== input.withPhotosBefore
+        ? input.withPhotosAfter
+        : undefined,
     missingBefore: input.missingBefore,
     missingAfter: input.missingAfter,
     missingPctBefore,
@@ -92,6 +106,7 @@ function buildStatus(input: {
     filledListings: input.filledListings,
     filledPhotos: input.filledPhotos,
     walkedPast: input.walkedPast && input.walkedPast > 0 ? input.walkedPast : undefined,
+    stalledEmpty: input.stalledEmpty || undefined,
     complete,
     idle: !input.running && (input.idle || complete),
     running: Boolean(input.running) && !complete,
@@ -103,10 +118,11 @@ function buildStatus(input: {
 
 async function warmIds(
   ids: string[],
-): Promise<{ listings: number; photos: number; empty: string[] }> {
+): Promise<{ listings: number; photos: number; empty: string[]; failed: string[] }> {
   let listings = 0
   let photos = 0
   const empty: string[] = []
+  const failed: string[] = []
   for (const mlsId of ids) {
     try {
       const { listing } = await readListingFromDbByMlsId(mlsId)
@@ -119,14 +135,14 @@ async function warmIds(
       if (stored > 0) listings += 1
       else empty.push(mlsId)
     } catch (err) {
-      empty.push(mlsId)
+      failed.push(mlsId)
       console.warn(
         `[hero-photos] ${mlsId} failed`,
         err instanceof Error ? err.message : err,
       )
     }
   }
-  return { listings, photos, empty }
+  return { listings, photos, empty, failed }
 }
 
 /**
@@ -138,7 +154,8 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   const before = await countActiveShowcaseHeroCoverage()
   if (before.missing === 0) {
     const status = buildStatus({
-      activeWithPhotos: before.withPhotos,
+      withPhotosBefore: before.withPhotos,
+      withPhotosAfter: before.withPhotos,
       missingBefore: 0,
       missingAfter: 0,
       filledListings: 0,
@@ -151,7 +168,8 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   }
 
   const started = buildStatus({
-    activeWithPhotos: before.withPhotos,
+    withPhotosBefore: before.withPhotos,
+    withPhotosAfter: before.withPhotos,
     missingBefore: before.missing,
     missingAfter: before.missing,
     filledListings: 0,
@@ -166,9 +184,12 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   let filledListings = 0
   let filledPhotos = 0
   let walkedPast = 0
-  let skipIds = await readSkipMlsIds()
+  const skipIdsAtStart = await readSkipMlsIds()
+  let skipIds = [...skipIdsAtStart]
   const triedThisBurst = new Set<string>()
   let wrappedSkip = false
+  let consecutiveEmptyBatches = 0
+  let stalledEmpty = false
 
   while (Date.now() < deadline) {
     let ids = await listOldestActiveMlsIdsMissingShowcaseHeroes(
@@ -193,10 +214,43 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     if (warmed.empty.length > 0) {
       walkedPast += warmed.empty.length
       skipIds = mergeHeroPhotosSkipMlsIds(skipIds, warmed.empty)
+    }
+    if (warmed.listings === 0 && warmed.photos === 0) {
+      consecutiveEmptyBatches += 1
+    } else {
+      consecutiveEmptyBatches = 0
+    }
+    if (
+      shouldAbortHeroScavengeEmptyBurst({
+        consecutiveEmptyBatches,
+        filledPhotos,
+        filledListings,
+      })
+    ) {
+      stalledEmpty = true
+      skipIds = skipIdsAtStart
+      const mid = buildStatus({
+        withPhotosBefore: before.withPhotos,
+        withPhotosAfter: before.withPhotos,
+        missingBefore: before.missing,
+        missingAfter: before.missing,
+        filledListings,
+        filledPhotos,
+        walkedPast,
+        stalledEmpty: true,
+        idle: false,
+        running: true,
+      })
+      await persistProgress(mid)
+      console.info(`[hero-photos] ${mid.message}`)
+      break
+    }
+    if (warmed.empty.length > 0) {
       await writeSkipMlsIds(skipIds)
     }
     const mid = buildStatus({
-      activeWithPhotos: before.withPhotos,
+      withPhotosBefore: before.withPhotos,
+      withPhotosAfter: before.withPhotos,
       missingBefore: before.missing,
       missingAfter: before.missing,
       filledListings,
@@ -209,15 +263,21 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     console.info(`[hero-photos] ${mid.message}`)
   }
 
-  await writeSkipMlsIds(skipIds)
+  if (stalledEmpty) {
+    await writeSkipMlsIds(skipIdsAtStart)
+  } else {
+    await writeSkipMlsIds(skipIds)
+  }
   const after = await countActiveShowcaseHeroCoverage()
   const status = buildStatus({
-    activeWithPhotos: after.withPhotos,
+    withPhotosBefore: before.withPhotos,
+    withPhotosAfter: after.withPhotos,
     missingBefore: before.missing,
     missingAfter: after.missing,
     filledListings,
     filledPhotos,
     walkedPast,
+    stalledEmpty: stalledEmpty || undefined,
     idle: after.missing === 0,
   })
   await persistFinished(status)
@@ -229,7 +289,8 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
 export async function stampHeroPhotosQueuedStatus(): Promise<HeroPhotosJobStatus> {
   const before = await countActiveShowcaseHeroCoverage()
   const status = buildStatus({
-    activeWithPhotos: before.withPhotos,
+    withPhotosBefore: before.withPhotos,
+    withPhotosAfter: before.withPhotos,
     missingBefore: before.missing,
     missingAfter: before.missing,
     filledListings: 0,
@@ -264,6 +325,7 @@ export async function stampHeroPhotosInterruptedStatus(
   const status: HeroPhotosJobStatus = {
     generatedAt: new Date().toISOString(),
     activeWithPhotos: prev?.activeWithPhotos ?? 0,
+    activeWithPhotosAfter: prev?.activeWithPhotosAfter,
     missingBefore: prev?.missingBefore ?? 0,
     missingAfter: prev?.missingAfter ?? prev?.missingBefore ?? 0,
     missingPctBefore: prev?.missingPctBefore ?? 0,
@@ -271,6 +333,7 @@ export async function stampHeroPhotosInterruptedStatus(
     filledListings: prev?.filledListings ?? 0,
     filledPhotos: prev?.filledPhotos ?? 0,
     walkedPast: prev?.walkedPast,
+    stalledEmpty: prev?.stalledEmpty,
     complete: false,
     idle: false,
     running: false,
