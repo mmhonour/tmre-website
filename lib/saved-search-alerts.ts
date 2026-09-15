@@ -9,7 +9,7 @@ import {
 } from '@/lib/business-info'
 import { isValidEmail } from '@/lib/contact-notify-config'
 import { intelligenceSearchHrefFromCriteria } from '@/lib/intelligence-search-url'
-import { listingPhotoProxyUrl, listingShareHref } from '@/lib/listing-url'
+import { listingAlertEmailPhotoPath, listingShareHref } from '@/lib/listing-url'
 import { etCalendarDate } from '@/lib/open-houses'
 import { ensureOpenHousesTable } from '@/lib/db/open-houses-repo'
 import {
@@ -549,9 +549,10 @@ function toMatchListing(
     href: listingShareHref(mlsId),
     photoUrl:
       Number.isFinite(photoCount) && photoCount > 0
-        ? // Email clients cannot retry ?fetch=1. Incremental warms full, not
-          // the card `__card` mid blob — so default ?size=mid 404s in Gmail.
-          absoluteUrl(listingPhotoProxyUrl(mlsId, 0, { size: 'full' }))
+        ? // Gmail fetches once and cannot retry. Cache-only ?size=full 404s
+          // when this mailer beats Lane 3 photo warm. ?fetch=1 is the first
+          // request, not a retry. Incremental still warms full, not mid.
+          absoluteUrl(listingAlertEmailPhotoPath(mlsId))
         : null,
     matchKind,
     openHouseWhen: row.next_oh?.trim() || null,
