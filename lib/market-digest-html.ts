@@ -41,6 +41,11 @@ import {
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
 import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
+import {
+  marketPulseWowCaption,
+  marketPulseWowTextFor,
+  type MarketPulseWowCompare,
+} from '@/lib/market-pulse-wow'
 
 const NAVY = '#1B2A4A'
 const NAVY_DARK = '#131F38'
@@ -156,6 +161,7 @@ function metricBarRow(
     leftPct?: number
     aside?: string | null
     asideNegative?: boolean
+    wowText?: string | null
   },
 ): string {
   const leftPct = Math.max(0, Math.min(100, opts?.leftPct ?? 0))
@@ -195,6 +201,11 @@ function metricBarRow(
       ? `<span style="${ASIDE_FONT}padding-left:4px;">${escapeHtml(asideText)}</span>`
       : ''
 
+  const wowText = opts?.wowText?.trim() ? opts.wowText.trim() : null
+  const valueHtml = wowText
+    ? `${escapeHtml(valueLabel)}<br /><span style="font-size:9px;color:${PANEL_ASIDE};">${escapeHtml(wowText)}</span>`
+    : escapeHtml(valueLabel)
+
   return `
     <tr>
       <td width="${LABEL_COL_PX}" style="width:${LABEL_COL_PX}px;padding:5px 8px 5px 0;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${PANEL_MUTED};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(metricLabel)}${labelAside}</td>
@@ -203,7 +214,7 @@ function metricBarRow(
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${valueHtml}</td>
       <td width="${ASIDE_LANE_PX}" style="width:${ASIDE_LANE_PX}px;padding:5px 0 5px 6px;border-top:1px solid ${PANEL_RULE};${ASIDE_FONT}text-align:left;vertical-align:middle;">${
         placement === 'outside-right' && asideText ? escapeHtml(asideText) : '&nbsp;'
       }</td>
@@ -293,6 +304,7 @@ function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
   includeTax = false,
   taxYearLabel?: string | null,
+  wow?: MarketPulseWowCompare | null,
 ): string {
   const lookbackLabel = marketPulseLookbackChartLabel(
     DEFAULT_MARKET_PULSE_LOOKBACK_ID,
@@ -367,6 +379,7 @@ function stackedTownMetricsSection(
             asideNegative:
               (m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0) ||
               (m.id === 'taxDelta' && (row.taxDeltaPct ?? 0) < 0),
+            wowText: marketPulseWowTextFor(wow, row.city, m.id),
           })
         })
         .join('')
@@ -401,9 +414,14 @@ function stackedTownMetricsSection(
     })
     .join('')
 
+  const wowCaption = wow
+    ? `<tr><td style="padding:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${escapeHtml(marketPulseWowCaption(wow))}</td></tr>`
+    : ''
+
   return `
     <tr><td style="padding:0 0 14px 0;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        ${wowCaption}
         ${towns}
       </table>
     </td></tr>`
@@ -503,6 +521,8 @@ function dealOfTheWeekSection(
 export type FormatMarketDigestHtmlOptions = {
   /** Opt-in footer from Admin → Communications → Social profiles. Default off. */
   includeSocialProfiles?: boolean
+  /** Precomputed vs last send-day. Same as /market-pulse page load. */
+  wow?: MarketPulseWowCompare | null
 }
 
 /**
@@ -609,6 +629,7 @@ export function formatMarketDigestHtml(
                   combinedRows,
                   snapshot.taxReady === true,
                   snapshot.taxYearLabel,
+                  options?.wow ?? null,
                 )}
                 ${dealSection}
                 <tr><td style="padding:0 0 10px 0;">

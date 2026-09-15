@@ -535,7 +535,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'market_pulse_snapshots',
     category: 'sync-admin',
     definition:
-      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. stats_cache is overwritten on every rebuild, so WoW / MoM / YoY cannot live there. Send test does not insert a row.',
+      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. stats_cache is overwritten on every rebuild, so WoW / MoM / YoY cannot live there. Send test does not insert a row. /market-pulse and the Monday email subtract the previous slot from the current default stacked rows (server-side); nothing shows until two send-days exist.',
   },
   {
     term: 'stats_cache_rebuild_lock',

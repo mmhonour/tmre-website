@@ -7,6 +7,7 @@ import type {
   MarketDigestClosedTownCount,
   MarketDigestSnapshot,
 } from "@/lib/market-digest-types";
+import type { MarketPulseWowCompare } from "@/lib/market-pulse-wow";
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
@@ -54,9 +55,12 @@ type ClosedFetchState = {
 export default function MarketPulseContent({
   snapshot,
   etDate,
+  wow = null,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
+  /** Precomputed vs last Monday. Hidden off ALL + 12 mo. */
+  wow?: MarketPulseWowCompare | null;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
   const [lookbackId, setLookbackId] = useState<MarketPulseLookbackId>(
@@ -384,6 +388,11 @@ export default function MarketPulseContent({
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}
+      wow={
+        category === "all" && lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
+          ? wow
+          : null
+      }
     />
   );
 }

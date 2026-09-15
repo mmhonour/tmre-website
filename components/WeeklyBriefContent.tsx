@@ -84,6 +84,10 @@ import {
 } from "@/lib/market-pulse-settle";
 import type { StatsValueCalc } from "@/lib/stats-compute";
 import { splitSentences } from "@/lib/split-sentences";
+import {
+  marketPulseWowCaption,
+  type MarketPulseWowCompare,
+} from "@/lib/market-pulse-wow";
 
 type ChartLayout = MarketPulseChartLayout;
 type FavorSort = MarketPulseFavorSort;
@@ -1269,6 +1273,7 @@ function CombinedMetricsChart({
   includeTax = false,
   taxYearLabel = null,
   lookbackRail,
+  wow = null,
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -1282,6 +1287,8 @@ function CombinedMetricsChart({
   taxYearLabel?: string | null;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
+  /** Page-load stacked vs last send-day. Null until two Mondays exist. */
+  wow?: MarketPulseWowCompare | null;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   lookbackId: MarketPulseLookbackId;
@@ -1334,6 +1341,11 @@ function CombinedMetricsChart({
   return (
     <section>
       {title ? <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p> : null}
+      {wow ? (
+        <p className="mb-2 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-gold">
+          {marketPulseWowCaption(wow)}
+        </p>
+      ) : null}
       <ul className="space-y-3">
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
@@ -1355,6 +1367,7 @@ function CombinedMetricsChart({
                 rowIndex,
                 townCount: rows.length,
               }}
+              wow={wow}
               heading={
                 <TownName
                   city={row.city ?? label}
@@ -1488,6 +1501,7 @@ export default function WeeklyBriefContent({
   closedLookbackId,
   onLookbackIdChange,
   closedBarMax = 0,
+  wow = null,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1531,6 +1545,11 @@ export default function WeeklyBriefContent({
   onLookbackIdChange?: (id: MarketPulseLookbackId) => void;
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
+  /**
+   * Precomputed vs the previous Monday archive. Shown only on page-load
+   * stacked defaults — not after a Filters session changes lookback or layout.
+   */
+  wow?: MarketPulseWowCompare | null;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
     DEFAULT_MARKET_PULSE_CHART_LAYOUT,
@@ -1952,6 +1971,12 @@ export default function WeeklyBriefContent({
                   fill
                 />
               ) : null
+            }
+            wow={
+              chartLayout === DEFAULT_MARKET_PULSE_CHART_LAYOUT &&
+              lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
+                ? wow
+                : null
             }
           />
         ) : (

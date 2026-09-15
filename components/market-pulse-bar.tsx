@@ -88,6 +88,7 @@ export function PanelBarRow({
   tooltip,
   dense = false,
   href,
+  wowText,
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -101,6 +102,8 @@ export function PanelBarRow({
   dense?: boolean;
   /** Stats chart standing behind this bar, if there is one. */
   href?: string | null;
+  /** Precomputed vs last send-day (server), not a client filter of the row. */
+  wowText?: string | null;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
   const Bar = (href ? Link : "span") as React.ElementType;
@@ -155,8 +158,13 @@ export function PanelBarRow({
           </span>
         ) : null}
       </Bar>
-      <span className="text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-white/90">
-        {valueText}
+      <span className="flex items-baseline justify-end gap-1.5 text-right [font-family:var(--mp-mono-font)] text-[11px] tabular-nums text-white/90">
+        <span>{valueText}</span>
+        {wowText ? (
+          <span className="text-[9px] tracking-[0.04em] text-white/45">
+            {wowText}
+          </span>
+        ) : null}
       </span>
       {/*
        * A fill that runs to the end of the track leaves the percent nowhere on

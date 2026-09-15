@@ -202,7 +202,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'slot_date (Eastern send-day)',
     owner: 'lib/db/market-pulse-snapshots-repo.ts',
     notes:
-      'Point-in-time Monday brief / Market Pulse payload for WoW / MoM / YoY. Not stats_cache — that table is current market math and is overwritten. Written on a real send and by npm run snapshot:market-pulse. Send test does not write.',
+      'Point-in-time Monday brief / Market Pulse payload for WoW / MoM / YoY. Not stats_cache — that table is current market math and is overwritten. Written on a real send and by npm run snapshot:market-pulse. Send test does not write. Page + Monday email subtract the previous slot server-side; nothing shows until two send-days exist.',
     live: { kind: 'postgres_table', table: 'market_pulse_snapshots' },
   },
   {

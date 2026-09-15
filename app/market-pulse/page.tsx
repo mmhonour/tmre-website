@@ -10,6 +10,9 @@ import {
   nextMarketDigestSendAt,
 } from "@/lib/market-digest-config";
 import { buildMarketDigestSnapshot } from "@/lib/market-digest";
+import { loadPriorMarketPulseSnapshot } from "@/lib/market-pulse-wow-load";
+import { defaultMarketPulseCombinedRows } from "@/lib/market-pulse-combined-rows";
+import { buildMarketPulseWow } from "@/lib/market-pulse-wow";
 import {
   getMarketPulseThemeFresh,
   marketPulseThemeCssVars,
@@ -31,12 +34,21 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MarketPulsePage() {
-  const [snapshot, theme, digest, townsLabel] = await Promise.all([
+  const [snapshot, theme, digest, townsLabel, priorWeek] = await Promise.all([
     buildMarketDigestSnapshot(),
     getMarketPulseThemeFresh(),
     getMarketDigestConfigFresh(),
     getActiveCoverageTownsLabel(),
+    loadPriorMarketPulseSnapshot().catch(() => null),
   ]);
+  const wow =
+    priorWeek == null
+      ? null
+      : buildMarketPulseWow(
+          defaultMarketPulseCombinedRows(snapshot),
+          defaultMarketPulseCombinedRows(priorWeek.payload),
+          priorWeek.slotDate,
+        );
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
@@ -68,7 +80,7 @@ export default async function MarketPulsePage() {
       >
         <section className="pt-8 pb-6 lg:pt-10 lg:pb-8">
           <div className="px-2 sm:px-6 lg:px-10 pb-12">
-            <MarketPulseContent snapshot={snapshot} etDate={etDate} />
+            <MarketPulseContent snapshot={snapshot} etDate={etDate} wow={wow} />
           </div>
         </section>
 

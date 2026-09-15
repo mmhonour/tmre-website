@@ -49,7 +49,7 @@ export type MarketPulseCombinedTownRow = {
   taxDeltaCalc?: StatsValueCalc
 }
 
-function cityKey(city: string): string {
+export function cityKey(city: string): string {
   return city.trim().toLowerCase()
 }
 

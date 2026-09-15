@@ -52,6 +52,11 @@ import {
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
+  marketPulseWowCaption,
+  marketPulseWowTextFor,
+  type MarketPulseWowCompare,
+} from '@/lib/market-pulse-wow'
+import {
   avgMonthlyClosingsFromClosed,
   computeMonthsSupplyRatio,
   monthsSupplyValueCalcs,
@@ -812,6 +817,8 @@ export type FormatMarketDigestEmailOptions = {
   includeSocialProfiles?: boolean
   /** Send-day pick list (0=Sun … 6=Sat ET). Drives subject weekday + `{date}`. */
   weekdayEt?: SyncScheduleWeekdayEt
+  /** Precomputed vs last send-day. Same payload the page shows on load. */
+  wow?: MarketPulseWowCompare | null
 }
 
 export function formatMarketDigestEmail(
@@ -879,6 +886,7 @@ export function formatMarketDigestEmail(
   const stackedLines = [
     'TOWN METRICS STACKED (sales · Seller Friendly)',
     '---------------------------------------------',
+    ...(options?.wow ? [marketPulseWowCaption(options.wow)] : []),
     ...(combined.length === 0
       ? ['(no town rows in cache yet)']
       : combined.flatMap((row) => {
@@ -886,7 +894,13 @@ export function formatMarketDigestEmail(
           const heat = heatByCity.get(row.city)
           return [
             heat == null ? city : `${city} — ${marketPulseHeatLabel(heat)}`,
-            ...stackedMetrics.map((m) => `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${m.format(row)}`),
+            ...stackedMetrics.map((m) => {
+              const wowText = marketPulseWowTextFor(options?.wow, row.city, m.id)
+              const value = m.format(row)
+              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${
+                wowText ? `${value}  ${wowText}` : value
+              }`
+            }),
           ]
         })),
     '',
@@ -961,6 +975,7 @@ export function formatMarketDigestEmail(
 
   const html = formatMarketDigestHtml(snapshot, etDate, {
     includeSocialProfiles: includeSocial,
+    wow: options?.wow ?? null,
   })
 
   return { subject, text, html }
