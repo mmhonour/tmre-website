@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DodTownBleedLive } from "@/app/preview/dod-town-bleed/DodTownBleedLive";
+import { DodTownBleedTownBoard } from "@/app/preview/dod-town-bleed/DodTownBleedTownBoard";
 
 export const metadata = {
   title: "Preview — DOD town bleed desktop — TMRE",
@@ -24,10 +25,9 @@ export default function DodTownBleedDesktopPreviewPage() {
           >
             /deal-of-the-day
           </Link>
-          . On mobile the bleed is only the background behind the headline and
-          the town / sale / type filter — a horizontal band, not a page-tall
-          panel. The laptop phone preview forces phone chrome so the desktop
-          town line cannot wrap into a stack. Use ‹ › to step towns.
+          . The bleed is that town’s listing photo behind the headline and
+          town filter. Stills for every town are below. Use ‹ › to step
+          towns.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}
@@ -40,6 +40,9 @@ export default function DodTownBleedDesktopPreviewPage() {
         </p>
       </div>
       <DodTownBleedLive />
+      <div className="bg-cream pt-10">
+        <DodTownBleedTownBoard />
+      </div>
     </div>
   );
 }

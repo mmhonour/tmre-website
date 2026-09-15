@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DodTownBleedLive } from "@/app/preview/dod-town-bleed/DodTownBleedLive";
+import { DodTownBleedTownBoard } from "@/app/preview/dod-town-bleed/DodTownBleedTownBoard";
 
 export const metadata = {
   title: "Preview — DOD town bleed mobile — TMRE",
@@ -11,6 +12,9 @@ export default function DodTownBleedMobilePreviewPage() {
     <>
       <div className="lg:hidden">
         <DodTownBleedLive />
+        <div className="bg-cream pt-8">
+          <DodTownBleedTownBoard />
+        </div>
       </div>
       <div className="hidden min-h-screen bg-cream lg:block">
         <div className="mx-auto max-w-lg px-4 pb-8 pt-28 sm:px-6">
@@ -21,11 +25,9 @@ export default function DodTownBleedMobilePreviewPage() {
             Deal of the Day town bleeds
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            Phone chrome in this frame — one town name, not the desktop town
-            line turned on its side. Bleed is only the background behind
-            “Today’s score / One listing” and the pause · town · For Sale /
-            Homes row. On a phone this URL is that chrome under the site
-            header.
+            Phone chrome in this frame — one town name. The bleed is that
+            town’s listing photo behind Today’s score and the pause · town ·
+            For Sale row. Stills for every town are below the frame.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}
@@ -40,6 +42,7 @@ export default function DodTownBleedMobilePreviewPage() {
             <DodTownBleedLive forcePhoneLayout />
           </div>
         </div>
+        <DodTownBleedTownBoard />
       </div>
     </>
   );

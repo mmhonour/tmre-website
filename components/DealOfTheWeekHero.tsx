@@ -813,6 +813,12 @@ export default function DealOfTheWeekHero({
                 <DealDayTownBleed
                   carouselIndex={carousel.carouselIndex}
                   slideDir={carousel.slideDir}
+                  photoUrl={showing?.photoUrl ?? null}
+                  photoAlt={
+                    l
+                      ? `${l.address.street || l.address.full}, ${l.address.city}`
+                      : ""
+                  }
                 />
                 <div className="relative z-[1] space-y-3 py-3">
             <h1

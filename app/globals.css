@@ -554,6 +554,18 @@ body {
   );
 }
 
+/* Over the listing photo so white headline type still reads. */
+.dod-town-bleed-photo-wash {
+  background: linear-gradient(
+    90deg,
+    rgb(13 20 36 / 0.62) 0%,
+    rgb(13 20 36 / 0.46) 38%,
+    rgb(200 169 81 / 0.16) 50%,
+    rgb(13 20 36 / 0.46) 62%,
+    rgb(13 20 36 / 0.62) 100%
+  );
+}
+
 @keyframes dodBleedMeetLeft {
   0% {
     transform: scaleX(0);

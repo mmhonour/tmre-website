@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ListingThumbImage from "@/components/ListingThumbImage";
+import { listingPhotoProxyUrlAsFull } from "@/lib/listing-url";
 
 export const DEAL_TOWN_BLEED_MS = 900;
 
@@ -23,19 +25,30 @@ export function dealTownBleedPattern(index: number): DealTownBleedPattern {
   return DEAL_TOWN_BLEED_PATTERNS[i];
 }
 
+function bleedPhotoSrc(photoUrl: string | null | undefined): string | null {
+  const src = photoUrl?.trim() ?? "";
+  if (!src) return null;
+  return listingPhotoProxyUrlAsFull(src);
+}
+
 /**
- * Horizontal wash behind the headline + town-filter block only (not the
- * town-name line above). Carousel paints: edges→center, center→edges, top→down.
+ * Listing photo behind the headline + town-filter block (not the town-name
+ * line above). Carousel paints: edges→center, center→edges, top→down.
  */
 export default function DealDayTownBleed({
   carouselIndex,
   slideDir = null,
   playOnMount = true,
+  photoUrl = null,
+  photoAlt = "",
 }: {
   carouselIndex: number;
   slideDir?: "next" | "prev" | null;
   playOnMount?: boolean;
+  photoUrl?: string | null;
+  photoAlt?: string;
 }) {
+  const src = bleedPhotoSrc(photoUrl);
   const [paint, setPaint] = useState<{
     key: number;
     pattern: DealTownBleedPattern;
@@ -56,7 +69,22 @@ export default function DealDayTownBleed({
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
       aria-hidden
     >
-      <div className="dod-town-bleed-rest absolute inset-0" />
+      {src ? (
+        <ListingThumbImage
+          src={src}
+          alt={photoAlt}
+          className="absolute inset-0"
+          imgClassName="absolute inset-0 h-full w-full object-cover"
+          placeholderClassName="absolute inset-0 bg-navy-light/50"
+        />
+      ) : null}
+      <div
+        className={
+          src
+            ? "dod-town-bleed-photo-wash absolute inset-0"
+            : "dod-town-bleed-rest absolute inset-0"
+        }
+      />
       {paint ? <BleedPaint key={paint.key} pattern={paint.pattern} /> : null}
     </div>
   );
