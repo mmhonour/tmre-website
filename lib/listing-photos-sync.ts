@@ -65,13 +65,18 @@ async function syncOneListingPhotos(listing: Listing): Promise<number> {
  */
 export async function warmListingShowcasePhotos(
   listing: Listing,
+  opts?: { maxIndex?: number },
 ): Promise<number> {
   const cacheId = listingPhotoCacheId(listing)
   const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), 60)
   if (!cacheId || photoCount <= 0) return 0
 
   const listingKey = listing.listingKey?.trim() || listing.mlsId.trim()
-  const lastIndex = Math.min(Math.max(photoCount - 1, 0), SHOWCASE_HERO_MAX_INDEX)
+  const indexCap = Math.min(
+    Math.max(opts?.maxIndex ?? SHOWCASE_HERO_MAX_INDEX, 0),
+    SHOWCASE_HERO_MAX_INDEX,
+  )
+  const lastIndex = Math.min(Math.max(photoCount - 1, 0), indexCap)
   let stored = 0
 
   for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex++) {

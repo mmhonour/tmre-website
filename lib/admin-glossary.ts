@@ -413,7 +413,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Saved search / listing alert',
     category: 'product',
     definition:
-      'Visitor alert from unique cookie searches. Signup on /latest (listings, optional OH) and /open-houses (OH, optional listings). Incremental and the Open houses job only write data and mark dirty. A Railway alerts job (two matchers, one mailer) sends — one email if the visitor signed up for both (same listing + showing = one row). Listing thumbs in that mail use `?size=full&fetch=1` so Gmail’s one GET can pull Media when Lane 3 has not warmed R2 yet. Netlify does not send. Dirty clocks and last send: Admin → Communications → Listing alerts. Cadence: last_listing_notified_at / last_open_house_notified_at. SMS not wired yet.',
+      'Visitor alert from unique cookie searches. Signup on /latest (listings, optional OH) and /open-houses (OH, optional listings). Incremental and the Open houses job write data, prompt R2 for photo 0 of the listings that pull just touched, then mark dirty. A Railway alerts job (two matchers, one mailer) sends — one email if the visitor signed up for both (same listing + showing = one row). Listing thumbs in that mail still use `?size=full&fetch=1` if the prompt missed. Netlify does not send. Dirty clocks and last send: Admin → Communications → Listing alerts. Cadence: last_listing_notified_at / last_open_house_notified_at. SMS not wired yet.',
   },
 
   // —— Sync / admin ——
@@ -1091,7 +1091,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Listing-alert mail puts `?size=full&fetch=1` on the img — Gmail cannot retry after a cache-only 404, and the Railway alerts job often sends before Lane 3 drains `incremental_photo_warm_queue`. Incremental queues brand-new MLS ids on that queue; the Netlify listings worker drains it and prefetches the first six full-size shots. Active backlog catch-up is `npm run backfill:listing-photos` on an operator machine, not a site-hosted drip. See Side-work-only.',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental and the Open houses pull prompt R2 for photo 0 before they mark alerts dirty. Listing-alert mail still puts `?size=full&fetch=1` on the img if that hop missed — Gmail cannot retry after a cache-only 404. Incremental also queues brand-new MLS ids on `incremental_photo_warm_queue`; the Netlify listings worker drains it and prefetches the first six full-size shots. Active backlog catch-up is `npm run backfill:listing-photos` on an operator machine, not a site-hosted drip. See Side-work-only.',
   },
   {
     term: '?size=full',

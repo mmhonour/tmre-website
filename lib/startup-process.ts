@@ -249,7 +249,7 @@ export function describeStartupProcess(): {
           title: "Saved-search listing alerts (dirty only)",
           timing: "After Incremental RETS — does not send mail",
           detail:
-            "Incremental marks alerts_listing_dirty and enqueues the Railway alerts job. It does not send email. Netlify Lane 3 does not send.",
+            "After new inserts, Incremental prompts R2 for photo 0, then marks alerts_listing_dirty and enqueues the Railway alerts job. It does not send email. Netlify Lane 3 does not send.",
           status: latestSyncEnabled ? "scheduled" : "skipped",
           statusLabel: latestSyncEnabled ? "dirty → Railway alerts" : "—",
         },
@@ -267,7 +267,7 @@ export function describeStartupProcess(): {
           title: "New-listing showcase photo warm (Lane 3)",
           timing: "Netlify sideWorkOnly after handoff",
           detail:
-            "Incremental upserts write new MLS ids to incremental_photo_warm_queue (ids only — no Media fetch on Railway). The Netlify listings worker drains up to 12 new listings per hop and pulls the first six full-size MediaURL photos. Leftovers wait for the next hop. A cache miss still falls back to ?fetch=1. Active-inventory catch-up is the operator CLI, not this hop.",
+            "Incremental upserts write new MLS ids to incremental_photo_warm_queue (ids only in the RETS loop). After upsert it prompts R2 for photo 0 of those new listings so listing-alert mail is not a 404, then marks alerts dirty. The Netlify listings worker still drains up to 12 new listings per hop and pulls the first six full-size MediaURL photos. Leftovers wait for the next hop. A cache miss still falls back to ?fetch=1. Active-inventory catch-up is the operator CLI, not this hop.",
           status: latestSyncEnabled ? "scheduled" : "skipped",
           statusLabel: latestSyncEnabled ? "Netlify warm" : "—",
         },
@@ -624,7 +624,7 @@ export function describeStartupProcess(): {
         title: "Hourly OpenHouse window replace",
         timing: "10-min sweep → hourly (Configure)",
         detail:
-          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the page reads Neon only. Upcoming (today through today+6 ET) is replaced wholesale so a cancelled showing disappears, then open_houses_synced_at is stamped so a long lookback cannot hide a finished pull. Dates after that horizon are pruned. History is upserted newest-first in 14-day slices under an 8-minute budget (continues next hour). A RETS fault cannot empty a window. After a successful pull, the seven-day JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML (peek only — never the live join), then filters to the Sunday-reset page window. Then alerts_open_house_dirty is set and the Railway alerts job is enqueued — this job does not send mail. Pause/Run/Reset on Admin → Syncs.",
+          "syncOpenHouses(). The Railway 10-min sweep enqueues on sync_queue at the configured wall-clock slot (default every 60m); the runner claims the row into a forked child under Configure → Open houses → Budget. There is no Netlify worker — the page reads Neon only. Upcoming (today through today+6 ET) is replaced wholesale so a cancelled showing disappears, then open_houses_synced_at is stamped so a long lookback cannot hide a finished pull. Dates after that horizon are pruned. History is upserted newest-first in 14-day slices under an 8-minute budget (continues next hour). A RETS fault cannot empty a window. After a successful pull, the seven-day JSON is written to stats_cache (`open-houses:remaining-week`) and /open-houses embeds that row in the HTML (peek only — never the live join), then filters to the Sunday-reset page window. Then photo 0 is prompted into R2 for upcoming listings, alerts_open_house_dirty is set, and the Railway alerts job is enqueued — this job does not send mail. Pause/Run/Reset on Admin → Syncs.",
         status: "scheduled",
         statusLabel: "Cron",
       },
@@ -641,7 +641,7 @@ export function describeStartupProcess(): {
         title: "Send listing and open-house alert email",
         timing: "Dirty now · 15m cadence catch-up",
         detail:
-          "runSavedSearchAlertJob() in a Railway child. Incremental marks listing dirty; Open houses marks OH dirty. This job is two sub-services (listing matches + OH matches) and one mailer: a visitor signed up for both gets one email (same listing + showing = one row). Netlify does not send. After a successful kind, that dirty flag is cleared. Admin → Communications → Listing alerts.",
+          "runSavedSearchAlertJob() in a Railway child. Incremental prompts R2 for photo 0 of new listings then marks listing dirty; Open houses does the same for upcoming showings then marks OH dirty. This job is two sub-services (listing matches + OH matches) and one mailer: a visitor signed up for both gets one email (same listing + showing = one row). Netlify does not send. After a successful kind, that dirty flag is cleared. Admin → Communications → Listing alerts.",
         status: latestSyncEnabled ? "scheduled" : "skipped",
         statusLabel: latestSyncEnabled ? "Railway" : "—",
       },
