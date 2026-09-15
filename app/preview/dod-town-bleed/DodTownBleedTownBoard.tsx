@@ -15,9 +15,9 @@ export async function DodTownBleedTownBoard() {
         Deal of the Day bleeds
       </h2>
       <p className="mb-6 max-w-2xl text-sm leading-relaxed text-slate">
-        Each band is that town’s listing photo behind Today’s score. The
-        paint cycles with the carousel: edges meet, center lines out, then
-        a line from the top.
+        Each band is that town’s listing photo. “Today’s score / One
+        listing” sits above the picture. The paint cycles with the
+        carousel: edges meet, center lines out, then a line from the top.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         {TMRE_TOWNS.map((town, index) => {

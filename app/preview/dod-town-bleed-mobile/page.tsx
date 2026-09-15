@@ -25,9 +25,10 @@ export default function DodTownBleedMobilePreviewPage() {
             Deal of the Day town bleeds
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            Phone chrome in this frame — one town name. The bleed is that
-            town’s listing photo behind Today’s score and the pause · town ·
-            For Sale row. Stills for every town are below the frame.
+            Phone chrome in this frame. “Today’s score / One listing” sits
+            above the photo bleed. The bleed is only behind pause · town ·
+            For Sale. The value-pick card has no photo and no second
+            carousel. Stills for every town are below the frame.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}

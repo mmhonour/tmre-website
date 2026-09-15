@@ -196,13 +196,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day town bleeds — desktop",
     summary:
-      "Live weekly Deal of the Day picks. Each town’s listing photo is the bleed behind the headline. Stills for all seven towns below the hero.",
+      "Live weekly Deal of the Day picks. Headline above the listing-photo bleed; value-pick card has no photo or second carousel. Stills for all seven towns below.",
   },
   {
     slug: "dod-town-bleed-mobile",
     title: "Deal of the Day town bleeds — mobile",
     summary:
-      "Phone chrome: that town’s listing photo behind the headline and pause / town / For Sale row. Stills for every town below the 390×844 frame.",
+      "Phone chrome: headline above the listing-photo bleed, pause / town / For Sale in the band. Value-pick card has no photo or second carousel. Stills for every town below the 390×844 frame.",
   },
 ];
 

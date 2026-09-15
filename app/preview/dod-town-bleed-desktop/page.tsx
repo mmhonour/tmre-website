@@ -25,9 +25,9 @@ export default function DodTownBleedDesktopPreviewPage() {
           >
             /deal-of-the-day
           </Link>
-          . The bleed is that town’s listing photo behind the headline and
-          town filter. Stills for every town are below. Use ‹ › to step
-          towns.
+          . “Today’s score / One listing” sits above the photo bleed. The
+          value-pick card has no photo and no second carousel. Stills for
+          every town are below. Use ‹ › to step towns.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

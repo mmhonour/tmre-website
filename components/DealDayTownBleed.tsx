@@ -32,8 +32,9 @@ function bleedPhotoSrc(photoUrl: string | null | undefined): string | null {
 }
 
 /**
- * Listing photo behind the headline + town-filter block (not the town-name
- * line above). Carousel paints: edges→center, center→edges, top→down.
+ * Listing photo behind the town-filter row only — not the “Today’s score /
+ * One listing” headline above. Carousel paints: edges→center, center→edges,
+ * top→down.
  */
 export default function DealDayTownBleed({
   carouselIndex,

@@ -803,24 +803,6 @@ export default function DealOfTheWeekHero({
               }
               variant={forcePhoneLayout ? "mobile" : "auto"}
             />
-              <div
-                className={`relative ${
-                  forcePhoneLayout
-                    ? "-mx-6 px-6"
-                    : "-mx-6 px-6 lg:-mx-10 lg:px-10"
-                }`}
-              >
-                <DealDayTownBleed
-                  carouselIndex={carousel.carouselIndex}
-                  slideDir={carousel.slideDir}
-                  photoUrl={showing?.photoUrl ?? null}
-                  photoAlt={
-                    l
-                      ? `${l.address.street || l.address.full}, ${l.address.city}`
-                      : ""
-                  }
-                />
-                <div className="relative z-[1] space-y-3 py-3">
             <h1
               className={`font-serif leading-[1.05] tracking-tight text-white animate-fade-up ${
                 forcePhoneLayout
@@ -839,6 +821,24 @@ export default function DealOfTheWeekHero({
               <br />
               <span className="italic text-white/85">One listing.</span>
             </h1>
+              <div
+                className={`relative ${
+                  forcePhoneLayout
+                    ? "-mx-6 px-6"
+                    : "-mx-6 px-6 lg:-mx-10 lg:px-10"
+                }`}
+              >
+                <DealDayTownBleed
+                  carouselIndex={carousel.carouselIndex}
+                  slideDir={carousel.slideDir}
+                  photoUrl={showing?.photoUrl ?? null}
+                  photoAlt={
+                    l
+                      ? `${l.address.street || l.address.full}, ${l.address.city}`
+                      : ""
+                  }
+                />
+                <div className="relative z-[1] py-5">
                 <DealDayChooserBar
                   townLabel={carousel.currentTown}
                   carouselControls={
@@ -980,28 +980,9 @@ export default function DealOfTheWeekHero({
               }
               scoreExplains={!loadingState && Boolean(showing) && !(isDay && dayEmpty)}
               valueDealMode={mode === "day"}
-              hidePhoto={false}
+              hidePhoto={isDay}
               hideThumbs={isDay}
-              transactionFilter={isDay ? dayTxFilter : undefined}
-              propertyClass={
-                isDay && dayTxFilter === "sale" ? dayPropertyClass : undefined
-              }
-              townLabel={carousel.currentTown}
-              carouselControls={
-                isDay && !city && carousel.carouselTowns.length > 0
-                  ? {
-                      paused: carousel.paused,
-                      onTogglePause: carousel.togglePause,
-                      onPrev: carousel.goPrev,
-                      onNext: carousel.goNext,
-                      onPhotoHover: carousel.pauseForPhotoHover,
-                      canStep: carousel.canNavigate,
-                      townLabel: carousel.currentTown,
-                      carouselIndex: carousel.carouselIndex,
-                      carouselTotal: carousel.carouselTowns.length,
-                    }
-                  : null
-              }
+              townLabel={isDay ? null : carousel.currentTown}
             />
           </div>
         </div>
@@ -1403,6 +1384,15 @@ function DealCard({
           </div>
         ) : null}
       </div>
+      {empty && hidePhoto ? (
+      <div className="relative p-7 lg:p-8">
+        <p className="font-mono text-[11px] tracking-wide text-white/45 leading-relaxed">
+          {kind === "rental"
+            ? "No below-median rental pick right now."
+            : "No below-median for-sale pick right now."}
+        </p>
+      </div>
+      ) : null}
       {!empty ? (
       <div className="relative p-7 lg:p-8 pt-6 lg:pt-7 space-y-4">
         <div className="flex items-center justify-between">
