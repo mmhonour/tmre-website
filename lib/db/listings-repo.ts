@@ -639,7 +639,7 @@ export type IncrementalUpsertResult = {
   inserted: number
   updated: number
   priceChangedIds: string[]
-  /** MLS ids of brand-new rows — Lane 3 showcase photo warm. */
+  /** MLS ids of brand-new rows — Site warm showcase six. */
   insertedIds: string[]
   /** Rows whose write moved a stats input. > 0 means this town is dirty. */
   statsChanged: number

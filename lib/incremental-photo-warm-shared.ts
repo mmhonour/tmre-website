@@ -1,7 +1,7 @@
 /** Newest ids win when the queue is full — they are the ones someone will open. */
 export const INCREMENTAL_PHOTO_WARM_QUEUE_CAP = 40
 
-/** One side-work hop; leftover ids wait for the next Lane 3 run. */
+/** One side-work hop; leftover ids wait for the next Site warm run. */
 export const INCREMENTAL_PHOTO_WARM_DRAIN_BATCH = 12
 
 export function mergeIncrementalPhotoWarmQueue(

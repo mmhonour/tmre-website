@@ -276,7 +276,7 @@ export default function AdminSiteArchitecturePanel() {
                 title="Cloudflare — R2 photo storage. Not authoritative DNS for tmrebuilder.com. Email Routing UI can look Active but never receives while NS are Netlify."
               />
 
-              {/* App host: Netlify (Lane 3) · Railway (Lane 1) · EventBridge (legacy) */}
+              {/* App host: Netlify (Site warm) · Railway (Lane 1) · EventBridge (legacy) */}
               <Box
                 id="netlify"
                 x={40}
@@ -284,9 +284,9 @@ export default function AdminSiteArchitecturePanel() {
                 w={280}
                 h={72}
                 label="Netlify"
-                role="Lane 3 · site · warm · digests"
+                role="Site warm · feeds · board · digests"
                 kind="core"
-                title="Netlify — Next.js site, serverless functions, Blobs. Lane 3: sideWorkOnly warm (latest feeds, deal board, stats, digests) after the runner's handoff. Its crons enqueue long jobs on sync_queue and only run one themselves when a row has sat unclaimed long enough to prove the runner is gone."
+                title="Netlify — Next.js site, serverless functions, Blobs. Site warm: sideWorkOnly warm (latest feeds, deal board, stats, digests) after the runner's handoff. Its crons enqueue long jobs on sync_queue and only run one themselves when a row has sat unclaimed long enough to prove the runner is gone."
               />
               <Box
                 id="railway"
@@ -297,7 +297,7 @@ export default function AdminSiteArchitecturePanel() {
                 label="Railway mls-sync"
                 role="Lane 1 · sync_queue runner"
                 kind="core"
-                title="Railway mls-sync — always-on runner. Claims jobs off sync_queue and forks a child per run, killing it at its budget. MLS_SYNC_SERVICE=1 forces postHooks:false. Writes Neon End/heartbeat (Lane 2), then queues Netlify sideWorkOnly for warm (Lane 3)."
+                title="Railway mls-sync — always-on runner. Claims jobs off sync_queue and forks a child per run, killing it at its budget. MLS_SYNC_SERVICE=1 forces postHooks:false. Writes Neon End/heartbeat (Lane 2), then queues Netlify sideWorkOnly for Site warm."
               />
               <Box
                 id="eventbridge"
@@ -459,7 +459,7 @@ export default function AdminSiteArchitecturePanel() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <NoteCard
               title="Lane split (Incremental)"
-              body="Lane 1 Railway mls-sync: claims sync_queue and pulls RETS → Neon in a forked child (postHooks:false). Lane 2 Neon: End/heartbeat is inventory truth — the site never needs Railway up to know what’s listed. Lane 3 Netlify: sideWorkOnly warm (feeds, deal board, stats, digests) after the handoff."
+              body="Lane 1 Railway mls-sync: claims sync_queue and pulls RETS → Neon in a forked child (postHooks:false). Lane 2 Neon: End/heartbeat is inventory truth — the site never needs Railway up to know what’s listed. Site warm on Netlify: sideWorkOnly (feeds, deal board, stats, digests) after the handoff."
             />
             <NoteCard
               title="Nameservers / DNS"
@@ -467,7 +467,7 @@ export default function AdminSiteArchitecturePanel() {
             />
             <NoteCard
               title="In your list"
-              body="Netlify (site + Lane 3 warm + DNS), Railway mls-sync (Lane 1 queue runner), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (outbound email). Optional inbound mail forwarder for fred@. SmartMLS RETS, Census, OSM, Blobs, Twilio, EventBridge (optional), ipapi / Vision / GreatSchools / OpenAI as before."
+              body="Netlify (site + Site warm + DNS), Railway mls-sync (Lane 1 queue runner), Neon (Lane 2 truth), Cloudflare R2 (photos), Resend (outbound email). Optional inbound mail forwarder for fred@. SmartMLS RETS, Census, OSM, Blobs, Twilio, EventBridge (optional), ipapi / Vision / GreatSchools / OpenAI as before."
             />
           </div>
 

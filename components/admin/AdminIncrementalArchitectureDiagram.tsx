@@ -20,7 +20,7 @@ const LANE_STYLES: Record<
     bg: "bg-gold/[0.08]",
   },
   worker: {
-    label: "Lane 3 — Netlify warm / rescue RETS worker",
+    label: "Site warm — Netlify warm / rescue RETS worker",
     border: "border-sage/35",
     bg: "bg-sage/[0.08]",
   },
@@ -64,7 +64,7 @@ export default function AdminIncrementalArchitectureDiagram() {
       </div>
 
       <div className="space-y-6 px-5 py-5 sm:px-6">
-        {/* Ownership lanes 1 / 2 / 3 */}
+        {/* Ownership: Lane 1 / Lane 2 / Site warm */}
         <div>
           <p className="mb-2 font-mono text-[10px] tracking-[0.16em] uppercase text-charcoal/45">
             Ownership split (who does what)

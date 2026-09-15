@@ -550,8 +550,8 @@ function toMatchListing(
     photoUrl:
       Number.isFinite(photoCount) && photoCount > 0
         ? // Gmail fetches once and cannot retry. Cache-only ?size=full 404s
-          // when this mailer beats Lane 3 photo warm. ?fetch=1 is the first
-          // request, not a retry. Incremental still warms full, not mid.
+          // when this mailer beats the Incremental photo-0 prompt. ?fetch=1 is
+          // the first request, not a retry. Incremental still warms full, not mid.
           absoluteUrl(listingAlertEmailPhotoPath(mlsId))
         : null,
     matchKind,

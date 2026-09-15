@@ -61,7 +61,7 @@ export async function enqueueIncrementalPhotoWarm(
 }
 
 /**
- * Lane 3 — pull the same first six full-size photos a showcase open would.
+ * Site warm — pull the same first six full-size photos a showcase open would.
  * Railway must not call this; it is Media CDN work.
  */
 export async function drainIncrementalPhotoWarm(): Promise<{

@@ -26,7 +26,7 @@ The Admin page (`/admin`) shows two operational diagrams. When you change databa
 ## Incremental cron architecture diagram (hand-maintained)
 
 - Syncs → Dashboard shows `describeIncrementalSyncArchitecture()` from `lib/incremental-sync-architecture.ts`, rendered by `components/admin/AdminIncrementalArchitectureDiagram.tsx`.
-- Ownership lanes (keep current): **Lane 1** Railway mls-sync RETS→Neon only (`MLS_SYNC_SERVICE=1`, `postHooks:false`); **Lane 2** Neon End/heartbeat as inventory truth; **Lane 3** Netlify `sideWorkOnly` warm after handoff (or stale-read rebuild).
+- Ownership lanes (keep current): **Lane 1** Railway mls-sync RETS→Neon only (`MLS_SYNC_SERVICE=1`, `postHooks:false`); **Lane 2** Neon End/heartbeat as inventory truth; **Site warm** Netlify `sideWorkOnly` after handoff (or stale-read rebuild). Do not call this Lane 3.
 - When Incremental queue/worker/watchdog/clock semantics change (`services/mls-sync/server.ts`, `netlify-sync-listings-work.ts`, `sync-listings*.ts`, `incremental-sync-watchdog.ts`, `incremental-sync-live*.ts`, Admin Start/End/Status), or EventBridge / Railway ownership (`eventbridge-sync-ingress.ts`, Configure Scheduler radio), update that source in the same change.
 
 ## Stats cache rebuild path diagram (hand-maintained)
