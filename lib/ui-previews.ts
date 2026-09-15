@@ -198,6 +198,18 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. Expanded Comps / What if use solid navy. Town pulse and Details are content-sized cards that grow top and bottom. On a laptop, a 390×844 frame.",
   },
+  {
+    slug: "dod-town-bleed-desktop",
+    title: "Deal of the Day town bleeds — desktop",
+    summary:
+      "Live weekly Deal of the Day picks. Desktop: listing photo full-bleed across the top half of the page. Value-pick panel starts at the bottom of the bleed, flips per town, then rises slowly so the photo shows first.",
+  },
+  {
+    slug: "dod-town-bleed-mobile",
+    title: "Deal of the Day town bleeds — mobile",
+    summary:
+      "Phone chrome: headline above the listing-photo bleed, pause / town / For Sale in the band. Value-pick card has no photo or second carousel. Stills for every town below the 390×844 frame.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {

@@ -11,6 +11,7 @@ import { coverageTownsLabel, FALLBACK_COVERAGE_TOWNS } from "@/lib/active-covera
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
+import DealDayTownBleed from "@/components/DealDayTownBleed";
 import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
@@ -230,7 +231,7 @@ function DealDayTownListDesktop({
   const activeKey = activeTown?.trim().toLowerCase() ?? null;
 
   return (
-    <div className="hidden md:block font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+    <div className="font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
       <p>
         {towns.map((town, i) => {
           const isActive = activeKey === town.toLowerCase();
@@ -317,7 +318,7 @@ function DealDayTownListMobile({
     slideDir === "prev" ? "animate-deal-town-exit-prev" : "animate-deal-town-exit-next";
 
   return (
-    <div className="md:hidden font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+    <div className="font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
       <p className="flex flex-wrap items-baseline gap-x-0 overflow-hidden min-h-[1.25rem]">
         {town ? (
           <>
@@ -351,18 +352,29 @@ function DealDayTownList({
   activeTown,
   slideDir,
   onSelectTown,
+  variant = "auto",
 }: {
   activeTown: string | null;
   slideDir?: "next" | "prev" | null;
   onSelectTown?: (town: string) => void;
+  /** Phone-frame previews must not use viewport `md:` — laptop width would wrap the desktop town line into a tall stack. */
+  variant?: "auto" | "desktop" | "mobile";
 }) {
+  const desktop = (
+    <DealDayTownListDesktop
+      activeTown={activeTown}
+      onSelectTown={onSelectTown}
+    />
+  );
+  const mobile = (
+    <DealDayTownListMobile activeTown={activeTown} slideDir={slideDir} />
+  );
+  if (variant === "desktop") return desktop;
+  if (variant === "mobile") return mobile;
   return (
     <>
-      <DealDayTownListDesktop
-        activeTown={activeTown}
-        onSelectTown={onSelectTown}
-      />
-      <DealDayTownListMobile activeTown={activeTown} slideDir={slideDir} />
+      <div className="hidden md:block">{desktop}</div>
+      <div className="md:hidden">{mobile}</div>
     </>
   );
 }
@@ -493,12 +505,15 @@ export default function DealOfTheWeekHero({
   initialDealsByTown = null,
   initialKind = "sale",
   initialPropertyClass = "homes",
+  /** Phone-frame previews: ignore laptop viewport breakpoints so chrome stays one column. */
+  forcePhoneLayout = false,
 }: {
   mode?: "week" | "day";
   afterOverview?: boolean;
   initialDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
+  forcePhoneLayout?: boolean;
 }) {
   const { townsLabel, knownTowns } = useCoverageTowns();
   const searchParams = useSearchParams();
@@ -726,25 +741,65 @@ export default function DealOfTheWeekHero({
     : [];
 
   return (
-    <section className="relative navy-gradient overflow-hidden">
+    <section
+      className={`relative navy-gradient overflow-hidden ${
+        isDay && !forcePhoneLayout ? "lg:min-h-[50dvh]" : ""
+      }`}
+    >
       <div className="absolute inset-0 hero-grid opacity-60" aria-hidden />
       <div
         className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-navy"
         aria-hidden
       />
+      {isDay && !forcePhoneLayout ? (
+        <div
+          className="pointer-events-none absolute left-1/2 top-0 z-0 hidden h-[50dvh] w-screen -translate-x-1/2 overflow-hidden lg:block"
+          aria-hidden
+        >
+          <DealDayTownBleed
+            layout="hero"
+            carouselIndex={carousel.carouselIndex}
+            slideDir={carousel.slideDir}
+            photoUrl={showing?.photoUrl ?? null}
+            photoAlt={
+              l
+                ? `${l.address.street || l.address.full}, ${l.address.city}`
+                : ""
+            }
+          />
+        </div>
+      ) : null}
       <div
-        className={`relative mx-auto max-w-7xl px-6 lg:px-10 ${
-          afterOverview
-            ? isDay
-              ? "pt-8 pb-8 lg:pt-10 lg:pb-12"
-              : "pt-8 pb-12 lg:pt-10 lg:pb-16"
+        className={`relative z-[1] mx-auto max-w-7xl ${
+          forcePhoneLayout ? "px-6" : "px-6 lg:px-10"
+        } ${
+          forcePhoneLayout
+            ? "pt-8 pb-8"
             : isDay
-              ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
-              : "pt-20 pb-12 lg:pt-24 lg:pb-16"
+              ? afterOverview
+                ? "pt-8 pb-8 lg:pt-0 lg:pb-12"
+                : "pt-20 pb-8 lg:pt-0 lg:pb-12"
+              : afterOverview
+                ? "pt-8 pb-12 lg:pt-10 lg:pb-16"
+                : "pt-20 pb-12 lg:pt-24 lg:pb-16"
         }`}
       >
-        <div className="grid lg:grid-cols-[1.05fr_1fr] gap-8 lg:gap-12 items-start">
-          <div className="space-y-3">
+        <div
+          className={
+            isDay && !forcePhoneLayout
+              ? "relative"
+              : `grid items-start gap-8 ${
+                  forcePhoneLayout ? "" : "lg:grid-cols-[1.05fr_1fr] lg:gap-12"
+                }`
+          }
+        >
+          <div
+            className={`space-y-3 ${
+              isDay && !forcePhoneLayout
+                ? "lg:absolute lg:inset-x-0 lg:top-0 lg:z-[1] lg:h-[50dvh] lg:max-w-xl lg:pt-28"
+                : ""
+            }`}
+          >
             <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
@@ -770,98 +825,54 @@ export default function DealOfTheWeekHero({
                 )}
               </span>
             </div>
-            {mode === "day" && (
-              <DealDayTownList
-                activeTown={city ?? carousel.currentTown}
-                slideDir={carousel.slideDir}
-                onSelectTown={
-                  !city && !listingParam ? carousel.selectTown : undefined
-                }
-              />
-            )}
-            <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
-              {mode === "day" ? (
-                <>
-                  Today&apos;s{" "}
-                  <span className="italic gold-shimmer">
-                    {showing
-                      ? `${showing.score.composite.toFixed(1)}.`
-                      : loadingState
-                        ? "…"
-                        : "—"}
-                  </span>
-                  <br />
-                  <span className="italic text-white/85">One listing.</span>
-                </>
-              ) : (
-                <>
-                  {headlineLead}{" "}
-                  <span className="italic gold-shimmer">
-                    {showing
-                      ? `${showing.score.composite.toFixed(1)}.`
-                      : loadingState
-                        ? "…"
-                        : "—"}
-                  </span>
-                  <br />
-                  <span className="italic text-white/85">One listing.</span>
-                </>
-              )}
-            </h1>
             {isDay ? (
-              <div className="max-w-xl space-y-3">
-                <div
-                  key={`photo-${slideKey}`}
-                  className={`relative ${
-                    dayEmpty || !animateDealContent
-                      ? ""
-                      : "animate-deal-copy-refresh"
-                  }`}
-                >
-                  {dayEmpty || (loadingState && !showing) ? (
-                    <div className="relative w-full aspect-[16/9] rounded-2xl border border-white/10 bg-gradient-to-br from-navy-light to-navy-dark shadow-xl shadow-black/30 flex items-center justify-center px-6 overflow-hidden">
-                      <p className="font-mono text-[11px] tracking-wide text-white/45 text-center leading-relaxed">
-                        {loadingState && !showing
-                          ? dayTxFilter === "rental"
-                            ? carousel.currentTown
-                              ? `Loading rental pick in ${carousel.currentTown}…`
-                              : "Loading rental picks…"
-                            : carousel.currentTown
-                              ? `Loading ${dayClassLabel}for-sale pick in ${carousel.currentTown}…`
-                              : `Loading ${dayClassLabel}for-sale picks…`
-                          : dayTxFilter === "rental"
-                            ? carousel.currentTown || city
-                              ? `No below-median rental pick in ${carousel.currentTown || city} right now.`
-                              : "No below-median rental picks available right now."
-                            : carousel.currentTown || city
-                              ? `No below-median ${dayClassLabel}for-sale pick in ${carousel.currentTown || city} right now.`
-                              : `No below-median ${dayClassLabel}for-sale picks available right now.`}
-                      </p>
-                    </div>
-                  ) : l ? (
-                    <PhotoBanner
-                      src={showing?.photoUrl ?? null}
-                      alt={l.address.street || l.address.full}
-                      loading={loadingState}
-                      reveal={false}
-                      priority
-                      framed
-                      onPhotoHover={carousel.pauseForPhotoHover}
-                      detailHref={detailHref}
-                      photoDeck={
-                        photosHref && l.mlsId && l.mlsId !== "—"
-                          ? {
-                              mlsId: l.mlsId,
-                              photoCount: l.photoCount,
-                              photosHref,
-                              address: l.address.street || l.address.full,
-                              priority: true,
-                            }
-                          : null
-                      }
-                    />
-                  ) : null}
+              <>
+            <DealDayTownList
+              activeTown={city ?? carousel.currentTown}
+              slideDir={carousel.slideDir}
+              onSelectTown={
+                !city && !listingParam ? carousel.selectTown : undefined
+              }
+              variant={forcePhoneLayout ? "mobile" : "auto"}
+            />
+            <h1
+              className={`font-serif leading-[1.05] tracking-tight text-white animate-fade-up ${
+                forcePhoneLayout
+                  ? "text-5xl"
+                  : "text-5xl sm:text-6xl lg:text-7xl"
+              }`}
+            >
+              Today&apos;s{" "}
+              <span className="italic gold-shimmer">
+                {showing
+                  ? `${showing.score.composite.toFixed(1)}.`
+                  : loadingState
+                    ? "…"
+                    : "—"}
+              </span>
+              <br />
+              <span className="italic text-white/85">One listing.</span>
+            </h1>
+              <div
+                className={`relative ${
+                  forcePhoneLayout
+                    ? "-mx-6 px-6"
+                    : "-mx-6 px-6 lg:-mx-10 lg:px-10"
+                }`}
+              >
+                <div className={forcePhoneLayout ? "" : "lg:hidden"}>
+                <DealDayTownBleed
+                  carouselIndex={carousel.carouselIndex}
+                  slideDir={carousel.slideDir}
+                  photoUrl={showing?.photoUrl ?? null}
+                  photoAlt={
+                    l
+                      ? `${l.address.street || l.address.full}, ${l.address.city}`
+                      : ""
+                  }
+                />
                 </div>
+                <div className="relative z-[1] py-5">
                 <DealDayChooserBar
                   townLabel={carousel.currentTown}
                   carouselControls={
@@ -888,12 +899,29 @@ export default function DealOfTheWeekHero({
                     dayTxFilter === "sale" ? setDayPropertyClass : undefined
                   }
                 />
+                </div>
               </div>
-            ) : null}
+              </>
+            ) : (
+              <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
+                {headlineLead}{" "}
+                <span className="italic gold-shimmer">
+                  {showing
+                    ? `${showing.score.composite.toFixed(1)}.`
+                    : loadingState
+                      ? "…"
+                      : "—"}
+                </span>
+                <br />
+                <span className="italic text-white/85">One listing.</span>
+              </h1>
+            )}
             {isDay ? (
               <div
                 key={animateDealContent ? `insight-${slideKey}` : "insight-instant"}
-                className="max-w-xl space-y-4"
+                className={`max-w-xl space-y-4 ${
+                  forcePhoneLayout ? "" : "lg:hidden"
+                }`}
               >
                 <DealInsightCopy
                   text={dayInsight}
@@ -922,7 +950,11 @@ export default function DealOfTheWeekHero({
                 <DealSuperlatives words={superlatives} />
               </div>
             )}
-            <div className="animate-fade-up-delay-2 flex flex-wrap items-center gap-4">
+            <div
+              className={`animate-fade-up-delay-2 flex flex-wrap items-center gap-4 ${
+                isDay && !forcePhoneLayout ? "lg:hidden" : ""
+              }`}
+            >
               <Link
                 href="/intelligence"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
@@ -940,11 +972,22 @@ export default function DealOfTheWeekHero({
             </div>
           </div>
 
+          {isDay && !forcePhoneLayout ? (
+            <div className="hidden h-[50dvh] lg:block" aria-hidden />
+          ) : null}
+
           <div
+            key={
+              isDay && !forcePhoneLayout
+                ? `value-rise-${carousel.carouselIndex}`
+                : "value-static"
+            }
             className={`min-w-0 ${
-              isDay
-                ? "lg:sticky lg:top-24 deal-showcase-stage overflow-visible"
-                : "overflow-hidden"
+              isDay && !forcePhoneLayout
+                ? "deal-showcase-stage mt-8 overflow-visible lg:ml-auto lg:mt-0 lg:max-w-xl animate-dod-value-pick-rise"
+                : isDay
+                  ? "deal-showcase-stage overflow-visible"
+                  : "overflow-hidden"
             }`}
           >
             <DealCard
@@ -987,8 +1030,49 @@ export default function DealOfTheWeekHero({
               scoreExplains={!loadingState && Boolean(showing) && !(isDay && dayEmpty)}
               valueDealMode={mode === "day"}
               hidePhoto={isDay}
+              hideThumbs={isDay}
+              townLabel={isDay ? null : carousel.currentTown}
             />
           </div>
+          {isDay && !forcePhoneLayout ? (
+            <div className="mt-8 hidden max-w-xl space-y-4 lg:block">
+              <div
+                key={
+                  animateDealContent ? `insight-lg-${slideKey}` : "insight-lg-instant"
+                }
+                className="space-y-4"
+              >
+                <DealInsightCopy
+                  text={dayInsight}
+                  paragraphKey={
+                    animateDealContent
+                      ? `insight-lg-${slideKey}`
+                      : "insight-lg-instant"
+                  }
+                  className={`${dealInsightCopyClass}${
+                    animateDealContent ? " animate-deal-copy-refresh" : ""
+                  }`}
+                />
+                {!dayEmpty && superlatives.length > 0 ? (
+                  <DealSuperlatives words={superlatives} />
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <Link
+                  href="/intelligence"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
+                >
+                  See more deals
+                  <span aria-hidden>→</span>
+                </Link>
+                {!loadingState && !usedFallback && showing ? (
+                  <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/45">
+                    {`${showing.totalReviewed.toLocaleString()} scanned in ${townsScanned} · ${showing.qualifiedCount.toLocaleString()} below median`}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>
@@ -1197,6 +1281,7 @@ function DealCard({
   onPropertyClassChange,
   empty = false,
   hidePhoto = false,
+  hideThumbs = false,
 }: {
   detailHref?: string | null;
   photosHref?: string | null;
@@ -1232,6 +1317,8 @@ function DealCard({
   onPropertyClassChange?: (value: DealSalePropertyClass) => void;
   empty?: boolean;
   hidePhoto?: boolean;
+  /** Day page — listing photo only, no hero + thumbnail strip. */
+  hideThumbs?: boolean;
 }) {
   const [explainTopic, setExplainTopic] = useState<ScoreExplainTopic | null>(null);
   const showWeights = useSiteUnlocked();
@@ -1368,9 +1455,9 @@ function DealCard({
                   priority
                   onPhotoHover={carouselControls?.onPhotoHover}
                   photoDeck={
-                    photosHref && mlsId
-                      ? { mlsId, photoCount, photosHref, address, priority: true }
-                      : null
+                    hideThumbs || !photosHref || !mlsId
+                      ? null
+                      : { mlsId, photoCount, photosHref, address, priority: true }
                   }
                 />
                 {detailHref ? (
@@ -1385,6 +1472,15 @@ function DealCard({
           </div>
         ) : null}
       </div>
+      {empty && hidePhoto ? (
+      <div className="relative p-7 lg:p-8">
+        <p className="font-mono text-[11px] tracking-wide text-white/45 leading-relaxed">
+          {kind === "rental"
+            ? "No below-median rental pick right now."
+            : "No below-median for-sale pick right now."}
+        </p>
+      </div>
+      ) : null}
       {!empty ? (
       <div className="relative p-7 lg:p-8 pt-6 lg:pt-7 space-y-4">
         <div className="flex items-center justify-between">
