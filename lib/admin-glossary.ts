@@ -853,7 +853,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Site warm',
     category: 'sync-admin',
     definition:
-      'Netlify filling site caches after Railway has written Neon: latest town feeds, intelligence deal board, stats cache, spotlight statuses, and the first six showcase photos for listings Incremental just inserted. Photo 0 for listing-alert mail is Incremental / Open houses themselves, before they mark alerts dirty. Site warm does not pull RETS and does not send mail. Same hop as Side-work-only. Was labeled Lane 3 — do not use that name.',
+      'Netlify filling site caches after Railway has written Neon: latest town feeds, intelligence deal board, spotlight statuses, and the first six showcase photos for listings Incremental just inserted. Lane 3 is the slot; Site warm is the parlance. It is a Netlify background hop (~15 min), not a Railway job — putting this work on the RETS puller is what Node-OOMed production. Stats-cache and hero-photos already have their own Railway children. Photo 0 for listing-alert mail is Incremental / Open houses themselves, before they mark alerts dirty. Site warm does not pull RETS and does not send mail. Same hop as Side-work-only.',
+  },
+  {
+    term: 'Lane 3',
+    category: 'sync-admin',
+    definition:
+      'The ownership slot for Site warm on the Incremental diagram (alongside Lane 1 RETS pull and Lane 2 Neon handoff). Use Site warm in parlance. See Site warm.',
   },
   {
     term: 'MLS_SYNC_SERVICE_URL',
@@ -1295,7 +1301,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Netlify DNS',
     category: 'product',
     definition:
-      'Authoritative nameservers for tmrebuilder.com (live check 10 Aug 2026: dns1–4.p08.nsone.net / NS1). This is where apex A/CNAME, Resend SPF/DKIM TXT, and inbound MX for a mail forwarder are published. Distinct from Netlify the app host (site + Site warm). Not Cloudflare — a Cloudflare zone may exist for R2/Email Routing UI, but the public internet does not use Cloudflare as DNS while NS stay here. See Admin → Web server → Site architecture.',
+      'Authoritative nameservers for tmrebuilder.com (live check 10 Aug 2026: dns1–4.p08.nsone.net / NS1). This is where apex A/CNAME, Resend SPF/DKIM TXT, and inbound MX for a mail forwarder are published. Distinct from Netlify the app host (site + Lane 3 Site warm). Not Cloudflare — a Cloudflare zone may exist for R2/Email Routing UI, but the public internet does not use Cloudflare as DNS while NS stay here. See Admin → Web server → Site architecture.',
   },
   {
     term: 'MX (Mail Exchanger)',

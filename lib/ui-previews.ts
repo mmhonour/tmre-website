@@ -8,9 +8,9 @@ export type UiPreviewEntry = {
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
     slug: "site-warm",
-    title: "Site warm (was Lane 3)",
+    title: "Lane 3 — Site warm",
     summary:
-      "Netlify cache fill after Railway writes Neon. Not mail. Not RETS. Photo 0 for alerts is Incremental / Open houses; Site warm still fills the showcase six.",
+      "Lane 3 is the slot; Site warm is the parlance. Netlify cache fill after Railway writes Neon. Not mail. Not RETS. Not a Railway job.",
   },
   {
     slug: "listing-map-town-pin",

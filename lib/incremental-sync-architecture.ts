@@ -7,7 +7,7 @@
  * Ownership (Aug 2026 lean split):
  *   Lane 1 — Railway mls-sync: RETS → Neon only (postHooks:false via MLS_SYNC_SERVICE=1)
  *   Lane 2 — Neon write is the handoff (End / heartbeat); site never needs Railway for truth
- *   Site warm — Netlify owns warm (sideWorkOnly after handoff, or stale-read rebuild)
+ *   Lane 3 — Site warm: Netlify owns warm (sideWorkOnly after handoff, or stale-read rebuild)
  *
  * Which host pulls is no longer a setting. Everyone who notices a due pull puts
  * a row on `sync_queue`; the runner claims it into a forked child; Netlify only
@@ -55,7 +55,7 @@ export function describeIncrementalSyncArchitecture(): {
   return {
     title: 'Incremental update — queue claim · Neon handoff · Netlify warm',
     subtitle:
-      'A due pull becomes a sync_queue row. The Railway runner claims it and pulls RETS into Neon in a forked child (Lane 1), Neon End/heartbeat is inventory truth (Lane 2), Netlify warms boards/feeds/stats and digests (Site warm) — and rescues the row itself if the runner has stopped claiming.',
+      'A due pull becomes a sync_queue row. The Railway runner claims it and pulls RETS into Neon in a forked child (Lane 1), Neon End/heartbeat is inventory truth (Lane 2), Netlify Site warm (Lane 3) fills boards/feeds/digests — and rescues the row itself if the runner has stopped claiming.',
     ownership: [
       {
         id: 'lane-1',
@@ -75,7 +75,7 @@ export function describeIncrementalSyncArchitecture(): {
       },
       {
         id: 'lane-3',
-        title: 'Site warm',
+        title: 'Lane 3 — Site warm',
         host: 'Netlify',
         owns: 'After Railway finishes, sideWorkOnly worker (source=railway): latest feeds, intelligence deal board, stats cache, spotlight statuses, and showcase photo warm for listings Incremental just inserted (first six full-size MediaURL shots, same as opening the page). Also stale-read rebuild if the handoff hop fails. Does not send listing or OH alert mail. Does not walk the rest of Active inventory for photos — that is the hero-photos sync-queue job.',
         doesNot:
@@ -193,7 +193,7 @@ export function describeIncrementalSyncArchitecture(): {
       {
         id: 'worker-warm',
         lane: 'worker',
-        title: 'sync-listings-worker sideWorkOnly (Site warm)',
+        title: 'sync-listings-worker sideWorkOnly (Lane 3 — Site warm)',
         detail:
           'Netlify background ≤~15m. No RETS. Latest feeds, deal board, stats cache, spotlight, and showcase photo warm for Incremental’s new MLS ids (first six full-size shots). Does not send alert email. Queued by Railway handoff (source=railway) or thin-cron lean fallback.',
       },
@@ -229,7 +229,7 @@ export function describeIncrementalSyncArchitecture(): {
       { from: 'railway', to: 'neon', label: 'Lane 1: RETS → upsert → End + heartbeat' },
       { from: 'railway', to: 'queue', label: 'outcome: done / failed / timeout / crashed' },
       { from: 'railway', to: 'handoff', label: 'postHooks skip' },
-      { from: 'handoff', to: 'worker-warm', label: 'Site warm: sideWorkOnly queue' },
+      { from: 'handoff', to: 'worker-warm', label: 'Lane 3 Site warm: sideWorkOnly' },
       { from: 'worker-warm', to: 'neon', label: 'stats_cache / digests write' },
       { from: 'queue', to: 'worker-rets', label: 'stranded row → Netlify rescue' },
       { from: 'worker-rets', to: 'neon', label: 'RETS + postHooks (rescue)' },

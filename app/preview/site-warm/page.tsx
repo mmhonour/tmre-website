@@ -2,7 +2,7 @@ import AdminIncrementalArchitectureDiagram from "@/components/admin/AdminIncreme
 import { describeIncrementalSyncArchitecture } from "@/lib/incremental-sync-architecture";
 
 export const metadata = {
-  title: "Preview — Site warm — TMRE",
+  title: "Preview — Lane 3 Site warm — TMRE",
   robots: { index: false, follow: false },
 };
 
@@ -16,13 +16,15 @@ export default function SiteWarmPreviewPage() {
         <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
           UI preview
         </p>
-        <h1 className="mb-2 font-serif text-3xl text-navy">Site warm</h1>
+        <h1 className="mb-2 font-serif text-3xl text-navy">Lane 3 — Site warm</h1>
         <p className="mb-8 max-w-3xl text-sm leading-relaxed text-slate">
-          Lane 3 is now <span className="font-medium text-navy">Site warm</span>{" "}
-          — Netlify filling boards, feeds, stats, and the showcase six after
-          Railway has written Neon. Incremental RETS stays ids-only. Photo 0
-          for listing-alert mail is prompted before alerts go dirty. Mail is the
-          Railway alerts job. Production: Admin → Syncs → Dashboard.
+          Lane 3 is the slot. The parlance is{" "}
+          <span className="font-medium text-navy">Site warm</span>: Netlify
+          filling boards, feeds, and the showcase six after Railway has written
+          Neon. It is not a Railway job. Incremental RETS stays ids-only. Photo
+          0 for listing-alert mail is prompted before alerts go dirty. Mail is
+          the Railway alerts job. Stats-cache and hero-photos already have
+          their own Railway children. Production: Admin → Syncs → Dashboard.
         </p>
 
         {siteWarm ? (
@@ -45,14 +47,16 @@ export default function SiteWarmPreviewPage() {
         ) : null}
 
         <pre className="mb-8 overflow-x-auto rounded-2xl border border-charcoal/[0.08] bg-white px-5 py-4 font-mono text-[11px] leading-relaxed text-navy">
-          {`Lane 1  Railway  RETS → Neon (ids only in the photo queue)
-Lane 2  Neon     End / heartbeat = inventory truth
-Site warm  Netlify  feeds · board · stats · showcase six
-                    not mail · not RETS
+          {`Lane 1  Railway     RETS → Neon (ids only in the photo queue)
+Lane 2  Neon        End / heartbeat = inventory truth
+Lane 3  Site warm   Netlify  feeds · board · showcase six
+                    not mail · not RETS · not a Railway job
 
-photo 0  Incremental / OH prompt R2  →  then mark alerts dirty
-mail     Railway alerts job
-fallback  ?size=full&fetch=1 in Gmail`}
+photo 0     Incremental / OH prompt R2  →  then mark alerts dirty
+mail        Railway alerts job
+stats       Railway stats-cache child (already)
+heroes      Railway hero-photos child (already)
+fallback    ?size=full&fetch=1 in Gmail`}
         </pre>
 
         <AdminIncrementalArchitectureDiagram />
