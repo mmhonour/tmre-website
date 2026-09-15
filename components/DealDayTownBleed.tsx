@@ -24,8 +24,8 @@ export function dealTownBleedPattern(index: number): DealTownBleedPattern {
 }
 
 /**
- * Background of the headline + town-filter block only (not the town-name
- * line above). Carousel paints: edges→center, center→edges, top→down.
+ * Horizontal wash behind the headline + town-filter block only (not the
+ * town-name line above). Carousel paints: edges→center, center→edges, top→down.
  */
 export default function DealDayTownBleed({
   carouselIndex,

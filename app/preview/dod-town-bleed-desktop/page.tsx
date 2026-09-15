@@ -25,8 +25,9 @@ export default function DodTownBleedDesktopPreviewPage() {
             /deal-of-the-day
           </Link>
           . On mobile the bleed is only the background behind the headline and
-          the town / sale / type filter — not a page-tall panel. Use ‹ › to
-          step towns.
+          the town / sale / type filter — a horizontal band, not a page-tall
+          panel. The laptop phone preview forces phone chrome so the desktop
+          town line cannot wrap into a stack. Use ‹ › to step towns.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

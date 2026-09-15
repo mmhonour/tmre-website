@@ -533,7 +533,7 @@ body {
   will-change: transform, opacity;
 }
 
-/* DOTD town-name → town-filter full bleed. Three paints cycle with the carousel. */
+/* DOTD headline + town-filter band. Horizontal wash — not a vertical panel. */
 .dod-town-bleed-rest {
   background: linear-gradient(
     90deg,
@@ -547,9 +547,9 @@ body {
 
 .dod-town-bleed-fill {
   background: linear-gradient(
-    180deg,
+    90deg,
     rgb(200 169 81 / 0.34) 0%,
-    rgb(27 42 74 / 0.42) 55%,
+    rgb(27 42 74 / 0.42) 50%,
     rgb(200 169 81 / 0.22) 100%
   );
 }

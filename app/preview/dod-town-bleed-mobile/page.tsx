@@ -21,10 +21,11 @@ export default function DodTownBleedMobilePreviewPage() {
             Deal of the Day town bleeds
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            Live weekly picks. The bleed sits behind “Today’s score / One
-            listing” and the pause · town · For Sale / Homes row — not a
-            vertical panel. On a phone this URL is that chrome under the
-            site header.
+            Phone chrome in this frame — one town name, not the desktop town
+            line turned on its side. Bleed is only the background behind
+            “Today’s score / One listing” and the pause · town · For Sale /
+            Homes row. On a phone this URL is that chrome under the site
+            header.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}
@@ -35,8 +36,8 @@ export default function DodTownBleedMobilePreviewPage() {
               /preview/dod-town-bleed-desktop
             </Link>
           </p>
-          <div className="mx-auto w-[390px] overflow-hidden rounded-[1.75rem] border border-charcoal/15 shadow-[0_24px_60px_-28px_rgba(13,20,36,0.65)]">
-            <DodTownBleedLive />
+          <div className="mx-auto h-[844px] w-[390px] overflow-y-auto overflow-x-hidden rounded-[1.75rem] border border-charcoal/15 shadow-[0_24px_60px_-28px_rgba(13,20,36,0.65)]">
+            <DodTownBleedLive forcePhoneLayout />
           </div>
         </div>
       </div>

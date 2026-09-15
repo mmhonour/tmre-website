@@ -231,7 +231,7 @@ function DealDayTownListDesktop({
   const activeKey = activeTown?.trim().toLowerCase() ?? null;
 
   return (
-    <div className="hidden md:block font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+    <div className="font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
       <p>
         {towns.map((town, i) => {
           const isActive = activeKey === town.toLowerCase();
@@ -318,7 +318,7 @@ function DealDayTownListMobile({
     slideDir === "prev" ? "animate-deal-town-exit-prev" : "animate-deal-town-exit-next";
 
   return (
-    <div className="md:hidden font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
+    <div className="font-mono text-[10px] tracking-[0.15em] uppercase mb-4 animate-fade-up">
       <p className="flex flex-wrap items-baseline gap-x-0 overflow-hidden min-h-[1.25rem]">
         {town ? (
           <>
@@ -352,18 +352,29 @@ function DealDayTownList({
   activeTown,
   slideDir,
   onSelectTown,
+  variant = "auto",
 }: {
   activeTown: string | null;
   slideDir?: "next" | "prev" | null;
   onSelectTown?: (town: string) => void;
+  /** Phone-frame previews must not use viewport `md:` — laptop width would wrap the desktop town line into a tall stack. */
+  variant?: "auto" | "desktop" | "mobile";
 }) {
+  const desktop = (
+    <DealDayTownListDesktop
+      activeTown={activeTown}
+      onSelectTown={onSelectTown}
+    />
+  );
+  const mobile = (
+    <DealDayTownListMobile activeTown={activeTown} slideDir={slideDir} />
+  );
+  if (variant === "desktop") return desktop;
+  if (variant === "mobile") return mobile;
   return (
     <>
-      <DealDayTownListDesktop
-        activeTown={activeTown}
-        onSelectTown={onSelectTown}
-      />
-      <DealDayTownListMobile activeTown={activeTown} slideDir={slideDir} />
+      <div className="hidden md:block">{desktop}</div>
+      <div className="md:hidden">{mobile}</div>
     </>
   );
 }
@@ -494,12 +505,15 @@ export default function DealOfTheWeekHero({
   initialDealsByTown = null,
   initialKind = "sale",
   initialPropertyClass = "homes",
+  /** Phone-frame previews: ignore laptop viewport breakpoints so chrome stays one column. */
+  forcePhoneLayout = false,
 }: {
   mode?: "week" | "day";
   afterOverview?: boolean;
   initialDealsByTown?: import("@/lib/deal-of-the-day-carousel-types").DealCarouselDealsByTown | null;
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
+  forcePhoneLayout?: boolean;
 }) {
   const { townsLabel, knownTowns } = useCoverageTowns();
   const searchParams = useSearchParams();
@@ -734,17 +748,25 @@ export default function DealOfTheWeekHero({
         aria-hidden
       />
       <div
-        className={`relative mx-auto max-w-7xl px-6 lg:px-10 ${
-          afterOverview
-            ? isDay
-              ? "pt-8 pb-8 lg:pt-10 lg:pb-12"
-              : "pt-8 pb-12 lg:pt-10 lg:pb-16"
-            : isDay
-              ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
-              : "pt-20 pb-12 lg:pt-24 lg:pb-16"
+        className={`relative mx-auto max-w-7xl ${
+          forcePhoneLayout ? "px-6" : "px-6 lg:px-10"
+        } ${
+          forcePhoneLayout
+            ? "pt-8 pb-8"
+            : afterOverview
+              ? isDay
+                ? "pt-8 pb-8 lg:pt-10 lg:pb-12"
+                : "pt-8 pb-12 lg:pt-10 lg:pb-16"
+              : isDay
+                ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
+                : "pt-20 pb-12 lg:pt-24 lg:pb-16"
         }`}
       >
-        <div className="grid lg:grid-cols-[1.05fr_1fr] gap-8 lg:gap-12 items-start">
+        <div
+          className={`grid items-start gap-8 ${
+            forcePhoneLayout ? "" : "lg:grid-cols-[1.05fr_1fr] lg:gap-12"
+          }`}
+        >
           <div className="space-y-3">
             <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5">
               <span
@@ -779,14 +801,27 @@ export default function DealOfTheWeekHero({
               onSelectTown={
                 !city && !listingParam ? carousel.selectTown : undefined
               }
+              variant={forcePhoneLayout ? "mobile" : "auto"}
             />
-              <div className="relative -mx-6 px-6 lg:-mx-10 lg:px-10">
+              <div
+                className={`relative ${
+                  forcePhoneLayout
+                    ? "-mx-6 px-6"
+                    : "-mx-6 px-6 lg:-mx-10 lg:px-10"
+                }`}
+              >
                 <DealDayTownBleed
                   carouselIndex={carousel.carouselIndex}
                   slideDir={carousel.slideDir}
                 />
                 <div className="relative z-[1] space-y-3 py-3">
-            <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
+            <h1
+              className={`font-serif leading-[1.05] tracking-tight text-white animate-fade-up ${
+                forcePhoneLayout
+                  ? "text-5xl"
+                  : "text-5xl sm:text-6xl lg:text-7xl"
+              }`}
+            >
               Today&apos;s{" "}
               <span className="italic gold-shimmer">
                 {showing
@@ -893,9 +928,11 @@ export default function DealOfTheWeekHero({
 
           <div
             className={`min-w-0 ${
-              isDay
+              isDay && !forcePhoneLayout
                 ? "lg:sticky lg:top-24 deal-showcase-stage overflow-visible"
-                : "overflow-hidden"
+                : isDay
+                  ? "deal-showcase-stage overflow-visible"
+                  : "overflow-hidden"
             }`}
           >
             <DealCard
