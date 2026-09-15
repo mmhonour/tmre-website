@@ -28,6 +28,10 @@ import {
   VISION_GIS_TOWNS,
   missingVisionStreetLetters,
 } from '@/lib/vision-gis-towns'
+import {
+  VISION_STREET_OWNER_CATCHUP_SQL,
+  VISION_STREET_OWNER_FILL_SQL,
+} from '@/lib/vision-street-owner-catchup'
 
 /**
  * Same DDL as db/migrations/0024_vision_streets.sql. Netlify does not run
@@ -425,16 +429,24 @@ export async function listVisionStreetParcels(
 }
 
 /**
- * Street-house PIDs missing owner_name, or missing mailing when the stored
- * Field Card also has no Owner address. Field Card ingest writes both.
+ * Street-house PIDs that still need a Field Card ingest.
+ *
+ * `catch-up` is never-ingested only — mailing-only gaps must not keep the
+ * Railway 10-minute sweep due. `fill` (default) also retries blank
+ * owner_name after a week.
  */
 export async function listVisionStreetPidsMissingOwner(
   town: string,
   limit: number,
+  mode: 'catch-up' | 'fill' = 'fill',
 ): Promise<VisionStreetPidMissingOwner[]> {
   await ensureVisionStreetsTable()
   await ensureVisionAddressesTable()
   const cap = Math.max(1, Math.min(Math.floor(limit), 1000))
+  const predicate =
+    mode === 'catch-up'
+      ? VISION_STREET_OWNER_CATCHUP_SQL
+      : VISION_STREET_OWNER_FILL_SQL
   const rows = await query<{
     town: string
     street_name: string
@@ -446,20 +458,7 @@ export async function listVisionStreetPidsMissingOwner(
        LEFT JOIN vision_addresses v
          ON v.town = p.town AND v.vision_pid = p.vision_pid
       WHERE p.town = $1
-        AND (
-          v.vision_pid IS NULL
-          OR v.owner_name IS NULL
-          OR btrim(v.owner_name) = ''
-          OR (
-            (v.owner_mailing_address IS NULL OR btrim(v.owner_mailing_address) = '')
-            AND NOT EXISTS (
-              SELECT 1
-                FROM jsonb_array_elements(coalesce(v.field_card->'fields', '[]'::jsonb)) f
-               WHERE f->>'label' ~* '^owner address'
-                 AND btrim(coalesce(f->>'value', '')) <> ''
-            )
-          )
-        )
+        AND ${predicate}
       ORDER BY p.street_name ASC, p.address_label ASC
       LIMIT $2`,
     [town, cap],
@@ -522,19 +521,19 @@ export async function visionStreetIndexNeedsCatchUp(): Promise<boolean> {
   return false
 }
 
-/** True when a street-house PID still has no owner_name on vision_addresses. */
+/** True when a street-house PID has never been ingested into vision_addresses. */
 export async function visionStreetOwnersNeedCatchUp(): Promise<boolean> {
   await ensureVisionStreetsTable()
   for (const { town } of VISION_GIS_TOWNS) {
-    const missing = await listVisionStreetPidsMissingOwner(town, 1)
+    const missing = await listVisionStreetPidsMissingOwner(town, 1, 'catch-up')
     if (missing.length > 0) return true
   }
   return false
 }
 
 /**
- * Railway / thin-cron catch-up: letters, houses, or street-address owners.
- * Field Cards are not weekly-only once house lists exist.
+ * Railway / thin-cron catch-up: letters, houses, or never-ingested street PIDs.
+ * Already-stored Field Cards (including mailing-only gaps) wait for the weekly slot.
  */
 export async function visionGisNeedsCatchUp(): Promise<boolean> {
   if (await visionStreetIndexNeedsCatchUp()) return true

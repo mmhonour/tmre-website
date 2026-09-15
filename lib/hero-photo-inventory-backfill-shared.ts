@@ -16,6 +16,23 @@ export const LAST_HERO_PHOTOS_META_KEY = 'last_hero_photos'
 /** MLS ids that stored nothing last burst — next burst walks past them. */
 export const HERO_PHOTOS_SKIP_KEY = 'hero_photos_skip_mls_ids'
 export const HERO_PHOTOS_SKIP_MAX = 400
+/**
+ * Three empty hops (15 listings) with zero fills means Media/RETS is down or
+ * refusing full-size bytes — not that those listings should leave the queue.
+ */
+export const HERO_SCAVENGE_EMPTY_ABORT_BATCHES = 3
+
+export function shouldAbortHeroScavengeEmptyBurst(input: {
+  consecutiveEmptyBatches: number
+  filledPhotos: number
+  filledListings: number
+}): boolean {
+  return (
+    input.filledPhotos === 0 &&
+    input.filledListings === 0 &&
+    input.consecutiveEmptyBatches >= HERO_SCAVENGE_EMPTY_ABORT_BATCHES
+  )
+}
 
 export function parseHeroPhotosSkipMlsIds(
   raw: string | null | undefined,
@@ -50,7 +67,14 @@ export function mergeHeroPhotosSkipMlsIds(
 
 export type HeroPhotosJobStatus = {
   generatedAt: string
+  /**
+   * Active-with-photos count used in the "was … (missing/total)" fraction.
+   * Must be the before-burst inventory so a growing Active book cannot pull
+   * the displayed % down when this burst stored nothing.
+   */
   activeWithPhotos: number
+  /** After-burst Active-with-photos count; omitted when it matches `activeWithPhotos`. */
+  activeWithPhotosAfter?: number
   missingBefore: number
   missingAfter: number
   missingPctBefore: number
@@ -59,6 +83,11 @@ export type HeroPhotosJobStatus = {
   filledPhotos: number
   /** MLS ids this burst tried that stored nothing — walked on, skipped next burst. */
   walkedPast?: number
+  /**
+   * Burst stopped after consecutive empty hops with zero fills. Skip list is
+   * not persisted — walking the whole missing set off the queue is not progress.
+   */
+  stalledEmpty?: boolean
   complete: boolean
   idle: boolean
   /** True while a burst is queued or in flight — board should keep polling. */
@@ -73,6 +102,26 @@ export function pctMissing(missing: number, total: number): number {
   return Math.round((missing / total) * 1000) / 10
 }
 
+/**
+ * "Now % missing" after a burst. Zero fills must not look like coverage
+ * progress just because more Active listings arrived in the denominator.
+ */
+export function heroMissingPctAfter(input: {
+  missingAfter: number
+  withPhotosBefore: number
+  withPhotosAfter: number
+  filledListings: number
+  filledPhotos: number
+}): number {
+  if (input.filledListings > 0 || input.filledPhotos > 0) {
+    return pctMissing(input.missingAfter, input.withPhotosAfter)
+  }
+  if (input.withPhotosAfter > input.withPhotosBefore) {
+    return pctMissing(input.missingAfter, input.withPhotosBefore)
+  }
+  return pctMissing(input.missingAfter, input.withPhotosAfter)
+}
+
 export function formatHeroPhotosInterruptedMessage(
   prev: HeroPhotosJobStatus | null,
   reason = 'runner vanished',
@@ -83,6 +132,11 @@ export function formatHeroPhotosInterruptedMessage(
 }
 
 function walkedPastClause(status: HeroPhotosJobStatus): string {
+  if (status.stalledEmpty) {
+    const n = status.walkedPast ?? 0
+    const tried = n > 0 ? ` ${n}` : ''
+    return ` · stopped after${tried} stored nothing in a row (not walking the rest off the queue)`
+  }
   const n = status.walkedPast ?? 0
   if (n <= 0) return ''
   return ` · walked past ${n} that stored nothing`
@@ -105,7 +159,7 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
         walked
       )
     }
-    if ((status.walkedPast ?? 0) > 0) {
+    if (status.stalledEmpty || (status.walkedPast ?? 0) > 0) {
       return (
         `running · ${status.missingPctBefore}% missing (${missingN}/${total})` +
         walked
@@ -150,6 +204,12 @@ export function parseHeroPhotosJobStatus(
       filledListings: Number(parsed.filledListings) || 0,
       filledPhotos: Number(parsed.filledPhotos) || 0,
       walkedPast: Number(parsed.walkedPast) || 0,
+      activeWithPhotosAfter:
+        typeof parsed.activeWithPhotosAfter === 'number' &&
+        Number.isFinite(parsed.activeWithPhotosAfter)
+          ? parsed.activeWithPhotosAfter
+          : undefined,
+      stalledEmpty: Boolean(parsed.stalledEmpty) || undefined,
       complete: Boolean(parsed.complete),
       idle: Boolean(parsed.idle),
       running: Boolean(parsed.running),

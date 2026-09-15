@@ -26,10 +26,11 @@ export default async function handler(req: Request, _context: Context) {
       )
     }
     const result = await syncVisionAddresses()
+    const finishedAt = result.syncedAt || new Date().toISOString()
     try {
       await recordDashboardSyncAudit({
         startedAt,
-        finishedAt: result.syncedAt || new Date().toISOString(),
+        finishedAt,
         syncSuffix: 'vision',
         listingsCount: result.parcelsFetched,
         ok: result.ok !== false,

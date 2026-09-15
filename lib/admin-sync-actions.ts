@@ -1303,11 +1303,12 @@ async function runAdminSyncActionImpl(
       const maxParcels =
         Number.isFinite(maxRaw) && maxRaw > 0 ? Math.min(maxRaw, 200) : 40
       const result = await syncVisionAddresses({ maxParcels })
+      const finishedAt = new Date().toISOString()
       return {
         ok: result.ok,
         action,
         startedAt,
-        finishedAt: result.syncedAt,
+        finishedAt: result.syncedAt || finishedAt,
         durationMs: result.durationMs || Date.now() - t0,
         recordsFetched: result.parcelsFetched,
         message: `${result.town}: ${result.totalRows.toLocaleString()} vision rows (${result.phase})`,

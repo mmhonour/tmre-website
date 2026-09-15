@@ -4,12 +4,15 @@ import {
   advanceHeroInventoryTown,
   formatHeroPhotosInterruptedMessage,
   formatHeroPhotosJobMessage,
+  heroMissingPctAfter,
   HERO_PHOTOS_SKIP_MAX,
+  HERO_SCAVENGE_EMPTY_ABORT_BATCHES,
   mergeHeroPhotosSkipMlsIds,
   parseHeroInventoryCursor,
   parseHeroPhotosJobStatus,
   parseHeroPhotosSkipMlsIds,
   pctMissing,
+  shouldAbortHeroScavengeEmptyBurst,
   type HeroPhotosJobStatus,
 } from "./hero-photo-inventory-backfill-shared";
 
@@ -81,8 +84,15 @@ describe("formatHeroPhotosJobMessage", () => {
 
   it("names listings this burst walked past because they stored nothing", () => {
     assert.equal(
-      formatHeroPhotosJobMessage({ ...base, filledListings: 0, filledPhotos: 0, walkedPast: 15 }),
-      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · walked past 15 that stored nothing · now 84.4% missing",
+      formatHeroPhotosJobMessage({
+        ...base,
+        filledListings: 0,
+        filledPhotos: 0,
+        walkedPast: 15,
+        missingAfter: 1340,
+        missingPctAfter: 87.0,
+      }),
+      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · walked past 15 that stored nothing · now 87% missing",
     );
     assert.equal(
       formatHeroPhotosJobMessage({
@@ -93,6 +103,21 @@ describe("formatHeroPhotosJobMessage", () => {
         walkedPast: 10,
       }),
       "running · 87% missing (1,340/1,540) · walked past 10 that stored nothing",
+    );
+  });
+
+  it("does not treat a Media/RETS stall as walking the missing set off the queue", () => {
+    assert.equal(
+      formatHeroPhotosJobMessage({
+        ...base,
+        filledListings: 0,
+        filledPhotos: 0,
+        walkedPast: 15,
+        missingAfter: 1340,
+        missingPctAfter: 87.0,
+        stalledEmpty: true,
+      }),
+      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · stopped after 15 stored nothing in a row (not walking the rest off the queue) · now 87% missing",
     );
   });
 
@@ -212,5 +237,62 @@ describe("pctMissing / parseHeroPhotosJobStatus", () => {
     );
     assert.equal(parsed?.message, "was 20% missing");
     assert.equal(parsed?.filledPhotos, 6);
+  });
+});
+
+describe("heroMissingPctAfter", () => {
+  it("does not let a growing Active book pull % down when this burst stored nothing", () => {
+    assert.equal(
+      heroMissingPctAfter({
+        missingAfter: 783,
+        withPhotosBefore: 1742,
+        withPhotosAfter: 1760,
+        filledListings: 0,
+        filledPhotos: 0,
+      }),
+      pctMissing(783, 1742),
+    );
+  });
+
+  it("uses the after inventory when photos were actually stored", () => {
+    assert.equal(
+      heroMissingPctAfter({
+        missingAfter: 770,
+        withPhotosBefore: 1742,
+        withPhotosAfter: 1760,
+        filledListings: 5,
+        filledPhotos: 30,
+      }),
+      pctMissing(770, 1760),
+    );
+  });
+});
+
+describe("shouldAbortHeroScavengeEmptyBurst", () => {
+  it("stops after three empty hops with zero fills", () => {
+    assert.equal(
+      shouldAbortHeroScavengeEmptyBurst({
+        consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES,
+        filledPhotos: 0,
+        filledListings: 0,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldAbortHeroScavengeEmptyBurst({
+        consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES - 1,
+        filledPhotos: 0,
+        filledListings: 0,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldAbortHeroScavengeEmptyBurst({
+        consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES,
+        filledPhotos: 1,
+        filledListings: 1,
+      }),
+      false,
+    );
   });
 });
