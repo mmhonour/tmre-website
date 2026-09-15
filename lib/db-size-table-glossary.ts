@@ -13,7 +13,7 @@ const TABLE_PURPOSE: Record<(typeof POSTGRES_KNOWN_TABLES)[number], string> = {
   sync_queue:
     'Durable work queue. Thin crons enqueue a due job; the Railway runner claims a row and forks a child. Admin Syncs shows waiting / running / recent.',
   stats_cache:
-    'Precomputed town × sale/rental market payloads (medians, histograms, months supply, closed-daily counts). Rebuilt by the stats-cache job.',
+    'Precomputed town × sale/rental market payloads (medians, histograms, months supply, closed-daily counts) plus a preserved market-pulse-week:* timeline. Rebuilt by the stats-cache job; week keys survive hourly clears.',
   market_pulse_snapshots:
     'Weekly Market Pulse / Monday brief archive. One row per Eastern send-day so later briefs can show WoW / MoM / YoY. Not overwritten by the stats rebuild.',
   listing_tax_history:

@@ -41,6 +41,12 @@ import {
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
 import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
+import {
+  marketPulseCompareBlurbLines,
+  marketPulseCompareCaption,
+  type MarketPulseComparePeriod,
+  type MarketPulseWowCompare,
+} from '@/lib/market-pulse-wow'
 
 const NAVY = '#1B2A4A'
 const NAVY_DARK = '#131F38'
@@ -116,6 +122,8 @@ const LABEL_COL_PX = 124
 const VALUE_COL_PX = 70
 /** Stands in for `BAR_EXTERIOR_LANE` — where a full bar's percent goes. */
 const ASIDE_LANE_PX = 34
+/** Compare blurb to the right of each town panel — not on the bars. */
+const BLURB_COL_PX = 108
 /** `divide-white/[0.08]` over the panel. */
 const PANEL_RULE = '#37475D'
 
@@ -195,6 +203,8 @@ function metricBarRow(
       ? `<span style="${ASIDE_FONT}padding-left:4px;">${escapeHtml(asideText)}</span>`
       : ''
 
+  const valueHtml = escapeHtml(valueLabel)
+
   return `
     <tr>
       <td width="${LABEL_COL_PX}" style="width:${LABEL_COL_PX}px;padding:5px 8px 5px 0;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${PANEL_MUTED};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(metricLabel)}${labelAside}</td>
@@ -203,7 +213,7 @@ function metricBarRow(
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${valueHtml}</td>
       <td width="${ASIDE_LANE_PX}" style="width:${ASIDE_LANE_PX}px;padding:5px 0 5px 6px;border-top:1px solid ${PANEL_RULE};${ASIDE_FONT}text-align:left;vertical-align:middle;">${
         placement === 'outside-right' && asideText ? escapeHtml(asideText) : '&nbsp;'
       }</td>
@@ -289,10 +299,38 @@ function metricAside(
   return null
 }
 
+function compareBlurbCell(
+  wow: MarketPulseWowCompare | null | undefined,
+  city: string,
+  period: MarketPulseComparePeriod,
+): string {
+  if (!wow) {
+    return `<td width="${BLURB_COL_PX}" style="width:${BLURB_COL_PX}px;padding:0 0 0 10px;">&nbsp;</td>`
+  }
+  const lines = marketPulseCompareBlurbLines(wow, city)
+  const caption = marketPulseCompareCaption(wow, period)
+  const body =
+    lines.length === 0
+      ? `<p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:9px;line-height:1.35;color:${SLATE};">flat</p>`
+      : lines
+          .map(
+            (line) =>
+              `<p style="margin:0 0 2px 0;font-family:ui-monospace,Consolas,monospace;font-size:9px;line-height:1.35;color:${NAVY};">${escapeHtml(line.label)} ${escapeHtml(line.text)}</p>`,
+          )
+          .join('')
+  return `
+    <td width="${BLURB_COL_PX}" style="width:${BLURB_COL_PX}px;padding:4px 0 10px 10px;vertical-align:middle;">
+      <p style="margin:0 0 4px 0;font-family:ui-monospace,Consolas,monospace;font-size:8px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${escapeHtml(caption)}</p>
+      ${body}
+    </td>`
+}
+
 function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
   includeTax = false,
   taxYearLabel?: string | null,
+  wow?: MarketPulseWowCompare | null,
+  comparePeriod: MarketPulseComparePeriod = 'wow',
 ): string {
   const lookbackLabel = marketPulseLookbackChartLabel(
     DEFAULT_MARKET_PULSE_LOOKBACK_ID,
@@ -374,9 +412,7 @@ function stackedTownMetricsSection(
       // The composite is the towns averaged, so ranking it against a count of
       // them reads as nonsense — the spectrum still places it.
       const aggregate = isAllTownsCity(row.city)
-      return `
-        <tr>
-          <td style="padding:0 0 10px 0;">
+      const panel = `
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${PANEL_BG}" style="width:100%;border-collapse:separate;background-color:${PANEL_BG};border-radius:12px;">
               <tr>
                 <td style="padding:12px 14px;">
@@ -395,7 +431,20 @@ function stackedTownMetricsSection(
                   </table>
                 </td>
               </tr>
-            </table>
+            </table>`
+      return `
+        <tr>
+          <td style="padding:0 0 10px 0;">
+            ${
+              wow
+                ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+              <tr>
+                <td style="vertical-align:top;">${panel}</td>
+                ${compareBlurbCell(wow, row.city, comparePeriod)}
+              </tr>
+            </table>`
+                : panel
+            }
           </td>
         </tr>`
     })
@@ -503,12 +552,16 @@ function dealOfTheWeekSection(
 export type FormatMarketDigestHtmlOptions = {
   /** Opt-in footer from Admin → Communications → Social profiles. Default off. */
   includeSocialProfiles?: boolean
+  /** Email always shows this compare when present; the page switch defaults Off. */
+  wow?: MarketPulseWowCompare | null
+  comparePeriod?: MarketPulseComparePeriod
 }
 
 /**
- * Email-safe HTML for the Monday market brief — same as /market-pulse on load:
- * stacked town metrics (`marketPulseStackedMetrics`), Seller Friendly order,
- * ALL sales, default closed lookback, KPIs, filter summary sentence.
+ * Email-safe HTML for the Monday market brief — stacked town metrics
+ * (`marketPulseStackedMetrics`), Seller Friendly order, ALL sales, default
+ * closed lookback, KPIs. Compare blurbs sit to the right of each town panel
+ * (not on the bars). The page defaults that switch Off; the email does not.
  */
 export function formatMarketDigestHtml(
   snapshot: MarketDigestSnapshot,
@@ -609,6 +662,8 @@ export function formatMarketDigestHtml(
                   combinedRows,
                   snapshot.taxReady === true,
                   snapshot.taxYearLabel,
+                  options?.wow ?? null,
+                  options?.comparePeriod ?? 'wow',
                 )}
                 ${dealSection}
                 <tr><td style="padding:0 0 10px 0;">

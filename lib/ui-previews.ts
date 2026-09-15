@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "market-pulse-wow",
+    title: "Market Pulse week timeline",
+    summary:
+      "Off / WoW switch (MoM appears when a month-back slot exists). Compare numbers sit in a blurb beside each town panel, not on the bars. Fixture towns. stats_cache market-pulse-week:* is the timeline.",
+  },
+  {
     slug: "site-warm",
     title: "Lane 3 — Site warm",
     summary:

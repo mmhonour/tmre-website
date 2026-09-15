@@ -22,8 +22,13 @@ export const TRANSACT_TO_LIST_LABEL = 'TRAN$ACT to LIST'
 
 /**
  * Page-load defaults. Monday email (HTML + plaintext) must use this same
- * combination — never a visitor’s in-session Filters (unstacked, Buyer, etc.).
- * Source of truth: these constants + `marketPulseStackedMetrics()`.
+ * combination for the stacked charts — never a visitor’s in-session Filters
+ * (unstacked, Buyer, etc.). Source of truth: these constants +
+ * `marketPulseStackedMetrics()`.
+ *
+ * Compare blurbs are a deliberate split: email always includes WoW (or MoM if
+ * that is the oldest available slot); /market-pulse defaults the switch Off
+ * so the bars stay uncluttered.
  */
 
 export function marketPulseFavorSortLabel(
