@@ -550,8 +550,26 @@ export async function syncIncrementalListings(
           `failed — ${err instanceof Error ? err.message : String(err)}`,
         )
       }
+      // Photo 0 into R2 before mail. Lane 3 still walks the first six.
+      // RETS stays ids-only; this hop is after upsert.
+      try {
+        const { warmAlertLeadPhotos } = await import(
+          '@/lib/listing-alert-photo-warm'
+        )
+        const warmed = await warmAlertLeadPhotos(newListingIds)
+        await appendIncrementalStep(
+          'alert-thumb-warm',
+          `photo 0 · stored ${warmed.stored} · skipped ${warmed.skipped} · attempted ${warmed.attempted}`,
+        )
+      } catch (err) {
+        console.warn('[listings-sync/incremental] alert thumb warm failed', err)
+        await appendIncrementalStep(
+          'alert-thumb-warm',
+          `failed — ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
     }
-    // Data write is done. Mark listing alerts dirty and ring the Railway
+    // Thumbs prompted. Mark listing alerts dirty and ring the Railway
     // alerts job — Incremental does not send mail.
     try {
       const {

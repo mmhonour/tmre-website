@@ -61,9 +61,9 @@ export function describeIncrementalSyncArchitecture(): {
         id: 'lane-1',
         title: 'Lane 1 — RETS pull',
         host: 'Railway mls-sync',
-        owns: 'Claim the sync_queue row → fork a child → open RETS → modified-since pull (7 towns) → upsert listings → enqueue new MLS ids on incremental_photo_warm_queue (ids only) → mark listing alerts dirty + enqueue the Railway alerts job → stamp End + last_mls_sync_heartbeat → logout (auto). The parent holds the child to Configure → Budget and records timeout / crashed if it blows it. Admin Sync now and the watchdog enqueue rather than calling a run endpoint directly.',
+        owns: 'Claim the sync_queue row → fork a child → open RETS → modified-since pull (7 towns) → upsert listings → enqueue new MLS ids on incremental_photo_warm_queue (ids only) → prompt R2 for photo 0 of those new listings → mark listing alerts dirty + enqueue the Railway alerts job → stamp End + last_mls_sync_heartbeat → logout (auto). The parent holds the child to Configure → Budget and records timeout / crashed if it blows it. Admin Sync now and the watchdog enqueue rather than calling a run endpoint directly.',
         doesNot:
-          'Deal board, latest town feeds, Media/R2 photo bytes, stats_cache rebuild, spotlight refresh, or sending alert email. Mail is the Railway alerts job. Photo bytes for new Incremental inserts are Lane 3. Walking the rest of Active inventory for missing heroes is the hero-photos queue job (own forked child, lowest claim rank).',
+          'Deal board, latest town feeds, the rest of the showcase six, stats_cache rebuild, spotlight refresh, or sending alert email. Mail is the Railway alerts job. First-six photo bytes for new Incremental inserts are still Lane 3. Walking the rest of Active inventory for missing heroes is the hero-photos queue job (own forked child, lowest claim rank).',
       },
       {
         id: 'lane-2',
@@ -167,7 +167,7 @@ export function describeIncrementalSyncArchitecture(): {
         lane: 'railway',
         title: 'Warm handoff',
         detail:
-          'After Neon upserts: mark listing alerts dirty and enqueue the Railway alerts job. Incremental does not send mail. Then queue Netlify sync-listings-worker with sideWorkOnly + source=railway for board/stats warm plus draining incremental_photo_warm_queue. Handoff is non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
+          'After Neon upserts: prompt R2 for photo 0 of new listings, then mark listing alerts dirty and enqueue the Railway alerts job. Incremental does not send mail. Then queue Netlify sync-listings-worker with sideWorkOnly + source=railway for board/stats warm plus draining incremental_photo_warm_queue (first six). Handoff is non-fatal — look for warm-handoff in the step log. Needs NEXT_PUBLIC_SITE_URL + SYNC_CRON_SECRET on Railway.',
       },
       {
         id: 'thin-cron',

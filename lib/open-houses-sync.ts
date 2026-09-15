@@ -159,6 +159,22 @@ export async function syncOpenHouses(): Promise<OpenHouseSyncResult> {
   }
 
   try {
+    const { warmAlertLeadPhotos } = await import(
+      '@/lib/listing-alert-photo-warm'
+    )
+    const listingIds = [
+      ...new Set(
+        upcoming
+          .map((event) => event.listingId.trim() || event.listingKey.trim())
+          .filter((id) => id.length > 0),
+      ),
+    ]
+    await warmAlertLeadPhotos(listingIds)
+  } catch (err) {
+    console.warn('[open-houses-sync] alert thumb warm failed', err)
+  }
+
+  try {
     const {
       markOpenHouseAlertsDirty,
       enqueueAlertsJob,
