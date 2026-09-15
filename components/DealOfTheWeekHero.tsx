@@ -775,21 +775,31 @@ export default function DealOfTheWeekHero({
         } ${
           forcePhoneLayout
             ? "pt-8 pb-8"
-            : afterOverview
-              ? isDay
-                ? "pt-8 pb-8 lg:pt-10 lg:pb-12"
-                : "pt-8 pb-12 lg:pt-10 lg:pb-16"
-              : isDay
-                ? "pt-20 pb-8 lg:pt-28 lg:pb-12"
+            : isDay
+              ? afterOverview
+                ? "pt-8 pb-8 lg:pt-0 lg:pb-12"
+                : "pt-20 pb-8 lg:pt-0 lg:pb-12"
+              : afterOverview
+                ? "pt-8 pb-12 lg:pt-10 lg:pb-16"
                 : "pt-20 pb-12 lg:pt-24 lg:pb-16"
         }`}
       >
         <div
-          className={`grid items-start gap-8 ${
-            forcePhoneLayout ? "" : "lg:grid-cols-[1.05fr_1fr] lg:gap-12"
-          }`}
+          className={
+            isDay && !forcePhoneLayout
+              ? "relative"
+              : `grid items-start gap-8 ${
+                  forcePhoneLayout ? "" : "lg:grid-cols-[1.05fr_1fr] lg:gap-12"
+                }`
+          }
         >
-          <div className="space-y-3">
+          <div
+            className={`space-y-3 ${
+              isDay && !forcePhoneLayout
+                ? "lg:absolute lg:inset-x-0 lg:top-0 lg:z-[1] lg:h-[50dvh] lg:max-w-xl lg:pt-28"
+                : ""
+            }`}
+          >
             <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
@@ -909,7 +919,9 @@ export default function DealOfTheWeekHero({
             {isDay ? (
               <div
                 key={animateDealContent ? `insight-${slideKey}` : "insight-instant"}
-                className="max-w-xl space-y-4"
+                className={`max-w-xl space-y-4 ${
+                  forcePhoneLayout ? "" : "lg:hidden"
+                }`}
               >
                 <DealInsightCopy
                   text={dayInsight}
@@ -938,7 +950,11 @@ export default function DealOfTheWeekHero({
                 <DealSuperlatives words={superlatives} />
               </div>
             )}
-            <div className="animate-fade-up-delay-2 flex flex-wrap items-center gap-4">
+            <div
+              className={`animate-fade-up-delay-2 flex flex-wrap items-center gap-4 ${
+                isDay && !forcePhoneLayout ? "lg:hidden" : ""
+              }`}
+            >
               <Link
                 href="/intelligence"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
@@ -956,10 +972,19 @@ export default function DealOfTheWeekHero({
             </div>
           </div>
 
+          {isDay && !forcePhoneLayout ? (
+            <div className="hidden h-[50dvh] lg:block" aria-hidden />
+          ) : null}
+
           <div
+            key={
+              isDay && !forcePhoneLayout
+                ? `value-rise-${carousel.carouselIndex}`
+                : "value-static"
+            }
             className={`min-w-0 ${
               isDay && !forcePhoneLayout
-                ? "lg:sticky lg:top-24 deal-showcase-stage overflow-visible"
+                ? "deal-showcase-stage mt-8 overflow-visible lg:ml-auto lg:mt-0 lg:max-w-xl animate-dod-value-pick-rise"
                 : isDay
                   ? "deal-showcase-stage overflow-visible"
                   : "overflow-hidden"
@@ -1009,6 +1034,45 @@ export default function DealOfTheWeekHero({
               townLabel={isDay ? null : carousel.currentTown}
             />
           </div>
+          {isDay && !forcePhoneLayout ? (
+            <div className="mt-8 hidden max-w-xl space-y-4 lg:block">
+              <div
+                key={
+                  animateDealContent ? `insight-lg-${slideKey}` : "insight-lg-instant"
+                }
+                className="space-y-4"
+              >
+                <DealInsightCopy
+                  text={dayInsight}
+                  paragraphKey={
+                    animateDealContent
+                      ? `insight-lg-${slideKey}`
+                      : "insight-lg-instant"
+                  }
+                  className={`${dealInsightCopyClass}${
+                    animateDealContent ? " animate-deal-copy-refresh" : ""
+                  }`}
+                />
+                {!dayEmpty && superlatives.length > 0 ? (
+                  <DealSuperlatives words={superlatives} />
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <Link
+                  href="/intelligence"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
+                >
+                  See more deals
+                  <span aria-hidden>→</span>
+                </Link>
+                {!loadingState && !usedFallback && showing ? (
+                  <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/45">
+                    {`${showing.totalReviewed.toLocaleString()} scanned in ${townsScanned} · ${showing.qualifiedCount.toLocaleString()} below median`}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

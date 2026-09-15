@@ -390,6 +390,28 @@ body {
   will-change: transform, opacity, filter;
 }
 
+/* Desktop: value-pick starts at the bottom of the 50dvh bleed, holds so
+   the photo is fully visible, then rises over the lower part of the bleed. */
+@keyframes dodValuePickRise {
+  0%,
+  16% {
+    margin-top: 0;
+  }
+  100% {
+    margin-top: -24dvh;
+  }
+}
+
+.animate-dod-value-pick-rise {
+  animation: dodValuePickRise 10s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-dod-value-pick-rise {
+    animation: none;
+  }
+}
+
 @keyframes dealCopyRefresh {
   from {
     opacity: 0;
