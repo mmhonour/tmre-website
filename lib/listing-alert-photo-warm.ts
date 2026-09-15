@@ -21,7 +21,7 @@ export type AlertLeadPhotoWarmResult = {
 
 /**
  * Prompt R2 for photo 0 of listings Incremental / OH just wrote, then the
- * caller marks alerts dirty. Showcase six stay on Lane 3.
+ * caller marks alerts dirty. Showcase six stay on Site warm.
  */
 export async function warmAlertLeadPhotos(
   mlsIds: readonly string[],

@@ -145,13 +145,13 @@ async function runIncrementalSideWork(): Promise<{
   } catch (err) {
     console.warn('[sync-listings-work] incremental photo warm failed', err)
   }
-  // Listing mail is Incremental-only. Lane 3 used to call the same processor
+  // Listing mail is Incremental-only. Site warm used to call the same processor
   // and hide a dead Railway doorbell.
   return { savedSearchAlerts: null }
 }
 
 /**
- * Lane 3 handoff — the Neon write is the boundary, so once Railway has upserted
+ * Site warm handoff — the Neon write is the boundary, so once Railway has upserted
  * we ask Netlify to warm its own caches and run digests in its own process.
  *
  * Non-fatal by design: if the hop fails, stale-read rebuilds still refresh boards

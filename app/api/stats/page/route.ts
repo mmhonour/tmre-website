@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import {
-  fetchActiveListingsForCity,
-  fetchClosedListingsForCity,
-  listingCacheHeaders,
-} from '@/lib/listings-store'
+import { listingCacheHeaders } from '@/lib/listings-store'
 import { parseListingKindParam, type ListingKind } from '@/lib/listing-kind'
 import { computeMarketStats, computeSalesByVintage } from '@/lib/stats-compute'
 import {
-  computeTownBundleFromListings,
   getStatsCacheAgeMs,
   readStatsCache,
-  scheduleStatsCacheRebuildIfStale,
   STATS_CACHE_TTL_MS,
 } from '@/lib/stats-cache'
 import type { StatsListingRow } from '@/lib/stats-listing-rows'
@@ -18,7 +12,6 @@ import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
 
 type MarketStatsPayload = ReturnType<typeof computeMarketStats> & { generatedAt?: string }
 type VintagePayload = ReturnType<typeof computeSalesByVintage> & { generatedAt?: string }
@@ -50,49 +43,19 @@ async function readTownBundle(town: TmreTown, kind: ListingKind): Promise<StatsP
   }
 }
 
-async function fetchTownBundleLive(town: TmreTown, kind: ListingKind): Promise<StatsPageTownPayload> {
-  const [activeResult, closedResult] = await Promise.all([
-    fetchActiveListingsForCity(town, 500),
-    fetchClosedListingsForCity(town, 2500).catch((err) => {
-      console.warn(`[/api/stats/page] closed listings for ${town} failed`, err)
-      return { listings: [], source: 'rets' as const }
-    }),
-  ])
-  const bundle = computeTownBundleFromListings(
-    town,
-    kind,
-    activeResult.listings,
-    closedResult.listings,
-  )
-  return bundle
-}
-
 export async function GET(req: NextRequest) {
   const kind = parseListingKindParam(new URL(req.url).searchParams.get('kind'))
 
   try {
-    scheduleStatsCacheRebuildIfStale()
-
     const towns = Object.fromEntries(
       await Promise.all(
         TMRE_TOWNS.map(async (town) => [town, await readTownBundle(town, kind)] as const),
       ),
     ) as Record<TmreTown, StatsPageTownPayload>
 
-    const stillEmpty = !TMRE_TOWNS.some(
+    const servedFromCache = TMRE_TOWNS.some(
       (town) => towns[town].marketStats?.medianPrice != null,
     )
-    if (stillEmpty) {
-      const live = await Promise.all(
-        TMRE_TOWNS.map(async (town) => [town, await fetchTownBundleLive(town, kind)] as const),
-      )
-      Object.assign(towns, Object.fromEntries(live))
-    }
-
-    const marketByTown = await Promise.all(
-      TMRE_TOWNS.map((town) => readStatsCache<MarketStatsPayload>('market-stats', town, kind)),
-    )
-    const servedFromCache = marketByTown.some((cached) => cached?.medianPrice != null)
 
     const generatedAt =
       towns[TMRE_TOWNS[0]]?.marketStats?.generatedAt ??
@@ -111,7 +74,7 @@ export async function GET(req: NextRequest) {
       {
         headers: {
           ...listingCacheHeaders(servedFromCache ? 'db' : 'rets'),
-          'X-Stats-Cache': servedFromCache ? 'hit' : 'live',
+          'X-Stats-Cache': servedFromCache ? 'hit' : 'miss',
           'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
         },
       },

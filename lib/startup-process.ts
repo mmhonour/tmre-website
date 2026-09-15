@@ -237,7 +237,7 @@ export function describeStartupProcess(): {
         },
         {
           id: "incremental-spotlight-status",
-          title: "Spotlight status refresh (Lane 3)",
+          title: "Spotlight status refresh (Site warm)",
           timing: "Netlify sideWorkOnly / digests",
           detail:
             "refreshSpotlightStatuses(): runs on Netlify after Railway warm handoff (or legacy postHooks path). Polls RETS for the 5 spotlight listings’ current status and writes Postgres so the public badge stays truthful.",
@@ -249,13 +249,13 @@ export function describeStartupProcess(): {
           title: "Saved-search listing alerts (dirty only)",
           timing: "After Incremental RETS — does not send mail",
           detail:
-            "After new inserts, Incremental prompts R2 for photo 0, then marks alerts_listing_dirty and enqueues the Railway alerts job. It does not send email. Netlify Lane 3 does not send.",
+            "After new inserts, Incremental prompts R2 for photo 0, then marks alerts_listing_dirty and enqueues the Railway alerts job. It does not send email. Netlify Site warm does not send.",
           status: latestSyncEnabled ? "scheduled" : "skipped",
           statusLabel: latestSyncEnabled ? "dirty → Railway alerts" : "—",
         },
         {
           id: "incremental-town-feeds",
-          title: "Latest town feed warm (Lane 3)",
+          title: "Latest town feed warm (Site warm)",
           timing: "Netlify sideWorkOnly after handoff",
           detail:
             "rebuildLatestTownFeedCaches() on Netlify — never inside Railway mls-sync (that combination Node-OOMed the puller). Also available via stale-read rebuild if the warm-handoff hop fails.",
@@ -264,7 +264,7 @@ export function describeStartupProcess(): {
         },
         {
           id: "incremental-photo-warm",
-          title: "New-listing showcase photo warm (Lane 3)",
+          title: "New-listing showcase photo warm (Site warm)",
           timing: "Netlify sideWorkOnly after handoff",
           detail:
             "Incremental upserts write new MLS ids to incremental_photo_warm_queue (ids only in the RETS loop). After upsert it prompts R2 for photo 0 of those new listings so listing-alert mail is not a 404, then marks alerts dirty. The Netlify listings worker still drains up to 12 new listings per hop and pulls the first six full-size MediaURL photos. Leftovers wait for the next hop. A cache miss still falls back to ?fetch=1. Active-inventory catch-up is the operator CLI, not this hop.",
@@ -273,10 +273,10 @@ export function describeStartupProcess(): {
         },
         {
           id: "incremental-intel-board",
-          title: "Intelligence deal-board warm (Lane 3)",
+          title: "Intelligence deal-board warm (Site warm)",
           timing: "Netlify sideWorkOnly after handoff",
           detail:
-            "rebuildIntelligenceDealBoardCache() on Netlify only. Railway stops at the Neon write (Lane 2); boards refresh from Lane 3 or stale-read.",
+            "rebuildIntelligenceDealBoardCache() on Netlify only. Railway stops at the Neon write (Lane 2); boards refresh from Site warm or stale-read.",
           status: latestSyncEnabled ? "scheduled" : "skipped",
           statusLabel: latestSyncEnabled ? "Netlify warm" : "—",
         },

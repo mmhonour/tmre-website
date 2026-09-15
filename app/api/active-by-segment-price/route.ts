@@ -16,7 +16,6 @@ import {
 } from "@/lib/stats-compute";
 import {
   readStatsCache,
-  scheduleStatsCacheRebuildIfStale,
   writeStatsCache,
 } from "@/lib/stats-cache";
 import { TMRE_TOWNS, isTmreTown } from "@/lib/tmre-towns";
@@ -52,8 +51,6 @@ async function loadSegmentPayload(
       segmentId: cached.segmentId ?? segmentId,
     };
   }
-
-  scheduleStatsCacheRebuildIfStale(true);
 
   const active =
     city === "All"

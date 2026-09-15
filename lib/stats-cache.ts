@@ -439,13 +439,13 @@ async function ensureStatsCachePopulated(): Promise<void> {
   }
 }
 
+/** Read a stats_cache row. Does not rebuild. Railway stats-cache writes. */
 export async function readStatsCache<T>(
   scope: StatsCacheScope,
   city: string,
   kind: ListingKind,
 ): Promise<T | null> {
   if (!(await hasLocalListingsCache())) return null
-  await ensureStatsCachePopulated()
   const row = await readStatsCacheRow(statsCacheKey(scope, city, kind))
   if (!row) return null
   try {

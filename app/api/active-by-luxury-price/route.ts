@@ -9,7 +9,6 @@ import {
 } from '@/lib/stats-compute'
 import {
   readStatsCache,
-  scheduleStatsCacheRebuildIfStale,
   writeStatsCache,
 } from '@/lib/stats-cache'
 import { TMRE_TOWNS, isTmreTown } from '@/lib/tmre-towns'
@@ -66,8 +65,6 @@ export async function GET(req: NextRequest) {
         },
       )
     }
-
-    scheduleStatsCacheRebuildIfStale(true)
 
     const active =
       city === 'All'

@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "site-warm",
+    title: "Lane 3 — Site warm",
+    summary:
+      "Lane 3 is the slot; Site warm is the parlance. Netlify cache fill after Railway writes Neon. Not mail. Not RETS. Not a Railway job.",
+  },
+  {
     slug: "listing-map-town-pin",
     title: "Listing map — town pin",
     summary:

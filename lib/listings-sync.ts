@@ -58,7 +58,7 @@ export type TownSyncResult = {
   inserted?: number
   /** Existing rows overwritten (incremental path). */
   updated?: number
-  /** MLS ids inserted this town — queued for Lane 3 photo warm. */
+  /** MLS ids inserted this town — queued for Site warm (showcase six). */
   insertedIds?: string[]
   ok: boolean
   error?: string
@@ -541,7 +541,7 @@ export async function syncIncrementalListings(
         const queued = await enqueueIncrementalPhotoWarm(newListingIds)
         await appendIncrementalStep(
           'photo-warm-queue',
-          `${newListingIds.length} new listings → ${queued} on Lane 3 queue`,
+          `${newListingIds.length} new listings → ${queued} on Site warm queue`,
         )
       } catch (err) {
         console.warn('[listings-sync/incremental] photo warm queue failed', err)
@@ -550,7 +550,7 @@ export async function syncIncrementalListings(
           `failed — ${err instanceof Error ? err.message : String(err)}`,
         )
       }
-      // Photo 0 into R2 before mail. Lane 3 still walks the first six.
+      // Photo 0 into R2 before mail. Site warm still walks the first six.
       // RETS stays ids-only; this hop is after upsert.
       try {
         const { warmAlertLeadPhotos } = await import(

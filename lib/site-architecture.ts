@@ -69,7 +69,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Next.js host, serverless functions, crons, Blobs",
     kind: "core",
     note:
-      "Lane 3: site-cache warm only (sideWorkOnly after Railway handoff) — not email. Thin crons enqueue runner jobs onto sync_queue rather than pulling RETS themselves, and only rescue a stranded row when the Railway runner heartbeat is stale. DNS for the domain is the sibling Netlify DNS node.",
+      "Lane 3 — Site warm: site-cache warm only (sideWorkOnly after Railway handoff) — not email. Thin crons enqueue runner jobs onto sync_queue rather than pulling RETS themselves, and only rescue a stranded row when the Railway runner heartbeat is stale. DNS for the domain is the sibling Netlify DNS node.",
   },
   {
     id: "railway",
@@ -77,7 +77,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
     role: "Always-on sync_queue runner (claims jobs, forks a child per job)",
     kind: "core",
     note:
-      "Lane 1: claims sync_queue rows and forks job-child per job, so an OOM or a blown deadline kills only the child. RETS pull runs with MLS_SYNC_SERVICE=1, postHooks:false. Lane 2 handoff is the Neon End/heartbeat write. Queues Netlify sideWorkOnly for Lane 3 warm.",
+      "Lane 1: claims sync_queue rows and forks job-child per job, so an OOM or a blown deadline kills only the child. RETS pull runs with MLS_SYNC_SERVICE=1, postHooks:false. Lane 2 handoff is the Neon End/heartbeat write. Queues Netlify sideWorkOnly for Site warm.",
   },
   {
     id: "eventbridge",
@@ -185,7 +185,7 @@ export const SITE_ARCH_EDGES: SiteArchEdge[] = [
   {
     from: "railway",
     to: "netlify",
-    label: "Lane 3 warm handoff (sideWorkOnly)",
+    label: "Lane 3 Site warm handoff (sideWorkOnly)",
   },
   { from: "netlify", to: "neon", label: "enqueue sync_queue (crons)" },
   { from: "netlify", to: "neon", label: "SQL · warm caches · digests" },

@@ -88,7 +88,7 @@ function JobCard({
 
 /**
  * Dirty = Incremental or OH finished a write and the Railway alerts job
- * has not cleared it. Last send is that job, not Lane 3.
+ * has not cleared it. Last send is that job, not Site warm.
  */
 export default function AdminAlertJobHealth({
   lastRuns,

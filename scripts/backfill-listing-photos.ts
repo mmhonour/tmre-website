@@ -2,7 +2,7 @@
 /**
  * Pull listing photos that are already in prod Postgres but not on R2.
  *
- * Incremental sync only writes MLS rows (and queues new inserts for Lane 3).
+ * Incremental sync only writes MLS rows (and queues new inserts for Site warm).
  * Everything already in inventory stays cold until someone opens the showcase
  * (`?size=full` → Media/RETS → R2). This CLI walks those rows and stores the
  * missing bytes. Do not run it on Railway Incremental — that process OOMs
