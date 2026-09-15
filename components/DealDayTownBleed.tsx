@@ -24,8 +24,8 @@ export function dealTownBleedPattern(index: number): DealTownBleedPattern {
 }
 
 /**
- * Full-bleed wash from the town-name line down to the town filter.
- * Carousel steps cycle three paints: edges→center, center→edges, top→down.
+ * Background of the headline + town-filter block only (not the town-name
+ * line above). Carousel paints: edges→center, center→edges, top→down.
  */
 export default function DealDayTownBleed({
   carouselIndex,
@@ -53,7 +53,7 @@ export default function DealDayTownBleed({
 
   return (
     <div
-      className="pointer-events-none absolute inset-y-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
       aria-hidden
     >
       <div className="dod-town-bleed-rest absolute inset-0" />

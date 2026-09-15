@@ -772,12 +772,7 @@ export default function DealOfTheWeekHero({
               </span>
             </div>
             {isDay ? (
-              <div className="relative">
-                <DealDayTownBleed
-                  carouselIndex={carousel.carouselIndex}
-                  slideDir={carousel.slideDir}
-                />
-                <div className="relative z-[1] space-y-3">
+              <>
             <DealDayTownList
               activeTown={city ?? carousel.currentTown}
               slideDir={carousel.slideDir}
@@ -785,6 +780,12 @@ export default function DealOfTheWeekHero({
                 !city && !listingParam ? carousel.selectTown : undefined
               }
             />
+              <div className="relative -mx-6 px-6 lg:-mx-10 lg:px-10">
+                <DealDayTownBleed
+                  carouselIndex={carousel.carouselIndex}
+                  slideDir={carousel.slideDir}
+                />
+                <div className="relative z-[1] space-y-3 py-3">
             <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
               Today&apos;s{" "}
               <span className="italic gold-shimmer">
@@ -825,6 +826,7 @@ export default function DealOfTheWeekHero({
                 />
                 </div>
               </div>
+              </>
             ) : (
               <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-white animate-fade-up">
                 {headlineLead}{" "}

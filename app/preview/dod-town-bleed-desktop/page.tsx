@@ -24,9 +24,9 @@ export default function DodTownBleedDesktopPreviewPage() {
           >
             /deal-of-the-day
           </Link>
-          . Town name through the town filter is full-bleed. Carousel paints:
-          edges meet, center lines paint out, then a line from the top. Use ‹ ›
-          to step towns.
+          . On mobile the bleed is only the background behind the headline and
+          the town / sale / type filter — not a page-tall panel. Use ‹ › to
+          step towns.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

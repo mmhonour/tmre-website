@@ -196,13 +196,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day town bleeds — desktop",
     summary:
-      "Live weekly Deal of the Day picks. Full-bleed from the town name to the town filter. Three carousel paints. No old hero + thumbnail strip.",
+      "Live weekly Deal of the Day picks. Bleed is the background behind the headline and town / sale / type filter only. Three carousel paints.",
   },
   {
     slug: "dod-town-bleed-mobile",
     title: "Deal of the Day town bleeds — mobile",
     summary:
-      "Live weekly picks on a phone. Same Deal of the Day chrome. Full-bleed under the site header on a phone; 390 frame on a laptop.",
+      "Live weekly picks on a phone. Bleed behind the headline and town-filter row only — not a page-tall panel. 390 frame on a laptop.",
   },
 ];
 

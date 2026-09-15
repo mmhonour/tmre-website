@@ -21,8 +21,10 @@ export default function DodTownBleedMobilePreviewPage() {
             Deal of the Day town bleeds
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            Live weekly picks in a phone frame. On a phone this URL is the
-            real Deal of the Day chrome under the site header.
+            Live weekly picks. The bleed sits behind “Today’s score / One
+            listing” and the pause · town · For Sale / Homes row — not a
+            vertical panel. On a phone this URL is that chrome under the
+            site header.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}
