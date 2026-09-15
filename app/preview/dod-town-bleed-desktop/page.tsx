@@ -25,9 +25,11 @@ export default function DodTownBleedDesktopPreviewPage() {
           >
             /deal-of-the-day
           </Link>
-          . “Today’s score / One listing” sits above the photo bleed. The
-          value-pick card has no photo and no second carousel. Stills for
-          every town are below. Use ‹ › to step towns.
+          . On desktop the listing photo is a home-page-style full bleed
+          across the top half of the viewport. “Today’s score / One listing”
+          sits above the town / sale row. The value-pick card has no photo
+          and no second carousel. Stills for every town are below. Use ‹ ›
+          to step towns.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

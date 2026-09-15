@@ -32,9 +32,9 @@ function bleedPhotoSrc(photoUrl: string | null | undefined): string | null {
 }
 
 /**
- * Listing photo behind the town-filter row only — not the “Today’s score /
- * One listing” headline above. Carousel paints: edges→center, center→edges,
- * top→down.
+ * Listing photo for the DOTD bleed. Desktop `hero` fills the top half of the
+ * page (home-page atmosphere). `band` is the phone strip behind pause · town ·
+ * For Sale only. Carousel paints: edges→center, center→edges, top→down.
  */
 export default function DealDayTownBleed({
   carouselIndex,
@@ -42,12 +42,14 @@ export default function DealDayTownBleed({
   playOnMount = true,
   photoUrl = null,
   photoAlt = "",
+  layout = "band",
 }: {
   carouselIndex: number;
   slideDir?: "next" | "prev" | null;
   playOnMount?: boolean;
   photoUrl?: string | null;
   photoAlt?: string;
+  layout?: "band" | "hero";
 }) {
   const src = bleedPhotoSrc(photoUrl);
   const [paint, setPaint] = useState<{
@@ -75,14 +77,18 @@ export default function DealDayTownBleed({
           src={src}
           alt={photoAlt}
           className="absolute inset-0"
-          imgClassName="absolute inset-0 h-full w-full object-cover"
+          imgClassName={`absolute inset-0 h-full w-full object-cover object-center ${
+            layout === "hero" ? "lg:scale-105" : ""
+          }`}
           placeholderClassName="absolute inset-0 bg-navy-light/50"
         />
       ) : null}
       <div
         className={
           src
-            ? "dod-town-bleed-photo-wash absolute inset-0"
+            ? layout === "hero"
+              ? "dod-town-bleed-hero-wash absolute inset-0"
+              : "dod-town-bleed-photo-wash absolute inset-0"
             : "dod-town-bleed-rest absolute inset-0"
         }
       />

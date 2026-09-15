@@ -741,14 +741,36 @@ export default function DealOfTheWeekHero({
     : [];
 
   return (
-    <section className="relative navy-gradient overflow-hidden">
+    <section
+      className={`relative navy-gradient overflow-hidden ${
+        isDay && !forcePhoneLayout ? "lg:min-h-[50dvh]" : ""
+      }`}
+    >
       <div className="absolute inset-0 hero-grid opacity-60" aria-hidden />
       <div
         className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-navy"
         aria-hidden
       />
+      {isDay && !forcePhoneLayout ? (
+        <div
+          className="pointer-events-none absolute left-1/2 top-0 z-0 hidden h-[50dvh] w-screen -translate-x-1/2 overflow-hidden lg:block"
+          aria-hidden
+        >
+          <DealDayTownBleed
+            layout="hero"
+            carouselIndex={carousel.carouselIndex}
+            slideDir={carousel.slideDir}
+            photoUrl={showing?.photoUrl ?? null}
+            photoAlt={
+              l
+                ? `${l.address.street || l.address.full}, ${l.address.city}`
+                : ""
+            }
+          />
+        </div>
+      ) : null}
       <div
-        className={`relative mx-auto max-w-7xl ${
+        className={`relative z-[1] mx-auto max-w-7xl ${
           forcePhoneLayout ? "px-6" : "px-6 lg:px-10"
         } ${
           forcePhoneLayout
@@ -828,6 +850,7 @@ export default function DealOfTheWeekHero({
                     : "-mx-6 px-6 lg:-mx-10 lg:px-10"
                 }`}
               >
+                <div className={forcePhoneLayout ? "" : "lg:hidden"}>
                 <DealDayTownBleed
                   carouselIndex={carousel.carouselIndex}
                   slideDir={carousel.slideDir}
@@ -838,6 +861,7 @@ export default function DealOfTheWeekHero({
                       : ""
                   }
                 />
+                </div>
                 <div className="relative z-[1] py-5">
                 <DealDayChooserBar
                   townLabel={carousel.currentTown}

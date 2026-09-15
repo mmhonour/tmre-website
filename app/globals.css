@@ -566,6 +566,16 @@ body {
   );
 }
 
+/* Desktop hero — same atmosphere scrim as the home-page photo. */
+.dod-town-bleed-hero-wash {
+  background: linear-gradient(
+    180deg,
+    rgb(13 20 36 / 0.88) 0%,
+    rgb(13 20 36 / 0.72) 42%,
+    rgb(13 20 36 / 0.82) 100%
+  );
+}
+
 @keyframes dodBleedMeetLeft {
   0% {
     transform: scaleX(0);
