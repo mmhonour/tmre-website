@@ -202,8 +202,20 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'slot_date (Eastern send-day)',
     owner: 'lib/db/market-pulse-snapshots-repo.ts',
     notes:
-      'Point-in-time Monday brief / Market Pulse payload for WoW / MoM / YoY. Not stats_cache — that table is current market math and is overwritten. Written on a real send and by npm run snapshot:market-pulse. Send test does not write. Page + Monday email subtract the previous slot server-side; nothing shows until two send-days exist.',
+      'Point-in-time Monday brief / Market Pulse payload. One row per Eastern send-day. Written on a real send and by npm run snapshot:market-pulse. Send test does not write. Stacked town numbers for the compare timeline also live in stats_cache as market-pulse-week:* (preserved across hourly clears). Page switch defaults Off; email always includes a WoW or MoM blurb beside each town chart.',
     live: { kind: 'postgres_table', table: 'market_pulse_snapshots' },
+  },
+  {
+    id: 'market-pulse-week',
+    name: 'Market Pulse week timeline',
+    category: 'market',
+    medium: 'postgres',
+    location: 'stats_cache',
+    keyPattern: 'market-pulse-week:sale:all:v1:{YYYY-MM-DD}',
+    owner: 'lib/market-pulse-week-cache.ts',
+    notes:
+      'One Eastern send-day of default stacked town numbers (ALL sales). Survives hourly stats_cache clears. Current slot upserted on rebuild; older Mondays stay so WoW / MoM / YoY can walk backwards. Seeded from market_pulse_snapshots when a week key is missing.',
+    live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-week:' },
   },
   {
     id: 'market-pulse-tax',

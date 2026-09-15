@@ -253,16 +253,19 @@ async function runMarketDigestSend(
     const snapshot = await buildMarketDigestSnapshot({
       includeClosedTrailing: true,
     })
-    const { loadMarketPulseWow } = await import('@/lib/market-pulse-wow-load')
-    const wow = await loadMarketPulseWow(snapshot).catch((err) => {
-      console.warn('[market-digest] could not load prior-week pulse snapshot', err)
-      return null
+    const { loadMarketPulseCompares } = await import('@/lib/market-pulse-week-cache')
+    const { pickEmailMarketPulseCompare } = await import('@/lib/market-pulse-wow')
+    const compares = await loadMarketPulseCompares(snapshot).catch((err) => {
+      console.warn('[market-digest] could not load pulse compares', err)
+      return { wow: null, mom: null, yoy: null }
     })
+    const emailCompare = pickEmailMarketPulseCompare(compares)
     const { subject, text, html } = formatMarketDigestEmail(snapshot, {
       subjectTemplate: config.subjectTemplate,
       includeSocialProfiles: config.includeSocialProfiles,
       weekdayEt: config.weekdayEt,
-      wow,
+      wow: emailCompare?.compare ?? null,
+      comparePeriod: emailCompare?.period,
     })
     const from = resendFrom('TMRE Market Brief')
 

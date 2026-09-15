@@ -43,13 +43,17 @@ const SLOT_MONTHS = [
   'Dec',
 ] as const
 
-/** `2026-09-07` → `7 Sep`. */
-export function formatMarketPulseWowSlotLabel(slotDate: string): string {
+/** `2026-09-07` → `7 Sep`. Pass `withYear` for YoY. */
+export function formatMarketPulseWowSlotLabel(
+  slotDate: string,
+  withYear = false,
+): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(slotDate.trim())
   if (!m) return slotDate
   const month = SLOT_MONTHS[Number(m[2]) - 1]
   const day = String(Number(m[3]))
-  return month ? `${day} ${month}` : slotDate
+  if (!month) return slotDate
+  return withYear ? `${day} ${month} ${m[1]}` : `${day} ${month}`
 }
 
 function finiteOrNull(n: number | null | undefined): number | null {
@@ -186,8 +190,118 @@ export function buildMarketPulseWow(
   }
 }
 
+export type MarketPulseComparePeriod = 'wow' | 'mom' | 'yoy'
+
+export type MarketPulseCompareSet = {
+  wow: MarketPulseWowCompare | null
+  mom: MarketPulseWowCompare | null
+  yoy: MarketPulseWowCompare | null
+}
+
+export const EMPTY_MARKET_PULSE_COMPARES: MarketPulseCompareSet = {
+  wow: null,
+  mom: null,
+  yoy: null,
+}
+
+export function availableComparePeriods(
+  set: MarketPulseCompareSet,
+): MarketPulseComparePeriod[] {
+  const out: MarketPulseComparePeriod[] = []
+  if (set.wow) out.push('wow')
+  if (set.mom) out.push('mom')
+  if (set.yoy) out.push('yoy')
+  return out
+}
+
+/** Monday email always shows a compare; page defaults Off. Prefer WoW, then MoM. */
+export function pickEmailMarketPulseCompare(
+  set: MarketPulseCompareSet,
+): { period: MarketPulseComparePeriod; compare: MarketPulseWowCompare } | null {
+  if (set.wow) return { period: 'wow', compare: set.wow }
+  if (set.mom) return { period: 'mom', compare: set.mom }
+  return null
+}
+
+export function addIsoDays(isoDate: string, days: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim())
+  if (!m) return isoDate
+  const utc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const next = new Date(utc + days * 86_400_000)
+  const y = next.getUTCFullYear()
+  const mo = String(next.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(next.getUTCDate()).padStart(2, '0')
+  return `${y}-${mo}-${d}`
+}
+
+/**
+ * Latest stored slot strictly before `currentSlot` and on/before
+ * `currentSlot − minDaysAgo`. WoW uses 1 day (any prior Monday).
+ */
+export function pickPriorSlotDate(
+  slotDates: readonly string[],
+  currentSlot: string,
+  minDaysAgo: number,
+): string | null {
+  const cutoff = addIsoDays(currentSlot, -Math.max(1, minDaysAgo))
+  const prior = slotDates
+    .filter((s) => s < currentSlot && s <= cutoff)
+    .sort()
+    .at(-1)
+  return prior ?? null
+}
+
 export function marketPulseWowCaption(wow: MarketPulseWowCompare): string {
   return `WoW vs ${wow.priorSlotLabel}`
+}
+
+export function marketPulseCompareCaption(
+  compare: MarketPulseWowCompare,
+  period: MarketPulseComparePeriod,
+): string {
+  const prefix = period === 'wow' ? 'WoW' : period === 'mom' ? 'MoM' : 'YoY'
+  const label =
+    period === 'yoy'
+      ? formatMarketPulseWowSlotLabel(compare.priorSlotDate, true)
+      : compare.priorSlotLabel
+  return `${prefix} vs ${label}`
+}
+
+const BLURB_LABELS: Record<MarketPulseStackedMetricId, string> = {
+  inventory: 'Inventory',
+  monthsSupply: 'MOS',
+  avgDom: 'DOM',
+  closed: 'Closed',
+  medianPrice: 'Median',
+  priceDelta: 'Delta',
+  averagePrice: 'Average',
+  saleToAsk: 'TRAN$ACT',
+  medianTax: 'Median tax',
+  taxDelta: 'Tax delta',
+  averageTax: 'Average tax',
+}
+
+function isQuietDelta(text: string, delta: number): boolean {
+  if (delta === 0) return true
+  return text === '0' || text === '0.0 mo' || text === '0d' || text === '$0K'
+}
+
+/** Town blurb beside the stacked chart — not on the bars. */
+export function marketPulseCompareBlurbLines(
+  compare: MarketPulseWowCompare | null | undefined,
+  city: string,
+): { id: MarketPulseStackedMetricId; label: string; text: string }[] {
+  if (!compare) return []
+  const deltas = compare.byCity[marketPulseWowCityKey(city)]
+  if (!deltas) return []
+  const lines: { id: MarketPulseStackedMetricId; label: string; text: string }[] =
+    []
+  for (const id of MARKET_PULSE_STACKED_METRIC_IDS) {
+    const d = deltas[id]
+    if (!d || isQuietDelta(d.text, d.delta)) continue
+    lines.push({ id, label: BLURB_LABELS[id], text: d.text })
+  }
+  return lines
 }
 
 export function marketPulseWowTextFor(
@@ -197,4 +311,17 @@ export function marketPulseWowTextFor(
 ): string | null {
   if (!wow) return null
   return wow.byCity[marketPulseWowCityKey(city)]?.[metricId]?.text ?? null
+}
+
+/** One-line town blurb for plaintext email, e.g. `WoW vs 7 Sep: Inventory +12; Closed +11`. */
+export function marketPulseCompareBlurbPlain(
+  compare: MarketPulseWowCompare | null | undefined,
+  city: string,
+  period: MarketPulseComparePeriod,
+): string | null {
+  const lines = marketPulseCompareBlurbLines(compare, city)
+  if (!compare || lines.length === 0) return null
+  return `${marketPulseCompareCaption(compare, period)}: ${lines
+    .map((l) => `${l.label} ${l.text}`)
+    .join('; ')}`
 }

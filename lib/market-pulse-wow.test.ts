@@ -2,10 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { MarketPulseCombinedTownRow } from './market-pulse-combined-rows'
 import {
+  addIsoDays,
   buildMarketPulseWow,
   formatMarketPulseWowSlotLabel,
+  marketPulseCompareBlurbLines,
   marketPulseWowCaption,
   marketPulseWowTextFor,
+  pickEmailMarketPulseCompare,
+  pickPriorSlotDate,
 } from './market-pulse-wow'
 
 function row(
@@ -108,5 +112,50 @@ describe('buildMarketPulseWow', () => {
       ),
       null,
     )
+  })
+
+  it('omits quiet zeros from the beside-chart blurb', () => {
+    const wow = buildMarketPulseWow(current, prior, '2026-09-07')
+    const lines = marketPulseCompareBlurbLines(wow, 'Westport')
+    assert.ok(!lines.some((l) => l.id === 'monthsSupply'))
+    assert.ok(lines.some((l) => l.id === 'inventory' && l.text === '−6'))
+  })
+})
+
+describe('pickEmailMarketPulseCompare', () => {
+  it('prefers WoW then MoM, never YoY as the email default', () => {
+    const wow = buildMarketPulseWow(
+      [row('All', { activeCount: 10 })],
+      [row('All', { activeCount: 8 })],
+      '2026-09-07',
+    )
+    const mom = buildMarketPulseWow(
+      [row('All', { activeCount: 10 })],
+      [row('All', { activeCount: 20 })],
+      '2026-08-10',
+    )
+    assert.ok(wow && mom)
+    const picked = pickEmailMarketPulseCompare({ wow, mom, yoy: null })
+    assert.equal(picked?.period, 'wow')
+    assert.equal(
+      pickEmailMarketPulseCompare({ wow: null, mom, yoy: null })?.period,
+      'mom',
+    )
+    assert.equal(
+      pickEmailMarketPulseCompare({ wow: null, mom: null, yoy: mom }),
+      null,
+    )
+  })
+})
+
+describe('pickPriorSlotDate', () => {
+  const slots = ['2026-09-14', '2026-09-07', '2026-08-10', '2025-09-15']
+
+  it('walks back one Monday for WoW, a month for MoM, a year for YoY', () => {
+    assert.equal(pickPriorSlotDate(slots, '2026-09-14', 1), '2026-09-07')
+    assert.equal(pickPriorSlotDate(slots, '2026-09-14', 28), '2026-08-10')
+    assert.equal(pickPriorSlotDate(slots, '2026-09-14', 365), null)
+    assert.equal(pickPriorSlotDate(slots, '2026-09-14', 350), '2025-09-15')
+    assert.equal(addIsoDays('2026-09-14', -28), '2026-08-17')
   })
 })

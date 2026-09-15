@@ -7,7 +7,8 @@ import type {
   MarketDigestClosedTownCount,
   MarketDigestSnapshot,
 } from "@/lib/market-digest-types";
-import type { MarketPulseWowCompare } from "@/lib/market-pulse-wow";
+import type { MarketPulseCompareSet } from "@/lib/market-pulse-wow";
+import { EMPTY_MARKET_PULSE_COMPARES } from "@/lib/market-pulse-wow";
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
@@ -55,12 +56,11 @@ type ClosedFetchState = {
 export default function MarketPulseContent({
   snapshot,
   etDate,
-  wow = null,
+  compares,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
-  /** Precomputed vs last Monday. Hidden off ALL + 12 mo. */
-  wow?: MarketPulseWowCompare | null;
+  compares: MarketPulseCompareSet;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
   const [lookbackId, setLookbackId] = useState<MarketPulseLookbackId>(
@@ -388,10 +388,10 @@ export default function MarketPulseContent({
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}
-      wow={
+      compares={
         category === "all" && lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
-          ? wow
-          : null
+          ? compares
+          : EMPTY_MARKET_PULSE_COMPARES
       }
     />
   );

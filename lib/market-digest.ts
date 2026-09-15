@@ -52,8 +52,10 @@ import {
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
-  marketPulseWowCaption,
-  marketPulseWowTextFor,
+  marketPulseCompareBlurbLines,
+  marketPulseCompareBlurbPlain,
+  marketPulseCompareCaption,
+  type MarketPulseComparePeriod,
   type MarketPulseWowCompare,
 } from '@/lib/market-pulse-wow'
 import {
@@ -817,8 +819,9 @@ export type FormatMarketDigestEmailOptions = {
   includeSocialProfiles?: boolean
   /** Send-day pick list (0=Sun … 6=Sat ET). Drives subject weekday + `{date}`. */
   weekdayEt?: SyncScheduleWeekdayEt
-  /** Precomputed vs last send-day. Same payload the page shows on load. */
+  /** Precomputed vs a prior send-day. Email always includes this when present. */
   wow?: MarketPulseWowCompare | null
+  comparePeriod?: MarketPulseComparePeriod
 }
 
 export function formatMarketDigestEmail(
@@ -883,24 +886,27 @@ export function formatMarketDigestEmail(
     }),
     (r) => isAllTownsCity(r.city),
   )
+  const comparePeriod = options?.comparePeriod ?? 'wow'
   const stackedLines = [
     'TOWN METRICS STACKED (sales · Seller Friendly)',
     '---------------------------------------------',
-    ...(options?.wow ? [marketPulseWowCaption(options.wow)] : []),
     ...(combined.length === 0
       ? ['(no town rows in cache yet)']
       : combined.flatMap((row) => {
           const city = row.city.trim() || '—'
           const heat = heatByCity.get(row.city)
+          const blurb = marketPulseCompareBlurbPlain(
+            options?.wow ?? null,
+            row.city,
+            comparePeriod,
+          )
           return [
             heat == null ? city : `${city} — ${marketPulseHeatLabel(heat)}`,
             ...stackedMetrics.map((m) => {
-              const wowText = marketPulseWowTextFor(options?.wow, row.city, m.id)
               const value = m.format(row)
-              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${
-                wowText ? `${value}  ${wowText}` : value
-              }`
+              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${value}`
             }),
+            ...(blurb ? [`  ${blurb}`] : []),
           ]
         })),
     '',
@@ -976,6 +982,7 @@ export function formatMarketDigestEmail(
   const html = formatMarketDigestHtml(snapshot, etDate, {
     includeSocialProfiles: includeSocial,
     wow: options?.wow ?? null,
+    comparePeriod,
   })
 
   return { subject, text, html }

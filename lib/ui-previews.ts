@@ -8,9 +8,9 @@ export type UiPreviewEntry = {
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
     slug: "market-pulse-wow",
-    title: "Market Pulse week-over-week",
+    title: "Market Pulse week timeline",
     summary:
-      "Stacked town values carry a precomputed WoW vs the previous Monday on market_pulse_snapshots. Fixture towns. Hidden off ALL / 12 mos / stacked.",
+      "Off / WoW switch (MoM appears when a month-back slot exists). Compare numbers sit in a blurb beside each town panel, not on the bars. Fixture towns. stats_cache market-pulse-week:* is the timeline.",
   },
   {
     slug: "site-warm",

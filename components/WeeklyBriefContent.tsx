@@ -13,6 +13,7 @@ import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
+import MarketPulseCompareBlurb from "@/components/MarketPulseCompareBlurb";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
 import {
   marketPulseTownScale,
@@ -85,7 +86,12 @@ import {
 import type { StatsValueCalc } from "@/lib/stats-compute";
 import { splitSentences } from "@/lib/split-sentences";
 import {
-  marketPulseWowCaption,
+  availableComparePeriods,
+  EMPTY_MARKET_PULSE_COMPARES,
+  marketPulseCompareBlurbLines,
+  marketPulseCompareCaption,
+  type MarketPulseComparePeriod,
+  type MarketPulseCompareSet,
   type MarketPulseWowCompare,
 } from "@/lib/market-pulse-wow";
 
@@ -100,6 +106,52 @@ function closedNounFor(kind: ListingKind): { title: string; lower: string } {
     : { title: "Closed sales", lower: "closed sales" };
 }
 
+const COMPARE_PERIOD_LABEL: Record<"off" | MarketPulseComparePeriod, string> = {
+  off: "Off",
+  wow: "WoW",
+  mom: "MoM",
+  yoy: "YoY",
+};
+
+function ComparePeriodSwitch({
+  periods,
+  value,
+  onChange,
+}: {
+  periods: MarketPulseComparePeriod[];
+  value: "off" | MarketPulseComparePeriod;
+  onChange: (next: "off" | MarketPulseComparePeriod) => void;
+}) {
+  if (periods.length === 0) return null;
+  const options: Array<"off" | MarketPulseComparePeriod> = ["off", ...periods];
+  return (
+    <div
+      className="flex min-w-0 flex-wrap gap-1"
+      role="radiogroup"
+      aria-label="Compare to prior weeks"
+    >
+      {options.map((id) => {
+        const selected = value === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(id)}
+            className={`rounded-sm px-2 py-1 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase transition-colors ${
+              selected
+                ? "bg-[var(--mp-text)]/15 text-[var(--mp-text)]"
+                : "text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
+            }`}
+          >
+            {COMPARE_PERIOD_LABEL[id]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function ClosedLookbackSlider({
   lookbackId,
@@ -1273,7 +1325,8 @@ function CombinedMetricsChart({
   includeTax = false,
   taxYearLabel = null,
   lookbackRail,
-  wow = null,
+  compare = null,
+  comparePeriod = "off",
 }: {
   title?: ReactNode;
   rows: CombinedTownRow[];
@@ -1287,8 +1340,9 @@ function CombinedMetricsChart({
   taxYearLabel?: string | null;
   /** Lookback control, stood beside the All towns block and sized to it. */
   lookbackRail?: ReactNode;
-  /** Page-load stacked vs last send-day. Null until two Mondays exist. */
-  wow?: MarketPulseWowCompare | null;
+  /** Selected period from the page switch. Null while Off. */
+  compare?: MarketPulseWowCompare | null;
+  comparePeriod?: "off" | MarketPulseComparePeriod;
   settle: MarketPulseSettleState;
   closedLookbackLabel: string;
   lookbackId: MarketPulseLookbackId;
@@ -1341,11 +1395,6 @@ function CombinedMetricsChart({
   return (
     <section>
       {title ? <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p> : null}
-      {wow ? (
-        <p className="mb-2 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-gold">
-          {marketPulseWowCaption(wow)}
-        </p>
-      ) : null}
       <ul className="space-y-3">
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
@@ -1367,7 +1416,6 @@ function CombinedMetricsChart({
                 rowIndex,
                 townCount: rows.length,
               }}
-              wow={wow}
               heading={
                 <TownName
                   city={row.city ?? label}
@@ -1381,17 +1429,28 @@ function CombinedMetricsChart({
               }
             />
           );
+          const activePeriod = comparePeriod === "off" ? null : comparePeriod;
+          const blurb =
+            compare && activePeriod ? (
+              <MarketPulseCompareBlurb
+                caption={marketPulseCompareCaption(compare, activePeriod)}
+                lines={marketPulseCompareBlurbLines(compare, row.city)}
+              />
+            ) : null;
+          const extras = blurb || (rowIndex === 0 && lookbackRail);
           return (
             <li key={`combined-${row.city}`} data-mp-town={row.city}>
               {/*
                * The rail stands alongside the first block only, and stretches to
                * it, so it runs from the All towns name to its last bar and no
                * further. Towns below it are not indented past empty space.
+               * Compare blurbs sit to the right of the denim panel, not on the bars.
                */}
-              {rowIndex === 0 && lookbackRail ? (
+              {extras ? (
                 <div className="flex items-stretch gap-2 sm:gap-3">
                   <div className="min-w-0 flex-1">{block}</div>
-                  {lookbackRail}
+                  {blurb}
+                  {rowIndex === 0 ? lookbackRail : null}
                 </div>
               ) : (
                 block
@@ -1501,7 +1560,7 @@ export default function WeeklyBriefContent({
   closedLookbackId,
   onLookbackIdChange,
   closedBarMax = 0,
-  wow = null,
+  compares,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1546,10 +1605,10 @@ export default function WeeklyBriefContent({
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
   /**
-   * Precomputed vs the previous Monday archive. Shown only on page-load
-   * stacked defaults — not after a Filters session changes lookback or layout.
+   * Precomputed vs stored week slots. Page switch defaults Off; MoM / YoY
+   * options appear when those slots exist. Hidden off ALL / 12 mos / stacked.
    */
-  wow?: MarketPulseWowCompare | null;
+  compares?: MarketPulseCompareSet;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
     DEFAULT_MARKET_PULSE_CHART_LAYOUT,
@@ -1565,6 +1624,19 @@ export default function WeeklyBriefContent({
   const [chromeHeightPx, setChromeHeightPx] = useState(0);
   const [navOffsetPx, setNavOffsetPx] = useState(96);
   const [compareCity, setCompareCity] = useState<string | null>(null);
+  const [comparePeriod, setComparePeriod] = useState<
+    "off" | MarketPulseComparePeriod
+  >("off");
+  const compareSet = compares ?? EMPTY_MARKET_PULSE_COMPARES;
+  const comparePeriods = availableComparePeriods(compareSet);
+  const selectedCompare =
+    comparePeriod === "off" ? null : compareSet[comparePeriod];
+
+  useEffect(() => {
+    if (comparePeriod !== "off" && !compareSet[comparePeriod]) {
+      setComparePeriod("off");
+    }
+  }, [comparePeriod, compareSet]);
 
   useEffect(() => {
     if (!townsExpanded && chartLayout !== "stacked") {
@@ -1820,6 +1892,13 @@ export default function WeeklyBriefContent({
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       {categoryFilter}
       <div className="flex items-center gap-2">
+        {chartLayout === "stacked" ? (
+          <ComparePeriodSwitch
+            periods={comparePeriods}
+            value={comparePeriod}
+            onChange={setComparePeriod}
+          />
+        ) : null}
         <FavorSortToggle
           favorSort={favorSort}
           mode={comparingTown ? "scale" : "yin-yang"}
@@ -1972,11 +2051,15 @@ export default function WeeklyBriefContent({
                 />
               ) : null
             }
-            wow={
-              chartLayout === DEFAULT_MARKET_PULSE_CHART_LAYOUT &&
-              lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
-                ? wow
+            compare={
+              chartLayout === DEFAULT_MARKET_PULSE_CHART_LAYOUT
+                ? selectedCompare
                 : null
+            }
+            comparePeriod={
+              chartLayout === DEFAULT_MARKET_PULSE_CHART_LAYOUT
+                ? comparePeriod
+                : "off"
             }
           />
         ) : (

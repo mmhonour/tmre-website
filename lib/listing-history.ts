@@ -122,11 +122,43 @@ export function fmtMoney(n: number | null): string {
   return `$${n.toLocaleString()}`
 }
 
+const MLS_TZ = 'America/New_York'
+const MONTHS_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
+function civilDateLabel(year: string, month: string, day: string): string {
+  const name = MONTHS_SHORT[Number(month) - 1]
+  if (!name) return `${year}-${month}-${day}`
+  return `${name} ${Number(day)}, ${year}`
+}
+
 export function fmtDate(iso: string | null): string | null {
   if (!iso) return null
-  const d = new Date(iso)
+  const trimmed = iso.trim()
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (dateOnly) return civilDateLabel(dateOnly[1], dateOnly[2], dateOnly[3])
+  // RESO CloseDate is a calendar day. Sync often stores it as midnight with
+  // all zeros (UTC or Eastern offset). That is still Sep 14, not Sep 13.
+  const midnight = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.0+)?(?:Z|[+-]\d{2}:\d{2})?$/.exec(
+    trimmed,
+  )
+  if (midnight) return civilDateLabel(midnight[1], midnight[2], midnight[3])
+  const d = new Date(trimmed)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString('en-US', {
+    timeZone: MLS_TZ,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -229,6 +261,13 @@ export function primaryListingPriceIsClosed(
   return closePrice != null && closePrice > 0
 }
 
+/**
+ * Public History synthesizes a short timeline from the listing row — not the
+ * full `listing_price_history` ladder. Price reduced / changed appears only when
+ * OriginalListPrice ≠ last ListPrice. A close below last list is ClosePrice,
+ * not a list-price move. The ladder lives in listing_price_history (admin /
+ * sync); MLS dates on the same panel are admin-only.
+ */
 export function buildCurrentListingEvents(listing: Listing): ListingHistoryEvent[] {
   const events: ListingHistoryEvent[] = []
   const statusLabel = formatMlsStatus(listing.status)
@@ -278,16 +317,20 @@ export function buildCurrentListingEvents(listing: Listing): ListingHistoryEvent
   }
 
   if (listing.statusChangeTimestamp && statusLabel !== 'Active') {
-    const detail =
-      statusLabel === 'Closed' && closePrice != null
-        ? `${statusLabel} · ${fmtMoney(closePrice)}`
-        : statusLabel
-    events.push({
-      date: listing.statusChangeTimestamp,
-      label: 'Status updated',
-      detail,
-      sortMs: parseMs(listing.statusChangeTimestamp),
-    })
+    const closedAlreadyOnTimeline =
+      statusLabel === 'Closed' && Boolean(closeDate)
+    if (!closedAlreadyOnTimeline) {
+      const detail =
+        statusLabel === 'Closed' && closePrice != null
+          ? `${statusLabel} · ${fmtMoney(closePrice)}`
+          : statusLabel
+      events.push({
+        date: listing.statusChangeTimestamp,
+        label: 'Status updated',
+        detail,
+        sortMs: parseMs(listing.statusChangeTimestamp),
+      })
+    }
   }
 
   if (closeDate && formatMlsStatus(listing.status) === 'Closed') {

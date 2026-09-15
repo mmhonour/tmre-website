@@ -529,13 +529,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'stats_cache',
     category: 'sync-admin',
     definition:
-      'Postgres table of precomputed JSON payloads (market stats, vintage charts, Latest feeds, deal boards, IF/UAG caches) so pages don’t recompute from raw listings every request. Market rebuild upserts in place (no wipe); hourly cron is stale-only; incremental sync refreshes changed towns. Current math only — not a weekly archive. See market_pulse_snapshots.',
+      'Postgres table of precomputed JSON payloads (market stats, vintage charts, Latest feeds, deal boards, IF/UAG caches) so pages don’t recompute from raw listings every request. Market rebuild upserts in place (no wipe); hourly cron is stale-only; incremental sync refreshes changed towns. Current market math is overwritten; `market-pulse-week:*` week slots are preserved so Market Pulse can walk WoW / MoM / YoY backwards. Full Monday payloads also live on market_pulse_snapshots.',
   },
   {
     term: 'market_pulse_snapshots',
     category: 'sync-admin',
     definition:
-      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. stats_cache is overwritten on every rebuild, so WoW / MoM / YoY cannot live there. Send test does not insert a row. /market-pulse and the Monday email subtract the previous slot from the current default stacked rows (server-side); nothing shows until two send-days exist.',
+      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. Send test does not insert a row. Stacked town points for WoW / MoM / YoY also land in stats_cache as preserved `market-pulse-week:sale:all:v1:{slotDate}` keys (seeded from these snapshots, then upserted on each stats rebuild). /market-pulse subtracts a prior week slot from the live stacked defaults (server-side); the page switch defaults Off. The Monday email always includes a WoW (or MoM) blurb to the right of each town chart.',
   },
   {
     term: 'stats_cache_rebuild_lock',
