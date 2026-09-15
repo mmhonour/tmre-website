@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSiteUnlocked } from "@/components/SiteUnlockProvider";
 import { loadTabJson } from "@/lib/tab-data-prefetch";
 import type { StatsCity, StatsKind } from "./stats-towns";
 
@@ -41,6 +42,7 @@ export default function MonthsSupplyMathExplainer({
   city: StatsCity;
   kind: StatsKind;
 }) {
+  const siteUnlocked = useSiteUnlocked();
   const [payload, setPayload] = useState<MonthsSupplyPayload | null>(null);
   const monthLabels = useMemo(() => trailingThreeMonthLabels(), []);
   const closingNoun = kind === "rental" ? "leases" : "closings";
@@ -48,6 +50,10 @@ export default function MonthsSupplyMathExplainer({
   const cityLabel = city === "All" ? "All towns" : city;
 
   useEffect(() => {
+    if (!siteUnlocked) {
+      setPayload(null);
+      return;
+    }
     let cancelled = false;
     setPayload(null);
     const params = new URLSearchParams({ city, kind, property: "all" });
@@ -62,7 +68,9 @@ export default function MonthsSupplyMathExplainer({
     return () => {
       cancelled = true;
     };
-  }, [city, kind]);
+  }, [city, kind, siteUnlocked]);
+
+  if (!siteUnlocked) return null;
 
   const active = payload?.activeCount ?? null;
   const avg = payload?.avgMonthlyClosings ?? null;
