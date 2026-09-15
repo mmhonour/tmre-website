@@ -7,8 +7,10 @@ import type {
   MarketDigestClosedTownCount,
   MarketDigestSnapshot,
 } from "@/lib/market-digest-types";
-import type { MarketPulseCompareSet } from "@/lib/market-pulse-wow";
-import { EMPTY_MARKET_PULSE_COMPARES } from "@/lib/market-pulse-wow";
+import {
+  EMPTY_MARKET_PULSE_COMPARES,
+  type MarketPulseCompareSet,
+} from "@/lib/market-pulse-wow";
 import {
   DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
