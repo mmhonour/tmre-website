@@ -11,7 +11,6 @@ import {
   readActiveByMonthByTown,
   readSalesByMonthByTown,
   readStatsCache,
-  scheduleStatsCacheRebuildIfStale,
 } from '@/lib/stats-cache'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
 
@@ -75,8 +74,6 @@ export async function GET(req: NextRequest) {
   const kind = parseListingKindParam(new URL(req.url).searchParams.get('kind'))
 
   try {
-    scheduleStatsCacheRebuildIfStale()
-
     let activeTowns = await activeBundle(kind)
     let salesTowns = await salesBundle(kind)
     let source: 'db' | 'rets' = 'db'

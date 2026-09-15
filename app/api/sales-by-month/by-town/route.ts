@@ -5,7 +5,6 @@ import { computeSalesByMonth, type SalesByMonthByTownPayload } from '@/lib/stats
 import {
   readSalesByMonthByTown,
   readStatsCache,
-  scheduleStatsCacheRebuildIfStale,
   writeStatsCache,
 } from '@/lib/stats-cache'
 import { TMRE_TOWNS, type TmreTown } from '@/lib/tmre-towns'
@@ -44,8 +43,6 @@ export async function GET(req: NextRequest) {
   const kind = parseListingKindParam(new URL(req.url).searchParams.get('kind'))
 
   try {
-    scheduleStatsCacheRebuildIfStale()
-
     let payload = await readSalesByMonthByTown(kind)
     let servedFromCache = Boolean(payload)
 

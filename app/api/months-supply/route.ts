@@ -7,7 +7,6 @@ import {
   readMonthsSupplyCached,
   readMonthsSupplyIndex,
 } from '@/lib/months-supply-cache'
-import { scheduleStatsCacheRebuildIfStale } from '@/lib/stats-cache'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
 export const runtime = 'nodejs'
@@ -23,7 +22,6 @@ export async function GET(req: NextRequest) {
     if (wantIndex) {
       const index = await readMonthsSupplyIndex()
       if (!index) {
-        scheduleStatsCacheRebuildIfStale(true)
         return NextResponse.json(
           {
             error: 'Months supply cache not ready',
@@ -51,7 +49,6 @@ export async function GET(req: NextRequest) {
 
     const cached = await readMonthsSupplyCached(city, kind, propertyClass)
     if (!cached) {
-      scheduleStatsCacheRebuildIfStale(true)
       return NextResponse.json(
         {
           error: 'Months supply not cached for this combination',
