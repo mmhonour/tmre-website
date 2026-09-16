@@ -10,7 +10,8 @@ import {
 } from '../../lib/netlify-thin-cron'
 
 /**
- * Thin hero-photos trigger (NO background).
+ * Thin R2 photo scavenger trigger (NO background).
+ * Queue job_id is still hero-photos.
  * Dense every-15m cron so a due Configure slot is not waiting on a 30-minute tick.
  * Frequency/Start still gate the work. A due slot goes on sync_queue for
  * the Railway runner — Media/R2 photo bodies must not download here.

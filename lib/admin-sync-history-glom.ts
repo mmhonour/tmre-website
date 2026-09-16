@@ -41,7 +41,7 @@ const SYNC_TYPE_LABELS: Record<string, string> = {
   digest: 'Market brief',
   'cama-tax': 'CAMA tax',
   'db-size': 'Size & growth',
-  'hero-photos': 'Listing photos (heroes)',
+  'hero-photos': 'R2 photo scavenger',
 }
 
 /** Display label for the Bucket column / subgroup (adds sync type on lifecycle rows). */

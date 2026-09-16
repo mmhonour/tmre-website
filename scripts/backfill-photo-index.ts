@@ -4,7 +4,7 @@
  * Does not re-pull MLS / RETS.
  *
  * TARGET: prod (Neon) by default. Bytes live in the shared R2 bucket; the
- * index must follow prod Postgres or the heroes job still reports missing.
+ * index must follow prod Postgres or the R2 photo scavenger still reports missing.
  *
  * Default (R2 → Neon):
  *   npm run backfill:photo-index

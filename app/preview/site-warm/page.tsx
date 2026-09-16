@@ -23,7 +23,7 @@ export default function SiteWarmPreviewPage() {
           filling boards, feeds, and the showcase six after Railway has written
           Neon. It is not a Railway job. Incremental RETS stays ids-only. Photo
           0 for listing-alert mail is prompted before alerts go dirty. Mail is
-          the Railway alerts job. Stats-cache and hero-photos already have
+          the Railway alerts job. Stats-cache and the R2 photo scavenger already have
           their own Railway children. Production: Admin → Syncs → Dashboard.
         </p>
 
@@ -55,7 +55,7 @@ Lane 3  Site warm   Netlify  feeds · board · showcase six
 photo 0     Incremental / OH prompt R2  →  then mark alerts dirty
 mail        Railway alerts job
 stats       Railway stats-cache child (already)
-heroes      Railway hero-photos child (already)
+r2 photos   Railway hero-photos scavenger (already)
 fallback    ?size=full&fetch=1 in Gmail`}
         </pre>
 

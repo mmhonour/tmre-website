@@ -1838,7 +1838,7 @@ async function runAdminSyncActionImpl(
           backgroundQueued: true,
           message: queued.ok
             ? snapshot.message
-            : `Listing photos queue failed: ${queued.error ?? 'unknown'}`,
+            : `R2 photo scavenger queue failed: ${queued.error ?? 'unknown'}`,
           detail: queued.ok
             ? `Queued (${via}) — runner fills photos; this line is % missing now`
             : undefined,
