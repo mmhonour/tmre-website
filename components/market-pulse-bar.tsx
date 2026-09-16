@@ -125,6 +125,11 @@ export function PanelBarRow({
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
   const delta = fillDelta?.trim() ? fillDelta.trim() : null;
   const trackForDelta = tallTrack || Boolean(delta);
+  /** 9px tabular-nums need ~6px/char plus pad; a sliver of gold cannot hold them. */
+  const deltaInFill =
+    delta && widthPct >= Math.min(36, 10 + delta.length * 2.4)
+      ? delta
+      : null;
   return (
     <div
       className={`group relative grid grid-cols-[8.75rem_1fr_auto] items-center gap-2 ${
@@ -159,11 +164,11 @@ export function PanelBarRow({
             }`}
             style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
           >
-            {delta ? (
+            {deltaInFill ? (
               <span
                 className={`min-w-0 truncate leading-none [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
               >
-                {delta}
+                {deltaInFill}
               </span>
             ) : null}
           </span>
