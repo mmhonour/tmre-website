@@ -75,10 +75,19 @@ describe("formatHeroPhotosJobMessage", () => {
     message: "",
   };
 
-  it("reports percent missing before, fill counts, and remaining percent", () => {
+  it("reports a before/after snapshot: leftover counts on both sides", () => {
     assert.equal(
       formatHeroPhotosJobMessage(base),
-      "was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 84.4% missing",
+      "was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 84.4% missing (1,300/1,540)",
+    );
+    assert.equal(
+      formatHeroPhotosJobMessage({
+        ...base,
+        activeWithPhotosAfter: 1550,
+        missingAfter: 1295,
+        missingPctAfter: 83.5,
+      }),
+      "was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 83.5% missing (1,295/1,550)",
     );
   });
 
@@ -92,7 +101,7 @@ describe("formatHeroPhotosJobMessage", () => {
         missingAfter: 1340,
         missingPctAfter: 87.0,
       }),
-      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · walked past 15 that stored nothing · now 87% missing",
+      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · walked past 15 that stored nothing · now 87% missing (1,340/1,540)",
     );
     assert.equal(
       formatHeroPhotosJobMessage({
@@ -117,7 +126,7 @@ describe("formatHeroPhotosJobMessage", () => {
         missingPctAfter: 87.0,
         stalledEmpty: true,
       }),
-      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · skipped 15 that stored nothing (next burst continues past them) · now 87% missing",
+      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · skipped 15 that stored nothing (next burst continues past them) · now 87% missing (1,340/1,540)",
     );
   });
 
@@ -145,7 +154,7 @@ describe("formatHeroPhotosJobMessage", () => {
         complete: true,
         idle: true,
       }),
-      "idle · 0% missing · 1,540 listings with photos · 100% complete",
+      "idle · 0% missing (0/1,540) · 100% complete",
     );
   });
 
@@ -182,7 +191,7 @@ describe("formatHeroPhotosJobMessage", () => {
         complete: true,
         idle: true,
       }),
-      "idle · was 87% missing · filled 5 listings / 30 photos · now 0% missing · 100% complete",
+      "idle · was 87% missing (1,340/1,540) · filled 5 listings / 30 photos · now 0% missing (0/1,540) · 100% complete",
     );
   });
 });
