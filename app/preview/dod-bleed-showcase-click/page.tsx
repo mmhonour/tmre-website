@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import Link from "next/link";
-import { DodBleedShowcaseClickStage } from "@/app/preview/dod-bleed-showcase-click/DodBleedShowcaseClickStage";
+import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
+import { dodBleedShowcaseFixtureDeals } from "@/app/preview/dod-bleed-showcase-click/fixture-deals";
 
 export const metadata = {
   title: "Preview — DOD bleed → showcase — TMRE",
@@ -7,6 +9,8 @@ export const metadata = {
 };
 
 export default function DodBleedShowcaseClickPreviewPage() {
+  const dealsByTown = dodBleedShowcaseFixtureDeals();
+
   return (
     <div className="min-h-screen bg-cream">
       <div className="mx-auto max-w-3xl px-4 pb-6 pt-28 sm:px-6">
@@ -17,29 +21,30 @@ export default function DodBleedShowcaseClickPreviewPage() {
           Deal of the Day bleed → showcase
         </h1>
         <p className="mb-3 text-sm leading-relaxed text-slate">
-          Fixture only — no listing database. Click empty photo in the top-half
-          bleed to open the listing showcase. Town names, the headline, and
-          the value-pick must stay on this page.
+          Full Deal of the Day page (carousel, town list, value-pick, insight)
+          with fixture towns — no listing database. Click empty photo in the
+          top-half bleed to open that listing’s showcase. Town names, the
+          headline, and the value-pick keep their own clicks.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
-          Live page:{" "}
+          Live:{" "}
           <Link
             href="/deal-of-the-day"
             className="text-navy underline decoration-gold/50 underline-offset-2"
           >
             /deal-of-the-day
           </Link>
-          {" · "}
-          Live bleed:{" "}
-          <Link
-            href="/preview/dod-town-bleed-desktop"
-            className="text-navy underline decoration-gold/50 underline-offset-2"
-          >
-            /preview/dod-town-bleed-desktop
-          </Link>
         </p>
       </div>
-      <DodBleedShowcaseClickStage />
+      <Suspense fallback={null}>
+        <DealOfTheWeekHero
+          mode="day"
+          lockSeed
+          initialDealsByTown={dealsByTown}
+          initialKind="sale"
+          initialPropertyClass="homes"
+        />
+      </Suspense>
     </div>
   );
 }

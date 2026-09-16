@@ -508,6 +508,8 @@ export default function DealOfTheWeekHero({
   initialPropertyClass = "homes",
   /** Phone-frame previews: ignore laptop viewport breakpoints so chrome stays one column. */
   forcePhoneLayout = false,
+  /** Preview-only: keep FSSR/fixture seed and do not fetch live Deal of the Day. */
+  lockSeed = false,
 }: {
   mode?: "week" | "day";
   afterOverview?: boolean;
@@ -515,6 +517,7 @@ export default function DealOfTheWeekHero({
   initialKind?: "sale" | "rental";
   initialPropertyClass?: DealPropertyClassFilter;
   forcePhoneLayout?: boolean;
+  lockSeed?: boolean;
 }) {
   const { townsLabel, knownTowns } = useCoverageTowns();
   const searchParams = useSearchParams();
@@ -565,7 +568,11 @@ export default function DealOfTheWeekHero({
       setPropertyClass("homes");
     }
   }, [isDay, pinnedProperty, listingParam, city, pinnedKind, setPropertyClass]);
-  const dayTxFilter = txFilter;
+  const dayTxFilter = lockSeed
+    ? initialKind === "rental"
+      ? "rental"
+      : "sale"
+    : txFilter;
   // Prefer URL synchronously so a cookie hydrate to Multi/Condos cannot race
   // the first carousel fetch on an Intelligence → DOTD deep link. Manual pill
   // changes (below) set `propertyClassTouched` so Homes/Multi/Condos still work.
@@ -573,8 +580,11 @@ export default function DealOfTheWeekHero({
   useEffect(() => {
     setPropertyClassTouched(false);
   }, [listingParam, pinnedProperty, city]);
-  const dayPropertyClass: DealSalePropertyClass =
-    propertyClassTouched
+  const dayPropertyClass: DealSalePropertyClass = lockSeed
+    ? initialPropertyClass === "multi" || initialPropertyClass === "condos"
+      ? initialPropertyClass
+      : "homes"
+    : propertyClassTouched
       ? propertyClass
       : (pinnedProperty ?? (listingParam ? "homes" : propertyClass));
   const setDayPropertyClass = useCallback(
@@ -594,6 +604,7 @@ export default function DealOfTheWeekHero({
     initialDealsByTown: isDay ? initialDealsByTown : null,
     initialKind,
     initialPropertyClass,
+    lockSeed,
   });
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);

@@ -272,10 +272,16 @@ export function useDealOfTheDayCarousel(options?: {
    * Used on Intelligence — never leave an empty “no pick in Town” slot.
    */
   surfaceAnyPick?: boolean;
+  /**
+   * Keep `initialDealsByTown` and skip `/api/deal-of-the-day`. Preview pages
+   * that must work without the listing cache.
+   */
+  lockSeed?: boolean;
 }) {
   const rotate = options?.rotate !== false;
   const enabled = options?.enabled !== false;
   const surfaceAnyPick = options?.surfaceAnyPick === true;
+  const lockSeed = options?.lockSeed === true;
   const orderedTowns = usePersonalizedTowns(TMRE_TOWNS);
 
   const seededDeals = useMemo((): DealsByTown | null => {
@@ -383,6 +389,10 @@ export function useDealOfTheDayCarousel(options?: {
 
   useEffect(() => {
     if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    if (lockSeed) {
       setLoading(false);
       return;
     }
@@ -541,6 +551,7 @@ export function useDealOfTheDayCarousel(options?: {
   }, [
     townsToFetch,
     enabled,
+    lockSeed,
     kindParam,
     propertyClassParam,
     pinnedListingId,
@@ -557,6 +568,7 @@ export function useDealOfTheDayCarousel(options?: {
   useEffect(() => {
     if (
       !enabled ||
+      lockSeed ||
       !rotate ||
       pinnedListingId ||
       tabHidden ||
@@ -577,7 +589,7 @@ export function useDealOfTheDayCarousel(options?: {
         }
       }
     })();
-  }, [enabled, rotate, pinnedListingId, tabHidden, dealsByTown, townsToFetch]);
+  }, [enabled, lockSeed, rotate, pinnedListingId, tabHidden, dealsByTown, townsToFetch]);
 
   const filteredDealsByTown = useMemo(() => {
     const strict = filterDealsByTown(

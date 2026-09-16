@@ -196,7 +196,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-bleed-showcase-click",
     title: "Deal of the Day bleed → showcase",
     summary:
-      "Desktop: click empty photo in the top-half bleed to open that listing’s showcase. Town names, headline, and value-pick stay put. Fixture listing — no database.",
+      "Full Deal of the Day page with fixture towns. Desktop: empty bleed clicks open the listing showcase; town names, headline, and value-pick keep their own clicks. No listing database.",
   },
   {
     slug: "dod-town-bleed-desktop",
