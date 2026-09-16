@@ -84,8 +84,8 @@ export const PANEL_FILL_DELTA_INK_CLASS: Record<PanelBarFillDeltaInk, string> =
  * The label right-aligns to its bar, every row is the same height so nothing
  * wraps, and the value keeps its own column. The percent follows the brief's
  * placement — beside the fill, or past the track's right border once the fill
- * reaches the end — which the 6px track is too thin to hold, so it centres on
- * the bar and overhangs it.
+ * reaches the end. Week-over-week figures sit *inside* the gold fill (black
+ * ink); Off keeps the 6px track.
  */
 export function PanelBarRow({
   label,
@@ -99,7 +99,8 @@ export function PanelBarRow({
   dense = false,
   href,
   fillDelta,
-  fillDeltaInk = "white",
+  fillDeltaInk = "black",
+  tallTrack = false,
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -116,16 +117,18 @@ export function PanelBarRow({
   /** Change vs a prior week, centered on the shaded fill. */
   fillDelta?: string | null;
   fillDeltaInk?: PanelBarFillDeltaInk;
+  /** Taller track so a week-change figure can sit in the gold. */
+  tallTrack?: boolean;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
   const Bar = (href ? Link : "span") as React.ElementType;
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
-  const fillMid = leftPct + widthPct / 2;
   const delta = fillDelta?.trim() ? fillDelta.trim() : null;
+  const trackForDelta = tallTrack || Boolean(delta);
   return (
     <div
       className={`group relative grid grid-cols-[8.75rem_1fr_auto] items-center gap-2 ${
-        dense ? "h-[18px]" : "h-6"
+        dense ? "h-[18px]" : trackForDelta ? "h-8" : "h-6"
       }`}
     >
       <span className={PANEL_LABEL}>
@@ -141,9 +144,9 @@ export function PanelBarRow({
        */}
       <Bar
         {...(href ? { href } : {})}
-        className={`relative block h-1.5 w-full ${
-          href ? "cursor-pointer" : ""
-        }`}
+        className={`relative block w-full ${
+          trackForDelta ? "h-3.5" : "h-1.5"
+        } ${href ? "cursor-pointer" : ""}`}
       >
         <span
           className={`block h-full w-full overflow-hidden rounded-full bg-white/10 ${
@@ -151,20 +154,20 @@ export function PanelBarRow({
           }`}
         >
           <span
-            className={`block h-full rounded-full bg-gold/70 transition-[width,margin-left] ease-out ${widthTransition} ${
+            className={`relative flex h-full items-center justify-center overflow-hidden rounded-full bg-gold/70 px-0.5 transition-[width,margin-left] ease-out ${widthTransition} ${
               href ? "group-hover:bg-gold" : ""
             }`}
             style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
-          />
-        </span>
-        {delta ? (
-          <span
-            className={`pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
-            style={{ left: `${fillMid}%` }}
           >
-            {delta}
+            {delta ? (
+              <span
+                className={`min-w-0 truncate leading-none [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
+              >
+                {delta}
+              </span>
+            ) : null}
           </span>
-        ) : null}
+        </span>
         {aside && (placement === "left" || placement === "right") ? (
           <span
             className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70 ${
