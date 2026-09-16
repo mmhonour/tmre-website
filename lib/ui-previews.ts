@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-wow",
     title: "Market Pulse week change",
     summary:
-      "Week Over Week numbers sit inside the gold, black (#1B2A4A). Off keeps the 6px track. Fixture towns.",
+      "Week Over Week numbers on the 6px gold, black (#1B2A4A). Same track as production. Fixture towns.",
   },
   {
     slug: "site-warm",

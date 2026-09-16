@@ -323,7 +323,6 @@ export default function MarketPulseTownPanel({
               href={metricHref?.(m.id)}
               fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
               fillDeltaInk={fillDeltaInk}
-              tallTrack={compare != null}
             />
           );
         })}
