@@ -12,7 +12,10 @@
  * Copy local listing_photo_index → Neon (no R2 list, no MLS fetch):
  *   npm run backfill:photo-index -- --from-local
  *
- * Dry-run (counts only):
+ * Test a handful of rows first:
+ *   npm run backfill:photo-index -- --from-local --limit=20
+ *
+ * Dry-run (counts only, no Neon writes):
  *   npm run backfill:photo-index -- --from-local --dry-run
  *
  * Localhost dest is refused unless you pass --allow-local.
@@ -33,6 +36,22 @@ const CHUNK_ROWS = 500
 
 function argFlag(name: string): boolean {
   return process.argv.slice(2).includes(name)
+}
+
+function argValue(flag: string): string | null {
+  const prefix = `${flag}=`
+  for (const arg of process.argv.slice(2)) {
+    if (arg === flag) return 'true'
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length)
+  }
+  return null
+}
+
+function parseLimit(): number {
+  const raw = argValue('--limit')
+  if (raw == null || raw === 'true') return 0
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
 }
 
 function readEnv(name: string): string | null {
@@ -141,6 +160,7 @@ async function copyFromLocal(
   dest: pg.Client,
   destTarget: ScriptDbTarget,
   dryRun: boolean,
+  limit: number,
 ): Promise<{ listed: number; written: number }> {
   const sourceTarget = pickListingsDbTarget(process.env)
   if (!sourceTarget) {
@@ -162,17 +182,36 @@ async function copyFromLocal(
   const source = makePgClient(sourceTarget)
   await source.connect()
   try {
+    const { rows: countRows } = await source.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n
+         FROM listing_photo_index
+        WHERE byte_length >= 100`,
+    )
+    const total = countRows[0]?.n ?? 0
+    const params: number[] = []
+    let sql = `SELECT cache_id, photo_index, content_type, byte_length
+         FROM listing_photo_index
+        WHERE byte_length >= 100
+        ORDER BY cache_id, photo_index`
+    if (limit > 0) {
+      params.push(limit)
+      sql += ` LIMIT $1`
+    }
     const { rows } = await source.query<{
       cache_id: string
       photo_index: number
       content_type: string | null
       byte_length: number
-    }>(
-      `SELECT cache_id, photo_index, content_type, byte_length
-         FROM listing_photo_index
-        WHERE byte_length >= 100`,
+    }>(sql, params)
+    console.log(
+      `[backfill] local listing_photo_index rows=${total}` +
+        (limit > 0 ? ` · copying ${rows.length} (--limit=${limit})` : ' · copying all'),
     )
-    console.log(`[backfill] local listing_photo_index rows=${rows.length}`)
+    for (const row of rows.slice(0, 5)) {
+      console.log(
+        `[backfill]   sample ${row.cache_id} slot=${row.photo_index} bytes=${row.byte_length}`,
+      )
+    }
     if (dryRun) {
       console.log('[backfill] dry-run — no Neon writes')
       return { listed: rows.length, written: 0 }
@@ -208,6 +247,7 @@ async function copyFromLocal(
 async function copyFromR2(
   dest: pg.Client,
   dryRun: boolean,
+  limit: number,
 ): Promise<{ listed: number; written: number; skipped: number }> {
   const { client: r2, bucket } = makeR2Client()
   console.log(`[backfill] photos=prod · R2 bucket=${bucket}`)
@@ -227,6 +267,7 @@ async function copyFromR2(
       }),
     )
     for (const obj of res.Contents ?? []) {
+      if (limit > 0 && written + buffer.length >= limit) break
       listed += 1
       const parsed = parsePhotoKey(obj.Key)
       const size = typeof obj.Size === 'number' ? obj.Size : 0
@@ -234,7 +275,10 @@ async function copyFromR2(
         skipped += 1
         continue
       }
-      if (dryRun) continue
+      if (dryRun) {
+        if (limit > 0 && listed - skipped >= limit) break
+        continue
+      }
       buffer.push({
         cacheId: parsed.cacheId,
         photoIndex: parsed.photoIndex,
@@ -246,6 +290,9 @@ async function copyFromR2(
         buffer = []
         process.stdout.write(`\r[backfill] listed ${listed} · indexed ${written}   `)
       }
+    }
+    if (limit > 0 && (written + buffer.length >= limit || (dryRun && listed - skipped >= limit))) {
+      break
     }
     continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined
   } while (continuationToken)
@@ -265,6 +312,10 @@ async function main() {
   const fromLocal = argFlag('--from-local')
   const dryRun = argFlag('--dry-run')
   const allowLocal = argFlag('--allow-local')
+  const limit = parseLimit()
+  if (limit > 0) {
+    console.log(`[backfill] limit=${limit}`)
+  }
 
   const destTarget = resolveDest(allowLocal)
   const dest = makePgClient(destTarget)
@@ -272,8 +323,8 @@ async function main() {
 
   try {
     const result = fromLocal
-      ? await copyFromLocal(dest, destTarget, dryRun)
-      : await copyFromR2(dest, dryRun)
+      ? await copyFromLocal(dest, destTarget, dryRun, limit)
+      : await copyFromR2(dest, dryRun, limit)
 
     const skipped = 'skipped' in result ? result.skipped : 0
     console.log(
