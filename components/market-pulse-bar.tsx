@@ -112,7 +112,7 @@ export function PanelBarRow({
   const delta = fillDelta?.trim() ? fillDelta.trim() : null;
   return (
     <div
-      className={`group relative grid grid-cols-[7.75rem_1fr_auto] items-center gap-2 ${
+      className={`group relative grid grid-cols-[8.75rem_1fr_auto] items-center gap-2 ${
         dense ? "h-[18px]" : "h-6"
       }`}
     >

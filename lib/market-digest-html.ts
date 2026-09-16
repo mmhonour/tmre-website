@@ -111,8 +111,8 @@ function cityLabel(row: { city: string }): string {
 /** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
 const BAR_INNER_PX = 220
 const BAR_HEIGHT_PX = 10
-/** The web's `grid-cols-[7.75rem_1fr_auto]`, in the px this table needs. */
-const LABEL_COL_PX = 124
+/** The web's `grid-cols-[8.75rem_1fr_auto]`, in the px this table needs. */
+const LABEL_COL_PX = 140
 const VALUE_COL_PX = 70
 /** Stands in for `BAR_EXTERIOR_LANE` — where a full bar's percent goes. */
 const ASIDE_LANE_PX = 34
