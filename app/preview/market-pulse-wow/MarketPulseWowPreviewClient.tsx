@@ -44,9 +44,9 @@ export default function MarketPulseWowPreviewClient({
           Market Pulse week change
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
-          Week Over Week numbers sit on the 6px gold, black{" "}
-          <span className="font-mono text-[11px] text-navy">#1B2A4A</span>.
-          Same track as production. Fixture towns, not live cache.
+          Week Over Week numbers sit on the 6px gold as a solid cream
+          rectangle, navy type. Same track as production. Fixture towns, not live
+          cache.
         </p>
 
         <div

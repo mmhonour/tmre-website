@@ -129,22 +129,28 @@ const ASIDE_FONT = `font-family:ui-monospace,Consolas,monospace;font-size:9px;co
 function barCellTd(
   widthPx: number,
   color: string,
-  text?: { value: string; align: 'left' | 'right' | 'center'; ink?: string },
+  text?: { value: string; align: 'left' | 'right' | 'center'; ink?: string; chip?: boolean },
 ): string {
   if (widthPx <= 0) return ''
   const ink = text?.ink ?? PANEL_ASIDE
+  const chip = text?.chip === true
   const inner = text
-    ? `font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:${
-        text.align === 'center' ? '600' : '400'
-      };color:${ink};line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};${
-        text.align === 'center'
-          ? ''
-          : `padding-${text.align === 'left' ? 'left' : 'right'}:4px;`
-      }white-space:nowrap;`
+    ? chip
+      ? `font-size:0;line-height:${BAR_HEIGHT_PX}px;text-align:center;`
+      : `font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:${
+          text.align === 'center' ? '600' : '400'
+        };color:${ink};line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};${
+          text.align === 'center'
+            ? ''
+            : `padding-${text.align === 'left' ? 'left' : 'right'}:4px;`
+        }white-space:nowrap;`
     : `font-size:0;line-height:${BAR_HEIGHT_PX}px;`
-  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};${inner}mso-line-height-rule:exactly;">${
-    text ? escapeHtml(text.value) : '&nbsp;'
-  }</td>`
+  const body = !text
+    ? '&nbsp;'
+    : chip
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;border-collapse:collapse;"><tr><td bgcolor="${CREAM}" style="background-color:${CREAM};padding:1px 4px;font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:600;color:${NAVY};white-space:nowrap;line-height:11px;">${escapeHtml(text.value)}</td></tr></table>`
+      : escapeHtml(text.value)
+  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};${inner}mso-line-height-rule:exactly;">${body}</td>`
 }
 
 /**
@@ -188,7 +194,7 @@ function metricBarRow(
     filled,
     BAR_INK,
     fillDelta
-      ? { value: fillDelta, align: 'center', ink: NAVY_DARK }
+      ? { value: fillDelta, align: 'center', ink: NAVY, chip: true }
       : undefined,
   )
   const track = barCellTd(

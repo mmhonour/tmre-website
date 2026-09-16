@@ -72,9 +72,9 @@ export type PanelBarFillDeltaInk = "white" | "black";
 
 export const PANEL_FILL_DELTA_INK_CLASS: Record<PanelBarFillDeltaInk, string> =
   {
-    white: "text-white",
-    /** Navy on gold — the previous thick-bar treatment, reads as black. */
-    black: "text-[#1B2A4A]",
+    white: "bg-navy text-white",
+    /** Cream rectangle, navy type — a callout, not type cut into the gold. */
+    black: "bg-[#F7F5F0] text-[#1B2A4A]",
   };
 
 /**
@@ -85,8 +85,8 @@ export const PANEL_FILL_DELTA_INK_CLASS: Record<PanelBarFillDeltaInk, string> =
  * wraps, and the value keeps its own column. The percent follows the brief's
  * placement — beside the fill, or past the track's right border once the fill
  * reaches the end — which the 6px track is too thin to hold, so it centres on
- * the bar and overhangs it. Week-over-week figures do the same: black ink on
- * the gold, same 6px track as Off.
+ * the bar and overhangs it. Week-over-week figures sit on the same 6px track
+ * as a solid cream rectangle with navy type — a callout, not a cutout.
  */
 export function PanelBarRow({
   label,
@@ -160,7 +160,7 @@ export function PanelBarRow({
         </span>
         {delta ? (
           <span
-            className={`pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
+            className={`pointer-events-none absolute top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm px-1 py-px [font-family:var(--mp-mono-font)] text-[9px] font-semibold leading-none tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
             style={{ left: `${fillMid}%` }}
           >
             {delta}
