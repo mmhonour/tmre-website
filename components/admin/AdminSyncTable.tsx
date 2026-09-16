@@ -2386,7 +2386,7 @@ export default function AdminSyncTable({
     if (Date.now() - startedMs > 15 * 60_000) {
       appendRunLog({
         id: `hero-photos-watch-timeout-${startedMs}`,
-        label: "Listing photos (heroes)",
+        label: ADMIN_SYNC_ACTIONS["hero-photos"].label,
         startedAt: started,
         finishedAt: new Date().toISOString(),
         durationMs: Date.now() - startedMs,
@@ -2410,7 +2410,7 @@ export default function AdminSyncTable({
     if (!finishedThisWatch) return;
     appendRunLog({
       id: `hero-photos-result-${msg!.generatedAt}`,
-      label: "Listing photos (heroes)",
+      label: ADMIN_SYNC_ACTIONS["hero-photos"].label,
       startedAt: started,
       finishedAt: msg!.generatedAt,
       durationMs: Math.max(0, generatedMs - startedMs),

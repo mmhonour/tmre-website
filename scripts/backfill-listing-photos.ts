@@ -6,8 +6,8 @@
  * Everything already in inventory stays cold until someone opens the showcase
  * (`?size=full` → Media/RETS → R2). This CLI walks those rows and stores the
  * missing bytes. Do not run it on Railway Incremental — that process OOMs
- * when it fetches photo bodies. Railway `hero-photos` already scavenges
- * remaining photos for every listing (Active or not) between runs; use this
+ * when it fetches photo bodies. Railway R2 photo scavenger (`hero-photos`) already
+ * scavenges remaining photos for every listing (Active or not) between runs; use this
  * when you have time for a faster catch-up (`--all`, town/status filters).
  *
  * Targets (printed at start — read them before walking away):
@@ -132,7 +132,7 @@ function resolvePhotoIndexTarget(indexLocal: boolean): void {
     console.warn(
       `[backfill:listing-photos] index=${
         listings ? formatScriptDbTarget(listings) : 'localhost'
-      } (--index-local; prod heroes job will not see these rows)`,
+      } (--index-local; prod R2 photo scavenger will not see these rows)`,
     )
     return
   }

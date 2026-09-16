@@ -491,7 +491,7 @@ export function describeStartupProcess(): {
           id: "deploy-cron-daily",
           title: "Runtime crons",
           timing: "scheduled functions",
-          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET + sync-street-listings every 30m gated to weekly Wed ~2am ET (and 6h catch-up while unlinked street addresses remain) + sync-db-size every 30m gated to daily 6:00 AM ET + sync-hero-photos every 15m gated to Configure (default every 15m). Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA), Street listings (RETS), Size & growth, Listing photos (heroes) and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
+          detail: `Thin schedules queue background *-worker functions (schedule XOR background — never both). sync-listings every ${Math.round(LATEST_DB_REFRESH_MS / 60_000)} min + sync-listings-full weekly Mon ~5am ET + sync-property-addresses weekly Mon ~1am ET + sync-vision-addresses weekly Mon ~1:30am ET + market-digest every 30m gated to weekly Mon ~8am ET + sync-zip-boundaries monthly (1st ~10:00 UTC) + sync-fomc / sync-cpi every 30m gated to FOMC decision day 3:15pm ET / CPI release day 9:15am ET + sync-street-listings every 30m gated to weekly Wed ~2am ET (and 6h catch-up while unlinked street addresses remain) + sync-db-size every 30m gated to daily 6:00 AM ET + sync-hero-photos every 15m gated to Configure (default every 15m). Nothing is gated on a host setting any more. Incremental, Stats cache, Goldilocks, Deal of the Day, Property addresses, Vision addresses, Open houses, Property tax history (CAMA), Street listings (RETS), Size & growth, R2 photo scavenger and the Monday market brief go on sync_queue: the thin cron enqueues (or the Railway sweep does, for jobs with no Netlify function), the Railway runner claims and forks, and the cron only runs the job in-process when its row has sat unclaimed past the rescue grace. The rest still run end to end on Netlify.`,
           status: "info",
           statusLabel: "Cron",
         },
@@ -598,13 +598,13 @@ export function describeStartupProcess(): {
 
   lanes.push({
     id: "hero-photos",
-    title: "Listing photos (heroes)",
+    title: "R2 photo scavenger",
     subtitle:
       "Every listing missing R2 photo slots (Active first) → R2 + Neon listing_photo_index",
     steps: [
       {
         id: "hero-photos-scavenge",
-        title: "Low-priority leftover-photo scavenge",
+        title: "Low-priority R2 photo scavenge",
         timing: "2-min sweep → every 15m (Configure), 10-min budget",
         detail:
           "runHeroPhotoScavengeJob(). Lowest claim rank so Incremental / stats / CAMA go first. Any status, every photo slot up to 60. Active leftovers first, then Closed/Expired, oldest list_date first. Five listings per hop; hops walk on inside the ~9-minute burst and stop mid-listing when the clock runs out so a large gallery cannot overrun the child. A hop that stores nothing is skipped next hop and next burst (cap 400, then wrap and retry). First pass does not abort on empties — unfillable oldest must not block fillable leftovers still missing R2. After wrap, three empty hops with zero fills abort the burst (Media/RETS down) but still persist skip so the next 15m slot continues. Full-size fetch is MediaURL then RETS objects. R2 bytes with a missing index row are indexed without a Media refetch. Writes hero_photos_status (before/after snapshot: % missing and leftover listing counts against listings-with-photos, listings/photos catalogued to R2 this burst) and last_hero_photos. When every listing with photos is indexed the run is a count + idle report — no Media fetch. Railway 2-min sweep and Netlify thin */15 (sync-hero-photos) enqueue when Configure is due; the forked child downloads. Incremental still writes ids only. Operator CLI `npm run backfill:listing-photos` is optional faster catch-up; this job picks up remaining slack in between. Not part of Sync all. A host-loss reap (runner vanished) does not start the 30-minute failure cooldown — the next 15m slot may enqueue. Admin Syncs row shows the last message for eagle-eye.",

@@ -304,7 +304,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
         frequency: 'daily',
         startTimeEt: '06:00',
       },
-      // Oldest Active gaps first. 15m so idle coverage % stays current on
+      // R2 photo scavenger. 15m so leftover coverage % stays current on
       // the run board; each claimed burst is ~10 minutes, then it yields.
       'hero-photos': {
         frequency: '15m',

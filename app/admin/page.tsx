@@ -673,7 +673,7 @@ export default async function AdminPage() {
     },
     {
       id: "hero-photos",
-      label: "Listing photos (heroes)",
+      label: "R2 photo scavenger",
       value:
         heroPhotosStatus?.message ??
         (lastHeroPhotos

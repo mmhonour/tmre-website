@@ -86,7 +86,7 @@ export const ADMIN_SYNC_ACTIONS = {
       'Daily 6:00 AM ET Neon size, growth, and listings +/- by town. Writes one snapshot the Admin Size & growth page reads. Sync now / the schedule overwrite that same slot; Run again on the page is the ad-hoc path.',
   },
   'hero-photos': {
-    label: 'Listing photos (heroes)',
+    label: 'R2 photo scavenger',
     description:
       'Low-priority scavenge: every listing missing R2 photo slots (Active first, then Closed/Expired), every index up to 60. Five listings per hop; hops walk on inside the ~9 minute burst, stop mid-listing when the clock runs out, and persist skip so leftovers behind unfillable oldest still get filled. Idle when coverage is 100% — still counts and reports % missing on the run board.',
   },

@@ -320,10 +320,16 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Railway queue job (`db-size`) that runs the Neon size & growth report and writes one snapshot (`db_size_report` + `last_db_size`) for Admin → NEON → Size & growth. Default daily 06:00 ET, 15-minute budget. Thin cron: `sync-db-size`. Admin Sync now enqueues the runner; Run again on the page is the ad-hoc POST and overwrites the same slot. Not part of Sync all. CLI: `npm run db:size` (does not persist unless you hit the Admin path).',
   },
   {
+    term: 'R2 photo scavenger',
+    category: 'sync-admin',
+    definition:
+      'Admin row label for the Railway queue job (`hero-photos`, thin cron `sync-hero-photos`). Scavenges leftover photos for every listing still missing R2/index slots — Active, Closed, Expired, every photo index up to 60, not only the showcase six. Active leftovers first, then other statuses, oldest `list_date` first. Five listings per hop, hops walk on inside the ~9-minute burst and stop mid-listing when the clock runs out so a 40-photo Closed row cannot overrun the child. A hop that stores nothing is skipped next hop and next burst (capped at 400, then wrap and retry). First pass does not abort on empties. After wrap, three empty hops with zero fills abort the burst (Media/RETS down) but still persist skip. Full-size fetch is MediaURL first, then RETS Photo/LargePhoto/HiRes (never Thumbnail). R2 bytes with a missing index row are indexed without a Media refetch. Lowest claim rank so Incremental / stats / CAMA go first. Writes `hero_photos_status` (before/after snapshot: % missing and leftover listing counts against listings-with-photos, listings/photos catalogued to R2 this burst) and `last_hero_photos`. When coverage is 100% the job still runs, only recounts, and reports idle / 100% complete on the Syncs run board. Not part of Sync all. Railway sweeps every 2m and thin cron `sync-hero-photos` every 15m; both still respect Configure. Optional daily CLI `npm run backfill:listing-photos` is faster catch-up when an operator has time; this job picks up remaining slack in between. Incremental still queues ids only — it does not download photo bodies. Showcase “hero six” is still Site warm for new Incremental inserts — see Hero (photo).',
+  },
+  {
     term: 'hero-photos (sync)',
     category: 'sync-admin',
     definition:
-      'Railway queue job (`hero-photos`) that scavenges leftover photos for every listing still missing R2/index slots — Active, Closed, Expired, every photo index up to 60, not only the showcase six. Active leftovers first, then other statuses, oldest `list_date` first. Five listings per hop, hops walk on inside the ~9-minute burst and stop mid-listing when the clock runs out so a 40-photo Closed row cannot overrun the child. A hop that stores nothing is skipped next hop and next burst (capped at 400, then wrap and retry). First pass does not abort on empties. After wrap, three empty hops with zero fills abort the burst (Media/RETS down) but still persist skip. Full-size fetch is MediaURL first, then RETS Photo/LargePhoto/HiRes (never Thumbnail). R2 bytes with a missing index row are indexed without a Media refetch. Lowest claim rank so Incremental / stats / CAMA go first. Writes `hero_photos_status` (before/after snapshot: % missing and leftover listing counts against listings-with-photos, listings/photos catalogued to R2 this burst) and `last_hero_photos`. When coverage is 100% the job still runs, only recounts, and reports idle / 100% complete on the Syncs run board. Not part of Sync all. Railway sweeps every 2m and thin cron `sync-hero-photos` every 15m; both still respect Configure. Optional daily CLI `npm run backfill:listing-photos` is faster catch-up when an operator has time; this job picks up remaining slack in between. Incremental still queues ids only — it does not download photo bodies.',
+      'Queue job_id and thin-cron name (`sync-hero-photos`) for R2 photo scavenger. Same Railway child; the Admin Syncs row is no longer labelled heroes.',
   },
   {
     term: 'street-listings (sync)',
@@ -853,7 +859,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Site warm',
     category: 'sync-admin',
     definition:
-      'Netlify filling site caches after Railway has written Neon: latest town feeds, intelligence deal board, spotlight statuses, and the first six showcase photos for listings Incremental just inserted. Lane 3 is the slot; Site warm is the parlance. It is a Netlify background hop (~15 min), not a Railway job — putting this work on the RETS puller is what Node-OOMed production. Stats-cache and hero-photos already have their own Railway children. Photo 0 for listing-alert mail is Incremental / Open houses themselves, before they mark alerts dirty. Site warm does not pull RETS and does not send mail. Same hop as Side-work-only.',
+      'Netlify filling site caches after Railway has written Neon: latest town feeds, intelligence deal board, spotlight statuses, and the first six showcase photos for listings Incremental just inserted. Lane 3 is the slot; Site warm is the parlance. It is a Netlify background hop (~15 min), not a Railway job — putting this work on the RETS puller is what Node-OOMed production. Stats-cache and the R2 photo scavenger already have their own Railway children. Photo 0 for listing-alert mail is Incremental / Open houses themselves, before they mark alerts dirty. Site warm does not pull RETS and does not send mail. Same hop as Side-work-only.',
   },
   {
     term: 'Lane 3',
@@ -1097,13 +1103,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Hero (photo)',
     category: 'photos-cdn',
     definition:
-      'Two uses: (1) list/card lead thumb, usually photo index 0; (2) showcase hero six — the first six `size=full` MediaURL shots Site warm stores so a listing page is not a 404. Not the marketing “hero section” unless stated.',
+      'Two uses: (1) list/card lead thumb, usually photo index 0; (2) showcase hero six — the first six `size=full` MediaURL shots Site warm stores so a listing page is not a 404. Not the marketing “hero section” unless stated. Not the Railway leftover-photo job — that Admin row is R2 photo scavenger (job_id still `hero-photos`).',
   },
   {
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental and the Open houses pull prompt R2 for photo 0 before they mark alerts dirty. Listing-alert mail still puts `?size=full&fetch=1` on the img if that hop missed — Gmail cannot retry after a cache-only 404. Incremental also queues brand-new MLS ids on `incremental_photo_warm_queue`; the Netlify listings worker drains it and prefetches the first six full-size shots. Remaining photos for every listing (Active or not, every slot) are the Railway `hero-photos` job (walks past unfillable oldest; skip persists; Active first). Optional daily `npm run backfill:listing-photos` on an operator machine is faster catch-up when you have time — not the only way leftovers get R2. That CLI prints listings vs photos vs index targets at start: photos go to prod R2; the Postgres index must go to Neon or the heroes job still shows missing. `npm run backfill:photo-index -- --from-local` upserts a localhost index onto Neon without refetching MLS. See listing_photo_index, Side-work-only, hero-photos (sync).',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental and the Open houses pull prompt R2 for photo 0 before they mark alerts dirty. Listing-alert mail still puts `?size=full&fetch=1` on the img if that hop missed — Gmail cannot retry after a cache-only 404. Incremental also queues brand-new MLS ids on `incremental_photo_warm_queue`; the Netlify listings worker drains it and prefetches the first six full-size shots. Remaining photos for every listing (Active or not, every slot) are the Railway R2 photo scavenger (`hero-photos`; walks past unfillable oldest; skip persists; Active first). Optional daily `npm run backfill:listing-photos` on an operator machine is faster catch-up when you have time — not the only way leftovers get R2. That CLI prints listings vs photos vs index targets at start: photos go to prod R2; the Postgres index must go to Neon or the scavenger still shows missing. `npm run backfill:photo-index -- --from-local` upserts a localhost index onto Neon without refetching MLS. See listing_photo_index, Side-work-only, R2 photo scavenger.',
   },
   {
     term: '?size=full',
@@ -1121,7 +1127,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'listing_photo_index',
     category: 'photos-cdn',
     definition:
-      'Neon table of photo metadata (cache_id, slot, byte_length) for objects in the prod R2 bucket. The heroes job counts coverage from this table (any status, every slot), not from R2 and not from localhost Postgres. Operator `backfill:listing-photos` fetches bytes into R2; `backfill:photo-index` (default R2 list, or `--from-local`) upserts the index onto Neon. DATABASE_URL=localhost does not update prod.',
+      'Neon table of photo metadata (cache_id, slot, byte_length) for objects in the prod R2 bucket. The R2 photo scavenger counts coverage from this table (any status, every slot), not from R2 and not from localhost Postgres. Operator `backfill:listing-photos` fetches bytes into R2; `backfill:photo-index` (default R2 list, or `--from-local`) upserts the index onto Neon. DATABASE_URL=localhost does not update prod.',
   },
   {
     term: 'listing-photos.db',

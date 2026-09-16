@@ -183,8 +183,8 @@ export const SYNC_JOB_DEFAULT_BUDGET_MINUTES: Record<ScheduledSyncJobId, number>
     // Growth scans the largest tables; 15 minutes is well above a typical run
     // and keeps a wedged child from looking like a silent hang.
     'db-size': 15,
-    // Oldest-first Active hero six. Short burst so Incremental / stats / CAMA
-    // stay ahead; idle runs only recount coverage.
+    // R2 photo scavenger. Short burst so Incremental / stats / CAMA stay
+    // ahead; idle runs only recount coverage. Peak heap is one JPEG.
     'hero-photos': 10,
   }
 
