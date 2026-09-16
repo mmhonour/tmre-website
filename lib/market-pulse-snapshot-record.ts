@@ -27,5 +27,20 @@ export async function recordMarketPulseSnapshot(input: {
     source: input.source,
     payload: input.snapshot,
   })
+  try {
+    const { upsertMarketPulseWeekCache } = await import(
+      '@/lib/market-pulse-week-cache'
+    )
+    const { defaultMarketPulseCombinedRows } = await import(
+      '@/lib/market-pulse-combined-rows'
+    )
+    await upsertMarketPulseWeekCache({
+      slotDate,
+      generatedAt: input.snapshot.generatedAt,
+      rows: defaultMarketPulseCombinedRows(input.snapshot),
+    })
+  } catch (err) {
+    console.warn('[market-pulse-snapshot] could not write stats_cache week', err)
+  }
   return { slotDate }
 }

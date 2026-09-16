@@ -207,6 +207,16 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             statusLabel: 'Live',
           },
           {
+            id: 'pulse-week',
+            title: 'Market Pulse week slots survive the hourly clear',
+            host: 'Neon Postgres',
+            source: 'lib/market-pulse-week-cache.ts → rebuildMarketPulseWeekCache',
+            detail:
+              'Each stats rebuild upserts market-pulse-week:sale:all:v1:{slotDate} with that week’s default stacked town numbers, and seeds any missing Mondays from market_pulse_snapshots. clearStatsCache preserves the prefix so the timeline can walk backwards for week / month / year. The /market-pulse switch is Off / Week Over Week; listing pulse and home pulse stay Off. The Monday email always draws the week-over-week change in the gold fill.',
+            status: 'live',
+            statusLabel: 'Live',
+          },
+          {
             id: 'lock',
             title: '20-minute rebuild lock',
             host: 'Neon Postgres',

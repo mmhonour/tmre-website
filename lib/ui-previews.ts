@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "market-pulse-wow",
+    title: "Market Pulse week change",
+    summary:
+      "Week Over Week numbers on the 6px gold as a cream rectangle, navy type. Fixture towns.",
+  },
+  {
     slug: "site-warm",
     title: "Lane 3 — Site warm",
     summary:

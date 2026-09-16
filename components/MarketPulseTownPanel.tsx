@@ -5,6 +5,7 @@ import {
   formatMetricValue,
   PANEL_SURFACE,
   PanelBarRow,
+  type PanelBarFillDeltaInk,
 } from "@/components/market-pulse-bar";
 import type { ListingKind } from "@/lib/listing-kind";
 import {
@@ -43,6 +44,10 @@ import {
   marketPulseTownMetrics,
   type MarketPulseTownMetric,
 } from "@/components/market-pulse-metrics";
+import {
+  marketPulseFillDeltaText,
+  type MarketPulseWowCompare,
+} from "@/lib/market-pulse-wow";
 
 /** Panel surface, lifted from the listing showcase tile. */
 /**
@@ -104,6 +109,8 @@ export default function MarketPulseTownPanel({
   scramble,
   tabs,
   caption,
+  compare = null,
+  fillDeltaInk = "black",
 }: {
   row: MarketPulseCombinedTownRow;
   scale: MarketPulseTownScale;
@@ -124,6 +131,9 @@ export default function MarketPulseTownPanel({
   /** Property-type buttons, in the showcase's pill style. */
   tabs?: ReactNode;
   caption?: ReactNode;
+  /** Prior-week change, drawn in the middle of each shaded fill. */
+  compare?: MarketPulseWowCompare | null;
+  fillDeltaInk?: PanelBarFillDeltaInk;
 }) {
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const metrics =
@@ -292,13 +302,13 @@ export default function MarketPulseTownPanel({
                 m.id === "saleToAsk" && saleToAskHref ? (
                   <Link
                     href={saleToAskHref}
-                    title={`${m.label} on Stats — chart and data table`}
+                    title={`${m.labelOf?.(row) ?? m.label} on Stats — chart and data table`}
                     className="underline decoration-white/25 underline-offset-2 transition-colors hover:text-gold"
                   >
-                    {m.label}
+                    {m.labelOf?.(row) ?? m.label}
                   </Link>
                 ) : (
-                  m.label
+                  (m.labelOf?.(row) ?? m.label)
                 )
               }
               valueText={valueText}
@@ -311,6 +321,8 @@ export default function MarketPulseTownPanel({
               }
               widthTransition={widthTransition}
               href={metricHref?.(m.id)}
+              fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
+              fillDeltaInk={fillDeltaInk}
             />
           );
         })}

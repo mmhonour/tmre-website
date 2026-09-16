@@ -51,8 +51,8 @@ export async function writeStatsCacheRow(key: string, payload: unknown): Promise
 
 /**
  * Clear the rebuildable stats cache while preserving the "last-good" feed rows.
- * Mirrors lib/listings-db.ts clearStatsCache: deal-of-the-day / latest-town-feed
- * / latest-feed / open-houses entries survive an hourly stats rebuild. Returns rows deleted.
+ * deal-of-the-day / latest-town-feed / latest-feed / open-houses / market-pulse-week
+ * entries survive an hourly stats rebuild. Returns rows deleted.
  */
 export async function clearStatsCache(): Promise<number> {
   return execute(
@@ -63,6 +63,7 @@ export async function clearStatsCache(): Promise<number> {
         AND cache_key NOT LIKE 'latest-feed:%'
         AND cache_key NOT LIKE 'listing-price-change:%'
         AND cache_key NOT LIKE 'closed-daily-counts:%'
+        AND cache_key NOT LIKE 'market-pulse-week:%'
         AND cache_key NOT LIKE 'open-houses:%'
         AND cache_key NOT LIKE 'alerts:%'`,
   )
@@ -157,4 +158,28 @@ export async function readStatsCacheRows(
     })
   }
   return out
+}
+
+/** Prefix scan for timeline keys that must survive hourly clears. */
+export async function listStatsCacheByPrefix(
+  prefix: string,
+  limit = 80,
+): Promise<Array<{ key: string } & StatsCacheRow>> {
+  const rows = await query<{
+    cache_key: string
+    payload: unknown
+    computed_at: Date | string | null
+  }>(
+    `SELECT cache_key, payload, computed_at
+       FROM stats_cache
+      WHERE cache_key LIKE $1
+      ORDER BY cache_key DESC
+      LIMIT $2`,
+    [`${prefix}%`, Math.max(1, Math.min(limit, 200))],
+  )
+  return rows.map((row) => ({
+    key: row.cache_key,
+    payload: payloadToString(row.payload),
+    computedAt: tsToIso(row.computed_at),
+  }))
 }

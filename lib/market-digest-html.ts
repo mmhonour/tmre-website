@@ -41,6 +41,12 @@ import {
   type MarketPulseStackedMetricId,
 } from '@/lib/market-pulse-stacked-metrics'
 import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
+import {
+  marketPulseCompareCaption,
+  marketPulseFillDeltaText,
+  type MarketPulseComparePeriod,
+  type MarketPulseWowCompare,
+} from '@/lib/market-pulse-wow'
 
 const NAVY = '#1B2A4A'
 const NAVY_DARK = '#131F38'
@@ -104,15 +110,9 @@ function cityLabel(row: { city: string }): string {
 
 /** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
 const BAR_INNER_PX = 220
-/**
- * The web track is 6px and lets the percent overhang it, which absolute
- * positioning allows and a table cell does not. Ten leaves the 9px percent room
- * to sit *inside* the track beside its fill, which is the placement that
- * matters here; a 6px bar would have forced the percent back out to a lane.
- */
 const BAR_HEIGHT_PX = 10
-/** The web's `grid-cols-[7.75rem_1fr_auto]`, in the px this table needs. */
-const LABEL_COL_PX = 124
+/** The web's `grid-cols-[8.75rem_1fr_auto]`, in the px this table needs. */
+const LABEL_COL_PX = 140
 const VALUE_COL_PX = 70
 /** Stands in for `BAR_EXTERIOR_LANE` — where a full bar's percent goes. */
 const ASIDE_LANE_PX = 34
@@ -129,17 +129,28 @@ const ASIDE_FONT = `font-family:ui-monospace,Consolas,monospace;font-size:9px;co
 function barCellTd(
   widthPx: number,
   color: string,
-  text?: { value: string; align: 'left' | 'right' },
+  text?: { value: string; align: 'left' | 'right' | 'center'; ink?: string; chip?: boolean },
 ): string {
   if (widthPx <= 0) return ''
+  const ink = text?.ink ?? PANEL_ASIDE
+  const chip = text?.chip === true
   const inner = text
-    ? `${ASIDE_FONT}line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};padding-${
-        text.align === 'left' ? 'left' : 'right'
-      }:4px;`
+    ? chip
+      ? `font-size:0;line-height:${BAR_HEIGHT_PX}px;text-align:center;`
+      : `font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:${
+          text.align === 'center' ? '600' : '400'
+        };color:${ink};line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};${
+          text.align === 'center'
+            ? ''
+            : `padding-${text.align === 'left' ? 'left' : 'right'}:4px;`
+        }white-space:nowrap;`
     : `font-size:0;line-height:${BAR_HEIGHT_PX}px;`
-  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};${inner}mso-line-height-rule:exactly;">${
-    text ? escapeHtml(text.value) : '&nbsp;'
-  }</td>`
+  const body = !text
+    ? '&nbsp;'
+    : chip
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;border-collapse:collapse;"><tr><td bgcolor="${CREAM}" style="background-color:${CREAM};padding:1px 4px;font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:600;color:${NAVY};white-space:nowrap;line-height:11px;">${escapeHtml(text.value)}</td></tr></table>`
+      : escapeHtml(text.value)
+  return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};${inner}mso-line-height-rule:exactly;">${body}</td>`
 }
 
 /**
@@ -156,6 +167,7 @@ function metricBarRow(
     leftPct?: number
     aside?: string | null
     asideNegative?: boolean
+    fillDelta?: string | null
   },
 ): string {
   const leftPct = Math.max(0, Math.min(100, opts?.leftPct ?? 0))
@@ -177,7 +189,14 @@ function metricBarRow(
       ? { value: asideText, align: 'right' }
       : undefined,
   )
-  const fill = barCellTd(filled, BAR_INK)
+  const fillDelta = opts?.fillDelta?.trim() ? opts.fillDelta.trim() : null
+  const fill = barCellTd(
+    filled,
+    BAR_INK,
+    fillDelta
+      ? { value: fillDelta, align: 'center', ink: NAVY, chip: true }
+      : undefined,
+  )
   const track = barCellTd(
     empty,
     BAR_TRACK,
@@ -195,6 +214,8 @@ function metricBarRow(
       ? `<span style="${ASIDE_FONT}padding-left:4px;">${escapeHtml(asideText)}</span>`
       : ''
 
+  const valueHtml = escapeHtml(valueLabel)
+
   return `
     <tr>
       <td width="${LABEL_COL_PX}" style="width:${LABEL_COL_PX}px;padding:5px 8px 5px 0;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${PANEL_MUTED};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(metricLabel)}${labelAside}</td>
@@ -203,7 +224,7 @@ function metricBarRow(
           <tr>${barCell}</tr>
         </table>
       </td>
-      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${escapeHtml(valueLabel)}</td>
+      <td width="${VALUE_COL_PX}" style="width:${VALUE_COL_PX}px;padding:5px 0 5px 8px;border-top:1px solid ${PANEL_RULE};font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${PANEL_VALUE};text-align:right;white-space:nowrap;vertical-align:middle;">${valueHtml}</td>
       <td width="${ASIDE_LANE_PX}" style="width:${ASIDE_LANE_PX}px;padding:5px 0 5px 6px;border-top:1px solid ${PANEL_RULE};${ASIDE_FONT}text-align:left;vertical-align:middle;">${
         placement === 'outside-right' && asideText ? escapeHtml(asideText) : '&nbsp;'
       }</td>
@@ -293,6 +314,8 @@ function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
   includeTax = false,
   taxYearLabel?: string | null,
+  wow?: MarketPulseWowCompare | null,
+  comparePeriod: MarketPulseComparePeriod = 'wow',
 ): string {
   const lookbackLabel = marketPulseLookbackChartLabel(
     DEFAULT_MARKET_PULSE_LOOKBACK_ID,
@@ -361,12 +384,17 @@ function stackedTownMetricsSection(
                     marketPulsePricePct(row.averageTax, taxMax),
                   )
               : { leftPct: 0, widthPct: pct }
-          return metricBarRow(m.label, m.format(row), span.widthPct, {
+          return metricBarRow(
+            m.labelOf?.(row) ?? m.label,
+            m.format(row),
+            span.widthPct,
+            {
             leftPct: span.leftPct,
             aside: metricAside(m.id, row),
             asideNegative:
               (m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0) ||
               (m.id === 'taxDelta' && (row.taxDeltaPct ?? 0) < 0),
+            fillDelta: marketPulseFillDeltaText(wow, row.city, m.id),
           })
         })
         .join('')
@@ -401,9 +429,14 @@ function stackedTownMetricsSection(
     })
     .join('')
 
+  const changeCaption = wow
+    ? `<tr><td style="padding:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${escapeHtml(marketPulseCompareCaption(wow, comparePeriod))}</td></tr>`
+    : ''
+
   return `
     <tr><td style="padding:0 0 14px 0;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        ${changeCaption}
         ${towns}
       </table>
     </td></tr>`
@@ -503,12 +536,16 @@ function dealOfTheWeekSection(
 export type FormatMarketDigestHtmlOptions = {
   /** Opt-in footer from Admin → Communications → Social profiles. Default off. */
   includeSocialProfiles?: boolean
+  /** Email always shows this compare when present; the page switch defaults Off. */
+  wow?: MarketPulseWowCompare | null
+  comparePeriod?: MarketPulseComparePeriod
 }
 
 /**
- * Email-safe HTML for the Monday market brief — same as /market-pulse on load:
- * stacked town metrics (`marketPulseStackedMetrics`), Seller Friendly order,
- * ALL sales, default closed lookback, KPIs, filter summary sentence.
+ * Email-safe HTML for the Monday market brief — stacked town metrics,
+ * Seller Friendly order, ALL sales, default closed lookback, KPIs. Week
+ * (or month) change sits in the middle of each shaded bar. The page switch
+ * defaults Off; the email always includes the change figures.
  */
 export function formatMarketDigestHtml(
   snapshot: MarketDigestSnapshot,
@@ -609,6 +646,8 @@ export function formatMarketDigestHtml(
                   combinedRows,
                   snapshot.taxReady === true,
                   snapshot.taxYearLabel,
+                  options?.wow ?? null,
+                  options?.comparePeriod ?? 'wow',
                 )}
                 ${dealSection}
                 <tr><td style="padding:0 0 10px 0;">

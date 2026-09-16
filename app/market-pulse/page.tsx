@@ -10,6 +10,7 @@ import {
   nextMarketDigestSendAt,
 } from "@/lib/market-digest-config";
 import { buildMarketDigestSnapshot } from "@/lib/market-digest";
+import { loadMarketPulseCompares } from "@/lib/market-pulse-week-cache";
 import {
   getMarketPulseThemeFresh,
   marketPulseThemeCssVars,
@@ -37,6 +38,11 @@ export default async function MarketPulsePage() {
     getMarketDigestConfigFresh(),
     getActiveCoverageTownsLabel(),
   ]);
+  const compares = await loadMarketPulseCompares(snapshot).catch(() => ({
+    wow: null,
+    mom: null,
+    yoy: null,
+  }));
   const etDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
@@ -68,7 +74,12 @@ export default async function MarketPulsePage() {
       >
         <section className="pt-8 pb-6 lg:pt-10 lg:pb-8">
           <div className="px-2 sm:px-6 lg:px-10 pb-12">
-            <MarketPulseContent snapshot={snapshot} etDate={etDate} />
+            <MarketPulseContent
+              snapshot={snapshot}
+              etDate={etDate}
+              compares={compares}
+              weekOverWeek
+            />
           </div>
         </section>
 

@@ -67,6 +67,16 @@ export const PANEL_TITLE =
 export const PANEL_LABEL =
   "truncate text-right [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-white/45";
 
+/** Ink for the week-change figure in the middle of a gold fill. */
+export type PanelBarFillDeltaInk = "white" | "black";
+
+export const PANEL_FILL_DELTA_INK_CLASS: Record<PanelBarFillDeltaInk, string> =
+  {
+    white: "bg-navy text-white",
+    /** Cream rectangle, navy type — a callout, not type cut into the gold. */
+    black: "bg-[#F7F5F0] text-[#1B2A4A]",
+  };
+
 /**
  * One labelled bar on a denim panel, shared so a town's stacked metrics and an
  * unstacked chart's towns are drawn by the same code rather than two that drift.
@@ -75,7 +85,8 @@ export const PANEL_LABEL =
  * wraps, and the value keeps its own column. The percent follows the brief's
  * placement — beside the fill, or past the track's right border once the fill
  * reaches the end — which the 6px track is too thin to hold, so it centres on
- * the bar and overhangs it.
+ * the bar and overhangs it. Week-over-week figures sit on the same 6px track
+ * as a solid cream rectangle with navy type — a callout, not a cutout.
  */
 export function PanelBarRow({
   label,
@@ -88,6 +99,8 @@ export function PanelBarRow({
   tooltip,
   dense = false,
   href,
+  fillDelta,
+  fillDeltaInk = "black",
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -101,13 +114,18 @@ export function PanelBarRow({
   dense?: boolean;
   /** Stats chart standing behind this bar, if there is one. */
   href?: string | null;
+  /** Change vs a prior week, centered on the shaded fill. */
+  fillDelta?: string | null;
+  fillDeltaInk?: PanelBarFillDeltaInk;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
   const Bar = (href ? Link : "span") as React.ElementType;
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
+  const fillMid = leftPct + widthPct / 2;
+  const delta = fillDelta?.trim() ? fillDelta.trim() : null;
   return (
     <div
-      className={`group relative grid grid-cols-[7.75rem_1fr_auto] items-center gap-2 ${
+      className={`group relative grid grid-cols-[8.75rem_1fr_auto] items-center gap-2 ${
         dense ? "h-[18px]" : "h-6"
       }`}
     >
@@ -140,6 +158,14 @@ export function PanelBarRow({
             style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
           />
         </span>
+        {delta ? (
+          <span
+            className={`pointer-events-none absolute top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm px-1 py-px [font-family:var(--mp-mono-font)] text-[9px] font-semibold leading-none tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
+            style={{ left: `${fillMid}%` }}
+          >
+            {delta}
+          </span>
+        ) : null}
         {aside && (placement === "left" || placement === "right") ? (
           <span
             className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70 ${

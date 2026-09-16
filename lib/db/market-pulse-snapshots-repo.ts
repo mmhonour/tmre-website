@@ -132,3 +132,19 @@ export async function listMarketPulseSnapshots(
   )
   return rows.map(mapRow)
 }
+
+/** Latest archived send-day strictly before `slotDate` (the previous Monday). */
+export async function readPriorMarketPulseSnapshot(
+  slotDate: string,
+): Promise<MarketPulseSnapshotRow | null> {
+  await ensureMarketPulseSnapshotsTable()
+  const row = await queryOne<SnapshotSqlRow>(
+    `SELECT slot_date, generated_at, sent_at, source, payload, stored_at
+       FROM market_pulse_snapshots
+      WHERE slot_date < $1::date
+      ORDER BY slot_date DESC
+      LIMIT 1`,
+    [slotDate],
+  )
+  return row ? mapRow(row) : null
+}
