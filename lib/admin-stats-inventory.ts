@@ -202,7 +202,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'slot_date (Eastern send-day)',
     owner: 'lib/db/market-pulse-snapshots-repo.ts',
     notes:
-      'Point-in-time Monday brief / Market Pulse payload. One row per Eastern send-day. Written on a real send and by npm run snapshot:market-pulse. Send test does not write. Stacked town numbers for the compare timeline also live in stats_cache as market-pulse-week:* (preserved across hourly clears). Page switch defaults Off; email always includes a WoW or MoM blurb beside each town chart.',
+      'Point-in-time Monday brief / Market Pulse payload. One row per Eastern send-day. Written on a real send and by npm run snapshot:market-pulse. Send test does not write. Stacked town numbers for the compare timeline also live in stats_cache as market-pulse-week:* (preserved across hourly clears). Page switch defaults Off; email always draws the week or month change in the middle of each shaded bar.',
     live: { kind: 'postgres_table', table: 'market_pulse_snapshots' },
   },
   {

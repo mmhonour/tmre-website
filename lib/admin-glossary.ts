@@ -535,7 +535,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'market_pulse_snapshots',
     category: 'sync-admin',
     definition:
-      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. Send test does not insert a row. Stacked town points for WoW / MoM / YoY also land in stats_cache as preserved `market-pulse-week:sale:all:v1:{slotDate}` keys (seeded from these snapshots, then upserted on each stats rebuild). /market-pulse subtracts a prior week slot from the live stacked defaults (server-side); the page switch defaults Off. The Monday email always includes a WoW (or MoM) blurb to the right of each town chart.',
+      'Neon table of weekly Market Pulse / Monday brief payloads. One row per Eastern send-day (slot_date). Written after a real send and by `npm run snapshot:market-pulse`. Send test does not insert a row. Stacked town points for week / month / year compares also land in stats_cache as preserved `market-pulse-week:sale:all:v1:{slotDate}` keys (seeded from these snapshots, then upserted on each stats rebuild). /market-pulse subtracts a prior week slot from the live stacked defaults (server-side); the page switch defaults Off. The Monday email always draws the week (or month) change in the middle of each shaded bar.',
   },
   {
     term: 'stats_cache_rebuild_lock',

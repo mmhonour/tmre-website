@@ -214,7 +214,7 @@ export function availableComparePeriods(
   return out
 }
 
-/** Monday email always shows a compare; page defaults Off. Prefer WoW, then MoM. */
+/** Monday email always shows a compare; page defaults Off. Prefer week, then month. */
 export function pickEmailMarketPulseCompare(
   set: MarketPulseCompareSet,
 ): { period: MarketPulseComparePeriod; compare: MarketPulseWowCompare } | null {
@@ -251,20 +251,29 @@ export function pickPriorSlotDate(
   return prior ?? null
 }
 
+export const MARKET_PULSE_COMPARE_SWITCH_LABEL: Record<
+  'off' | MarketPulseComparePeriod,
+  string
+> = {
+  off: 'Off',
+  wow: 'Week',
+  mom: 'Month',
+  yoy: 'Year',
+}
+
 export function marketPulseWowCaption(wow: MarketPulseWowCompare): string {
-  return `WoW vs ${wow.priorSlotLabel}`
+  return `vs ${wow.priorSlotLabel}`
 }
 
 export function marketPulseCompareCaption(
   compare: MarketPulseWowCompare,
   period: MarketPulseComparePeriod,
 ): string {
-  const prefix = period === 'wow' ? 'WoW' : period === 'mom' ? 'MoM' : 'YoY'
   const label =
     period === 'yoy'
       ? formatMarketPulseWowSlotLabel(compare.priorSlotDate, true)
       : compare.priorSlotLabel
-  return `${prefix} vs ${label}`
+  return `vs ${label}`
 }
 
 const BLURB_LABELS: Record<MarketPulseStackedMetricId, string> = {
@@ -286,7 +295,7 @@ function isQuietDelta(text: string, delta: number): boolean {
   return text === '0' || text === '0.0 mo' || text === '0d' || text === '$0K'
 }
 
-/** Town blurb beside the stacked chart — not on the bars. */
+/** Town blurb helper for plaintext email. */
 export function marketPulseCompareBlurbLines(
   compare: MarketPulseWowCompare | null | undefined,
   city: string,
@@ -313,7 +322,19 @@ export function marketPulseWowTextFor(
   return wow.byCity[marketPulseWowCityKey(city)]?.[metricId]?.text ?? null
 }
 
-/** One-line town blurb for plaintext email, e.g. `WoW vs 7 Sep: Inventory +12; Closed +11`. */
+/** Change figure for the middle of a shaded bar. Quiet zeros stay off the fill. */
+export function marketPulseFillDeltaText(
+  compare: MarketPulseWowCompare | null | undefined,
+  city: string,
+  metricId: MarketPulseStackedMetricId,
+): string | null {
+  if (!compare) return null
+  const d = compare.byCity[marketPulseWowCityKey(city)]?.[metricId]
+  if (!d || isQuietDelta(d.text, d.delta)) return null
+  return d.text
+}
+
+/** One-line town summary for plaintext email. */
 export function marketPulseCompareBlurbPlain(
   compare: MarketPulseWowCompare | null | undefined,
   city: string,

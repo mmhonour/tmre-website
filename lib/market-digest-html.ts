@@ -42,8 +42,8 @@ import {
 } from '@/lib/market-pulse-stacked-metrics'
 import { formatPriceDeltaPct } from '@/lib/market-pulse-price-delta'
 import {
-  marketPulseCompareBlurbLines,
   marketPulseCompareCaption,
+  marketPulseFillDeltaText,
   type MarketPulseComparePeriod,
   type MarketPulseWowCompare,
 } from '@/lib/market-pulse-wow'
@@ -111,19 +111,14 @@ function cityLabel(row: { city: string }): string {
 /** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
 const BAR_INNER_PX = 220
 /**
- * The web track is 6px and lets the percent overhang it, which absolute
- * positioning allows and a table cell does not. Ten leaves the 9px percent room
- * to sit *inside* the track beside its fill, which is the placement that
- * matters here; a 6px bar would have forced the percent back out to a lane.
+ * Tall enough for a 9px change figure to sit in the middle of the gold fill.
  */
-const BAR_HEIGHT_PX = 10
+const BAR_HEIGHT_PX = 16
 /** The web's `grid-cols-[7.75rem_1fr_auto]`, in the px this table needs. */
 const LABEL_COL_PX = 124
 const VALUE_COL_PX = 70
 /** Stands in for `BAR_EXTERIOR_LANE` — where a full bar's percent goes. */
 const ASIDE_LANE_PX = 34
-/** Compare blurb to the right of each town panel — not on the bars. */
-const BLURB_COL_PX = 108
 /** `divide-white/[0.08]` over the panel. */
 const PANEL_RULE = '#37475D'
 
@@ -137,13 +132,18 @@ const ASIDE_FONT = `font-family:ui-monospace,Consolas,monospace;font-size:9px;co
 function barCellTd(
   widthPx: number,
   color: string,
-  text?: { value: string; align: 'left' | 'right' },
+  text?: { value: string; align: 'left' | 'right' | 'center'; ink?: string },
 ): string {
   if (widthPx <= 0) return ''
+  const ink = text?.ink ?? PANEL_ASIDE
   const inner = text
-    ? `${ASIDE_FONT}line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};padding-${
-        text.align === 'left' ? 'left' : 'right'
-      }:4px;`
+    ? `font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:${
+        text.align === 'center' ? '600' : '400'
+      };color:${ink};line-height:${BAR_HEIGHT_PX}px;text-align:${text.align};${
+        text.align === 'center'
+          ? ''
+          : `padding-${text.align === 'left' ? 'left' : 'right'}:4px;`
+      }white-space:nowrap;`
     : `font-size:0;line-height:${BAR_HEIGHT_PX}px;`
   return `<td width="${widthPx}" bgcolor="${color}" height="${BAR_HEIGHT_PX}" style="width:${widthPx}px;max-width:${widthPx}px;height:${BAR_HEIGHT_PX}px;background-color:${color};${inner}mso-line-height-rule:exactly;">${
     text ? escapeHtml(text.value) : '&nbsp;'
@@ -164,6 +164,7 @@ function metricBarRow(
     leftPct?: number
     aside?: string | null
     asideNegative?: boolean
+    fillDelta?: string | null
   },
 ): string {
   const leftPct = Math.max(0, Math.min(100, opts?.leftPct ?? 0))
@@ -185,7 +186,14 @@ function metricBarRow(
       ? { value: asideText, align: 'right' }
       : undefined,
   )
-  const fill = barCellTd(filled, BAR_INK)
+  const fillDelta = opts?.fillDelta?.trim() ? opts.fillDelta.trim() : null
+  const fill = barCellTd(
+    filled,
+    BAR_INK,
+    fillDelta
+      ? { value: fillDelta, align: 'center', ink: NAVY_DARK }
+      : undefined,
+  )
   const track = barCellTd(
     empty,
     BAR_TRACK,
@@ -299,32 +307,6 @@ function metricAside(
   return null
 }
 
-function compareBlurbCell(
-  wow: MarketPulseWowCompare | null | undefined,
-  city: string,
-  period: MarketPulseComparePeriod,
-): string {
-  if (!wow) {
-    return `<td width="${BLURB_COL_PX}" style="width:${BLURB_COL_PX}px;padding:0 0 0 10px;">&nbsp;</td>`
-  }
-  const lines = marketPulseCompareBlurbLines(wow, city)
-  const caption = marketPulseCompareCaption(wow, period)
-  const body =
-    lines.length === 0
-      ? `<p style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:9px;line-height:1.35;color:${SLATE};">flat</p>`
-      : lines
-          .map(
-            (line) =>
-              `<p style="margin:0 0 2px 0;font-family:ui-monospace,Consolas,monospace;font-size:9px;line-height:1.35;color:${NAVY};">${escapeHtml(line.label)} ${escapeHtml(line.text)}</p>`,
-          )
-          .join('')
-  return `
-    <td width="${BLURB_COL_PX}" style="width:${BLURB_COL_PX}px;padding:4px 0 10px 10px;vertical-align:middle;">
-      <p style="margin:0 0 4px 0;font-family:ui-monospace,Consolas,monospace;font-size:8px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${escapeHtml(caption)}</p>
-      ${body}
-    </td>`
-}
-
 function stackedTownMetricsSection(
   rows: MarketPulseCombinedTownRow[],
   includeTax = false,
@@ -405,6 +387,7 @@ function stackedTownMetricsSection(
             asideNegative:
               (m.id === 'priceDelta' && (row.priceDeltaPct ?? 0) < 0) ||
               (m.id === 'taxDelta' && (row.taxDeltaPct ?? 0) < 0),
+            fillDelta: marketPulseFillDeltaText(wow, row.city, m.id),
           })
         })
         .join('')
@@ -412,7 +395,9 @@ function stackedTownMetricsSection(
       // The composite is the towns averaged, so ranking it against a count of
       // them reads as nonsense — the spectrum still places it.
       const aggregate = isAllTownsCity(row.city)
-      const panel = `
+      return `
+        <tr>
+          <td style="padding:0 0 10px 0;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${PANEL_BG}" style="width:100%;border-collapse:separate;background-color:${PANEL_BG};border-radius:12px;">
               <tr>
                 <td style="padding:12px 14px;">
@@ -431,28 +416,20 @@ function stackedTownMetricsSection(
                   </table>
                 </td>
               </tr>
-            </table>`
-      return `
-        <tr>
-          <td style="padding:0 0 10px 0;">
-            ${
-              wow
-                ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-              <tr>
-                <td style="vertical-align:top;">${panel}</td>
-                ${compareBlurbCell(wow, row.city, comparePeriod)}
-              </tr>
-            </table>`
-                : panel
-            }
+            </table>
           </td>
         </tr>`
     })
     .join('')
 
+  const changeCaption = wow
+    ? `<tr><td style="padding:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">Change ${escapeHtml(marketPulseCompareCaption(wow, comparePeriod))}</td></tr>`
+    : ''
+
   return `
     <tr><td style="padding:0 0 14px 0;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        ${changeCaption}
         ${towns}
       </table>
     </td></tr>`
@@ -558,10 +535,10 @@ export type FormatMarketDigestHtmlOptions = {
 }
 
 /**
- * Email-safe HTML for the Monday market brief — stacked town metrics
- * (`marketPulseStackedMetrics`), Seller Friendly order, ALL sales, default
- * closed lookback, KPIs. Compare blurbs sit to the right of each town panel
- * (not on the bars). The page defaults that switch Off; the email does not.
+ * Email-safe HTML for the Monday market brief — stacked town metrics,
+ * Seller Friendly order, ALL sales, default closed lookback, KPIs. Week
+ * (or month) change sits in the middle of each shaded bar. The page switch
+ * defaults Off; the email always includes the change figures.
  */
 export function formatMarketDigestHtml(
   snapshot: MarketDigestSnapshot,

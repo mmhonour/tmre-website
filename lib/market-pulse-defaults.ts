@@ -26,9 +26,9 @@ export const TRANSACT_TO_LIST_LABEL = 'TRAN$ACT to LIST'
  * (unstacked, Buyer, etc.). Source of truth: these constants +
  * `marketPulseStackedMetrics()`.
  *
- * Compare blurbs are a deliberate split: email always includes WoW (or MoM if
- * that is the oldest available slot); /market-pulse defaults the switch Off
- * so the bars stay uncluttered.
+ * Compare figures are a deliberate split: email always includes week (or
+ * month if that is the oldest available slot) in the middle of each shaded bar;
+ * /market-pulse defaults the switch Off so the bars stay uncluttered.
  */
 
 export function marketPulseFavorSortLabel(

@@ -43,6 +43,10 @@ import {
   marketPulseTownMetrics,
   type MarketPulseTownMetric,
 } from "@/components/market-pulse-metrics";
+import {
+  marketPulseFillDeltaText,
+  type MarketPulseWowCompare,
+} from "@/lib/market-pulse-wow";
 
 /** Panel surface, lifted from the listing showcase tile. */
 /**
@@ -104,6 +108,7 @@ export default function MarketPulseTownPanel({
   scramble,
   tabs,
   caption,
+  compare = null,
 }: {
   row: MarketPulseCombinedTownRow;
   scale: MarketPulseTownScale;
@@ -124,6 +129,8 @@ export default function MarketPulseTownPanel({
   /** Property-type buttons, in the showcase's pill style. */
   tabs?: ReactNode;
   caption?: ReactNode;
+  /** Prior-week change, drawn in the middle of each shaded fill. */
+  compare?: MarketPulseWowCompare | null;
 }) {
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const metrics =
@@ -311,6 +318,7 @@ export default function MarketPulseTownPanel({
               }
               widthTransition={widthTransition}
               href={metricHref?.(m.id)}
+              fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
             />
           );
         })}

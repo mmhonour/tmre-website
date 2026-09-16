@@ -52,9 +52,7 @@ import {
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
-  marketPulseCompareBlurbLines,
-  marketPulseCompareBlurbPlain,
-  marketPulseCompareCaption,
+  marketPulseFillDeltaText,
   type MarketPulseComparePeriod,
   type MarketPulseWowCompare,
 } from '@/lib/market-pulse-wow'
@@ -895,18 +893,19 @@ export function formatMarketDigestEmail(
       : combined.flatMap((row) => {
           const city = row.city.trim() || '—'
           const heat = heatByCity.get(row.city)
-          const blurb = marketPulseCompareBlurbPlain(
-            options?.wow ?? null,
-            row.city,
-            comparePeriod,
-          )
           return [
             heat == null ? city : `${city} — ${marketPulseHeatLabel(heat)}`,
             ...stackedMetrics.map((m) => {
               const value = m.format(row)
-              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${value}`
+              const fill = marketPulseFillDeltaText(
+                options?.wow ?? null,
+                row.city,
+                m.id,
+              )
+              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${
+                fill ? `${value}  ${fill}` : value
+              }`
             }),
-            ...(blurb ? [`  ${blurb}`] : []),
           ]
         })),
     '',

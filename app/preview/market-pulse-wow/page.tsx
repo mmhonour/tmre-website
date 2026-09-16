@@ -9,7 +9,7 @@ import {
 import { buildMarketPulseWow } from "@/lib/market-pulse-wow";
 
 export const metadata = {
-  title: "Preview — Market Pulse WoW — TMRE",
+  title: "Preview — Market Pulse week change — TMRE",
   robots: { index: false, follow: false },
 };
 

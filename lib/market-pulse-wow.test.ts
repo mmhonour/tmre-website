@@ -6,6 +6,7 @@ import {
   buildMarketPulseWow,
   formatMarketPulseWowSlotLabel,
   marketPulseCompareBlurbLines,
+  marketPulseFillDeltaText,
   marketPulseWowCaption,
   marketPulseWowTextFor,
   pickEmailMarketPulseCompare,
@@ -91,7 +92,7 @@ describe('buildMarketPulseWow', () => {
     const wow = buildMarketPulseWow(current, prior, '2026-09-07')
     assert.ok(wow)
     assert.equal(wow.priorSlotDate, '2026-09-07')
-    assert.equal(marketPulseWowCaption(wow), 'WoW vs 7 Sep')
+    assert.equal(marketPulseWowCaption(wow), 'vs 7 Sep')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'inventory'), '+12')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'monthsSupply'), '+0.4 mo')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'avgDom'), '−2d')
@@ -119,6 +120,9 @@ describe('buildMarketPulseWow', () => {
     const lines = marketPulseCompareBlurbLines(wow, 'Westport')
     assert.ok(!lines.some((l) => l.id === 'monthsSupply'))
     assert.ok(lines.some((l) => l.id === 'inventory' && l.text === '−6'))
+    assert.equal(marketPulseFillDeltaText(wow, 'Westport', 'inventory'), '−6')
+    assert.equal(marketPulseFillDeltaText(wow, 'Westport', 'monthsSupply'), null)
+    assert.equal(marketPulseFillDeltaText(wow, 'Westport', 'closed'), null)
   })
 })
 

@@ -88,6 +88,7 @@ export function PanelBarRow({
   tooltip,
   dense = false,
   href,
+  fillDelta,
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -101,14 +102,18 @@ export function PanelBarRow({
   dense?: boolean;
   /** Stats chart standing behind this bar, if there is one. */
   href?: string | null;
+  /** Change vs a prior week, centered on the shaded fill. */
+  fillDelta?: string | null;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
   const Bar = (href ? Link : "span") as React.ElementType;
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
+  const fillMid = leftPct + widthPct / 2;
+  const delta = fillDelta?.trim() ? fillDelta.trim() : null;
   return (
     <div
       className={`group relative grid grid-cols-[7.75rem_1fr_auto] items-center gap-2 ${
-        dense ? "h-[18px]" : "h-6"
+        dense ? "h-[18px]" : "h-7"
       }`}
     >
       <span className={PANEL_LABEL}>
@@ -124,7 +129,7 @@ export function PanelBarRow({
        */}
       <Bar
         {...(href ? { href } : {})}
-        className={`relative block h-1.5 w-full ${
+        className={`relative block h-3.5 w-full ${
           href ? "cursor-pointer" : ""
         }`}
       >
@@ -140,6 +145,14 @@ export function PanelBarRow({
             style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }}
           />
         </span>
+        {delta ? (
+          <span
+            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums text-[#1B2A4A]"
+            style={{ left: `${fillMid}%` }}
+          >
+            {delta}
+          </span>
+        ) : null}
         {aside && (placement === "left" || placement === "right") ? (
           <span
             className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-white/70 ${

@@ -13,7 +13,6 @@ import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
-import MarketPulseCompareBlurb from "@/components/MarketPulseCompareBlurb";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
 import {
   marketPulseTownScale,
@@ -88,7 +87,7 @@ import { splitSentences } from "@/lib/split-sentences";
 import {
   availableComparePeriods,
   EMPTY_MARKET_PULSE_COMPARES,
-  marketPulseCompareBlurbLines,
+  MARKET_PULSE_COMPARE_SWITCH_LABEL,
   marketPulseCompareCaption,
   type MarketPulseComparePeriod,
   type MarketPulseCompareSet,
@@ -106,12 +105,7 @@ function closedNounFor(kind: ListingKind): { title: string; lower: string } {
     : { title: "Closed sales", lower: "closed sales" };
 }
 
-const COMPARE_PERIOD_LABEL: Record<"off" | MarketPulseComparePeriod, string> = {
-  off: "Off",
-  wow: "WoW",
-  mom: "MoM",
-  yoy: "YoY",
-};
+const COMPARE_PERIOD_LABEL = MARKET_PULSE_COMPARE_SWITCH_LABEL;
 
 function ComparePeriodSwitch({
   periods,
@@ -128,7 +122,7 @@ function ComparePeriodSwitch({
     <div
       className="flex min-w-0 flex-wrap gap-1"
       role="radiogroup"
-      aria-label="Compare to prior weeks"
+      aria-label="Compare to a prior week, month, or year"
     >
       {options.map((id) => {
         const selected = value === id;
@@ -1395,6 +1389,11 @@ function CombinedMetricsChart({
   return (
     <section>
       {title ? <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p> : null}
+      {compare && comparePeriod !== "off" ? (
+        <p className="mb-2 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent,#C8A951)]">
+          Change {marketPulseCompareCaption(compare, comparePeriod)}
+        </p>
+      ) : null}
       <ul className="space-y-3">
         {visibleTownRows(rows, townsExpanded).map((row, rowIndex) => {
           const label = cityLabel(row);
@@ -1416,6 +1415,7 @@ function CombinedMetricsChart({
                 rowIndex,
                 townCount: rows.length,
               }}
+              compare={compare}
               heading={
                 <TownName
                   city={row.city ?? label}
@@ -1429,28 +1429,17 @@ function CombinedMetricsChart({
               }
             />
           );
-          const activePeriod = comparePeriod === "off" ? null : comparePeriod;
-          const blurb =
-            compare && activePeriod ? (
-              <MarketPulseCompareBlurb
-                caption={marketPulseCompareCaption(compare, activePeriod)}
-                lines={marketPulseCompareBlurbLines(compare, row.city)}
-              />
-            ) : null;
-          const extras = blurb || (rowIndex === 0 && lookbackRail);
           return (
             <li key={`combined-${row.city}`} data-mp-town={row.city}>
               {/*
                * The rail stands alongside the first block only, and stretches to
                * it, so it runs from the All towns name to its last bar and no
                * further. Towns below it are not indented past empty space.
-               * Compare blurbs sit to the right of the denim panel, not on the bars.
                */}
-              {extras ? (
+              {rowIndex === 0 && lookbackRail ? (
                 <div className="flex items-stretch gap-2 sm:gap-3">
                   <div className="min-w-0 flex-1">{block}</div>
-                  {blurb}
-                  {rowIndex === 0 ? lookbackRail : null}
+                  {lookbackRail}
                 </div>
               ) : (
                 block
@@ -1605,7 +1594,7 @@ export default function WeeklyBriefContent({
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
   /**
-   * Precomputed vs stored week slots. Page switch defaults Off; MoM / YoY
+   * Precomputed vs stored week slots. Page switch defaults Off; Month / Year
    * options appear when those slots exist. Hidden off ALL / 12 mos / stacked.
    */
   compares?: MarketPulseCompareSet;
