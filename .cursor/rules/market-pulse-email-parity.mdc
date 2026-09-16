@@ -60,4 +60,4 @@ Filters leave ALL / 12 mos / stacked.
 3. Filter summary sentence changed? → email uses `summarizeMarketPulseFilters`, so keep that helper as the one-liner.
 4. Unstacked-only or in-session Filters (Buyer Friendly, lookback, property type) stay **off** the email unless they become the page-load default.
 5. New factor in the Buyer/Seller composite? → name it in `MARKET_PULSE_BUYER_SCORE_COPY` / `MARKET_PULSE_SELLER_SCORE_COPY`, which both surfaces render.
-6. WoW on the stacked bars? → compute with `buildMarketPulseWow`, pass into email options and the page. Email always on; page switch Off / WoW. Do not roll a second subtract.
+6. Week-over-week on the stacked bars? → compute with `buildMarketPulseWow`, pass into email options and the page. Email always on; page switch Off / Week Over Week. Do not roll a second subtract.

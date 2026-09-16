@@ -52,7 +52,8 @@ export default function MarketPulseWowPreviewClient({
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Same 6px gold bars as production. White numbers vs black{" "}
           <span className="font-mono text-[11px] text-navy">#1B2A4A</span> in
-          the middle of each fill. Off / WoW. Fixture towns, not live cache.
+          the middle of each fill. Off / Week Over Week. Fixture towns, not live
+          cache.
         </p>
 
         <div

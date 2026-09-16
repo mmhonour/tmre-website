@@ -253,13 +253,13 @@ export const MARKET_PULSE_COMPARE_SWITCH_LABEL: Record<
   string
 > = {
   off: 'Off',
-  wow: 'WoW',
+  wow: 'Week Over Week',
   mom: 'Month',
   yoy: 'Year',
 }
 
 export function marketPulseWowCaption(wow: MarketPulseWowCompare): string {
-  return `WoW vs ${wow.priorSlotLabel}`
+  return `Week over week vs ${wow.priorSlotLabel}`
 }
 
 export function marketPulseCompareCaption(
@@ -267,7 +267,11 @@ export function marketPulseCompareCaption(
   period: MarketPulseComparePeriod,
 ): string {
   const prefix =
-    period === 'wow' ? 'WoW' : period === 'mom' ? 'Month' : 'Year'
+    period === 'wow'
+      ? 'Week over week'
+      : period === 'mom'
+        ? 'Month'
+        : 'Year'
   const label =
     period === 'yoy'
       ? formatMarketPulseWowSlotLabel(compare.priorSlotDate, true)

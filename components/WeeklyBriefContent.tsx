@@ -1594,8 +1594,8 @@ export default function WeeklyBriefContent({
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
   /**
-   * Precomputed vs stored week slots. Page switch defaults Off / WoW; month
-   * and year stay off the switch. Hidden off ALL / 12 mos / stacked.
+   * Precomputed vs stored week slots. Page switch defaults Off / Week Over Week;
+   * month and year stay off the switch. Hidden off ALL / 12 mos / stacked.
    */
   compares?: MarketPulseCompareSet;
 }) {

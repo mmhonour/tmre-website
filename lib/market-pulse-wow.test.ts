@@ -94,7 +94,7 @@ describe('buildMarketPulseWow', () => {
     const wow = buildMarketPulseWow(current, prior, '2026-09-07')
     assert.ok(wow)
     assert.equal(wow.priorSlotDate, '2026-09-07')
-    assert.equal(marketPulseWowCaption(wow), 'WoW vs 7 Sep')
+    assert.equal(marketPulseWowCaption(wow), 'Week over week vs 7 Sep')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'inventory'), '+12')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'monthsSupply'), '+0.4 mo')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'avgDom'), '−2d')
