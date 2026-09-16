@@ -23,8 +23,9 @@ export default function DodBleedShowcaseClickPreviewPage() {
         <p className="mb-3 text-sm leading-relaxed text-slate">
           Full Deal of the Day page (carousel, town list, value-pick,
           insight) with fixture towns — no listing database. Click empty
-          photo in the top-half bleed to open that listing’s showcase. Town
-          names, the headline, and the value-pick keep their own clicks.
+          photo in the bleed to open that listing’s showcase (desktop
+          top-half, phone photo behind the title). Town names, the
+          headline, and the value-pick keep their own clicks.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Full PR 167:{" "}
