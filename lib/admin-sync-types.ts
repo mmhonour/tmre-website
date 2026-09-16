@@ -88,7 +88,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'hero-photos': {
     label: 'Listing photos (heroes)',
     description:
-      'Low-priority scavenge: oldest Active listings missing six full-size showcase heroes. Five listings per hop; hops walk on inside the ~9 minute burst. Idle when coverage is 100% — still counts and reports % missing on the run board.',
+      'Low-priority scavenge: oldest Active listings missing six full-size showcase heroes in R2. Five listings per hop; hops walk on inside the ~9 minute burst and persist skip so leftovers behind unfillable oldest still get filled. Idle when coverage is 100% — still counts and reports % missing on the run board.',
   },
 } as const
 

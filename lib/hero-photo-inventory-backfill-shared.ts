@@ -17,8 +17,9 @@ export const LAST_HERO_PHOTOS_META_KEY = 'last_hero_photos'
 export const HERO_PHOTOS_SKIP_KEY = 'hero_photos_skip_mls_ids'
 export const HERO_PHOTOS_SKIP_MAX = 400
 /**
- * Three empty hops (15 listings) with zero fills means Media/RETS is down or
- * refusing full-size bytes — not that those listings should leave the queue.
+ * After wrap, three empty hops (15 listings) with zero fills means Media/RETS
+ * is down. First pass never aborts for empties — skip persists so the next
+ * hop (and the next 15-minute burst) walks past unfillable oldest leftovers.
  */
 export const HERO_SCAVENGE_EMPTY_ABORT_BATCHES = 3
 
@@ -26,8 +27,10 @@ export function shouldAbortHeroScavengeEmptyBurst(input: {
   consecutiveEmptyBatches: number
   filledPhotos: number
   filledListings: number
+  wrappedSkip: boolean
 }): boolean {
   return (
+    input.wrappedSkip &&
     input.filledPhotos === 0 &&
     input.filledListings === 0 &&
     input.consecutiveEmptyBatches >= HERO_SCAVENGE_EMPTY_ABORT_BATCHES
@@ -84,8 +87,9 @@ export type HeroPhotosJobStatus = {
   /** MLS ids this burst tried that stored nothing — walked on, skipped next burst. */
   walkedPast?: number
   /**
-   * Burst stopped after consecutive empty hops with zero fills. Skip list is
-   * not persisted — walking the whole missing set off the queue is not progress.
+   * Burst stopped after wrap + consecutive empty hops with zero fills.
+   * Skip list is still persisted so the next 15-minute slot continues past
+   * those ids (cap 400, then wrap and retry). First-pass empties never stall.
    */
   stalledEmpty?: boolean
   complete: boolean
@@ -135,7 +139,7 @@ function walkedPastClause(status: HeroPhotosJobStatus): string {
   if (status.stalledEmpty) {
     const n = status.walkedPast ?? 0
     const tried = n > 0 ? ` ${n}` : ''
-    return ` · stopped after${tried} stored nothing in a row (not walking the rest off the queue)`
+    return ` · skipped${tried} that stored nothing (next burst continues past them)`
   }
   const n = status.walkedPast ?? 0
   if (n <= 0) return ''

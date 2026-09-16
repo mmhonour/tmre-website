@@ -146,9 +146,12 @@ async function warmIds(
 }
 
 /**
- * Low-priority sync-queue job. Oldest Active gaps first. Short bursts so
- * Incremental / stats / CAMA stay ahead. When every Active already has six
- * full-size heroes, the run is a count + status write (idle).
+ * Low-priority sync-queue job. Oldest Active gaps first (first six `?size=full`
+ * slots). Short bursts so Incremental / stats / CAMA stay ahead. Unfillable
+ * ids stay on the skip list so the next hop — and the next 15-minute slot —
+ * picks up leftovers still missing R2. Full galleries / Closed stay on the
+ * operator CLI. When every Active already has six full-size heroes, the run
+ * is a count + status write (idle).
  */
 export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   const before = await countActiveShowcaseHeroCoverage()
@@ -184,8 +187,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   let filledListings = 0
   let filledPhotos = 0
   let walkedPast = 0
-  const skipIdsAtStart = await readSkipMlsIds()
-  let skipIds = [...skipIdsAtStart]
+  let skipIds = await readSkipMlsIds()
   const triedThisBurst = new Set<string>()
   let wrappedSkip = false
   let consecutiveEmptyBatches = 0
@@ -198,14 +200,21 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     )
     if (ids.length === 0) {
       if (wrappedSkip || skipIds.length === 0) break
+      const skipBeforeWrap = skipIds
       skipIds = []
-      await writeSkipMlsIds([])
       wrappedSkip = true
       ids = await listOldestActiveMlsIdsMissingShowcaseHeroes(
         HERO_SCAVENGE_BATCH,
         { excludeMlsIds: [...triedThisBurst] },
       )
-      if (ids.length === 0) break
+      if (ids.length === 0) {
+        // Already tried the leftover set this burst — keep skip so the next
+        // 15-minute slot wraps with an empty tried set instead of re-fetching
+        // the same unfillable oldest listings until the clock runs out.
+        skipIds = skipBeforeWrap
+        break
+      }
+      await writeSkipMlsIds([])
     }
     const warmed = await warmIds(ids)
     filledListings += warmed.listings
@@ -225,10 +234,10 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
         consecutiveEmptyBatches,
         filledPhotos,
         filledListings,
+        wrappedSkip,
       })
     ) {
       stalledEmpty = true
-      skipIds = skipIdsAtStart
       const mid = buildStatus({
         withPhotosBefore: before.withPhotos,
         withPhotosAfter: before.withPhotos,
@@ -263,11 +272,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     console.info(`[hero-photos] ${mid.message}`)
   }
 
-  if (stalledEmpty) {
-    await writeSkipMlsIds(skipIdsAtStart)
-  } else {
-    await writeSkipMlsIds(skipIds)
-  }
+  await writeSkipMlsIds(skipIds)
   const after = await countActiveShowcaseHeroCoverage()
   const status = buildStatus({
     withPhotosBefore: before.withPhotos,

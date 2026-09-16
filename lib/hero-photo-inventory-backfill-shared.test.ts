@@ -106,7 +106,7 @@ describe("formatHeroPhotosJobMessage", () => {
     );
   });
 
-  it("does not treat a Media/RETS stall as walking the missing set off the queue", () => {
+  it("says a wrap stall skipped empties so the next burst continues past them", () => {
     assert.equal(
       formatHeroPhotosJobMessage({
         ...base,
@@ -117,7 +117,7 @@ describe("formatHeroPhotosJobMessage", () => {
         missingPctAfter: 87.0,
         stalledEmpty: true,
       }),
-      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · stopped after 15 stored nothing in a row (not walking the rest off the queue) · now 87% missing",
+      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · skipped 15 that stored nothing (next burst continues past them) · now 87% missing",
     );
   });
 
@@ -269,12 +269,34 @@ describe("heroMissingPctAfter", () => {
 });
 
 describe("shouldAbortHeroScavengeEmptyBurst", () => {
-  it("stops after three empty hops with zero fills", () => {
+  it("keeps walking the first pass so leftovers behind unfillable oldest still get R2", () => {
     assert.equal(
       shouldAbortHeroScavengeEmptyBurst({
         consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES,
         filledPhotos: 0,
         filledListings: 0,
+        wrappedSkip: false,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldAbortHeroScavengeEmptyBurst({
+        consecutiveEmptyBatches: 20,
+        filledPhotos: 0,
+        filledListings: 0,
+        wrappedSkip: false,
+      }),
+      false,
+    );
+  });
+
+  it("stops after wrap plus three empty hops with zero fills", () => {
+    assert.equal(
+      shouldAbortHeroScavengeEmptyBurst({
+        consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES,
+        filledPhotos: 0,
+        filledListings: 0,
+        wrappedSkip: true,
       }),
       true,
     );
@@ -283,6 +305,7 @@ describe("shouldAbortHeroScavengeEmptyBurst", () => {
         consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES - 1,
         filledPhotos: 0,
         filledListings: 0,
+        wrappedSkip: true,
       }),
       false,
     );
@@ -291,6 +314,7 @@ describe("shouldAbortHeroScavengeEmptyBurst", () => {
         consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES,
         filledPhotos: 1,
         filledListings: 1,
+        wrappedSkip: true,
       }),
       false,
     );

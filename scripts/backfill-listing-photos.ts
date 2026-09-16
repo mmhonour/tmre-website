@@ -6,7 +6,9 @@
  * Everything already in inventory stays cold until someone opens the showcase
  * (`?size=full` → Media/RETS → R2). This CLI walks those rows and stores the
  * missing bytes. Do not run it on Railway Incremental — that process OOMs
- * when it fetches photo bodies.
+ * when it fetches photo bodies. Railway `hero-photos` already scavenges the
+ * first six Active heroes between runs; use this when you have time for a
+ * fuller catch-up (`--all`, other statuses).
  *
  * Targets (printed at start — read them before walking away):
  *   listings  → DATABASE_URL (often localhost)
