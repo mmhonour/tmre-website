@@ -1,5 +1,7 @@
 /** First six showcase shots (`warmListingShowcasePhotos` / `?size=full`). */
 export const SHOWCASE_HERO_PHOTO_SLOTS = 6
+/** MLS photo_count cap — same ceiling as listing-photos-sync / R2 warm. */
+export const LISTING_PHOTO_SLOT_CAP = 60
 
 /** Town-cursor hop for the operator CLI — leftover Active gaps wait for the next pass. */
 export const HERO_INVENTORY_BACKFILL_BATCH = 4
@@ -17,8 +19,9 @@ export const LAST_HERO_PHOTOS_META_KEY = 'last_hero_photos'
 export const HERO_PHOTOS_SKIP_KEY = 'hero_photos_skip_mls_ids'
 export const HERO_PHOTOS_SKIP_MAX = 400
 /**
- * Three empty hops (15 listings) with zero fills means Media/RETS is down or
- * refusing full-size bytes — not that those listings should leave the queue.
+ * After wrap, three empty hops (15 listings) with zero fills means Media/RETS
+ * is down. First pass never aborts for empties — skip persists so the next
+ * hop (and the next 15-minute burst) walks past unfillable oldest leftovers.
  */
 export const HERO_SCAVENGE_EMPTY_ABORT_BATCHES = 3
 
@@ -26,8 +29,10 @@ export function shouldAbortHeroScavengeEmptyBurst(input: {
   consecutiveEmptyBatches: number
   filledPhotos: number
   filledListings: number
+  wrappedSkip: boolean
 }): boolean {
   return (
+    input.wrappedSkip &&
     input.filledPhotos === 0 &&
     input.filledListings === 0 &&
     input.consecutiveEmptyBatches >= HERO_SCAVENGE_EMPTY_ABORT_BATCHES
@@ -68,12 +73,12 @@ export function mergeHeroPhotosSkipMlsIds(
 export type HeroPhotosJobStatus = {
   generatedAt: string
   /**
-   * Active-with-photos count used in the "was … (missing/total)" fraction.
-   * Must be the before-burst inventory so a growing Active book cannot pull
-   * the displayed % down when this burst stored nothing.
+   * Listings-with-photos count used in the "was … (missing/total)" fraction
+   * (any status). Must be the before-burst inventory so a growing book cannot
+   * pull the displayed % down when this burst stored nothing.
    */
   activeWithPhotos: number
-  /** After-burst Active-with-photos count; omitted when it matches `activeWithPhotos`. */
+  /** After-burst listings-with-photos count; omitted when it matches `activeWithPhotos`. */
   activeWithPhotosAfter?: number
   missingBefore: number
   missingAfter: number
@@ -84,8 +89,9 @@ export type HeroPhotosJobStatus = {
   /** MLS ids this burst tried that stored nothing — walked on, skipped next burst. */
   walkedPast?: number
   /**
-   * Burst stopped after consecutive empty hops with zero fills. Skip list is
-   * not persisted — walking the whole missing set off the queue is not progress.
+   * Burst stopped after wrap + consecutive empty hops with zero fills.
+   * Skip list is still persisted so the next 15-minute slot continues past
+   * those ids (cap 400, then wrap and retry). First-pass empties never stall.
    */
   stalledEmpty?: boolean
   complete: boolean
@@ -103,9 +109,24 @@ export function pctMissing(missing: number, total: number): number {
 }
 
 /**
- * "Now % missing" after a burst. Zero fills must not look like coverage
- * progress just because more Active listings arrived in the denominator.
+ * Denominator for the after snapshot. Zero fills must not look like coverage
+ * progress just because more listings arrived in the book.
  */
+export function heroMissingAfterTotal(input: {
+  withPhotosBefore: number
+  withPhotosAfter: number
+  filledListings: number
+  filledPhotos: number
+}): number {
+  if (input.filledListings > 0 || input.filledPhotos > 0) {
+    return input.withPhotosAfter
+  }
+  if (input.withPhotosAfter > input.withPhotosBefore) {
+    return input.withPhotosBefore
+  }
+  return input.withPhotosAfter
+}
+
 export function heroMissingPctAfter(input: {
   missingAfter: number
   withPhotosBefore: number
@@ -113,13 +134,11 @@ export function heroMissingPctAfter(input: {
   filledListings: number
   filledPhotos: number
 }): number {
-  if (input.filledListings > 0 || input.filledPhotos > 0) {
-    return pctMissing(input.missingAfter, input.withPhotosAfter)
-  }
-  if (input.withPhotosAfter > input.withPhotosBefore) {
-    return pctMissing(input.missingAfter, input.withPhotosBefore)
-  }
-  return pctMissing(input.missingAfter, input.withPhotosAfter)
+  return pctMissing(input.missingAfter, heroMissingAfterTotal(input))
+}
+
+function missingShare(pct: number, missing: number, total: number): string {
+  return `${pct}% missing (${missing.toLocaleString()}/${total.toLocaleString()})`
 }
 
 export function formatHeroPhotosInterruptedMessage(
@@ -135,7 +154,7 @@ function walkedPastClause(status: HeroPhotosJobStatus): string {
   if (status.stalledEmpty) {
     const n = status.walkedPast ?? 0
     const tried = n > 0 ? ` ${n}` : ''
-    return ` · stopped after${tried} stored nothing in a row (not walking the rest off the queue)`
+    return ` · skipped${tried} that stored nothing (next burst continues past them)`
   }
   const n = status.walkedPast ?? 0
   if (n <= 0) return ''
@@ -148,42 +167,42 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
       ? status.message
       : formatHeroPhotosInterruptedMessage(status)
   }
-  const total = status.activeWithPhotos.toLocaleString()
-  const missingN = status.missingBefore.toLocaleString()
+  const beforeTotal = status.activeWithPhotos
+  const afterTotal = heroMissingAfterTotal({
+    withPhotosBefore: status.activeWithPhotos,
+    withPhotosAfter: status.activeWithPhotosAfter ?? status.activeWithPhotos,
+    filledListings: status.filledListings,
+    filledPhotos: status.filledPhotos,
+  })
+  const before = missingShare(
+    status.missingPctBefore,
+    status.missingBefore,
+    beforeTotal,
+  )
+  const after = missingShare(
+    status.missingPctAfter,
+    status.missingAfter,
+    afterTotal,
+  )
+  const filled =
+    `filled ${status.filledListings} listings / ${status.filledPhotos} photos`
   const walked = walkedPastClause(status)
   if (status.running) {
     if (status.filledListings > 0 || status.filledPhotos > 0) {
-      return (
-        `running · was ${status.missingPctBefore}% missing (${missingN}/${total})` +
-        ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos so far` +
-        walked
-      )
+      return `running · was ${before} · ${filled} so far` + walked
     }
     if (status.stalledEmpty || (status.walkedPast ?? 0) > 0) {
-      return (
-        `running · ${status.missingPctBefore}% missing (${missingN}/${total})` +
-        walked
-      )
+      return `running · ${before}` + walked
     }
-    return `running · ${status.missingPctBefore}% missing (${missingN}/${total}) · burst starting`
+    return `running · ${before} · burst starting`
   }
   if (status.idle || status.complete) {
     if (status.filledListings > 0) {
-      return (
-        `idle · was ${status.missingPctBefore}% missing` +
-        ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos` +
-        walked +
-        ` · now 0% missing · 100% complete`
-      )
+      return `idle · was ${before} · ${filled}` + walked + ` · now ${after} · 100% complete`
     }
-    return `idle · 0% missing · ${total} Active with photos · 100% complete`
+    return `idle · ${after} · 100% complete`
   }
-  return (
-    `was ${status.missingPctBefore}% missing (${missingN}/${total})` +
-    ` · filled ${status.filledListings} listings / ${status.filledPhotos} photos` +
-    walked +
-    ` · now ${status.missingPctAfter}% missing`
-  )
+  return `was ${before} · ${filled}` + walked + ` · now ${after}`
 }
 
 export function parseHeroPhotosJobStatus(

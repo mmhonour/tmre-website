@@ -31,7 +31,7 @@ describe('SYNC_QUEUE_RUNNER_JOBS', () => {
     assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('db-size'))
   })
 
-  it('claims hero-photos so Active hero catch-up is a forked child, not the website worker', () => {
+  it('claims hero-photos so leftover photo catch-up is a forked child, not the website worker', () => {
     assert.equal(isSyncQueueRunnerJob('hero-photos'), true)
     assert.ok(SYNC_QUEUE_RUNNER_JOBS.includes('hero-photos'))
   })

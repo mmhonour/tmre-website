@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { listingRowId } from '@/lib/db/listings-repo'
+import { LISTING_PHOTO_SLOT_CAP } from '@/lib/hero-photo-inventory-backfill-shared'
 import {
   ensureListingPhotoIndexFromR2,
   readListingPhotoMeta,
@@ -32,7 +33,7 @@ function sleep(ms: number): Promise<void> {
 
 async function syncOneListingPhotos(listing: Listing): Promise<number> {
   const cacheId = listingPhotoCacheId(listing)
-  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), 60)
+  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), LISTING_PHOTO_SLOT_CAP)
   if (!cacheId || photoCount <= 0) return 0
 
   if (!(await listingPhotosNeedRefresh(cacheId, photoCount))) return 0
@@ -59,27 +60,28 @@ async function syncOneListingPhotos(listing: Listing): Promise<number> {
   return stored
 }
 
-/**
- * First six full-size MediaURL photos — the same fetch a showcase hero does
- * on first paint (size=full), so a new incremental listing is not a 404.
- */
-export async function warmListingShowcasePhotos(
+export type WarmListingPhotosResult = {
+  stored: number
+  timedOut: boolean
+}
+
+async function warmListingPhotoSlots(
   listing: Listing,
-  opts?: { maxIndex?: number },
-): Promise<number> {
+  lastIndex: number,
+  opts?: { untilMs?: number },
+): Promise<WarmListingPhotosResult> {
   const cacheId = listingPhotoCacheId(listing)
-  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), 60)
-  if (!cacheId || photoCount <= 0) return 0
+  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), LISTING_PHOTO_SLOT_CAP)
+  if (!cacheId || photoCount <= 0) return { stored: 0, timedOut: false }
 
   const listingKey = listing.listingKey?.trim() || listing.mlsId.trim()
-  const indexCap = Math.min(
-    Math.max(opts?.maxIndex ?? SHOWCASE_HERO_MAX_INDEX, 0),
-    SHOWCASE_HERO_MAX_INDEX,
-  )
-  const lastIndex = Math.min(Math.max(photoCount - 1, 0), indexCap)
+  const end = Math.min(Math.max(photoCount - 1, 0), Math.max(lastIndex, 0))
   let stored = 0
 
-  for (let photoIndex = 0; photoIndex <= lastIndex; photoIndex++) {
+  for (let photoIndex = 0; photoIndex <= end; photoIndex++) {
+    if (opts?.untilMs != null && Date.now() >= opts.untilMs) {
+      return { stored, timedOut: true }
+    }
     const already = await readListingPhotoMeta(cacheId, photoIndex)
     if (already && already.byteLength >= 100) {
       const mid = await readListingPhotoMeta(
@@ -107,10 +109,38 @@ export async function warmListingShowcasePhotos(
     } else if (await ensureListingPhotoIndexFromR2(cacheId, photoIndex)) {
       stored += 1
     }
-    if (photoIndex < lastIndex) await sleep(PHOTO_FETCH_DELAY_MS)
+    if (photoIndex < end) await sleep(PHOTO_FETCH_DELAY_MS)
   }
 
-  return stored
+  return { stored, timedOut: false }
+}
+
+/**
+ * First six full-size MediaURL photos — the same fetch a showcase hero does
+ * on first paint (size=full), so a new incremental listing is not a 404.
+ */
+export async function warmListingShowcasePhotos(
+  listing: Listing,
+  opts?: { maxIndex?: number },
+): Promise<number> {
+  const indexCap = Math.min(
+    Math.max(opts?.maxIndex ?? SHOWCASE_HERO_MAX_INDEX, 0),
+    SHOWCASE_HERO_MAX_INDEX,
+  )
+  const result = await warmListingPhotoSlots(listing, indexCap)
+  return result.stored
+}
+
+/**
+ * Every remaining R2/index slot for this listing (Active or not), up to
+ * LISTING_PHOTO_SLOT_CAP. Stops at `untilMs` so a 40-photo Closed row cannot
+ * overrun the Railway burst; already-stored slots are skipped next hop.
+ */
+export async function warmListingInventoryPhotos(
+  listing: Listing,
+  opts?: { untilMs?: number },
+): Promise<WarmListingPhotosResult> {
+  return warmListingPhotoSlots(listing, LISTING_PHOTO_SLOT_CAP - 1, opts)
 }
 
 /**
@@ -121,7 +151,7 @@ export async function listingShowcasePhotosIncomplete(
   listing: Listing,
 ): Promise<boolean> {
   const cacheId = listingPhotoCacheId(listing)
-  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), 60)
+  const photoCount = Math.min(Math.max(listing.photoCount ?? 0, 0), LISTING_PHOTO_SLOT_CAP)
   if (!cacheId || photoCount <= 0) return false
 
   const ttlMs = await getListingPhotoTtlMsFresh()

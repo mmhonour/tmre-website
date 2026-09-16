@@ -600,14 +600,14 @@ export function describeStartupProcess(): {
     id: "hero-photos",
     title: "Listing photos (heroes)",
     subtitle:
-      "Oldest Active listings missing six full-size showcase heroes → R2 + Neon listing_photo_index",
+      "Every listing missing R2 photo slots (Active first) → R2 + Neon listing_photo_index",
     steps: [
       {
         id: "hero-photos-scavenge",
-        title: "Low-priority hero-six scavenge",
+        title: "Low-priority leftover-photo scavenge",
         timing: "2-min sweep → every 15m (Configure), 10-min budget",
         detail:
-          "runHeroPhotoScavengeJob(). Lowest claim rank so Incremental / stats / CAMA go first. Oldest list_date first, five listings per hop; hops walk on inside the ~9-minute burst (stuck ids are skipped next burst). Three empty hops with zero fills abort and do not persist the skip list — a Media/RETS stall must not walk the missing set off the queue or pull % down. Full-size fetch is MediaURL then RETS objects. R2 bytes with a missing index row are indexed without a Media refetch. Writes hero_photos_status (% missing before against the before-burst Active count, listings/photos filled, % remaining) and last_hero_photos. When every Active already has six full-size heroes the run is a count + idle report — no Media fetch. Railway 2-min sweep and Netlify thin */15 (sync-hero-photos) enqueue when Configure is due; the forked child downloads. Incremental still writes ids only. Not part of Sync all. A host-loss reap (runner vanished) does not start the 30-minute failure cooldown — the next 15m slot may enqueue. Admin Syncs row shows the last message for eagle-eye.",
+          "runHeroPhotoScavengeJob(). Lowest claim rank so Incremental / stats / CAMA go first. Any status, every photo slot up to 60. Active leftovers first, then Closed/Expired, oldest list_date first. Five listings per hop; hops walk on inside the ~9-minute burst and stop mid-listing when the clock runs out so a large gallery cannot overrun the child. A hop that stores nothing is skipped next hop and next burst (cap 400, then wrap and retry). First pass does not abort on empties — unfillable oldest must not block fillable leftovers still missing R2. After wrap, three empty hops with zero fills abort the burst (Media/RETS down) but still persist skip so the next 15m slot continues. Full-size fetch is MediaURL then RETS objects. R2 bytes with a missing index row are indexed without a Media refetch. Writes hero_photos_status (before/after snapshot: % missing and leftover listing counts against listings-with-photos, listings/photos catalogued to R2 this burst) and last_hero_photos. When every listing with photos is indexed the run is a count + idle report — no Media fetch. Railway 2-min sweep and Netlify thin */15 (sync-hero-photos) enqueue when Configure is due; the forked child downloads. Incremental still writes ids only. Operator CLI `npm run backfill:listing-photos` is optional faster catch-up; this job picks up remaining slack in between. Not part of Sync all. A host-loss reap (runner vanished) does not start the 30-minute failure cooldown — the next 15m slot may enqueue. Admin Syncs row shows the last message for eagle-eye.",
         status: "scheduled",
         statusLabel: "Cron",
       },
