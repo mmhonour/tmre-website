@@ -37,13 +37,17 @@ A bar's percent (Delta, TRAN$ACT) is placed by `barAsidePlacement()` in
 of the fill in the inbox as on screen. `labelOf` on the stacked metrics is the
 row label on web, HTML email, and plaintext (Delta %, Tran$act over/under list).
 
-**WoW** is `buildMarketPulseWow` (this snapshot’s default stacked rows minus the
-previous `market_pulse_snapshots` send-day). The Monday email **always** includes
-it in the middle of each shaded bar — weekly send, no Off switch, no month
-fallback. `/market-pulse` still defaults the switch Off. Pass that same object
-into `formatMarketDigestEmail` that `/market-pulse` passes into
-`MarketPulseContent`. Do not subtract in the browser. Hide it on the page when
-Filters leave ALL / 12 mos / stacked.
+**Week Over Week** is `buildMarketPulseWow` (this snapshot’s default stacked rows
+minus the previous `market_pulse_snapshots` send-day). Surfaces:
+
+- **Monday email** — always on (weekly send, no Off switch, no month fallback).
+- **/market-pulse** — switch Off / Week Over Week; defaults Off. Hidden when
+  Filters leave ALL / 12 mos / stacked.
+- **Everywhere else** (listing town pulse, home pulse, unstacked) — Off. Do
+  not pass `compares` and do not set `weekOverWeek`.
+
+Pass that same object into `formatMarketDigestEmail` that `/market-pulse`
+passes into `MarketPulseContent`. Do not subtract in the browser.
 
 ## Deliberate divergences (leave these alone)
 
@@ -60,4 +64,4 @@ Filters leave ALL / 12 mos / stacked.
 3. Filter summary sentence changed? → email uses `summarizeMarketPulseFilters`, so keep that helper as the one-liner.
 4. Unstacked-only or in-session Filters (Buyer Friendly, lookback, property type) stay **off** the email unless they become the page-load default.
 5. New factor in the Buyer/Seller composite? → name it in `MARKET_PULSE_BUYER_SCORE_COPY` / `MARKET_PULSE_SELLER_SCORE_COPY`, which both surfaces render.
-6. Week-over-week on the stacked bars? → compute with `buildMarketPulseWow`, pass into email options and the page. Email always on; page switch Off / Week Over Week. Do not roll a second subtract.
+6. Week-over-week? → compute with `buildMarketPulseWow`. Email always on. `/market-pulse` switch Off / Week Over Week (`weekOverWeek` on `MarketPulseContent`). Listing pulse and home pulse stay Off. Do not roll a second subtract.

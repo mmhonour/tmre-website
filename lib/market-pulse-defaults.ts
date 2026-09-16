@@ -36,9 +36,11 @@ export function transactToListLabel(
  * (unstacked, Buyer, etc.). Source of truth: these constants +
  * `marketPulseStackedMetrics()`.
  *
- * Compare figures: the Monday email always includes WoW in the middle of each
- * shaded bar (weekly send). /market-pulse defaults the switch Off. Month and
- * year stay off the switch until those slots are a product surface.
+ * Compare figures: the Monday email always includes Week Over Week in the gold
+ * fill (weekly send). /market-pulse is the only web surface with the switch, and
+ * it defaults Off. Listing pulse, home pulse, and any other Market Pulse
+ * embedding stay Off — they do not load compares. Month and year stay off the
+ * switch until those slots are a product surface.
  */
 
 export function marketPulseFavorSortLabel(

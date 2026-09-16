@@ -1550,6 +1550,7 @@ export default function WeeklyBriefContent({
   onLookbackIdChange,
   closedBarMax = 0,
   compares,
+  weekOverWeek = false,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1594,8 +1595,14 @@ export default function WeeklyBriefContent({
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
   /**
-   * Precomputed vs stored week slots. Page switch defaults Off / Week Over Week;
-   * month and year stay off the switch. Hidden off ALL / 12 mos / stacked.
+   * Week Over Week switch. Default Off. Only /market-pulse sets this true;
+   * listing pulse, home pulse, and other embeddings stay Off. Monday email
+   * always includes the figures and does not use this component.
+   */
+  weekOverWeek?: boolean;
+  /**
+   * Precomputed vs stored week slots. Ignored unless `weekOverWeek` is true.
+   * Page switch defaults Off; month and year stay off the switch.
    */
   compares?: MarketPulseCompareSet;
 }) {
@@ -1616,7 +1623,9 @@ export default function WeeklyBriefContent({
   const [comparePeriod, setComparePeriod] = useState<
     "off" | MarketPulseComparePeriod
   >("off");
-  const compareSet = compares ?? EMPTY_MARKET_PULSE_COMPARES;
+  const compareSet = weekOverWeek
+    ? (compares ?? EMPTY_MARKET_PULSE_COMPARES)
+    : EMPTY_MARKET_PULSE_COMPARES;
   const comparePeriods = availableComparePeriods(compareSet);
   const selectedCompare =
     comparePeriod === "off" ? null : compareSet[comparePeriod];
@@ -1881,7 +1890,7 @@ export default function WeeklyBriefContent({
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       {categoryFilter}
       <div className="flex items-center gap-2">
-        {chartLayout === "stacked" ? (
+        {weekOverWeek && chartLayout === "stacked" ? (
           <ComparePeriodSwitch
             periods={comparePeriods}
             value={comparePeriod}

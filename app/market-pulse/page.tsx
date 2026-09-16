@@ -78,6 +78,7 @@ export default async function MarketPulsePage() {
               snapshot={snapshot}
               etDate={etDate}
               compares={compares}
+              weekOverWeek
             />
           </div>
         </section>

@@ -59,10 +59,16 @@ export default function MarketPulseContent({
   snapshot,
   etDate,
   compares,
+  weekOverWeek = false,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
   compares: MarketPulseCompareSet;
+  /**
+   * Only /market-pulse turns this on. Listing pulse and other embeddings
+   * omit it so Week Over Week stays Off. Monday email is a separate path.
+   */
+  weekOverWeek?: boolean;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
   const [lookbackId, setLookbackId] = useState<MarketPulseLookbackId>(
@@ -390,8 +396,11 @@ export default function MarketPulseContent({
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}
+      weekOverWeek={weekOverWeek}
       compares={
-        category === "all" && lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
+        weekOverWeek &&
+        category === "all" &&
+        lookbackId === DEFAULT_MARKET_PULSE_LOOKBACK_ID
           ? compares
           : EMPTY_MARKET_PULSE_COMPARES
       }

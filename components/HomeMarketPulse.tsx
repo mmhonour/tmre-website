@@ -37,6 +37,7 @@ function formatCount(n: number | null): string {
   return String(Math.round(n));
 }
 
+/** Home page town cards. Not the /market-pulse stacked bars — Week Over Week stays Off. */
 export default function HomeMarketPulse({
   towns,
 }: {

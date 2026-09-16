@@ -118,6 +118,8 @@ function MetricRow({
 /**
  * The town's Market Pulse slice, stacked, scoped to this listing's town.
  * Reads one endpoint so the peer ranking and aggregation stay server-side.
+ * Week Over Week stays Off here — that switch lives on /market-pulse; the
+ * Monday email always includes it.
  */
 export default function ShowcaseTownPulse({
   city,
