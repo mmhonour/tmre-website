@@ -682,7 +682,7 @@ export default async function AdminPage() {
       finishedAt: lastHeroPhotos,
       sortMs: timestampSortMs(lastHeroPhotos),
       detail:
-        "Oldest Active listings missing six full-size showcase heroes. Low-priority queue job: 5 at a time, ~10 min burst. Idle when 100% complete — still counts and reports.",
+        "Every listing missing R2 photo slots (Active first, then Closed/Expired). Low-priority queue job: 5 at a time, ~10 min burst, stops mid-listing when the clock runs out. Idle when 100% complete — still counts and reports.",
       actionId: "hero-photos",
       nextRunAt: nextRuns["hero-photos"],
     },

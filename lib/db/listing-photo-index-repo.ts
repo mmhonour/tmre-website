@@ -1,7 +1,10 @@
 import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
-import { SHOWCASE_HERO_PHOTO_SLOTS } from '@/lib/hero-photo-inventory-backfill-shared'
+import {
+  LISTING_PHOTO_SLOT_CAP,
+  SHOWCASE_HERO_PHOTO_SLOTS,
+} from '@/lib/hero-photo-inventory-backfill-shared'
 
 /** Match upsertListingPhotoIndexRow — ignore junk / empty objects. */
 const HERO_SLOT_INDEX_MIN_BYTES = 100
@@ -169,7 +172,7 @@ export async function listActiveMlsIdsMissingShowcaseHeroes(options: {
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
 
-function missingHeroSql(alias = 'l'): string {
+function missingIndexedSlotsSql(alias = 'l'): string {
   return `(
           SELECT COUNT(*)::int
             FROM listing_photo_index i
@@ -189,7 +192,7 @@ export async function countActiveShowcaseHeroCoverage(): Promise<{
         COUNT(*) FILTER (WHERE COALESCE(l.photo_count, 0) > 0)::int AS with_photos,
         COUNT(*) FILTER (
           WHERE COALESCE(l.photo_count, 0) > 0
-            AND ${missingHeroSql('l')}
+            AND ${missingIndexedSlotsSql('l')}
         )::int AS missing
        FROM listings l
       WHERE l.status_bucket = 'Active'`,
@@ -219,11 +222,66 @@ export async function listOldestActiveMlsIdsMissingShowcaseHeroes(
        FROM listings l
       WHERE l.status_bucket = 'Active'
         AND COALESCE(l.photo_count, 0) > 0
-        AND ${missingHeroSql('l')}
+        AND ${missingIndexedSlotsSql('l')}
         AND NOT (l.mls_id = ANY($4::text[]))
       ORDER BY l.list_date ASC NULLS LAST, l.mls_id ASC
       LIMIT $3`,
     [SHOWCASE_HERO_PHOTO_SLOTS, HERO_SLOT_INDEX_MIN_BYTES, cap, exclude],
+  )
+  return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
+}
+
+/**
+ * Any-status listings whose photo_count slots are not all in the index
+ * (capped at LISTING_PHOTO_SLOT_CAP). Size is not a completion gate.
+ */
+export async function countListingPhotoCoverage(): Promise<{
+  withPhotos: number
+  missing: number
+}> {
+  const row = await queryOne<{ with_photos: number; missing: number }>(
+    `SELECT
+        COUNT(*) FILTER (WHERE COALESCE(l.photo_count, 0) > 0)::int AS with_photos,
+        COUNT(*) FILTER (
+          WHERE COALESCE(l.photo_count, 0) > 0
+            AND ${missingIndexedSlotsSql('l')}
+        )::int AS missing
+       FROM listings l`,
+    [LISTING_PHOTO_SLOT_CAP, HERO_SLOT_INDEX_MIN_BYTES],
+  )
+  return {
+    withPhotos: row?.with_photos ?? 0,
+    missing: row?.missing ?? 0,
+  }
+}
+
+/**
+ * Active leftovers first, then other statuses, oldest list_date first.
+ * Live showcase still fills before Closed / Expired dump.
+ */
+export async function listOldestMlsIdsMissingPhotos(
+  limit: number,
+  options?: { excludeMlsIds?: readonly string[] },
+): Promise<string[]> {
+  const cap = Math.max(1, Math.min(Math.round(limit), 40))
+  const exclude = [
+    ...new Set(
+      (options?.excludeMlsIds ?? [])
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    ),
+  ]
+  const rows = await query<{ mls_id: string }>(
+    `SELECT l.mls_id
+       FROM listings l
+      WHERE COALESCE(l.photo_count, 0) > 0
+        AND ${missingIndexedSlotsSql('l')}
+        AND NOT (l.mls_id = ANY($4::text[]))
+      ORDER BY CASE WHEN l.status_bucket = 'Active' THEN 0 ELSE 1 END,
+               l.list_date ASC NULLS LAST,
+               l.mls_id ASC
+      LIMIT $3`,
+    [LISTING_PHOTO_SLOT_CAP, HERO_SLOT_INDEX_MIN_BYTES, cap, exclude],
   )
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }

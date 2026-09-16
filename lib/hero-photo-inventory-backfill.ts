@@ -1,9 +1,9 @@
 import 'server-only'
 
 import {
-  countActiveShowcaseHeroCoverage,
+  countListingPhotoCoverage,
   listActiveMlsIdsMissingShowcaseHeroes,
-  listOldestActiveMlsIdsMissingShowcaseHeroes,
+  listOldestMlsIdsMissingPhotos,
 } from '@/lib/db/listing-photo-index-repo'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
@@ -27,7 +27,7 @@ import {
   type HeroInventoryCursor,
   type HeroPhotosJobStatus,
 } from '@/lib/hero-photo-inventory-backfill-shared'
-import { warmListingShowcasePhotos } from '@/lib/listing-photos-sync'
+import { warmListingInventoryPhotos } from '@/lib/listing-photos-sync'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
@@ -118,22 +118,41 @@ function buildStatus(input: {
 
 async function warmIds(
   ids: string[],
-): Promise<{ listings: number; photos: number; empty: string[]; failed: string[] }> {
+  untilMs: number,
+): Promise<{
+  listings: number
+  photos: number
+  empty: string[]
+  failed: string[]
+  attempted: string[]
+  timedOut: boolean
+}> {
   let listings = 0
   let photos = 0
   const empty: string[] = []
   const failed: string[] = []
+  const attempted: string[] = []
+  let timedOut = false
   for (const mlsId of ids) {
+    if (Date.now() >= untilMs) {
+      timedOut = true
+      break
+    }
+    attempted.push(mlsId)
     try {
       const { listing } = await readListingFromDbByMlsId(mlsId)
       if (!listing) {
         empty.push(mlsId)
         continue
       }
-      const stored = await warmListingShowcasePhotos(listing)
-      photos += stored
-      if (stored > 0) listings += 1
-      else empty.push(mlsId)
+      const warmed = await warmListingInventoryPhotos(listing, { untilMs })
+      photos += warmed.stored
+      if (warmed.stored > 0) listings += 1
+      else if (!warmed.timedOut) empty.push(mlsId)
+      if (warmed.timedOut) {
+        timedOut = true
+        break
+      }
     } catch (err) {
       failed.push(mlsId)
       console.warn(
@@ -142,19 +161,19 @@ async function warmIds(
       )
     }
   }
-  return { listings, photos, empty, failed }
+  return { listings, photos, empty, failed, attempted, timedOut }
 }
 
 /**
- * Low-priority sync-queue job. Oldest Active gaps first (first six `?size=full`
- * slots). Short bursts so Incremental / stats / CAMA stay ahead. Unfillable
- * ids stay on the skip list so the next hop — and the next 15-minute slot —
- * picks up leftovers still missing R2. Full galleries / Closed stay on the
- * operator CLI. When every Active already has six full-size heroes, the run
- * is a count + status write (idle).
+ * Low-priority sync-queue job. Every listing still missing R2/index slots
+ * (Active first, then Closed/Expired), every photo up to the slot cap. Short
+ * bursts so Incremental / stats / CAMA stay ahead. Unfillable ids stay on the
+ * skip list so the next hop — and the next 15-minute slot — picks up leftovers.
+ * When every listing with photos is indexed, the run is a count + status write
+ * (idle). Operator CLI remains optional faster catch-up.
  */
 export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
-  const before = await countActiveShowcaseHeroCoverage()
+  const before = await countListingPhotoCoverage()
   if (before.missing === 0) {
     const status = buildStatus({
       withPhotosBefore: before.withPhotos,
@@ -194,19 +213,17 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   let stalledEmpty = false
 
   while (Date.now() < deadline) {
-    let ids = await listOldestActiveMlsIdsMissingShowcaseHeroes(
-      HERO_SCAVENGE_BATCH,
-      { excludeMlsIds: [...skipIds, ...triedThisBurst] },
-    )
+    let ids = await listOldestMlsIdsMissingPhotos(HERO_SCAVENGE_BATCH, {
+      excludeMlsIds: [...skipIds, ...triedThisBurst],
+    })
     if (ids.length === 0) {
       if (wrappedSkip || skipIds.length === 0) break
       const skipBeforeWrap = skipIds
       skipIds = []
       wrappedSkip = true
-      ids = await listOldestActiveMlsIdsMissingShowcaseHeroes(
-        HERO_SCAVENGE_BATCH,
-        { excludeMlsIds: [...triedThisBurst] },
-      )
+      ids = await listOldestMlsIdsMissingPhotos(HERO_SCAVENGE_BATCH, {
+        excludeMlsIds: [...triedThisBurst],
+      })
       if (ids.length === 0) {
         // Already tried the leftover set this burst — keep skip so the next
         // 15-minute slot wraps with an empty tried set instead of re-fetching
@@ -216,13 +233,17 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
       }
       await writeSkipMlsIds([])
     }
-    const warmed = await warmIds(ids)
+    const warmed = await warmIds(ids, deadline)
     filledListings += warmed.listings
     filledPhotos += warmed.photos
-    for (const id of ids) triedThisBurst.add(id)
+    for (const id of warmed.attempted) triedThisBurst.add(id)
     if (warmed.empty.length > 0) {
       walkedPast += warmed.empty.length
       skipIds = mergeHeroPhotosSkipMlsIds(skipIds, warmed.empty)
+    }
+    if (warmed.timedOut) {
+      if (warmed.empty.length > 0) await writeSkipMlsIds(skipIds)
+      break
     }
     if (warmed.listings === 0 && warmed.photos === 0) {
       consecutiveEmptyBatches += 1
@@ -273,7 +294,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   }
 
   await writeSkipMlsIds(skipIds)
-  const after = await countActiveShowcaseHeroCoverage()
+  const after = await countListingPhotoCoverage()
   const status = buildStatus({
     withPhotosBefore: before.withPhotos,
     withPhotosAfter: after.withPhotos,
@@ -292,7 +313,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
 
 /** Coverage snapshot so Admin Status has % before the child starts fetching. */
 export async function stampHeroPhotosQueuedStatus(): Promise<HeroPhotosJobStatus> {
-  const before = await countActiveShowcaseHeroCoverage()
+  const before = await countListingPhotoCoverage()
   const status = buildStatus({
     withPhotosBefore: before.withPhotos,
     withPhotosAfter: before.withPhotos,
@@ -383,7 +404,7 @@ export async function drainHeroInventoryBackfill(): Promise<{
     return { ...empty, town: cursor.town }
   }
 
-  const warmed = await warmIds(ids)
+  const warmed = await warmIds(ids, Date.now() + HERO_SCAVENGE_BURST_MS)
   const remainingInTown = ids.length >= HERO_INVENTORY_BACKFILL_BATCH
   const next: HeroInventoryCursor = remainingInTown
     ? { ...cursor, afterMlsId: ids[ids.length - 1]! }

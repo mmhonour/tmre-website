@@ -145,7 +145,7 @@ describe("formatHeroPhotosJobMessage", () => {
         complete: true,
         idle: true,
       }),
-      "idle · 0% missing · 1,540 Active with photos · 100% complete",
+      "idle · 0% missing · 1,540 listings with photos · 100% complete",
     );
   });
 

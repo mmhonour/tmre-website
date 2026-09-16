@@ -1,5 +1,7 @@
 /** First six showcase shots (`warmListingShowcasePhotos` / `?size=full`). */
 export const SHOWCASE_HERO_PHOTO_SLOTS = 6
+/** MLS photo_count cap — same ceiling as listing-photos-sync / R2 warm. */
+export const LISTING_PHOTO_SLOT_CAP = 60
 
 /** Town-cursor hop for the operator CLI — leftover Active gaps wait for the next pass. */
 export const HERO_INVENTORY_BACKFILL_BATCH = 4
@@ -71,12 +73,12 @@ export function mergeHeroPhotosSkipMlsIds(
 export type HeroPhotosJobStatus = {
   generatedAt: string
   /**
-   * Active-with-photos count used in the "was … (missing/total)" fraction.
-   * Must be the before-burst inventory so a growing Active book cannot pull
-   * the displayed % down when this burst stored nothing.
+   * Listings-with-photos count used in the "was … (missing/total)" fraction
+   * (any status). Must be the before-burst inventory so a growing book cannot
+   * pull the displayed % down when this burst stored nothing.
    */
   activeWithPhotos: number
-  /** After-burst Active-with-photos count; omitted when it matches `activeWithPhotos`. */
+  /** After-burst listings-with-photos count; omitted when it matches `activeWithPhotos`. */
   activeWithPhotosAfter?: number
   missingBefore: number
   missingAfter: number
@@ -108,7 +110,7 @@ export function pctMissing(missing: number, total: number): number {
 
 /**
  * "Now % missing" after a burst. Zero fills must not look like coverage
- * progress just because more Active listings arrived in the denominator.
+ * progress just because more listings arrived in the denominator.
  */
 export function heroMissingPctAfter(input: {
   missingAfter: number
@@ -180,7 +182,7 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
         ` · now 0% missing · 100% complete`
       )
     }
-    return `idle · 0% missing · ${total} Active with photos · 100% complete`
+    return `idle · 0% missing · ${total} listings with photos · 100% complete`
   }
   return (
     `was ${status.missingPctBefore}% missing (${missingN}/${total})` +
