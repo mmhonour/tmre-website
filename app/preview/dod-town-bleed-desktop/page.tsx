@@ -28,8 +28,8 @@ export default function DodTownBleedDesktopPreviewPage() {
           . On desktop the listing photo is a home-page-style full bleed
           across the top half of the viewport. The value-pick panel starts
           at the bottom of that bleed, flips with each town, then rises
-          slowly so you can see the photo first. Stills for every town are
-          below. Use ‹ › to step towns.
+          quickly until its top lines up with the bleed. Stills for every
+          town are below. Use ‹ › to step towns.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

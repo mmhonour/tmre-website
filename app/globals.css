@@ -390,20 +390,19 @@ body {
   will-change: transform, opacity, filter;
 }
 
-/* Desktop: value-pick starts at the bottom of the 50dvh bleed, holds so
-   the photo is fully visible, then rises over the lower part of the bleed. */
+/* Desktop: value-pick starts at the bottom of the 50dvh bleed, then rises
+   quickly until its top lines up with the top of the bleed. */
 @keyframes dodValuePickRise {
-  0%,
-  16% {
+  0% {
     margin-top: 0;
   }
   100% {
-    margin-top: -24dvh;
+    margin-top: -50dvh;
   }
 }
 
 .animate-dod-value-pick-rise {
-  animation: dodValuePickRise 10s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: dodValuePickRise 2.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
