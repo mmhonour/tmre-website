@@ -11,8 +11,9 @@
  *
  *   npm run backfill:content-views
  *
- * Point at Neon (when .env.local is local Postgres):
- *   $env:DATABASE_URL_UNPOOLED = "postgresql://…neon…"
+ * Point at Neon (when .env.local is local Postgres). Paste the real direct
+ * URL from Netlify / Neon — not the docs placeholder:
+ *   $env:DATABASE_URL_UNPOOLED = "postgresql://USER:PASSWORD@HOST.neon.tech/neondb?sslmode=require"
  *   npm run backfill:content-views
  */
 

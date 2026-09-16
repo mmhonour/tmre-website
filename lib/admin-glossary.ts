@@ -1103,7 +1103,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Photo 404 / ?fetch=1',
     category: 'photos-cdn',
     definition:
-      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental and the Open houses pull prompt R2 for photo 0 before they mark alerts dirty. Listing-alert mail still puts `?size=full&fetch=1` on the img if that hop missed — Gmail cannot retry after a cache-only 404. Incremental also queues brand-new MLS ids on `incremental_photo_warm_queue`; the Netlify listings worker drains it and prefetches the first six full-size shots. Active backlog catch-up is `npm run backfill:listing-photos` on an operator machine, not a site-hosted drip. See Side-work-only.',
+      'Cache miss returns 404; UI retries with ?fetch=1 to pull Media CDN (or RETS for display thumbs) into R2. Bare 404s must not be CDN-cached as if they were the final image. Incremental and the Open houses pull prompt R2 for photo 0 before they mark alerts dirty. Listing-alert mail still puts `?size=full&fetch=1` on the img if that hop missed — Gmail cannot retry after a cache-only 404. Incremental also queues brand-new MLS ids on `incremental_photo_warm_queue`; the Netlify listings worker drains it and prefetches the first six full-size shots. Active backlog catch-up is `npm run backfill:listing-photos` on an operator machine, not a site-hosted drip. That CLI prints listings vs photos vs index targets at start: photos go to prod R2; the Postgres index must go to Neon or the heroes job still shows missing. `npm run backfill:photo-index -- --from-local` upserts a localhost index onto Neon without refetching MLS. See listing_photo_index, Side-work-only.',
   },
   {
     term: '?size=full',
@@ -1116,6 +1116,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     category: 'photos-cdn',
     definition:
       'Default card / list-thumb photo proxy flag. Serves MLS MediaMidsizeURL and stores it under a separate __card cache id so it never overwrites gallery full. A 3MB MediaURL smash-down into a Grid/Large box is what stripes roofs and siding.',
+  },
+  {
+    term: 'listing_photo_index',
+    category: 'photos-cdn',
+    definition:
+      'Neon table of photo metadata (cache_id, slot, byte_length) for objects in the prod R2 bucket. The heroes job counts Active coverage from this table, not from R2 and not from localhost Postgres. Operator `backfill:listing-photos` fetches bytes into R2; `backfill:photo-index` (default R2 list, or `--from-local`) upserts the index onto Neon. DATABASE_URL=localhost does not update prod.',
   },
   {
     term: 'listing-photos.db',

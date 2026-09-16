@@ -1,5 +1,6 @@
 import 'server-only'
 
+import pg from 'pg'
 import {
   countFreshListingPhotosFromDb,
   deleteListingPhotoIndexRows,
@@ -9,6 +10,10 @@ import {
   readListingPhotoIndexRow,
   upsertListingPhotoIndexRow,
 } from '@/lib/db/listing-photo-index-repo'
+import {
+  parseScriptDbUrl,
+  shouldUseSslForDbUrl,
+} from '@/lib/script-postgres-target'
 import {
   countFreshListingPhotos as sqliteCountFresh,
   deleteListingPhotos as sqliteDelete,
@@ -51,6 +56,62 @@ export type PhotoMeta = {
   syncedAt: string
 }
 
+let indexSidecar: pg.Client | null = null
+let indexSidecarConnect: Promise<pg.Client> | null = null
+
+function listingPhotoIndexSidecarUrl(): string {
+  return process.env.LISTING_PHOTO_INDEX_URL?.trim() || ''
+}
+
+function listingPhotoIndexSidecarIsDistinct(): boolean {
+  const url = listingPhotoIndexSidecarUrl()
+  if (!url) return false
+  const dest = parseScriptDbUrl(url)
+  if (!dest) return false
+  const app = parseScriptDbUrl(
+    process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || '',
+  )
+  return !app || dest.host !== app.host
+}
+
+async function getListingPhotoIndexSidecar(): Promise<pg.Client | null> {
+  if (!listingPhotoIndexSidecarIsDistinct()) return null
+  if (indexSidecar) return indexSidecar
+  if (!indexSidecarConnect) {
+    const url = listingPhotoIndexSidecarUrl()
+    indexSidecarConnect = (async () => {
+      const client = new pg.Client({
+        connectionString: url,
+        ssl: shouldUseSslForDbUrl(url) ? { rejectUnauthorized: false } : false,
+      })
+      await client.connect()
+      indexSidecar = client
+      return client
+    })()
+  }
+  return indexSidecarConnect
+}
+
+async function upsertListingPhotoIndexSidecar(
+  cacheId: string,
+  photoIndex: number,
+  contentType: string,
+  byteLength: number,
+): Promise<void> {
+  const client = await getListingPhotoIndexSidecar()
+  if (!client) return
+  if (!cacheId || photoIndex < 0 || byteLength < 100) return
+  await client.query(
+    `INSERT INTO listing_photo_index (cache_id, photo_index, content_type, byte_length, synced_at)
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (cache_id, photo_index) DO UPDATE SET
+       content_type = EXCLUDED.content_type,
+       byte_length = EXCLUDED.byte_length,
+       synced_at = EXCLUDED.synced_at`,
+    [cacheId, photoIndex, contentType || 'image/jpeg', byteLength],
+  )
+}
+
 /** Persist one photo blob + its index metadata. */
 export async function storeListingPhoto(
   cacheId: string,
@@ -62,6 +123,12 @@ export async function storeListingPhoto(
     const ok = await putR2ListingPhoto(cacheId, photoIndex, data, contentType)
     if (ok) {
       await upsertListingPhotoIndexRow(cacheId, photoIndex, contentType, data.length)
+      await upsertListingPhotoIndexSidecar(
+        cacheId,
+        photoIndex,
+        contentType,
+        data.length,
+      )
     }
     return
   }

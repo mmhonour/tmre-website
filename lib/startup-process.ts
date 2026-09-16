@@ -600,7 +600,7 @@ export function describeStartupProcess(): {
     id: "hero-photos",
     title: "Listing photos (heroes)",
     subtitle:
-      "Oldest Active listings missing six full-size showcase heroes → R2 + listing_photo_index",
+      "Oldest Active listings missing six full-size showcase heroes → R2 + Neon listing_photo_index",
     steps: [
       {
         id: "hero-photos-scavenge",

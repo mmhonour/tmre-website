@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 /**
- * Pull listing photos that are already in prod Postgres but not on R2.
+ * Pull listing photos for rows already in Postgres and store bytes on R2.
  *
  * Incremental sync only writes MLS rows (and queues new inserts for Site warm).
  * Everything already in inventory stays cold until someone opens the showcase
  * (`?size=full` → Media/RETS → R2). This CLI walks those rows and stores the
  * missing bytes. Do not run it on Railway Incremental — that process OOMs
  * when it fetches photo bodies.
+ *
+ * Targets (printed at start — read them before walking away):
+ *   listings  → DATABASE_URL (often localhost)
+ *   photos    → prod R2 when R2_* is set
+ *   index     → prod Neon (required when R2 is set). Localhost index is
+ *               refused unless you pass --index-local.
  *
  * Default is the showcase hero: first six shots at size=full. `--all` fills
  * every photo slot at display quality (the post-town-sync warm).
@@ -18,12 +24,12 @@
  *   npm run backfill:listing-photos -- --towns=Westport,Norwalk --limit=40
  *   npm run backfill:listing-photos -- --all --concurrency=2
  *   npm run backfill:listing-photos -- --status=Closed
+ *   npm run backfill:listing-photos -- --index-local
  *
- * Point at Neon when .env.local is local Postgres:
- *   $env:DATABASE_URL_UNPOOLED = "postgresql://…neon…"
- *   npm run backfill:listing-photos -- --dry-run
+ * If yesterday already filled R2 and only the index is on localhost:
+ *   npm run backfill:photo-index -- --from-local
  */
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readListingsFromDb } from '../lib/db/listings-repo'
 import {
   backfillListingPhotos,
@@ -32,6 +38,11 @@ import {
 } from '../lib/listing-photos-sync'
 import { photoBackendUsesR2 } from '../lib/listing-photo-backend'
 import { listingPhotoCacheId } from '../lib/listing-photo-store'
+import {
+  formatScriptDbTarget,
+  pickListingsDbTarget,
+  pickProdDbTarget,
+} from '../lib/script-postgres-target'
 import type { Listing } from '../lib/rets'
 import { isTmreTown, TMRE_TOWNS, type TmreTown } from '../lib/tmre-towns'
 
@@ -77,17 +88,74 @@ function parseArgs() {
   const all = argValue('--all') === 'true'
   const mode: ListingPhotoBackfillMode = all ? 'all' : 'hero'
   const dryRun = argValue('--dry-run') === 'true'
+  const indexLocal = argValue('--index-local') === 'true'
   const concurrency = Math.max(1, Number(argValue('--concurrency') ?? '2') || 2)
   const limitRaw = argValue('--limit')
   const limit = limitRaw != null ? Math.max(0, Number(limitRaw) || 0) : 0
   return {
     mode,
     dryRun,
+    indexLocal,
     concurrency,
     limit,
     towns: parseTowns(),
     statuses: parseStatuses(),
   }
+}
+
+function resolvePhotoIndexTarget(indexLocal: boolean): void {
+  const listings = pickListingsDbTarget(process.env)
+  const r2 = photoBackendUsesR2()
+  const bucket = process.env.R2_BUCKET?.trim() || '(unset)'
+
+  console.info(
+    `[backfill:listing-photos] listings=${
+      listings ? formatScriptDbTarget(listings) : '(DATABASE_URL unset)'
+    }`,
+  )
+  console.info(
+    `[backfill:listing-photos] photos=${
+      r2 ? `prod R2 bucket=${bucket}` : 'localhost SQLite listing-photos.db'
+    }`,
+  )
+
+  if (!r2) {
+    console.info(
+      '[backfill:listing-photos] index=localhost SQLite (R2 unset — no Neon index write)',
+    )
+    return
+  }
+
+  if (indexLocal) {
+    console.warn(
+      `[backfill:listing-photos] index=${
+        listings ? formatScriptDbTarget(listings) : 'localhost'
+      } (--index-local; prod heroes job will not see these rows)`,
+    )
+    return
+  }
+
+  const envFileText = existsSync('.env.local')
+    ? readFileSync('.env.local', 'utf8')
+    : null
+  const picked = pickProdDbTarget({ env: process.env, envFileText })
+  if ('error' in picked) {
+    console.error(
+      '[backfill:listing-photos] photos=prod R2 but index would go to localhost.',
+    )
+    console.error(`[backfill:listing-photos] ${picked.error}`)
+    console.error(
+      '[backfill:listing-photos] Set a real Neon DATABASE_URL_UNPOOLED, or pass --index-local to write the index to localhost anyway.',
+    )
+    process.exit(1)
+  }
+
+  process.env.LISTING_PHOTO_INDEX_URL = picked.target.value
+  const sameHost = listings?.host === picked.target.host
+  console.info(
+    `[backfill:listing-photos] index=prod ${formatScriptDbTarget(picked.target)}` +
+      (sameHost ? ' (same as listings)' : ` · ${picked.source}`),
+  )
 }
 
 function listingLabel(listing: Listing): string {
@@ -98,7 +166,8 @@ function listingLabel(listing: Listing): string {
 }
 
 async function main() {
-  const { mode, dryRun, concurrency, limit, towns, statuses } = parseArgs()
+  const { mode, dryRun, indexLocal, concurrency, limit, towns, statuses } =
+    parseArgs()
 
   console.info(
     `[backfill:listing-photos] mode=${mode}` +
@@ -108,6 +177,8 @@ async function main() {
       ` · concurrency=${concurrency}` +
       (limit > 0 ? ` · limit=${limit}` : ''),
   )
+
+  resolvePhotoIndexTarget(indexLocal)
 
   if (!photoBackendUsesR2()) {
     console.warn(
