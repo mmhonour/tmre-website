@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 
-/** Full-bleed hit target on desktop Deal of the Day — empty photo → listing showcase. */
+/** Full-bleed hit target on Deal of the Day — empty photo → listing showcase. */
 export function DealDayBleedShowcaseLink({
   href,
   address,

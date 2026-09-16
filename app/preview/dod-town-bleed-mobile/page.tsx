@@ -34,11 +34,12 @@ export default async function DodTownBleedMobilePreviewPage() {
           <p className="mb-3 text-sm leading-relaxed text-slate">
             Full working phone page in this frame. The listing-photo bleed
             sits behind the town name and “Today’s score / One listing.”
-            Pause · town · For Sale is directly under the bleed, insight
-            under the carousel, value-pick with no photo and no second
-            carousel. The next-town arrow stays put for the widest town
-            name. {sourceLine} On a phone this URL is full-bleed under the
-            live header.
+            Tap empty photo (not the town name or headline) to open that
+            listing’s showcase. Pause · town · For Sale is directly under
+            the bleed, insight under the carousel, value-pick with no photo
+            and no second carousel. The next-town arrow stays put for the
+            widest town name. {sourceLine} On a phone this URL is
+            full-bleed under the live header.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}

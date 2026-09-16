@@ -915,7 +915,16 @@ export default function DealOfTheWeekHero({
                   }
                 />
                 </div>
-                <div className="relative z-[1] space-y-3 px-6 pb-6 pt-1">
+                {detailHref && !dayEmpty && l ? (
+                  <DealDayBleedShowcaseLink
+                    href={detailHref}
+                    mlsId={l.mlsId}
+                    address={l.address.street || l.address.full}
+                    className="absolute inset-0 z-[1]"
+                  />
+                ) : null}
+                <div className="pointer-events-none relative z-[2] space-y-3 px-6 pb-6 pt-1">
+            <div className="pointer-events-auto">
             <DealDayTownList
               activeTown={city ?? carousel.currentTown}
               slideDir={carousel.slideDir}
@@ -924,7 +933,8 @@ export default function DealOfTheWeekHero({
               }
               variant="mobile"
             />
-            <h1 className="font-serif text-5xl leading-[1.05] tracking-tight text-white animate-fade-up">
+            </div>
+            <h1 className="pointer-events-auto font-serif text-5xl leading-[1.05] tracking-tight text-white animate-fade-up">
               Today&apos;s{" "}
               <span className="italic gold-shimmer">{dayScoreLabel}</span>
               <br />

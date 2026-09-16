@@ -196,7 +196,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-bleed-showcase-click",
     title: "Deal of the Day bleed → showcase",
     summary:
-      "Full Deal of the Day page with fixture towns. Desktop: empty bleed clicks open the listing showcase; town names, headline, and value-pick keep their own clicks. No listing database.",
+      "Full Deal of the Day page with fixture towns. Empty bleed clicks open the listing showcase; town names, headline, and value-pick keep their own clicks. No listing database.",
   },
   {
     slug: "dod-town-bleed-desktop",
@@ -208,7 +208,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-mobile",
     title: "Deal of the Day — mobile",
     summary:
-      "Full PR 167 phone page: listing-photo bleed behind the town name and headline, pause / town / For Sale under the bleed, insight under the carousel. Next-town arrow stays put for the widest town. On a laptop, a 390×844 frame. Fixture towns when the weekly cache is empty.",
+      "Full PR 167 phone page: listing-photo bleed behind the town name and headline, empty bleed taps open the listing showcase, pause / town / For Sale under the bleed, insight under the carousel. Next-town arrow stays put for the widest town. On a laptop, a 390×844 frame. Fixture towns when the weekly cache is empty.",
   },
 ];
 
