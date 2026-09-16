@@ -857,7 +857,7 @@ export default function DealOfTheWeekHero({
                 className={`relative ${
                   forcePhoneLayout
                     ? "-mx-6 px-6"
-                    : "-mx-6 px-6 lg:-mx-10 lg:px-10"
+                    : "-mx-6 px-6 lg:hidden"
                 }`}
               >
                 <div className={forcePhoneLayout ? "" : "lg:hidden"}>
@@ -976,6 +976,74 @@ export default function DealOfTheWeekHero({
             <div className="hidden h-[50dvh] lg:block" aria-hidden />
           ) : null}
 
+          {isDay && !forcePhoneLayout ? (
+            <div className="hidden max-w-xl space-y-4 pt-3 lg:block">
+              <DealDayChooserBar
+                townLabel={carousel.currentTown}
+                carouselControls={
+                  !city && carousel.carouselTowns.length > 0
+                    ? {
+                        paused: carousel.paused,
+                        onTogglePause: carousel.togglePause,
+                        onPrev: carousel.goPrev,
+                        onNext: carousel.goNext,
+                        onPhotoHover: carousel.pauseForPhotoHover,
+                        canStep: carousel.canNavigate,
+                        townLabel: carousel.currentTown,
+                        carouselIndex: carousel.carouselIndex,
+                        carouselTotal: carousel.carouselTowns.length,
+                      }
+                    : null
+                }
+                transactionFilter={dayTxFilter}
+                onTransactionFilterChange={setTxFilter}
+                propertyClass={
+                  dayTxFilter === "sale" ? dayPropertyClass : undefined
+                }
+                onPropertyClassChange={
+                  dayTxFilter === "sale" ? setDayPropertyClass : undefined
+                }
+              />
+              <div
+                key={
+                  animateDealContent
+                    ? `insight-lg-${slideKey}`
+                    : "insight-lg-instant"
+                }
+                className="space-y-4"
+              >
+                <DealInsightCopy
+                  text={dayInsight}
+                  paragraphKey={
+                    animateDealContent
+                      ? `insight-lg-${slideKey}`
+                      : "insight-lg-instant"
+                  }
+                  className={`${dealInsightCopyClass}${
+                    animateDealContent ? " animate-deal-copy-refresh" : ""
+                  }`}
+                />
+                {!dayEmpty && superlatives.length > 0 ? (
+                  <DealSuperlatives words={superlatives} />
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <Link
+                  href="/intelligence"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
+                >
+                  See more deals
+                  <span aria-hidden>→</span>
+                </Link>
+                {!loadingState && !usedFallback && showing ? (
+                  <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/45">
+                    {`${showing.totalReviewed.toLocaleString()} scanned in ${townsScanned} · ${showing.qualifiedCount.toLocaleString()} below median`}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div
             key={
               isDay && !forcePhoneLayout
@@ -984,7 +1052,7 @@ export default function DealOfTheWeekHero({
             }
             className={`min-w-0 ${
               isDay && !forcePhoneLayout
-                ? "deal-showcase-stage mt-8 overflow-visible lg:ml-auto lg:mt-0 lg:max-w-xl animate-dod-value-pick-rise"
+                ? "deal-showcase-stage mt-8 overflow-visible lg:absolute lg:right-0 lg:top-[50dvh] lg:z-[2] lg:mt-0 lg:w-[min(100%,36rem)] lg:max-w-xl animate-dod-value-pick-rise"
                 : isDay
                   ? "deal-showcase-stage overflow-visible"
                   : "overflow-hidden"
@@ -1034,45 +1102,6 @@ export default function DealOfTheWeekHero({
               townLabel={isDay ? null : carousel.currentTown}
             />
           </div>
-          {isDay && !forcePhoneLayout ? (
-            <div className="mt-8 hidden max-w-xl space-y-4 lg:block">
-              <div
-                key={
-                  animateDealContent ? `insight-lg-${slideKey}` : "insight-lg-instant"
-                }
-                className="space-y-4"
-              >
-                <DealInsightCopy
-                  text={dayInsight}
-                  paragraphKey={
-                    animateDealContent
-                      ? `insight-lg-${slideKey}`
-                      : "insight-lg-instant"
-                  }
-                  className={`${dealInsightCopyClass}${
-                    animateDealContent ? " animate-deal-copy-refresh" : ""
-                  }`}
-                />
-                {!dayEmpty && superlatives.length > 0 ? (
-                  <DealSuperlatives words={superlatives} />
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-4">
-                <Link
-                  href="/intelligence"
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-medium text-navy transition-all hover:bg-gold-light hover:shadow-2xl hover:shadow-gold/30 hover:-translate-y-0.5"
-                >
-                  See more deals
-                  <span aria-hidden>→</span>
-                </Link>
-                {!loadingState && !usedFallback && showing ? (
-                  <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-white/45">
-                    {`${showing.totalReviewed.toLocaleString()} scanned in ${townsScanned} · ${showing.qualifiedCount.toLocaleString()} below median`}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
     </section>

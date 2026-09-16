@@ -196,7 +196,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day town bleeds — desktop",
     summary:
-      "Live weekly Deal of the Day picks. Desktop: listing photo full-bleed across the top half of the page. Value-pick panel starts at the bottom of the bleed, flips per town, then rises quickly until its top lines up with the bleed.",
+      "Live weekly Deal of the Day picks. Desktop: listing photo full-bleed across the top half of the page. Town carousel sits directly under the bleed, insight directly under the carousel. Value-pick rises from the bleed’s bottom to its top.",
   },
   {
     slug: "dod-town-bleed-mobile",

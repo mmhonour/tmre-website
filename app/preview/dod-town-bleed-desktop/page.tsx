@@ -26,10 +26,10 @@ export default function DodTownBleedDesktopPreviewPage() {
             /deal-of-the-day
           </Link>
           . On desktop the listing photo is a home-page-style full bleed
-          across the top half of the viewport. The value-pick panel starts
-          at the bottom of that bleed, flips with each town, then rises
-          quickly until its top lines up with the bleed. Stills for every
-          town are below. Use ‹ › to step towns.
+          across the top half of the viewport. Pause · town · For Sale sits
+          directly under the bleed, insight directly under the carousel. The
+          value-pick panel starts at the bleed’s bottom, flips with each town,
+          then rises to the bleed’s top. Stills for every town are below.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}
