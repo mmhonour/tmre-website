@@ -44,15 +44,16 @@ export default function MarketPulseWowPreviewClient({
           Market Pulse week change
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
-          Change vs last week sits in the middle of each shaded bar. Off / Week
-          / Month (Year appears when a year-back slot exists). Fixture towns,
-          not live cache. The live page defaults Off.
+          Change vs last week sits in the middle of each 6px gold bar (same
+          track as production). Off / WoW — month is not a product surface yet.
+          Fixture towns, not live cache. The live page defaults Off; Monday
+          email always includes WoW.
         </p>
 
         <div
           className="mb-5 flex flex-wrap gap-1"
           role="radiogroup"
-          aria-label="Compare to a prior week, month, or year"
+          aria-label="Compare to last week"
         >
           {options.map((id) => {
             const selected = period === id;
@@ -77,7 +78,7 @@ export default function MarketPulseWowPreviewClient({
 
         {compare && period !== "off" ? (
           <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
-            Change {marketPulseCompareCaption(compare, period)}
+            {marketPulseCompareCaption(compare, period)}
           </p>
         ) : null}
 

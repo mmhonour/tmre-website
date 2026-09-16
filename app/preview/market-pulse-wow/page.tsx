@@ -1,7 +1,5 @@
 import MarketPulseWowPreviewClient from "./MarketPulseWowPreviewClient";
 import {
-  MARKET_PULSE_MOM_PRIOR_ROWS,
-  MARKET_PULSE_MOM_PRIOR_SLOT,
   MARKET_PULSE_WOW_CURRENT_ROWS,
   MARKET_PULSE_WOW_PRIOR_ROWS,
   MARKET_PULSE_WOW_PRIOR_SLOT,
@@ -19,15 +17,10 @@ export default function MarketPulseWowPreviewPage() {
     MARKET_PULSE_WOW_PRIOR_ROWS,
     MARKET_PULSE_WOW_PRIOR_SLOT,
   );
-  const mom = buildMarketPulseWow(
-    MARKET_PULSE_WOW_CURRENT_ROWS,
-    MARKET_PULSE_MOM_PRIOR_ROWS,
-    MARKET_PULSE_MOM_PRIOR_SLOT,
-  );
   return (
     <MarketPulseWowPreviewClient
       current={MARKET_PULSE_WOW_CURRENT_ROWS}
-      compares={{ wow, mom, yoy: null }}
+      compares={{ wow, mom: null, yoy: null }}
     />
   );
 }

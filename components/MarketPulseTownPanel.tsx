@@ -299,13 +299,13 @@ export default function MarketPulseTownPanel({
                 m.id === "saleToAsk" && saleToAskHref ? (
                   <Link
                     href={saleToAskHref}
-                    title={`${m.label} on Stats — chart and data table`}
+                    title={`${m.labelOf?.(row) ?? m.label} on Stats — chart and data table`}
                     className="underline decoration-white/25 underline-offset-2 transition-colors hover:text-gold"
                   >
-                    {m.label}
+                    {m.labelOf?.(row) ?? m.label}
                   </Link>
                 ) : (
-                  m.label
+                  (m.labelOf?.(row) ?? m.label)
                 )
               }
               valueText={valueText}

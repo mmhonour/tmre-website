@@ -122,7 +122,7 @@ function ComparePeriodSwitch({
     <div
       className="flex min-w-0 flex-wrap gap-1"
       role="radiogroup"
-      aria-label="Compare to a prior week, month, or year"
+      aria-label="Compare to last week"
     >
       {options.map((id) => {
         const selected = value === id;
@@ -1391,7 +1391,7 @@ function CombinedMetricsChart({
       {title ? <p className={TOWN_METRICS_HEADING_CLASS}>{title}</p> : null}
       {compare && comparePeriod !== "off" ? (
         <p className="mb-2 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent,#C8A951)]">
-          Change {marketPulseCompareCaption(compare, comparePeriod)}
+          {marketPulseCompareCaption(compare, comparePeriod)}
         </p>
       ) : null}
       <ul className="space-y-3">
@@ -1594,8 +1594,8 @@ export default function WeeklyBriefContent({
   /** 24-month Closed max so 7d bars stay ~1% of that axis. */
   closedBarMax?: number;
   /**
-   * Precomputed vs stored week slots. Page switch defaults Off; Month / Year
-   * options appear when those slots exist. Hidden off ALL / 12 mos / stacked.
+   * Precomputed vs stored week slots. Page switch defaults Off / WoW; month
+   * and year stay off the switch. Hidden off ALL / 12 mos / stacked.
    */
   compares?: MarketPulseCompareSet;
 }) {

@@ -207,19 +207,16 @@ export const EMPTY_MARKET_PULSE_COMPARES: MarketPulseCompareSet = {
 export function availableComparePeriods(
   set: MarketPulseCompareSet,
 ): MarketPulseComparePeriod[] {
-  const out: MarketPulseComparePeriod[] = []
-  if (set.wow) out.push('wow')
-  if (set.mom) out.push('mom')
-  if (set.yoy) out.push('yoy')
-  return out
+  // Month / year slots may exist on disk; the switch is WoW-only until they
+  // are a product surface.
+  return set.wow ? ['wow'] : []
 }
 
-/** Monday email always shows a compare; page defaults Off. Prefer week, then month. */
+/** Monday email always includes WoW. No month fallback — this is a weekly send. */
 export function pickEmailMarketPulseCompare(
   set: MarketPulseCompareSet,
 ): { period: MarketPulseComparePeriod; compare: MarketPulseWowCompare } | null {
   if (set.wow) return { period: 'wow', compare: set.wow }
-  if (set.mom) return { period: 'mom', compare: set.mom }
   return null
 }
 
@@ -256,24 +253,26 @@ export const MARKET_PULSE_COMPARE_SWITCH_LABEL: Record<
   string
 > = {
   off: 'Off',
-  wow: 'Week',
+  wow: 'WoW',
   mom: 'Month',
   yoy: 'Year',
 }
 
 export function marketPulseWowCaption(wow: MarketPulseWowCompare): string {
-  return `vs ${wow.priorSlotLabel}`
+  return `WoW vs ${wow.priorSlotLabel}`
 }
 
 export function marketPulseCompareCaption(
   compare: MarketPulseWowCompare,
   period: MarketPulseComparePeriod,
 ): string {
+  const prefix =
+    period === 'wow' ? 'WoW' : period === 'mom' ? 'Month' : 'Year'
   const label =
     period === 'yoy'
       ? formatMarketPulseWowSlotLabel(compare.priorSlotDate, true)
       : compare.priorSlotLabel
-  return `vs ${label}`
+  return `${prefix} vs ${label}`
 }
 
 const BLURB_LABELS: Record<MarketPulseStackedMetricId, string> = {

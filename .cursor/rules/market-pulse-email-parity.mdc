@@ -32,17 +32,18 @@ colours to opaque hex at the top of `lib/market-digest-html.ts`, each commented
 with the Tailwind class it stands in for. Change the web treatment and those
 constants move with it.
 
-A bar's percent (Delta, List to ask) is placed by `barAsidePlacement()` in
+A bar's percent (Delta, TRAN$ACT) is placed by `barAsidePlacement()` in
 `lib/market-pulse-bar-aside.ts` — shared, so the percent lands on the same side
-of the fill in the inbox as on screen. It does **not** belong in the row label;
-`labelOf` on the stacked metrics exists for the **plaintext** digest only, which
-has no bar to put it against.
+of the fill in the inbox as on screen. `labelOf` on the stacked metrics is the
+row label on web, HTML email, and plaintext (Delta %, Tran$act over/under list).
 
 **WoW** is `buildMarketPulseWow` (this snapshot’s default stacked rows minus the
-previous `market_pulse_snapshots` send-day). Pass that same object into
-`formatMarketDigestEmail` that `/market-pulse` passes into `MarketPulseContent`.
-Do not subtract in the browser. Hide it when Filters leave ALL / 12 mos /
-stacked.
+previous `market_pulse_snapshots` send-day). The Monday email **always** includes
+it in the middle of each shaded bar — weekly send, no Off switch, no month
+fallback. `/market-pulse` still defaults the switch Off. Pass that same object
+into `formatMarketDigestEmail` that `/market-pulse` passes into
+`MarketPulseContent`. Do not subtract in the browser. Hide it on the page when
+Filters leave ALL / 12 mos / stacked.
 
 ## Deliberate divergences (leave these alone)
 
@@ -59,4 +60,4 @@ stacked.
 3. Filter summary sentence changed? → email uses `summarizeMarketPulseFilters`, so keep that helper as the one-liner.
 4. Unstacked-only or in-session Filters (Buyer Friendly, lookback, property type) stay **off** the email unless they become the page-load default.
 5. New factor in the Buyer/Seller composite? → name it in `MARKET_PULSE_BUYER_SCORE_COPY` / `MARKET_PULSE_SELLER_SCORE_COPY`, which both surfaces render.
-6. WoW on the stacked bars? → compute with `buildMarketPulseWow`, pass into email options and the page. Do not roll a second subtract.
+6. WoW on the stacked bars? → compute with `buildMarketPulseWow`, pass into email options and the page. Email always on; page switch Off / WoW. Do not roll a second subtract.

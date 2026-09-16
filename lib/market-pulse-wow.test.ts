@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { MarketPulseCombinedTownRow } from './market-pulse-combined-rows'
+import { transactToListLabel, TRANSACT_TO_LIST_LABEL } from './market-pulse-defaults'
 import {
   addIsoDays,
+  availableComparePeriods,
   buildMarketPulseWow,
   formatMarketPulseWowSlotLabel,
   marketPulseCompareBlurbLines,
@@ -92,7 +94,7 @@ describe('buildMarketPulseWow', () => {
     const wow = buildMarketPulseWow(current, prior, '2026-09-07')
     assert.ok(wow)
     assert.equal(wow.priorSlotDate, '2026-09-07')
-    assert.equal(marketPulseWowCaption(wow), 'vs 7 Sep')
+    assert.equal(marketPulseWowCaption(wow), 'WoW vs 7 Sep')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'inventory'), '+12')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'monthsSupply'), '+0.4 mo')
     assert.equal(marketPulseWowTextFor(wow, 'All', 'avgDom'), '−2d')
@@ -126,8 +128,17 @@ describe('buildMarketPulseWow', () => {
   })
 })
 
+describe('transactToListLabel', () => {
+  it('is over list when close beats original ask, under list when it does not', () => {
+    assert.equal(transactToListLabel(22_000), 'Tran$act over list')
+    assert.equal(transactToListLabel(-8_000), 'Tran$act under list')
+    assert.equal(transactToListLabel(0), TRANSACT_TO_LIST_LABEL)
+    assert.equal(transactToListLabel(null), TRANSACT_TO_LIST_LABEL)
+  })
+})
+
 describe('pickEmailMarketPulseCompare', () => {
-  it('prefers WoW then MoM, never YoY as the email default', () => {
+  it('uses WoW only for the weekly email; no month fallback', () => {
     const wow = buildMarketPulseWow(
       [row('All', { activeCount: 10 })],
       [row('All', { activeCount: 8 })],
@@ -141,13 +152,15 @@ describe('pickEmailMarketPulseCompare', () => {
     assert.ok(wow && mom)
     const picked = pickEmailMarketPulseCompare({ wow, mom, yoy: null })
     assert.equal(picked?.period, 'wow')
-    assert.equal(
-      pickEmailMarketPulseCompare({ wow: null, mom, yoy: null })?.period,
-      'mom',
-    )
+    assert.equal(pickEmailMarketPulseCompare({ wow: null, mom, yoy: null }), null)
     assert.equal(
       pickEmailMarketPulseCompare({ wow: null, mom: null, yoy: mom }),
       null,
+    )
+    assert.deepEqual(availableComparePeriods({ wow, mom, yoy: null }), ['wow'])
+    assert.deepEqual(
+      availableComparePeriods({ wow: null, mom, yoy: null }),
+      [],
     )
   })
 })

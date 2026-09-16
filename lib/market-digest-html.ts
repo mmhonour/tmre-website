@@ -110,10 +110,7 @@ function cityLabel(row: { city: string }): string {
 
 /** Fixed inner bar width — % widths on empty cells collapse in many mail clients. */
 const BAR_INNER_PX = 220
-/**
- * Tall enough for a 9px change figure to sit in the middle of the gold fill.
- */
-const BAR_HEIGHT_PX = 16
+const BAR_HEIGHT_PX = 10
 /** The web's `grid-cols-[7.75rem_1fr_auto]`, in the px this table needs. */
 const LABEL_COL_PX = 124
 const VALUE_COL_PX = 70
@@ -381,7 +378,11 @@ function stackedTownMetricsSection(
                     marketPulsePricePct(row.averageTax, taxMax),
                   )
               : { leftPct: 0, widthPct: pct }
-          return metricBarRow(m.label, m.format(row), span.widthPct, {
+          return metricBarRow(
+            m.labelOf?.(row) ?? m.label,
+            m.format(row),
+            span.widthPct,
+            {
             leftPct: span.leftPct,
             aside: metricAside(m.id, row),
             asideNegative:
@@ -423,7 +424,7 @@ function stackedTownMetricsSection(
     .join('')
 
   const changeCaption = wow
-    ? `<tr><td style="padding:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">Change ${escapeHtml(marketPulseCompareCaption(wow, comparePeriod))}</td></tr>`
+    ? `<tr><td style="padding:0 0 8px 0;font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${escapeHtml(marketPulseCompareCaption(wow, comparePeriod))}</td></tr>`
     : ''
 
   return `

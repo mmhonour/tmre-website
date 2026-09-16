@@ -20,15 +20,25 @@ export const MARKET_PULSE_JOIN_BRIEF_ID = 'join-the-brief'
 /** Visitor-facing name for close ÷ original ask (stacked, unstacked, Stats). */
 export const TRANSACT_TO_LIST_LABEL = 'TRAN$ACT to LIST'
 
+/** Row label from the sign of close − original ask. Zero / missing keeps the base. */
+export function transactToListLabel(
+  dollars: number | null | undefined,
+): string {
+  if (dollars == null || !Number.isFinite(dollars) || dollars === 0) {
+    return TRANSACT_TO_LIST_LABEL
+  }
+  return dollars > 0 ? 'Tran$act over list' : 'Tran$act under list'
+}
+
 /**
  * Page-load defaults. Monday email (HTML + plaintext) must use this same
  * combination for the stacked charts — never a visitor’s in-session Filters
  * (unstacked, Buyer, etc.). Source of truth: these constants +
  * `marketPulseStackedMetrics()`.
  *
- * Compare figures are a deliberate split: email always includes week (or
- * month if that is the oldest available slot) in the middle of each shaded bar;
- * /market-pulse defaults the switch Off so the bars stay uncluttered.
+ * Compare figures: the Monday email always includes WoW in the middle of each
+ * shaded bar (weekly send). /market-pulse defaults the switch Off. Month and
+ * year stay off the switch until those slots are a product surface.
  */
 
 export function marketPulseFavorSortLabel(

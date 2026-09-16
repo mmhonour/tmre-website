@@ -52,6 +52,7 @@ import {
 import { DEFAULT_MARKET_PULSE_LOOKBACK_ID, marketPulseLookbackChartLabel } from '@/lib/market-pulse-lookback'
 import { marketPulseStackedMetrics } from '@/lib/market-pulse-stacked-metrics'
 import {
+  marketPulseCompareCaption,
   marketPulseFillDeltaText,
   type MarketPulseComparePeriod,
   type MarketPulseWowCompare,
@@ -885,9 +886,13 @@ export function formatMarketDigestEmail(
     (r) => isAllTownsCity(r.city),
   )
   const comparePeriod = options?.comparePeriod ?? 'wow'
+  const compareCaption = options?.wow
+    ? marketPulseCompareCaption(options.wow, comparePeriod)
+    : null
   const stackedLines = [
     'TOWN METRICS STACKED (sales · Seller Friendly)',
     '---------------------------------------------',
+    ...(compareCaption ? [compareCaption] : []),
     ...(combined.length === 0
       ? ['(no town rows in cache yet)']
       : combined.flatMap((row) => {
@@ -902,7 +907,7 @@ export function formatMarketDigestEmail(
                 row.city,
                 m.id,
               )
-              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(18)} ${
+              return `  ${(m.labelOf?.(row) ?? m.label).padEnd(22)} ${
                 fill ? `${value}  ${fill}` : value
               }`
             }),

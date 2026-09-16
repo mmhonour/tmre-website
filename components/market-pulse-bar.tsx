@@ -113,7 +113,7 @@ export function PanelBarRow({
   return (
     <div
       className={`group relative grid grid-cols-[7.75rem_1fr_auto] items-center gap-2 ${
-        dense ? "h-[18px]" : "h-7"
+        dense ? "h-[18px]" : "h-6"
       }`}
     >
       <span className={PANEL_LABEL}>
@@ -129,7 +129,7 @@ export function PanelBarRow({
        */}
       <Bar
         {...(href ? { href } : {})}
-        className={`relative block h-3.5 w-full ${
+        className={`relative block h-1.5 w-full ${
           href ? "cursor-pointer" : ""
         }`}
       >
@@ -147,7 +147,7 @@ export function PanelBarRow({
         </span>
         {delta ? (
           <span
-            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums text-[#1B2A4A]"
+            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums text-white"
             style={{ left: `${fillMid}%` }}
           >
             {delta}

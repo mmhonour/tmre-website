@@ -47,12 +47,12 @@ export const MARKET_PULSE_WOW_PRIOR_ROWS: MarketPulseCombinedTownRow[] = [
     averagePrice: 2_150_000,
     priceDelta: 150_000,
     priceDeltaPct: 7.5,
-    saleToAskPct: 98.1,
-    saleToAskDollars: -8_000,
+    saleToAskPct: 101.2,
+    saleToAskDollars: 18_000,
   }),
 ];
 
-/** ~28 days earlier — MoM option appears once this slot exists. */
+/** Held for a later month surface. The preview switch is WoW-only. */
 export const MARKET_PULSE_MOM_PRIOR_ROWS: MarketPulseCombinedTownRow[] = [
   row("All", {
     activeCount: 160,
@@ -75,8 +75,8 @@ export const MARKET_PULSE_MOM_PRIOR_ROWS: MarketPulseCombinedTownRow[] = [
     averagePrice: 2_050_000,
     priceDelta: 180_000,
     priceDeltaPct: 9.4,
-    saleToAskPct: 97.0,
-    saleToAskDollars: -20_000,
+    saleToAskPct: 100.8,
+    saleToAskDollars: 10_000,
   }),
 ];
 
@@ -103,8 +103,8 @@ export const MARKET_PULSE_WOW_CURRENT_ROWS: MarketPulseCombinedTownRow[] = [
     averagePrice: 2_180_000,
     priceDelta: 130_000,
     priceDeltaPct: 6.3,
-    saleToAskPct: 97.4,
-    saleToAskDollars: -11_000,
+    saleToAskPct: 101.6,
+    saleToAskDollars: 22_000,
   }),
 ];
 
