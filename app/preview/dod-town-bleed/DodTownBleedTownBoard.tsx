@@ -1,15 +1,24 @@
-import { loadDealOfTheDayFssrSeed } from "@/lib/deal-of-the-day-fssr";
 import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import { DodTownBleedStill } from "@/app/preview/dod-town-bleed/DodTownBleedStill";
+import {
+  loadDodTownBleedPreviewSeed,
+  type DodTownBleedPreviewSeed,
+} from "@/app/preview/dod-town-bleed/preview-seed";
 
 /** One still per town — the listing photo is the bleed, labeled with that town’s paint. */
-export async function DodTownBleedTownBoard() {
-  const seed = await loadDealOfTheDayFssrSeed("sale", "homes");
+export async function DodTownBleedTownBoard({
+  seed: seedProp,
+}: {
+  seed?: DodTownBleedPreviewSeed;
+} = {}) {
+  const seed = seedProp ?? (await loadDodTownBleedPreviewSeed());
 
   return (
     <section className="mx-auto max-w-5xl px-4 pb-16 sm:px-6">
       <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-gold">
-        This week’s picks · one picture per town
+        {seed.source === "live"
+          ? "This week’s picks · one picture per town"
+          : "Fixture towns · one picture per town"}
       </p>
       <h2 className="mb-2 font-serif text-2xl text-navy">
         Deal of the Day bleeds
@@ -21,7 +30,7 @@ export async function DodTownBleedTownBoard() {
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         {TMRE_TOWNS.map((town, index) => {
-          const deal = seed?.dealsByTown[town] ?? null;
+          const deal = seed.dealsByTown[town] ?? null;
           return (
             <DodTownBleedStill
               key={town}

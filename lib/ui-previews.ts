@@ -200,15 +200,15 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   },
   {
     slug: "dod-town-bleed-desktop",
-    title: "Deal of the Day town bleeds — desktop",
+    title: "Deal of the Day — desktop",
     summary:
-      "Live weekly Deal of the Day picks. Desktop: listing photo full-bleed across the top half of the page. Empty bleed clicks open the listing showcase. Town carousel sits directly under the bleed, insight directly under the carousel. Value-pick rises from the bleed’s bottom to its top.",
+      "Full PR 167 desktop page: listing photo full-bleed across the top half, carousel under the bleed, insight under the carousel, value-pick rising to the bleed’s top. Empty bleed clicks open the listing showcase. Fixture towns when the weekly cache is empty.",
   },
   {
     slug: "dod-town-bleed-mobile",
-    title: "Deal of the Day town bleeds — mobile",
+    title: "Deal of the Day — mobile",
     summary:
-      "Phone chrome: headline above the listing-photo bleed, pause / town / For Sale in the band. Value-pick card has no photo or second carousel. Stills for every town below the 390×844 frame.",
+      "Full PR 167 phone page: headline above the listing-photo bleed, pause / town / For Sale in the band, insight under the carousel, value-pick with no photo or second carousel. On a laptop, a 390×844 frame. Fixture towns when the weekly cache is empty.",
   },
 ];
 

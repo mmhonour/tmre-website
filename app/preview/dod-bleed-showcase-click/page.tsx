@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
-import { dodBleedShowcaseFixtureDeals } from "@/app/preview/dod-bleed-showcase-click/fixture-deals";
+import { dodTownBleedFixtureDeals } from "@/app/preview/dod-town-bleed/fixture-deals";
 
 export const metadata = {
   title: "Preview — DOD bleed → showcase — TMRE",
@@ -9,7 +9,7 @@ export const metadata = {
 };
 
 export default function DodBleedShowcaseClickPreviewPage() {
-  const dealsByTown = dodBleedShowcaseFixtureDeals();
+  const dealsByTown = dodTownBleedFixtureDeals();
 
   return (
     <div className="min-h-screen bg-cream">
@@ -21,18 +21,25 @@ export default function DodBleedShowcaseClickPreviewPage() {
           Deal of the Day bleed → showcase
         </h1>
         <p className="mb-3 text-sm leading-relaxed text-slate">
-          Full Deal of the Day page (carousel, town list, value-pick, insight)
-          with fixture towns — no listing database. Click empty photo in the
-          top-half bleed to open that listing’s showcase. Town names, the
-          headline, and the value-pick keep their own clicks.
+          Full Deal of the Day page (carousel, town list, value-pick,
+          insight) with fixture towns — no listing database. Click empty
+          photo in the top-half bleed to open that listing’s showcase. Town
+          names, the headline, and the value-pick keep their own clicks.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
-          Live:{" "}
+          Full PR 167:{" "}
           <Link
-            href="/deal-of-the-day"
+            href="/preview/dod-town-bleed-desktop"
             className="text-navy underline decoration-gold/50 underline-offset-2"
           >
-            /deal-of-the-day
+            /preview/dod-town-bleed-desktop
+          </Link>
+          {" · "}
+          <Link
+            href="/preview/dod-town-bleed-mobile"
+            className="text-navy underline decoration-gold/50 underline-offset-2"
+          >
+            /preview/dod-town-bleed-mobile
           </Link>
         </p>
       </div>

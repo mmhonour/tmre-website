@@ -1,23 +1,29 @@
 import { Suspense } from "react";
 import DealOfTheWeekHero from "@/components/DealOfTheWeekHero";
-import { loadDealOfTheDayFssrSeed } from "@/lib/deal-of-the-day-fssr";
+import {
+  loadDodTownBleedPreviewSeed,
+  type DodTownBleedPreviewSeed,
+} from "@/app/preview/dod-town-bleed/preview-seed";
 
-/** Same seed as `/deal-of-the-day` — weekly cache, not fixture towns. */
+/** Full Deal of the Day page for PR previews — locked seed, no live carousel fetch. */
 export async function DodTownBleedLive({
   forcePhoneLayout = false,
+  seed: seedProp,
 }: {
   forcePhoneLayout?: boolean;
+  seed?: DodTownBleedPreviewSeed;
 }) {
-  const seed = await loadDealOfTheDayFssrSeed("sale", "homes");
+  const seed = seedProp ?? (await loadDodTownBleedPreviewSeed());
 
   return (
     <Suspense fallback={null}>
       <DealOfTheWeekHero
         mode="day"
+        lockSeed
         forcePhoneLayout={forcePhoneLayout}
-        initialDealsByTown={seed?.dealsByTown ?? null}
-        initialKind={seed?.kind ?? "sale"}
-        initialPropertyClass={seed?.propertyClass ?? "homes"}
+        initialDealsByTown={seed.dealsByTown}
+        initialKind={seed.kind}
+        initialPropertyClass={seed.propertyClass}
       />
     </Suspense>
   );
