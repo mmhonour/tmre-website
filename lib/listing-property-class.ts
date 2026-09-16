@@ -34,6 +34,22 @@ export function propertyClassHaystack(input: PropertyClassListingInput): string 
     .join(' ')
 }
 
+/**
+ * Vacant lots / land — word-bounded so "island" and "landscape" do not match.
+ * SmartMLS often puts this on PropertyType ("Lots/Land") or PropertySubType.
+ */
+export const LAND_PROPERTY_TYPE_RE =
+  /\b(?:lots?(?:\s*\/\s*|\s+and\s+)?lands?|lots?|lands?|building\s+lots?|vacant\s+lands?)\b/i
+
+export function isLandPropertyType(propertyType: string): boolean {
+  return LAND_PROPERTY_TYPE_RE.test(propertyType)
+}
+
+/** True when MLS classifies the row as lots/land (type, style, or RETS subtype). */
+export function listingLooksLikeLand(listing: PropertyClassListingInput): boolean {
+  return LAND_PROPERTY_TYPE_RE.test(propertyClassHaystack(listing))
+}
+
 export function isCommercialPropertyType(propertyType: string): boolean {
   return /commercial|industrial|business/i.test(propertyType)
 }
