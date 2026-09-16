@@ -769,8 +769,18 @@ export default function DealOfTheWeekHero({
           />
         </div>
       ) : null}
+      {isDay && !forcePhoneLayout && detailHref && !dayEmpty && l ? (
+        <Link
+          href={detailHref}
+          {...listingHoverHandlers(l.mlsId)}
+          className="absolute left-1/2 top-0 z-[1] hidden h-[50dvh] w-screen -translate-x-1/2 cursor-pointer lg:block focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
+          aria-label={`Open showcase for ${l.address.street || l.address.full}`}
+        />
+      ) : null}
       <div
         className={`relative z-[1] mx-auto max-w-7xl ${
+          isDay && !forcePhoneLayout ? "lg:pointer-events-none" : ""
+        } ${
           forcePhoneLayout ? "px-6" : "px-6 lg:px-10"
         } ${
           forcePhoneLayout
@@ -787,7 +797,7 @@ export default function DealOfTheWeekHero({
         <div
           className={
             isDay && !forcePhoneLayout
-              ? "relative"
+              ? "relative lg:pointer-events-none"
               : `grid items-start gap-8 ${
                   forcePhoneLayout ? "" : "lg:grid-cols-[1.05fr_1fr] lg:gap-12"
                 }`
@@ -796,11 +806,13 @@ export default function DealOfTheWeekHero({
           <div
             className={`space-y-3 ${
               isDay && !forcePhoneLayout
-                ? "lg:absolute lg:inset-x-0 lg:top-0 lg:z-[1] lg:h-[50dvh] lg:max-w-xl lg:pt-28"
+                ? "lg:pointer-events-none lg:absolute lg:inset-x-0 lg:top-0 lg:z-[1] lg:h-[50dvh] lg:max-w-xl lg:pt-28"
                 : ""
             }`}
           >
-            <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5">
+            <div className={`animate-fade-up inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/5 px-4 py-1.5 ${
+              isDay && !forcePhoneLayout ? "lg:pointer-events-auto" : ""
+            }`}>
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   loadingState
@@ -827,6 +839,11 @@ export default function DealOfTheWeekHero({
             </div>
             {isDay ? (
               <>
+            <div
+              className={
+                isDay && !forcePhoneLayout ? "lg:pointer-events-auto lg:w-fit" : undefined
+              }
+            >
             <DealDayTownList
               activeTown={city ?? carousel.currentTown}
               slideDir={carousel.slideDir}
@@ -835,11 +852,12 @@ export default function DealOfTheWeekHero({
               }
               variant={forcePhoneLayout ? "mobile" : "auto"}
             />
+            </div>
             <h1
               className={`font-serif leading-[1.05] tracking-tight text-white animate-fade-up ${
                 forcePhoneLayout
                   ? "text-5xl"
-                  : "text-5xl sm:text-6xl lg:text-7xl"
+                  : "text-5xl sm:text-6xl lg:text-7xl lg:w-fit lg:pointer-events-auto"
               }`}
             >
               Today&apos;s{" "}
@@ -973,11 +991,11 @@ export default function DealOfTheWeekHero({
           </div>
 
           {isDay && !forcePhoneLayout ? (
-            <div className="hidden h-[50dvh] lg:block" aria-hidden />
+            <div className="pointer-events-none hidden h-[50dvh] lg:block" aria-hidden />
           ) : null}
 
           {isDay && !forcePhoneLayout ? (
-            <div className="hidden max-w-xl space-y-4 pt-3 lg:block">
+            <div className="hidden max-w-xl space-y-4 pt-3 lg:pointer-events-auto lg:block">
               <DealDayChooserBar
                 townLabel={carousel.currentTown}
                 carouselControls={
@@ -1052,7 +1070,7 @@ export default function DealOfTheWeekHero({
             }
             className={`min-w-0 ${
               isDay && !forcePhoneLayout
-                ? "deal-showcase-stage mt-8 overflow-visible lg:absolute lg:right-0 lg:top-[50dvh] lg:z-[2] lg:mt-0 lg:w-[min(100%,36rem)] lg:max-w-xl animate-dod-value-pick-rise"
+                ? "deal-showcase-stage mt-8 overflow-visible lg:pointer-events-auto lg:absolute lg:right-0 lg:top-[50dvh] lg:z-[2] lg:mt-0 lg:w-[min(100%,36rem)] lg:max-w-xl animate-dod-value-pick-rise"
                 : isDay
                   ? "deal-showcase-stage overflow-visible"
                   : "overflow-hidden"
