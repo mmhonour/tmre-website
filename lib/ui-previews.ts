@@ -193,6 +193,12 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
       "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. Expanded Comps / What if use solid navy. Town pulse and Details are content-sized cards that grow top and bottom. On a laptop, a 390×844 frame.",
   },
   {
+    slug: "dod-bleed-showcase-click",
+    title: "Deal of the Day bleed → showcase",
+    summary:
+      "Desktop: click empty photo in the top-half bleed to open that listing’s showcase. Town names, headline, and value-pick stay put. Fixture listing — no database.",
+  },
+  {
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day town bleeds — desktop",
     summary:

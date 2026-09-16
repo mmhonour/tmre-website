@@ -31,7 +31,15 @@ export default function DodTownBleedDesktopPreviewPage() {
           showcase. Pause · town · For Sale sits directly under the bleed,
           insight directly under the carousel. The value-pick panel starts
           at the bleed’s bottom, flips with each town, then rises to the
-          bleed’s top. Stills for every town are below.
+          bleed’s top. Stills for every town are below. Fixture click (no
+          live listings):{" "}
+          <Link
+            href="/preview/dod-bleed-showcase-click"
+            className="text-navy underline decoration-gold/50 underline-offset-2"
+          >
+            /preview/dod-bleed-showcase-click
+          </Link>
+          .
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

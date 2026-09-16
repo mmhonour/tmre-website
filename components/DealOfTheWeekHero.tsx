@@ -12,6 +12,7 @@ import { TMRE_TOWNS } from "@/lib/tmre-towns";
 import { dealOfTheDayHref, listingDetailHref, listingPhotosHref } from "@/lib/listing-url";
 import { listingHoverHandlers } from "@/lib/warm-listing-cache";
 import DealDayTownBleed from "@/components/DealDayTownBleed";
+import { DealDayBleedShowcaseLink } from "@/components/DealDayBleedShowcaseLink";
 import DealPhotoThumbnailDeck from "@/components/DealPhotoThumbnailDeck";
 import ListingThumbImage from "@/components/ListingThumbImage";
 import { usePersonalizedTowns } from "@/hooks/usePersonalizedTowns";
@@ -770,11 +771,11 @@ export default function DealOfTheWeekHero({
         </div>
       ) : null}
       {isDay && !forcePhoneLayout && detailHref && !dayEmpty && l ? (
-        <Link
+        <DealDayBleedShowcaseLink
           href={detailHref}
-          {...listingHoverHandlers(l.mlsId)}
-          className="absolute left-1/2 top-0 z-[1] hidden h-[50dvh] w-screen -translate-x-1/2 cursor-pointer lg:block focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-inset"
-          aria-label={`Open showcase for ${l.address.street || l.address.full}`}
+          mlsId={l.mlsId}
+          address={l.address.street || l.address.full}
+          className="absolute left-1/2 top-0 z-[1] hidden h-[50dvh] w-screen -translate-x-1/2 lg:block"
         />
       ) : null}
       <div
