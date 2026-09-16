@@ -202,13 +202,13 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day — desktop",
     summary:
-      "Full PR 167 desktop page: listing photo full-bleed across the top half, carousel under the bleed, insight under the carousel, value-pick rising to the bleed’s top. Empty bleed clicks open the listing showcase. Fixture towns when the weekly cache is empty.",
+      "Full PR 167 desktop page: listing photo full-bleed across the top half, carousel under the bleed, insight under the carousel, value-pick rising to the bleed’s top. Empty bleed clicks open the listing showcase. Next-town arrow stays put for the widest town. Fixture towns when the weekly cache is empty.",
   },
   {
     slug: "dod-town-bleed-mobile",
     title: "Deal of the Day — mobile",
     summary:
-      "Full PR 167 phone page: headline above the listing-photo bleed, pause / town / For Sale in the band, insight under the carousel, value-pick with no photo or second carousel. On a laptop, a 390×844 frame. Fixture towns when the weekly cache is empty.",
+      "Full PR 167 phone page: listing-photo bleed behind the town name and headline, pause / town / For Sale under the bleed, insight under the carousel. Next-town arrow stays put for the widest town. On a laptop, a 390×844 frame. Fixture towns when the weekly cache is empty.",
   },
 ];
 

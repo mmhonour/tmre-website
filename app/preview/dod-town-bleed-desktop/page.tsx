@@ -30,7 +30,8 @@ export default async function DodTownBleedDesktopPreviewPage() {
           directly under the carousel, value-pick starting at the
           bleed’s bottom then rising to its top. Click empty photo (not
           the headline, town names, or value-pick) to open that
-          listing’s showcase. {sourceLine}
+          listing’s showcase. The next-town arrow stays put for the
+          widest town name. {sourceLine}
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

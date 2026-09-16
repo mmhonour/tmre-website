@@ -751,6 +751,25 @@ export default function DealOfTheWeekHero({
           showing.pickMode ?? (isDay ? "below-median" : "board-top"),
       })
     : [];
+  const dayScoreLabel = showing
+    ? `${showing.score.composite.toFixed(1)}.`
+    : loadingState
+      ? "…"
+      : "—";
+  const dayChooserControls: DealDayCarouselControls | null =
+    isDay && !city && carousel.carouselTowns.length > 0
+      ? {
+          paused: carousel.paused,
+          onTogglePause: carousel.togglePause,
+          onPrev: carousel.goPrev,
+          onNext: carousel.goNext,
+          onPhotoHover: carousel.pauseForPhotoHover,
+          canStep: carousel.canNavigate,
+          townLabel: carousel.currentTown,
+          carouselIndex: carousel.carouselIndex,
+          carouselTotal: carousel.carouselTowns.length,
+        }
+      : null;
 
   return (
     <section
@@ -853,7 +872,9 @@ export default function DealOfTheWeekHero({
               <>
             <div
               className={
-                isDay && !forcePhoneLayout ? "lg:pointer-events-auto lg:w-fit" : undefined
+                forcePhoneLayout
+                  ? "hidden"
+                  : "hidden lg:block lg:pointer-events-auto lg:w-fit"
               }
             >
             <DealDayTownList
@@ -862,32 +883,24 @@ export default function DealOfTheWeekHero({
               onSelectTown={
                 !city && !listingParam ? carousel.selectTown : undefined
               }
-              variant={forcePhoneLayout ? "mobile" : "auto"}
+              variant="desktop"
             />
             </div>
             <h1
               className={`font-serif leading-[1.05] tracking-tight text-white animate-fade-up ${
                 forcePhoneLayout
-                  ? "text-5xl"
-                  : "text-5xl sm:text-6xl lg:text-7xl lg:w-fit lg:pointer-events-auto"
+                  ? "hidden"
+                  : "hidden text-5xl sm:text-6xl lg:block lg:text-7xl lg:w-fit lg:pointer-events-auto"
               }`}
             >
               Today&apos;s{" "}
-              <span className="italic gold-shimmer">
-                {showing
-                  ? `${showing.score.composite.toFixed(1)}.`
-                  : loadingState
-                    ? "…"
-                    : "—"}
-              </span>
+              <span className="italic gold-shimmer">{dayScoreLabel}</span>
               <br />
               <span className="italic text-white/85">One listing.</span>
             </h1>
               <div
                 className={`relative ${
-                  forcePhoneLayout
-                    ? "-mx-6 px-6"
-                    : "-mx-6 px-6 lg:hidden"
+                  forcePhoneLayout ? "-mx-6" : "-mx-6 lg:hidden"
                 }`}
               >
                 <div className={forcePhoneLayout ? "" : "lg:hidden"}>
@@ -902,24 +915,27 @@ export default function DealOfTheWeekHero({
                   }
                 />
                 </div>
-                <div className="relative z-[1] py-5">
+                <div className="relative z-[1] space-y-3 px-6 pb-6 pt-1">
+            <DealDayTownList
+              activeTown={city ?? carousel.currentTown}
+              slideDir={carousel.slideDir}
+              onSelectTown={
+                !city && !listingParam ? carousel.selectTown : undefined
+              }
+              variant="mobile"
+            />
+            <h1 className="font-serif text-5xl leading-[1.05] tracking-tight text-white animate-fade-up">
+              Today&apos;s{" "}
+              <span className="italic gold-shimmer">{dayScoreLabel}</span>
+              <br />
+              <span className="italic text-white/85">One listing.</span>
+            </h1>
+                </div>
+              </div>
+              <div className={forcePhoneLayout ? "" : "lg:hidden"}>
                 <DealDayChooserBar
                   townLabel={carousel.currentTown}
-                  carouselControls={
-                    !city && carousel.carouselTowns.length > 0
-                      ? {
-                          paused: carousel.paused,
-                          onTogglePause: carousel.togglePause,
-                          onPrev: carousel.goPrev,
-                          onNext: carousel.goNext,
-                          onPhotoHover: carousel.pauseForPhotoHover,
-                          canStep: carousel.canNavigate,
-                          townLabel: carousel.currentTown,
-                          carouselIndex: carousel.carouselIndex,
-                          carouselTotal: carousel.carouselTowns.length,
-                        }
-                      : null
-                  }
+                  carouselControls={dayChooserControls}
                   transactionFilter={dayTxFilter}
                   onTransactionFilterChange={setTxFilter}
                   propertyClass={
@@ -929,7 +945,6 @@ export default function DealOfTheWeekHero({
                     dayTxFilter === "sale" ? setDayPropertyClass : undefined
                   }
                 />
-                </div>
               </div>
               </>
             ) : (
@@ -1010,21 +1025,7 @@ export default function DealOfTheWeekHero({
             <div className="hidden max-w-xl space-y-4 pt-3 lg:pointer-events-auto lg:block">
               <DealDayChooserBar
                 townLabel={carousel.currentTown}
-                carouselControls={
-                  !city && carousel.carouselTowns.length > 0
-                    ? {
-                        paused: carousel.paused,
-                        onTogglePause: carousel.togglePause,
-                        onPrev: carousel.goPrev,
-                        onNext: carousel.goNext,
-                        onPhotoHover: carousel.pauseForPhotoHover,
-                        canStep: carousel.canNavigate,
-                        townLabel: carousel.currentTown,
-                        carouselIndex: carousel.carouselIndex,
-                        carouselTotal: carousel.carouselTowns.length,
-                      }
-                    : null
-                }
+                carouselControls={dayChooserControls}
                 transactionFilter={dayTxFilter}
                 onTransactionFilterChange={setTxFilter}
                 propertyClass={
@@ -1150,7 +1151,72 @@ type DealDayCarouselControls = {
   carouselTotal: number;
 };
 
-/** Town carousel + sale/rental/class pills — below the DOTD hero + thumbnails. */
+/** Pause · prev · town · next. Town slot is the widest TMRE name so › does not jump. */
+function DealDayTownStepper({
+  townLabel,
+  controls,
+}: {
+  townLabel: string;
+  controls: DealDayCarouselControls;
+}) {
+  const total = Math.max(1, controls.carouselTotal);
+  const showCount = total > 1;
+  const countSizer = `${"8".repeat(String(total).length)}/${total}`;
+
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      <button
+        type="button"
+        onClick={controls.onTogglePause}
+        aria-label={
+          controls.paused ? "Resume town rotation" : "Pause town rotation"
+        }
+        className={townCarouselBtnClass}
+      >
+        {controls.paused ? "▶" : "⏸"}
+      </button>
+      <button
+        type="button"
+        onClick={controls.onPrev}
+        disabled={!controls.canStep}
+        aria-label="Previous town deal"
+        className={townCarouselBtnClass}
+      >
+        ‹
+      </button>
+      <p className="relative font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 px-0.5">
+        <span className="invisible grid whitespace-nowrap" aria-hidden>
+          {TMRE_TOWNS.map((town) => (
+            <span key={town} className="col-start-1 row-start-1">
+              {town}, CT
+              {showCount ? ` · ${countSizer}` : ""}
+            </span>
+          ))}
+        </span>
+        <span className="absolute inset-y-0 left-0 flex items-center whitespace-nowrap">
+          {townLabel}, CT
+          {showCount ? (
+            <span className="text-white/45">
+              {" "}
+              · {controls.carouselIndex + 1}/{total}
+            </span>
+          ) : null}
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={controls.onNext}
+        disabled={!controls.canStep}
+        aria-label="Next town deal"
+        className={townCarouselBtnClass}
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
+/** Town carousel + sale/rental/class pills — below the DOTD photo bleed. */
 function DealDayChooserBar({
   townLabel,
   carouselControls,
@@ -1170,48 +1236,7 @@ function DealDayChooserBar({
     <div className="flex max-w-xl flex-wrap items-center justify-start gap-x-3 gap-y-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
       {townLabel ? (
         carouselControls ? (
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={carouselControls.onTogglePause}
-              aria-label={
-                carouselControls.paused
-                  ? "Resume town rotation"
-                  : "Pause town rotation"
-              }
-              className={townCarouselBtnClass}
-            >
-              {carouselControls.paused ? "▶" : "⏸"}
-            </button>
-            <button
-              type="button"
-              onClick={carouselControls.onPrev}
-              disabled={!carouselControls.canStep}
-              aria-label="Previous town deal"
-              className={townCarouselBtnClass}
-            >
-              ‹
-            </button>
-            <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 px-0.5">
-              {townLabel}, CT
-              {carouselControls.carouselTotal > 1 ? (
-                <span className="text-white/45">
-                  {" "}
-                  · {carouselControls.carouselIndex + 1}/
-                  {carouselControls.carouselTotal}
-                </span>
-              ) : null}
-            </p>
-            <button
-              type="button"
-              onClick={carouselControls.onNext}
-              disabled={!carouselControls.canStep}
-              aria-label="Next town deal"
-              className={townCarouselBtnClass}
-            >
-              ›
-            </button>
-          </div>
+          <DealDayTownStepper townLabel={townLabel} controls={carouselControls} />
         ) : (
           <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 shrink-0">
             {townLabel}, CT
@@ -1423,48 +1448,7 @@ function DealCard({
           >
             {townLabel ? (
               carouselControls ? (
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={carouselControls.onTogglePause}
-                    aria-label={
-                      carouselControls.paused
-                        ? "Resume town rotation"
-                        : "Pause town rotation"
-                    }
-                    className={townCarouselBtnClass}
-                  >
-                    {carouselControls.paused ? "▶" : "⏸"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={carouselControls.onPrev}
-                    disabled={!carouselControls.canStep}
-                    aria-label="Previous town deal"
-                    className={townCarouselBtnClass}
-                  >
-                    ‹
-                  </button>
-                  <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 px-0.5">
-                    {townLabel}, CT
-                    {carouselControls.carouselTotal > 1 ? (
-                      <span className="text-white/45">
-                        {" "}
-                        · {carouselControls.carouselIndex + 1}/
-                        {carouselControls.carouselTotal}
-                      </span>
-                    ) : null}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={carouselControls.onNext}
-                    disabled={!carouselControls.canStep}
-                    aria-label="Next town deal"
-                    className={townCarouselBtnClass}
-                  >
-                    ›
-                  </button>
-                </div>
+                <DealDayTownStepper townLabel={townLabel} controls={carouselControls} />
               ) : (
                 <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-white/85 shrink-0">
                   {townLabel}, CT
