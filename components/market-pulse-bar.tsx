@@ -67,6 +67,16 @@ export const PANEL_TITLE =
 export const PANEL_LABEL =
   "truncate text-right [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.14em] whitespace-nowrap text-white/45";
 
+/** Ink for the week-change figure in the middle of a gold fill. */
+export type PanelBarFillDeltaInk = "white" | "black";
+
+export const PANEL_FILL_DELTA_INK_CLASS: Record<PanelBarFillDeltaInk, string> =
+  {
+    white: "text-white",
+    /** Navy on gold — the previous thick-bar treatment, reads as black. */
+    black: "text-[#1B2A4A]",
+  };
+
 /**
  * One labelled bar on a denim panel, shared so a town's stacked metrics and an
  * unstacked chart's towns are drawn by the same code rather than two that drift.
@@ -89,6 +99,7 @@ export function PanelBarRow({
   dense = false,
   href,
   fillDelta,
+  fillDeltaInk = "white",
 }: {
   label: ReactNode;
   valueText: ReactNode;
@@ -104,6 +115,7 @@ export function PanelBarRow({
   href?: string | null;
   /** Change vs a prior week, centered on the shaded fill. */
   fillDelta?: string | null;
+  fillDeltaInk?: PanelBarFillDeltaInk;
 }) {
   const placement = aside ? barAsidePlacement(leftPct, widthPct, asideNegative) : null;
   const Bar = (href ? Link : "span") as React.ElementType;
@@ -147,7 +159,7 @@ export function PanelBarRow({
         </span>
         {delta ? (
           <span
-            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums text-white"
+            className={`pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap [font-family:var(--mp-mono-font)] text-[9px] font-semibold tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
             style={{ left: `${fillMid}%` }}
           >
             {delta}

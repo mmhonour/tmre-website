@@ -5,6 +5,7 @@ import {
   formatMetricValue,
   PANEL_SURFACE,
   PanelBarRow,
+  type PanelBarFillDeltaInk,
 } from "@/components/market-pulse-bar";
 import type { ListingKind } from "@/lib/listing-kind";
 import {
@@ -109,6 +110,7 @@ export default function MarketPulseTownPanel({
   tabs,
   caption,
   compare = null,
+  fillDeltaInk = "white",
 }: {
   row: MarketPulseCombinedTownRow;
   scale: MarketPulseTownScale;
@@ -131,6 +133,7 @@ export default function MarketPulseTownPanel({
   caption?: ReactNode;
   /** Prior-week change, drawn in the middle of each shaded fill. */
   compare?: MarketPulseWowCompare | null;
+  fillDeltaInk?: PanelBarFillDeltaInk;
 }) {
   const closedLookbackLabel = marketPulseLookbackChartLabel(lookbackId);
   const metrics =
@@ -319,6 +322,7 @@ export default function MarketPulseTownPanel({
               widthTransition={widthTransition}
               href={metricHref?.(m.id)}
               fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
+              fillDeltaInk={fillDeltaInk}
             />
           );
         })}

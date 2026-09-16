@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-wow",
     title: "Market Pulse week change",
     summary:
-      "Change vs last week sits in the middle of each 6px gold bar. Off / WoW. Fixture towns.",
+      "Same 6px gold bars. White numbers vs black (#1B2A4A) in the fill. Off / WoW. Fixture towns.",
   },
   {
     slug: "site-warm",
