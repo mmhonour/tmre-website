@@ -3,6 +3,7 @@ import 'server-only'
 import {
   countListingPhotoCoverage,
   listActiveMlsIdsMissingShowcaseHeroes,
+  listingHasAllIndexedPhotoSlots,
   listOldestMlsIdsMissingPhotos,
 } from '@/lib/db/listing-photo-index-repo'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
@@ -28,6 +29,7 @@ import {
   type HeroPhotosJobStatus,
 } from '@/lib/hero-photo-inventory-backfill-shared'
 import { warmListingInventoryPhotos } from '@/lib/listing-photos-sync'
+import { listingPhotoCacheId } from '@/lib/listing-photo-store'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
 import { TMRE_TOWNS } from '@/lib/tmre-towns'
 
@@ -78,6 +80,7 @@ function buildStatus(input: {
   missingAfter: number
   filledListings: number
   filledPhotos: number
+  completedListings?: number
   idle: boolean
   running?: boolean
   walkedPast?: number
@@ -105,6 +108,10 @@ function buildStatus(input: {
     missingPctAfter,
     filledListings: input.filledListings,
     filledPhotos: input.filledPhotos,
+    completedListings:
+      input.completedListings && input.completedListings > 0
+        ? input.completedListings
+        : undefined,
     walkedPast: input.walkedPast && input.walkedPast > 0 ? input.walkedPast : undefined,
     stalledEmpty: input.stalledEmpty || undefined,
     complete,
@@ -116,12 +123,24 @@ function buildStatus(input: {
   return draft
 }
 
+async function listingGalleryFullyIndexed(listing: {
+  mlsId: string
+  listingKey?: string | null
+  photoCount?: number | null
+}): Promise<boolean> {
+  return listingHasAllIndexedPhotoSlots(
+    listingPhotoCacheId(listing),
+    listing.photoCount ?? 0,
+  )
+}
+
 async function warmIds(
   ids: string[],
   untilMs: number,
 ): Promise<{
   listings: number
   photos: number
+  completed: number
   empty: string[]
   failed: string[]
   attempted: string[]
@@ -129,6 +148,7 @@ async function warmIds(
 }> {
   let listings = 0
   let photos = 0
+  let completed = 0
   const empty: string[] = []
   const failed: string[] = []
   const attempted: string[] = []
@@ -149,6 +169,9 @@ async function warmIds(
       photos += warmed.stored
       if (warmed.stored > 0) listings += 1
       else if (!warmed.timedOut) empty.push(mlsId)
+      if (warmed.stored > 0 && (await listingGalleryFullyIndexed(listing))) {
+        completed += 1
+      }
       if (warmed.timedOut) {
         timedOut = true
         break
@@ -161,7 +184,7 @@ async function warmIds(
       )
     }
   }
-  return { listings, photos, empty, failed, attempted, timedOut }
+  return { listings, photos, completed, empty, failed, attempted, timedOut }
 }
 
 /**
@@ -205,6 +228,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   const deadline = Date.now() + HERO_SCAVENGE_BURST_MS
   let filledListings = 0
   let filledPhotos = 0
+  let completedListings = 0
   let walkedPast = 0
   let skipIds = await readSkipMlsIds()
   const triedThisBurst = new Set<string>()
@@ -236,6 +260,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     const warmed = await warmIds(ids, deadline)
     filledListings += warmed.listings
     filledPhotos += warmed.photos
+    completedListings += warmed.completed
     for (const id of warmed.attempted) triedThisBurst.add(id)
     if (warmed.empty.length > 0) {
       walkedPast += warmed.empty.length
@@ -266,6 +291,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
         missingAfter: before.missing,
         filledListings,
         filledPhotos,
+        completedListings,
         walkedPast,
         stalledEmpty: true,
         idle: false,
@@ -285,6 +311,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
       missingAfter: before.missing,
       filledListings,
       filledPhotos,
+      completedListings,
       walkedPast,
       idle: false,
       running: true,
@@ -302,6 +329,7 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
     missingAfter: after.missing,
     filledListings,
     filledPhotos,
+    completedListings,
     walkedPast,
     stalledEmpty: stalledEmpty || undefined,
     idle: after.missing === 0,
@@ -358,6 +386,7 @@ export async function stampHeroPhotosInterruptedStatus(
     missingPctAfter: prev?.missingPctAfter ?? prev?.missingPctBefore ?? 0,
     filledListings: prev?.filledListings ?? 0,
     filledPhotos: prev?.filledPhotos ?? 0,
+    completedListings: prev?.completedListings,
     walkedPast: prev?.walkedPast,
     stalledEmpty: prev?.stalledEmpty,
     complete: false,

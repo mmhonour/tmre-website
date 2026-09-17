@@ -1227,20 +1227,22 @@ function ClampLine({
   if (!text) {
     return <span className="font-mono text-[9px] text-charcoal/30">—</span>;
   }
-  const isLong = text.length > 72 || text.includes("\n");
+  const hasBreaks = text.includes("\n");
+  const isLong = text.length > 72 || hasBreaks;
+  const showFull = expanded || hasBreaks;
   return (
     <div className="min-w-0">
       <p
         className={`text-[9px] leading-snug ${className} ${
-          expanded
+          showFull
             ? "break-words whitespace-pre-line"
             : "truncate whitespace-nowrap"
         }`}
-        title={!expanded ? text : undefined}
+        title={!showFull ? text : undefined}
       >
         {text}
       </p>
-      {isLong ? (
+      {isLong && !hasBreaks ? (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
