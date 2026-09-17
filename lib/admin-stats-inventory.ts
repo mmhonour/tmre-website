@@ -214,7 +214,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     keyPattern: 'market-pulse-week:sale:all:v1:{YYYY-MM-DD}',
     owner: 'lib/market-pulse-week-cache.ts',
     notes:
-      'One Eastern send-day of default stacked town numbers (ALL sales). Survives hourly stats_cache clears. Current slot upserted on rebuild; older Mondays stay so WoW / MoM / YoY can walk backwards. Seeded from market_pulse_snapshots when a week key is missing.',
+      'One Eastern send-day of default stacked town numbers (ALL sales). Survives hourly stats_cache clears. Archived Mondays are frozen from market_pulse_snapshots. Live numbers only fill the current slot until that week is archived. A missing prior Monday is reconstructed from listings as-of that send-day so Week Over Week does not wait for a second real send.',
     live: { kind: 'stats_cache_prefix', prefix: 'market-pulse-week:' },
   },
   {

@@ -212,7 +212,7 @@ export function describeStatsCacheArchitecture(): StatsCacheArchitecture {
             host: 'Neon Postgres',
             source: 'lib/market-pulse-week-cache.ts → rebuildMarketPulseWeekCache',
             detail:
-              'Each stats rebuild upserts market-pulse-week:sale:all:v1:{slotDate} with that week’s default stacked town numbers, and seeds any missing Mondays from market_pulse_snapshots. clearStatsCache preserves the prefix so the timeline can walk backwards for week / month / year. The /market-pulse switch is Off / Week Over Week; listing pulse and home pulse stay Off. The Monday email always draws the week-over-week change in the gold fill.',
+              'Each stats rebuild freezes archived Mondays from market_pulse_snapshots onto market-pulse-week:sale:all:v1:{slotDate}. Live stacked numbers only fill the current slot when that week has not been archived yet. A missing prior Monday is reconstructed from listings as-of that send-day so Week Over Week does not wait for a second real send. clearStatsCache preserves the prefix so the timeline can walk backwards. The /market-pulse switch is Off / Week Over Week; listing pulse and home pulse stay Off. The Monday email always draws the week-over-week change in the gold fill.',
             status: 'live',
             statusLabel: 'Live',
           },
