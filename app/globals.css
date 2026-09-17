@@ -390,6 +390,28 @@ body {
   will-change: transform, opacity, filter;
 }
 
+/* Desktop: value-pick starts at the bottom of the 50dvh bleed, then rises
+   quickly until its top lines up with the top of the bleed. Transform so
+   the carousel + insight under the bleed stay put. */
+@keyframes dodValuePickRise {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-50dvh);
+  }
+}
+
+.animate-dod-value-pick-rise {
+  animation: dodValuePickRise 2.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-dod-value-pick-rise {
+    animation: none;
+  }
+}
+
 @keyframes dealCopyRefresh {
   from {
     opacity: 0;
@@ -533,6 +555,149 @@ body {
   will-change: transform, opacity;
 }
 
+/* DOTD headline + town-filter band. Horizontal wash — not a vertical panel. */
+.dod-town-bleed-rest {
+  background: linear-gradient(
+    90deg,
+    rgb(200 169 81 / 0) 0%,
+    rgb(200 169 81 / 0.07) 18%,
+    rgb(200 169 81 / 0.12) 50%,
+    rgb(200 169 81 / 0.07) 82%,
+    rgb(200 169 81 / 0) 100%
+  );
+}
+
+.dod-town-bleed-fill {
+  background: linear-gradient(
+    90deg,
+    rgb(200 169 81 / 0.34) 0%,
+    rgb(27 42 74 / 0.42) 50%,
+    rgb(200 169 81 / 0.22) 100%
+  );
+}
+
+/* Over the listing photo so white headline type still reads. */
+.dod-town-bleed-photo-wash {
+  background: linear-gradient(
+    90deg,
+    rgb(13 20 36 / 0.62) 0%,
+    rgb(13 20 36 / 0.46) 38%,
+    rgb(200 169 81 / 0.16) 50%,
+    rgb(13 20 36 / 0.46) 62%,
+    rgb(13 20 36 / 0.62) 100%
+  );
+}
+
+/* Desktop hero — same atmosphere scrim as the home-page photo. */
+.dod-town-bleed-hero-wash {
+  background: linear-gradient(
+    180deg,
+    rgb(13 20 36 / 0.88) 0%,
+    rgb(13 20 36 / 0.72) 42%,
+    rgb(13 20 36 / 0.82) 100%
+  );
+}
+
+@keyframes dodBleedMeetLeft {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedMeetRight {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedOutLeft {
+  0% {
+    transform: scaleX(0.012);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedOutRight {
+  0% {
+    transform: scaleX(0.012);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleX(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dodBleedTopDown {
+  0% {
+    transform: scaleY(0.012);
+    opacity: 0.95;
+  }
+  62% {
+    transform: scaleY(1);
+    opacity: 0.88;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+.animate-dod-bleed-meet-left {
+  animation: dodBleedMeetLeft 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-meet-right {
+  animation: dodBleedMeetRight 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-out-left {
+  animation: dodBleedOutLeft 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-out-right {
+  animation: dodBleedOutRight 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-dod-bleed-top-down {
+  animation: dodBleedTopDown 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-deal-showcase-next,
   .animate-deal-showcase-prev,
@@ -542,7 +707,12 @@ body {
   .animate-deal-copy-refresh,
   .animate-deal-town-exit-next,
   .animate-deal-town-exit-prev,
-  .animate-deal-town-enter {
+  .animate-deal-town-enter,
+  .animate-dod-bleed-meet-left,
+  .animate-dod-bleed-meet-right,
+  .animate-dod-bleed-out-left,
+  .animate-dod-bleed-out-right,
+  .animate-dod-bleed-top-down {
     animation: fadeIn 0.35s ease-out both;
   }
 }

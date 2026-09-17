@@ -12,6 +12,7 @@ import {
   formatLocationEstimateInsightTail,
   type LocationEstimate,
 } from './listing-location-estimates'
+import { listingLooksLikeLand } from './listing-property-class'
 
 export type { GoldilocksScoringConfig } from './goldilocks-config-shared'
 
@@ -426,6 +427,28 @@ function describeRemarksCondition(s: ScoredListing, opts?: { rental?: boolean })
   return `${subject} doesn't say much about condition — a showing is the best way to tell.`
 }
 
+/** Vacant land, or a row with no beds/baths/living area to describe. */
+function insightShouldSkipInterior(l: Listing): boolean {
+  if (listingLooksLikeLand(l)) return true
+  const noBeds = l.beds == null || l.beds <= 0
+  const noBaths = l.baths == null || l.baths <= 0
+  const noSqft = l.sqft == null || l.sqft <= 0
+  return noBeds && noBaths && noSqft
+}
+
+function describeSparsePhotos(
+  photos: number,
+  visit: string,
+): string | null {
+  if (photos === 1) {
+    return `Only one photo is online, so ${visit}.`
+  }
+  if (photos === 2) {
+    return `Only a couple of photos are online, so ${visit}.`
+  }
+  return null
+}
+
 function describePhotoPresentation(s: ScoredListing): string | null {
   const photos = s.listing.photoCount ?? 0
   const hasReno = s.remarksMatched.reno.length > 0
@@ -434,9 +457,11 @@ function describePhotoPresentation(s: ScoredListing): string | null {
   const highlightsUpdates = hasReno || hasQuality
 
   // Too few frames to read the presentation — point to a showing.
-  if (photos <= 2) {
-    return 'Only a couple of photos are online, so a tour is the best way to get a feel for the place.'
-  }
+  const sparse = describeSparsePhotos(
+    photos,
+    'a tour is the best way to get a feel for the place',
+  )
+  if (sparse) return sparse
 
   // Lackluster / dated cues — frame the upside instead of the flaw.
   if (hasLowQuality) {
@@ -467,7 +492,27 @@ function describePhotoPresentation(s: ScoredListing): string | null {
   return null
 }
 
+function describeLandPresentation(s: ScoredListing): string {
+  const photos = s.listing.photoCount ?? 0
+  const sparse = describeSparsePhotos(
+    photos,
+    'a visit is the best way to get a feel for the lot',
+  )
+  if (sparse) return sparse
+  if (photos <= 0) {
+    return 'No photos are online yet — a visit is the best way to get a feel for the lot.'
+  }
+  if (photos >= 6) {
+    return 'The photos give a clear look at the lot and setting.'
+  }
+  return 'The photos show the lot and setting — a visit will fill in the rest of the story.'
+}
+
 function describeListingPresentation(s: ScoredListing, opts?: { rental?: boolean }): string {
+  if (insightShouldSkipInterior(s.listing)) {
+    return describeLandPresentation(s)
+  }
+
   const qualityCount = s.remarksMatched.quality.length
   const renoCount = s.remarksMatched.reno.length
   const total = qualityCount + renoCount
@@ -486,6 +531,10 @@ function describeListingPresentation(s: ScoredListing, opts?: { rental?: boolean
 // New construction is condition-neutral — "well cared for" is meaningless on a
 // brand-new home — so lead with finishes/layout as read from the photos.
 function describeNewBuildPresentation(s: ScoredListing): string {
+  if (insightShouldSkipInterior(s.listing)) {
+    return describeLandPresentation(s)
+  }
+
   const photos = s.listing.photoCount ?? 0
   const hasQuality = s.remarksMatched.quality.length > 0
   if (photos >= 9) {
@@ -496,8 +545,11 @@ function describeNewBuildPresentation(s: ScoredListing): string {
   if (photos >= 3) {
     return 'The photos give a good read on the finishes and floor plan.'
   }
-  if (photos >= 1) {
-    return 'Only a few photos are online so far — a walk-through is the best way to judge the finishes.'
+  if (photos === 1) {
+    return 'Only one photo is online so far — a walk-through is the best way to judge the finishes.'
+  }
+  if (photos === 2) {
+    return 'Only a couple of photos are online so far — a walk-through is the best way to judge the finishes.'
   }
   return 'No photos are online yet — a walk-through is the best way to judge the finishes.'
 }
@@ -536,7 +588,11 @@ function buildSaleInsight(s: ScoredListing): string {
   }
 
   sentences.push(
-    isNewConstruction ? describeNewBuildPresentation(s) : describeListingPresentation(s),
+    insightShouldSkipInterior(l)
+      ? describeLandPresentation(s)
+      : isNewConstruction
+        ? describeNewBuildPresentation(s)
+        : describeListingPresentation(s),
   )
 
   return sentences.filter(Boolean).join(' ')
@@ -568,9 +624,11 @@ function buildRentalInsight(s: ScoredListing): string {
   }
 
   sentences.push(
-    isNewConstruction
-      ? describeNewBuildPresentation(s)
-      : describeListingPresentation(s, { rental: true }),
+    insightShouldSkipInterior(l)
+      ? describeLandPresentation(s)
+      : isNewConstruction
+        ? describeNewBuildPresentation(s)
+        : describeListingPresentation(s, { rental: true }),
   )
 
   return sentences.filter(Boolean).join(' ')

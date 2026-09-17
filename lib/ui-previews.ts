@@ -204,6 +204,24 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     summary:
       "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. Expanded Comps / What if use solid navy. Town pulse and Details are content-sized cards that grow top and bottom. On a laptop, a 390×844 frame.",
   },
+  {
+    slug: "dod-bleed-showcase-click",
+    title: "Deal of the Day bleed → showcase",
+    summary:
+      "Full Deal of the Day page with fixture towns. Empty bleed clicks open the listing showcase; town names, headline, and value-pick keep their own clicks. No listing database.",
+  },
+  {
+    slug: "dod-town-bleed-desktop",
+    title: "Deal of the Day — desktop",
+    summary:
+      "Full PR 167 desktop page: listing photo full-bleed across the top half, carousel under the bleed, insight under the carousel, value-pick rising to the bleed’s top. Empty bleed clicks open the listing showcase. Next-town arrow stays put for the widest town. Fixture towns when the weekly cache is empty.",
+  },
+  {
+    slug: "dod-town-bleed-mobile",
+    title: "Deal of the Day — mobile",
+    summary:
+      "Full PR 167 phone page: listing-photo bleed behind the town name and headline, empty bleed taps open the listing showcase, pause / town / For Sale under the bleed, insight under the carousel. Next-town arrow stays put for the widest town. On a laptop, a 390×844 frame. Fixture towns when the weekly cache is empty.",
+  },
 ];
 
 export function uiPreviewHref(slug: string): string {
