@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  MARKET_PULSE_ACTIVE_KPI_LABEL,
   MARKET_PULSE_JOIN_BRIEF_ID,
   summarizeMarketPulseFilters,
 } from '@/lib/market-pulse-defaults'
@@ -627,7 +628,7 @@ export function formatMarketDigestHtml(
               </p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:8px 0;">
                 <tr>
-                  ${kpiCell('Market active', marketActive)}
+                  ${kpiCell(MARKET_PULSE_ACTIVE_KPI_LABEL, marketActive)}
                   ${kpiCell('Months Inventory', marketMos)}
                   ${kpiCell('Avg days on market', allTownsDom)}
                 </tr>

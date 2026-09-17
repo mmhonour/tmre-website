@@ -37,6 +37,7 @@ import { formatMarketDigestHtml } from '@/lib/market-digest-html'
 import {
   DEFAULT_MARKET_PULSE_CHART_LAYOUT,
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
+  MARKET_PULSE_ACTIVE_KPI_LABEL,
   MARKET_PULSE_JOIN_BRIEF_ID,
   summarizeMarketPulseFilters,
 } from '@/lib/market-pulse-defaults'
@@ -121,9 +122,9 @@ const CACHED_CATEGORY_SPECS: readonly CachedCategorySpec[] = [
   },
   {
     id: 'sfr',
-    label: 'SFR',
-    scopeLabel: 'SFR sales',
-    selectionLabel: 'SFR',
+    label: 'Single Family',
+    scopeLabel: 'single-family sales',
+    selectionLabel: 'Single Family',
     kind: 'sale',
     propertyClass: 'homes',
   },
@@ -859,7 +860,7 @@ export function formatMarketDigestEmail(
     'SUMMARY',
     '-------',
     `Filters: ${filterSummary}`,
-    `Market active:       ${snapshot.market ? snapshot.market.activeCount : 'n/a'}`,
+    `${MARKET_PULSE_ACTIVE_KPI_LABEL}:        ${snapshot.market ? snapshot.market.activeCount : 'n/a'}`,
     `All Town Months Inventory: ${snapshot.market ? fmtMonthsSupply(snapshot.market.monthsSupply) : 'n/a'}`,
     `Avg days on market:  ${allDom != null ? Math.round(allDom) : 'n/a'}`,
   ]

@@ -11,6 +11,7 @@ import {
 } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
+import MarketPulseFavorabilityBar from "@/components/MarketPulseFavorabilityBar";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
 import MarketPulseTownPanel from "@/components/MarketPulseTownPanel";
@@ -41,6 +42,7 @@ import {
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
   TRANSACT_TO_LIST_LABEL,
   MARKET_PULSE_JOIN_BRIEF_ID,
+  MARKET_PULSE_ACTIVE_KPI_LABEL,
   marketPulseFavorSortLabel,
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
@@ -247,6 +249,17 @@ function ClosedLookbackSlider({
   return (
     <div className="relative w-[4.75rem] shrink-0 self-stretch sm:w-20">
       {body}
+    </div>
+  );
+}
+
+/** Lookback on the left so a right-handed thumb can still scroll the page. */
+function lookbackBesideBlock(rail: ReactNode, block: ReactNode) {
+  if (!rail) return block;
+  return (
+    <div className="flex items-stretch gap-2 sm:gap-3">
+      {rail}
+      <div className="min-w-0 flex-1">{block}</div>
     </div>
   );
 }
@@ -477,8 +490,9 @@ function TownName({
 
 /**
  * All Towns: the Town-pulse yin-yang (sage → yellow tail, red yang,
- * yellow eye with a red collar). A click spins it once and flips
- * Seller Friendly ↔ Buyer Friendly.
+ * yellow eye with a red collar). Seller Friendly rests as drawn; Buyer
+ * Friendly rests 180° so the red/sage swap. The label names the current
+ * order and what a tap does.
  *
  * Over a town it becomes the scale, and the beam follows that town's heat:
  * seller (0) tips the money bag down on the left, buyer (1) tips the house
@@ -502,54 +516,43 @@ function FavorSortToggle({
       ? marketPulseFavorSortLabel(favorSort)
       : marketPulseFavorSortLabel("sellers");
   const next = buyers ? "Seller Friendly" : "Buyer Friendly";
-  const [spinKey, setSpinKey] = useState(0);
-  const [spinDir, setSpinDir] = useState<"cw" | "ccw">("cw");
-
-  const handleClick = () => {
-    if (mode === "yin-yang") {
-      // Next state: buyers spin clockwise, sellers counter-clockwise.
-      setSpinDir(favorSort === "buyers" ? "ccw" : "cw");
-      setSpinKey((n) => n + 1);
-    }
-    onToggle();
-  };
 
   const heat =
     townHeat != null && Number.isFinite(townHeat)
       ? Math.min(1, Math.max(0, townHeat))
       : 0.5;
   const tiltDeg = (heat - 0.5) * 56;
+  const townLean =
+    heat < 0.5 ? "seller" : heat > 0.5 ? "buyer" : "balanced";
 
   return (
     <button
       type="button"
-      onClick={handleClick}
+      onClick={onToggle}
       title={
         mode === "scale"
-          ? `${current} — this town leans ${heat < 0.5 ? "seller" : heat > 0.5 ? "buyer" : "balanced"}. Switch to ${next}`
-          : `${current} — switch to ${next}`
+          ? `Now ${current}. This town leans ${townLean}. Tap to switch to ${next}.`
+          : `Now ${current}. Tap to order towns ${next}.`
       }
-      aria-label={`Towns ordered ${current}. Switch to ${next}.`}
-      className="inline-flex h-16 w-16 shrink-0 items-center justify-center overflow-visible rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      aria-label={`Now ${current}. Tap to switch to ${next}.`}
+      aria-pressed={buyers}
+      className="inline-flex min-h-10 shrink-0 items-center gap-2 overflow-visible rounded-sm px-1.5 py-1 text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
     >
       {mode === "yin-yang" ? (
         <YinYangPulseGlyph
-          key={`${spinKey}-${spinDir}`}
-          className={`h-7 w-7 ${
-            spinKey > 0
-              ? spinDir === "cw"
-                ? "mp-favor-yin-spin-cw"
-                : "mp-favor-yin-spin-ccw"
-              : ""
+          className={`h-7 w-7 shrink-0 origin-center transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            buyers ? "rotate-180" : "rotate-0"
           }`}
         />
       ) : (
-        <svg viewBox="-8 -16 58 48" className="h-16 w-16 overflow-visible" aria-hidden>
-          {/* Same width as before, shorter so the beam has room to tip. */}
+        <svg viewBox="-8 -16 58 48" className="h-12 w-12 shrink-0 overflow-visible" aria-hidden>
           <path d="M18 8.4 L11.2 20.2 L24.8 20.2 Z" fill="currentColor" />
           <g
-            transform={`rotate(${tiltDeg.toFixed(2)} 18 9)`}
-            className="transition-transform duration-200"
+            style={{
+              transform: `rotate(${tiltDeg.toFixed(2)}deg)`,
+              transformOrigin: "18px 9px",
+              transition: "transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
           >
             <path
               d="M2 9h38"
@@ -557,7 +560,6 @@ function FavorSortToggle({
               strokeWidth="1.6"
               strokeLinecap="round"
             />
-            {/* Seller: larger bag, still sitting on the beam. */}
             <g transform="translate(5 9) scale(1.55) translate(-5 -9)">
               <g transform="translate(0 -10.2)" fill="var(--color-coral, #C85A3A)">
                 <path d="M2.2 10.6h5.6l-.9-1.9H3.1z" />
@@ -574,10 +576,6 @@ function FavorSortToggle({
                 $
               </text>
             </g>
-            {/*
-             * Buyer: larger house on the beam; the key still hangs beneath
-             * so it keeps the whole pan rather than sharing it with the house.
-             */}
             <g transform="translate(33 9) scale(1.55) translate(-33 -9)">
               <path
                 d="M33 1.6l4.2 4.1h-1.45v2.9h-5.5v-2.9h-1.45z"
@@ -596,6 +594,14 @@ function FavorSortToggle({
           </g>
         </svg>
       )}
+      <span className="flex min-w-0 flex-col items-start text-left leading-tight">
+        <span className="[font-family:var(--mp-mono-font)] text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--mp-text)]">
+          {current}
+        </span>
+        <span className="[font-family:var(--mp-mono-font)] text-[8px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)]">
+          tap → {next}
+        </span>
+      </span>
     </button>
   );
 }
@@ -1301,6 +1307,89 @@ function UnstackedTaxPanel({
 /** This panel rides the page settle, not the per-chart scramble frames. */
 const barScrambleNone = null;
 
+function UnstackedHeatPanel({
+  rows,
+  scale,
+  favorSort,
+  settle,
+  townsExpanded,
+  onAllTownsToggle,
+  townHref,
+}: {
+  rows: CombinedTownRow[];
+  scale: MarketPulseTownScale;
+  favorSort: FavorSort;
+  settle: MarketPulseSettleState;
+  townsExpanded: boolean;
+  onAllTownsToggle: () => void;
+  townHref?: (cityLabel: string) => string;
+}) {
+  const sorted = useMemo(
+    () =>
+      sortRowsByBuyerFriendlyScore(
+        rows,
+        (r) => ({
+          monthsSupply: r.monthsSupply,
+          avgDaysOnMarket: r.avgDaysOnMarket,
+          closedCount: r.closedCount,
+          medianPrice: r.medianPrice,
+          priceDelta: r.priceDelta,
+          averagePrice: r.averagePrice,
+          saleToAskPct: r.saleToAskPct,
+        }),
+        favorSort,
+        (r) => isAllTownsCity(r.city),
+      ),
+    [rows, favorSort],
+  );
+  const visible = visibleTownRows(sorted, townsExpanded);
+  const rotateNames = rotatingTownNames(sorted);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <section className={PANEL_SURFACE}>
+      <p className={PANEL_TITLE}>Buyer / Seller heat</p>
+      <ul className="mt-2 space-y-3">
+        {visible.map((row, rowIndex) => {
+          const label = cityLabel(row);
+          const heat = heatForCity(scale.heatByCity, row.city);
+          const aggregate = isAllTownsCity(row.city);
+          const settled =
+            heat == null
+              ? null
+              : settleBarPercent(
+                  heat * 100,
+                  rowIndex,
+                  settle,
+                  barScrambleNone,
+                ) / 100;
+          return (
+            <li key={`heat-${row.city}`} data-mp-town={row.city}>
+              <p className="mb-1 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
+                <TownName
+                  city={row.city ?? label}
+                  label={label}
+                  href={townHref?.(row.city ?? label)}
+                  townsExpanded={townsExpanded}
+                  onAllTownsToggle={onAllTownsToggle}
+                  settle={settle}
+                  rotateTownNames={rotateNames}
+                />
+              </p>
+              <MarketPulseFavorabilityBar
+                score={settled}
+                peerCount={aggregate ? null : scale.peerCount}
+                compact
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** One town block with four stacked metric bars (each normalized to its own max). */
 function CombinedMetricsChart({
   title,
@@ -1432,15 +1521,12 @@ function CombinedMetricsChart({
           return (
             <li key={`combined-${row.city}`} data-mp-town={row.city}>
               {/*
-               * The rail stands alongside the first block only, and stretches to
-               * it, so it runs from the All towns name to its last bar and no
-               * further. Towns below it are not indented past empty space.
+               * The rail stands to the left of the first block only, so a
+               * right-handed thumb can scroll. It stretches to that All towns
+               * card and no further.
                */}
               {rowIndex === 0 && lookbackRail ? (
-                <div className="flex items-stretch gap-2 sm:gap-3">
-                  <div className="min-w-0 flex-1">{block}</div>
-                  {lookbackRail}
-                </div>
+                lookbackBesideBlock(lookbackRail, block)
               ) : (
                 block
               )}
@@ -1454,7 +1540,6 @@ function CombinedMetricsChart({
 
 function Kpi({
   label,
-  townLabel,
   final,
   kind,
   settle,
@@ -1463,8 +1548,6 @@ function Kpi({
   compareValue = null,
 }: {
   label: string;
-  /** Town the figure belongs to, prefixed onto the label. */
-  townLabel: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
@@ -1493,33 +1576,19 @@ function Kpi({
   const delta = comparing ? fmtSignedDelta(compareValue, final, kind) : null;
 
   return (
-    <div className="rounded-lg border border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
-      {/*
-       * The strip pins and follows you down the page, so the town it reports on
-       * changes under you. It gets its own line in the accent colour, keyed so
-       * it fades on each change — the one thing here that moves, marked as such.
-       */}
-      <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
-        <span
-          key={townLabel}
-          className="block animate-[fadeIn_0.22s_ease-out] text-[var(--mp-accent)]"
-        >
-          {townLabel}
-        </span>
+    <span className="inline-flex min-w-0 items-baseline gap-1">
+      <span className="[font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)]">
         {metricLabel}
-      </p>
-      <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
+      </span>
+      <span className="[font-family:var(--mp-heading-font)] text-base leading-none tabular-nums text-[var(--mp-text)] sm:text-lg">
         {text}
-      </p>
+      </span>
       {comparing ? (
-        <p className="mt-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums leading-tight text-[var(--mp-muted-text)]">
+        <span className="[font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-muted-text)]">
           {delta ?? "—"}
-          <span className="block tracking-[0.08em] uppercase">
-            vs All towns
-          </span>
-        </p>
+        </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -1581,7 +1650,7 @@ export default function WeeklyBriefContent({
   /** Closed totals still in flight — otherwise empty means "cache not built". */
   closedPending?: boolean;
   /**
-   * Property-type pills (All / SFR / …). Own +/- disclosure — not a boxed panel.
+   * Property-type pills (All / Single Family / …). Own +/- disclosure — not a boxed panel.
    */
   categoryFilter?: ReactNode;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
@@ -1916,10 +1985,17 @@ export default function WeeklyBriefContent({
   );
 
   const kpiStrip = (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+      <span
+        key={kpiTownLabel}
+        className="w-full animate-[fadeIn_0.22s_ease-out] [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent)] sm:w-auto"
+      >
+        {kpiTownLabel}
+      </span>
       <Kpi
-        label="Market active"
-        townLabel={kpiTownLabel}
+        label={
+          kind === "rental" ? "Active rentals" : MARKET_PULSE_ACTIVE_KPI_LABEL
+        }
         final={allTownsActive}
         kind="int"
         settle={settle}
@@ -1927,9 +2003,11 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.activeCount ?? null}
       />
+      <span aria-hidden className="text-[var(--mp-muted-text)]/50">
+        ·
+      </span>
       <Kpi
         label="Months Inventory"
-        townLabel={kpiTownLabel}
         final={allTownsMos}
         kind="mos"
         settle={settle}
@@ -1937,9 +2015,11 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.monthsSupply ?? null}
       />
+      <span aria-hidden className="text-[var(--mp-muted-text)]/50">
+        ·
+      </span>
       <Kpi
-        label="Avg days on market"
-        townLabel={kpiTownLabel}
+        label="Avg DOM"
         final={allTownsAvgDom}
         kind="dom"
         settle={settle}
@@ -1994,8 +2074,8 @@ export default function WeeklyBriefContent({
             <div
               className={
                 kpisPinned
-                  ? "mx-auto max-w-2xl space-y-3 px-3 py-2 sm:px-8"
-                  : "space-y-4"
+                  ? "mx-auto max-w-2xl space-y-2 px-3 py-1.5 sm:px-8"
+                  : "space-y-3"
               }
             >
               {kpisPinned && comparingTown ? (
@@ -2063,7 +2143,26 @@ export default function WeeklyBriefContent({
         ) : (
         <div className="space-y-6">
           <>
-        {/* Lookback drives neither of these, so they take the full width. */}
+        {lookbackBesideBlock(
+          onLookbackIdChange ? (
+            <ClosedLookbackSlider
+              lookbackId={lookbackId}
+              onChange={onLookbackIdChange}
+              pending={closedPending}
+              fill
+            />
+          ) : null,
+          <UnstackedHeatPanel
+            rows={combinedRows}
+            scale={unstackedScale}
+            favorSort={favorSort}
+            settle={settle}
+            townsExpanded={townsExpanded}
+            onAllTownsToggle={() => setTownsExpanded((open) => !open)}
+            townHref={townHref}
+          />,
+        )}
+
         <BarChart
           title="Active inventory"
           rows={inventoryRows}
@@ -2094,14 +2193,7 @@ export default function WeeklyBriefContent({
           favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
         />
 
-        {/*
-         * Lookback sets the window behind both months supply and closed, so the
-         * rail stands beside the pair it governs and spans them, rather than
-         * beside a panel it has nothing to do with.
-         */}
-        <div className="flex items-stretch gap-2 sm:gap-3">
-          <div className="min-w-0 flex-1 space-y-6">
-          <BarChart
+        <BarChart
             title="Months supply"
             rows={inventoryRows}
             valueOf={(r) => r.monthsSupply}
@@ -2141,16 +2233,6 @@ export default function WeeklyBriefContent({
               )
             }
           />
-          </div>
-          {onLookbackIdChange ? (
-            <ClosedLookbackSlider
-              lookbackId={lookbackId}
-              onChange={onLookbackIdChange}
-              pending={closedPending}
-              fill
-            />
-          ) : null}
-        </div>
 
         <UnstackedPricePanel
           rows={combinedRows}
