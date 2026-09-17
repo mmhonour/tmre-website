@@ -15,6 +15,7 @@ import {
   listingPhotoSyncedAfter,
 } from '@/lib/listing-photo-ttl'
 import { getListingPhotoTtlMs } from '@/lib/listing-photo-ttl-config'
+import { listingPhotosHaveRequiredSlots } from '@/lib/listing-photo-coverage'
 import {
   cacheSatisfiesQuality,
   fullCacheOutrankedByMid,
@@ -376,14 +377,6 @@ export function listingPhotoCacheId(listing: {
   return listing.listingKey?.trim() || listing.mlsId.trim()
 }
 
-function listingPhotoIndicesAreContiguous(indices: readonly number[]): boolean {
-  if (indices.length === 0) return false
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] !== indices[i - 1]! + 1) return false
-  }
-  return true
-}
-
 /**
  * True when stored photos are fresh. Empty RETS object slots (leading/trailing
  * holes that never download) do not keep this false forever — only interior gaps do.
@@ -401,19 +394,7 @@ export async function listingPhotosFullyCached(
   const span = await listingPhotoStorageSpanAsync(id)
   const fresh = await countFreshListingPhotosAsync(id, span, listingPhotoSyncedAfter(ttlMs))
   if (fresh < stored) return false
-  if (!listingPhotoIndicesAreContiguous(indices)) return false
-
-  const min = indices[0]!
-  const max = indices[indices.length - 1]!
-  const expected = photoCountHint ?? 0
-  if (expected <= 0) return true
-  // Full contiguous 0..expected-1
-  if (min === 0 && stored >= expected) return true
-  // Contiguous run ending at the MLS last slot — missing leading RETS empties only
-  if (max === expected - 1 && stored === max - min + 1) return true
-  // Contiguous run covering every MLS slot from 0 without interior holes
-  if (min === 0 && max === stored - 1 && stored >= expected) return true
-  return false
+  return listingPhotosHaveRequiredSlots(indices, photoCountHint ?? 0)
 }
 
 /** True when any stored photo for this listing is past the refresh interval. */

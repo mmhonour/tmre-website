@@ -1,11 +1,14 @@
 import 'server-only'
 
+import { listListingPhotoIndicesForCacheIds } from '@/lib/db/listing-photo-index-repo'
 import { listingRowId } from '@/lib/db/listings-repo'
 import { LISTING_PHOTO_SLOT_CAP } from '@/lib/hero-photo-inventory-backfill-shared'
 import {
   ensureListingPhotoIndexFromR2,
+  photoBackendUsesR2,
   readListingPhotoMeta,
 } from '@/lib/listing-photo-backend'
+import { listingPhotosHaveRequiredSlots } from '@/lib/listing-photo-coverage'
 import {
   cacheSatisfiesQuality,
   fullCacheOutrankedByMid,
@@ -25,11 +28,12 @@ const PHOTO_FETCH_DELAY_MS = 40
 /** Same window as opening the listing showcase (`warmListingPhotos` hero deck). */
 const SHOWCASE_HERO_MAX_INDEX = 5
 /**
- * Gap-scan hits Neon once per listing. Promise.all over Closed inventory
- * queues thousands of waiters on PG_POOL_MAX (default 5) and the pooler
- * times out before any photo is fetched.
+ * Hero/SQLite fallback only. `--all` on R2 loads the index in 400-id SQL
+ * chunks. Per-listing Promise.all over Closed inventory queues thousands of
+ * waiters on PG_POOL_MAX (default 5) and the pooler times out
+ * (`timeout exceeded when trying to connect`) before any photo is fetched.
  */
-const GAP_SCAN_CONCURRENCY = 4
+const GAP_SCAN_CONCURRENCY = 2
 
 export type ListingPhotoBackfillMode = 'hero' | 'all'
 
@@ -196,15 +200,55 @@ export async function listingShowcasePhotosIncomplete(
   return false
 }
 
+function listingPhotoCountForBackfill(listing: Listing): number {
+  return Math.min(Math.max(listing.photoCount ?? 0, 0), LISTING_PHOTO_SLOT_CAP)
+}
+
 export async function listingNeedsPhotoBackfill(
   listing: Listing,
   mode: ListingPhotoBackfillMode,
 ): Promise<boolean> {
   const cacheId = listingPhotoCacheId(listing)
-  const photoCount = listing.photoCount ?? 0
+  const photoCount = listingPhotoCountForBackfill(listing)
   if (!cacheId || photoCount <= 0) return false
   if (mode === 'hero') return listingShowcasePhotosIncomplete(listing)
   return listingPhotosNeedRefresh(cacheId, photoCount)
+}
+
+/**
+ * `--all` catch-up: one SQL chunk instead of three queries per Closed row.
+ * Skips TTL so a 30-minute default on a cold CLI does not re-queue every
+ * complete gallery; pull still skips fresh slots via isListingPhotoFresh.
+ */
+async function listAllModeCandidatesFromIndex(
+  listings: Listing[],
+  options?: { progressLabel?: string },
+): Promise<Listing[]> {
+  const items = listings
+    .map((listing) => ({
+      listing,
+      cacheId: listingPhotoCacheId(listing),
+      expected: listingPhotoCountForBackfill(listing),
+    }))
+    .filter((item) => item.cacheId && item.expected > 0)
+  const ids = [...new Set(items.map((item) => item.cacheId))]
+  const label = options?.progressLabel
+  const coverage = await listListingPhotoIndicesForCacheIds(ids, {
+    onChunk:
+      label && ids.length >= 200
+        ? (done, total) => {
+            console.info(
+              `[listing-photos-sync] ${label} · scanning gaps ${done}/${total} (index chunks)`,
+            )
+          }
+        : undefined,
+  })
+  return items
+    .filter(({ cacheId, expected }) => {
+      const indices = coverage.get(cacheId) ?? []
+      return !listingPhotosHaveRequiredSlots(indices, expected)
+    })
+    .map((item) => item.listing)
 }
 
 export async function listPhotoBackfillCandidates(
@@ -212,6 +256,9 @@ export async function listPhotoBackfillCandidates(
   mode: ListingPhotoBackfillMode,
   options?: { progressLabel?: string },
 ): Promise<Listing[]> {
+  if (mode === 'all' && photoBackendUsesR2()) {
+    return listAllModeCandidatesFromIndex(listings, options)
+  }
   const total = listings.length
   const label = options?.progressLabel
   const flags = await mapWithConcurrency(

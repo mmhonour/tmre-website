@@ -18,8 +18,9 @@
  *
  * Default is the showcase hero: first six shots at size=full. `--all` fills
  * every photo slot at display quality (the post-town-sync warm).
- * Gap scan is capped at 4 listings at a time so Closed inventory does not
- * exhaust the Neon pooler (`timeout exceeded when trying to connect`).
+ * `--all` gap scan reads listing_photo_index in 400-id SQL chunks so Closed
+ * inventory does not exhaust the Neon pooler (`timeout exceeded when trying
+ * to connect`). Hero mode still walks two listings at a time.
  *
  * Usage:
  *   npm run backfill:listing-photos
