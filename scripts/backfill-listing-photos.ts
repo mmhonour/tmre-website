@@ -18,6 +18,9 @@
  *
  * Default is the showcase hero: first six shots at size=full. `--all` fills
  * every photo slot at display quality (the post-town-sync warm).
+ * `--all` gap scan reads listing_photo_index in 400-id SQL chunks so Closed
+ * inventory does not exhaust the Neon pooler (`timeout exceeded when trying
+ * to connect`). Hero mode still walks two listings at a time.
  *
  * Usage:
  *   npm run backfill:listing-photos
@@ -201,7 +204,9 @@ async function main() {
       if (remaining <= 0) break
       const rows = await readListingsFromDb(town, status)
       const withPhotos = rows.filter((row) => (row.photoCount ?? 0) > 0)
-      const gaps = await listPhotoBackfillCandidates(withPhotos, mode)
+      const gaps = await listPhotoBackfillCandidates(withPhotos, mode, {
+        progressLabel: `${town} ${status}`,
+      })
       const batch =
         remaining < Infinity ? gaps.slice(0, remaining) : gaps
       const skipped = gaps.length - batch.length
@@ -222,6 +227,7 @@ async function main() {
           mode,
           concurrency,
           progressLabel: `${town} ${status}`,
+          alreadyCandidates: true,
         })
         listingsDone += pulled.listings
         photosStored += pulled.photos
