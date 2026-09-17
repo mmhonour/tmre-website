@@ -12,10 +12,18 @@ import {
 } from '@/lib/market-digest-config'
 import type { MarketDigestSnapshot } from '@/lib/market-digest-types'
 import {
+  cityKey,
   defaultMarketPulseCombinedRows,
   type MarketPulseCombinedTownRow,
 } from '@/lib/market-pulse-combined-rows'
+import { readMarketPulseClosedCounts } from '@/lib/market-pulse-closed-cache'
 import {
+  overlayClosedCounts,
+  overlayWeekTax,
+  taxByCityFromPoints,
+} from '@/lib/market-pulse-week-asof-map'
+import {
+  addIsoDays,
   buildMarketPulseWow,
   pickPriorSlotDate,
   type MarketPulseCompareSet,
@@ -26,8 +34,8 @@ export type { MarketPulseCompareSet } from '@/lib/market-pulse-wow'
 
 /**
  * One Eastern send-day of default stacked town numbers. Survives hourly
- * stats_cache clears. Current slot is upserted on rebuild; older slots stay
- * so WoW / MoM / YoY can walk backwards.
+ * stats_cache clears. Archived Mondays stay frozen; the current slot is
+ * live-updated only until that week's send writes a snapshot.
  */
 export const MARKET_PULSE_WEEK_KEY_PREFIX = 'market-pulse-week:sale:all:v1:'
 
@@ -130,20 +138,112 @@ export async function listMarketPulseWeekPayloads(
     .sort((a, b) => b.slotDate.localeCompare(a.slotDate))
 }
 
+async function hydrateClosedOnCombinedRows(
+  rows: MarketPulseCombinedTownRow[],
+): Promise<MarketPulseCombinedTownRow[]> {
+  if (rows.some((r) => r.closedCount != null)) return rows
+  try {
+    const { payload } = await readMarketPulseClosedCounts(
+      { kind: 'sale', propertyClass: 'all' },
+      { allowCompute: false },
+    )
+    const byCity = new Map(
+      (payload.rows ?? []).map((r) => [cityKey(r.city), r.count] as const),
+    )
+    overlayClosedCounts(rows, byCity)
+  } catch {
+    // Page still renders; closed WoW chips stay blank.
+  }
+  return rows
+}
+
+async function persistWeekPoints(input: {
+  slotDate: string
+  generatedAt: string
+  rows: MarketPulseWeekTownPoint[]
+}): Promise<MarketPulseWeekPayload> {
+  const payload: MarketPulseWeekPayload = {
+    slotDate: input.slotDate,
+    generatedAt: input.generatedAt,
+    rows: input.rows,
+  }
+  await writeStatsCacheRow(marketPulseWeekCacheKey(input.slotDate), payload)
+  return payload
+}
+
+async function ensurePriorWeekSlot(options: {
+  slotDate: string
+  taxSource: MarketPulseWeekTownPoint[]
+}): Promise<{ payload: MarketPulseWeekPayload; created: boolean } | null> {
+  const priorSlot = addIsoDays(options.slotDate, -7)
+  const existing = await readStatsCacheRow(marketPulseWeekCacheKey(priorSlot))
+  if (existing) {
+    const payload = parseWeekPayload(existing.payload)
+    return payload ? { payload, created: false } : null
+  }
+  try {
+    const { reconstructMarketPulseWeekTownPoints } = await import(
+      '@/lib/market-pulse-week-asof'
+    )
+    const reconstructed = await reconstructMarketPulseWeekTownPoints(priorSlot)
+    if (reconstructed.length === 0) return null
+    const rows = overlayWeekTax(
+      reconstructed,
+      taxByCityFromPoints(options.taxSource),
+    )
+    const payload = await persistWeekPoints({
+      slotDate: priorSlot,
+      generatedAt: new Date().toISOString(),
+      rows,
+    })
+    return { payload, created: true }
+  } catch (err) {
+    console.warn(
+      '[market-pulse-week] could not reconstruct prior Monday',
+      priorSlot,
+      err,
+    )
+    return null
+  }
+}
+
 export async function loadMarketPulseCompares(
   current: MarketDigestSnapshot,
   now: Date = new Date(),
 ): Promise<MarketPulseCompareSet> {
   const config = await getMarketDigestConfigFresh()
   const slotDate = marketDigestWeekKey(now, config.weekdayEt)
-  const liveRows = defaultMarketPulseCombinedRows(current)
+  const liveRows = await hydrateClosedOnCombinedRows(
+    defaultMarketPulseCombinedRows(current),
+  )
+  const taxSource = liveRows.map(townPointFromCombinedRow)
+
   const weeks = await listMarketPulseWeekPayloads(60)
-  const slots = weeks.map((w) => w.slotDate)
   const bySlot = new Map(weeks.map((w) => [w.slotDate, w] as const))
 
-  const pick = (
-    minDaysAgo: number,
-  ): MarketPulseWowCompare | null => {
+  const snaps = await listMarketPulseSnapshots(60).catch(() => [])
+  for (const snap of snaps) {
+    if (bySlot.has(snap.slotDate)) continue
+    const payload = await persistWeekPoints({
+      slotDate: snap.slotDate,
+      generatedAt: snap.generatedAt,
+      rows: overlayWeekTax(
+        defaultMarketPulseCombinedRows(snap.payload).map(townPointFromCombinedRow),
+        taxByCityFromPoints(taxSource),
+      ),
+    })
+    bySlot.set(snap.slotDate, payload)
+  }
+
+  if (!pickPriorSlotDate([...bySlot.keys()], slotDate, 1)) {
+    const reconstructed = await ensurePriorWeekSlot({ slotDate, taxSource })
+    if (reconstructed) {
+      bySlot.set(reconstructed.payload.slotDate, reconstructed.payload)
+    }
+  }
+
+  const slots = [...bySlot.keys()]
+  const pick = (minDaysAgo: number): MarketPulseWowCompare | null => {
     const priorSlot = pickPriorSlotDate(slots, slotDate, minDaysAgo)
     if (!priorSlot) return null
     const prior = bySlot.get(priorSlot)
@@ -163,8 +263,9 @@ export async function loadMarketPulseCompares(
 }
 
 /**
- * Write this week's stacked defaults. Seed missing older Mondays from
- * market_pulse_snapshots so a timeline exists before two rebuilds land.
+ * Freeze archived Mondays from market_pulse_snapshots. Seed a missing prior
+ * Monday from listings as-of that send-day. Live numbers only fill the current
+ * slot when that week has not been archived yet.
  */
 export async function rebuildMarketPulseWeekCache(options?: {
   snapshot?: MarketDigestSnapshot
@@ -175,29 +276,43 @@ export async function rebuildMarketPulseWeekCache(options?: {
   const slotDate = marketDigestWeekKey(now, config.weekdayEt)
   let written = 0
 
-  const snaps = await listMarketPulseSnapshots(60).catch(() => [])
-  for (const snap of snaps) {
-    const key = marketPulseWeekCacheKey(snap.slotDate)
-    const existing = await readStatsCacheRow(key)
-    if (existing) continue
-    await upsertMarketPulseWeekCache({
-      slotDate: snap.slotDate,
-      generatedAt: snap.generatedAt,
-      rows: defaultMarketPulseCombinedRows(snap.payload),
-    })
-    written += 1
-  }
-
   let snapshot = options?.snapshot ?? null
   if (!snapshot) {
     const { buildMarketDigestSnapshot } = await import('@/lib/market-digest')
     snapshot = await buildMarketDigestSnapshot()
   }
-  await upsertMarketPulseWeekCache({
-    slotDate,
-    generatedAt: snapshot.generatedAt,
-    rows: defaultMarketPulseCombinedRows(snapshot),
-  })
-  written += 1
+  const liveRows = await hydrateClosedOnCombinedRows(
+    defaultMarketPulseCombinedRows(snapshot),
+  )
+  const taxSource = liveRows.map(townPointFromCombinedRow)
+
+  const snaps = await listMarketPulseSnapshots(60).catch(() => [])
+  const snapDates = new Set(snaps.map((s) => s.slotDate))
+  for (const snap of snaps) {
+    await persistWeekPoints({
+      slotDate: snap.slotDate,
+      generatedAt: snap.generatedAt,
+      rows: overlayWeekTax(
+        defaultMarketPulseCombinedRows(snap.payload).map(
+          townPointFromCombinedRow,
+        ),
+        taxByCityFromPoints(taxSource),
+      ),
+    })
+    written += 1
+  }
+
+  if (!snapDates.has(slotDate)) {
+    await upsertMarketPulseWeekCache({
+      slotDate,
+      generatedAt: snapshot.generatedAt,
+      rows: liveRows,
+    })
+    written += 1
+  }
+
+  const prior = await ensurePriorWeekSlot({ slotDate, taxSource })
+  if (prior?.created) written += 1
+
   return { written }
 }
