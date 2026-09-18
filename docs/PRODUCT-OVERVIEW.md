@@ -100,7 +100,7 @@ Public copy, town pills, Market Pulse, and the footer list towns marked **Active
 
 ### Visitor location personalization
 
-- **`/api/visitor-town`** geolocates via client IP (`ipapi.co`), maps coordinates to nearest TMRE town within **~60 miles**, returns `{ town, postal }`.
+- **`/api/visitor-town`** geolocates via client IP (`ipapi.co` free tier, no key), maps coordinates to nearest TMRE town within **~60 miles**, returns `{ town, postal }`. Lookups are shared with `/api/visitor/log` (`lib/ipapi-geo.ts`): memory cache + reuse of `visitors.geo` by IP so a first visit does not spend two of the ~1000/day credits.
 - **`VisitorLocationBadge`** in the nav shows inferred location.
 - **`usePersonalizedTowns`** reorders town pills so the visitor’s nearest town appears first (Deal of the Day, Intelligence town filters).
 - **`usePersistedFilter(..., preferVisitorTown=true)`** can default Intelligence town filter from visitor location when no cookie pref exists.
@@ -173,7 +173,7 @@ TMRE is a **TypeScript-first, full-stack JavaScript** web application. There is 
 | **GreatSchools** API | School ratings for Goldilocks | `GREATSCHOOLS_API_KEY` |
 | **OpenAI** API | Optional: finish-quality vision, All-towns descriptor copy | `OPENAI_API_KEY` |
 | **Resend** | Contact form email to agent | `RESEND_API_KEY` |
-| **ipapi.co** | Visitor IP → town/postal | (none) |
+| **ipapi.co** | Visitor IP → town/postal (free, cached) | (none) |
 | **Vision Appraisal (VGSI)** | Westport owner history (HTML fetch/parse) | (none) |
 | **OpenStreetMap** | Static map tile preview | `/api/map/preview` |
 
@@ -241,7 +241,7 @@ Environment overrides: `LISTINGS_DB_PATH`, `LISTING_PHOTOS_DB_PATH`.
 | GreatSchools (`GREATSCHOOLS_API_KEY`) | Optional live school enrichment; static school tables in `goldilocks.ts` when unset |
 | OpenAI (`OPENAI_API_KEY`) | Optional finish-quality photo analysis; Intelligence “All towns” descriptor |
 | Resend (`RESEND_API_KEY`) | Contact form notifications to agent |
-| ipapi.co | Visitor town/postal inference |
+| ipapi.co | Visitor town/postal (free, cached; no key) |
 | Vision Appraisal (VGSI) | Westport owner history / owner lookup |
 | Map preview | OpenStreetMap tiles via `/api/map/preview` |
 
@@ -490,7 +490,7 @@ Listings can be excluded from deal picks with reasons: inactive status, no photo
 | **GreatSchools API** | Live school ratings | `lib/greatschools.ts` | No — falls back to static tables |
 | **OpenAI API** | Finish-quality vision; All-towns market descriptor | `lib/finish-quality.ts`, `lib/intelligence-all-towns-descriptor.ts` | No — features skip or use fallback copy |
 | **Resend** | Contact form email delivery | `lib/contact-notify.ts`, `/api/contact` | No — form may fail silently without key |
-| **ipapi.co** | IP → lat/lon/postal | `/api/visitor-town` | No — degrades gracefully |
+| **ipapi.co** | IP → lat/lon/postal (free, ~1000/day, shared cache) | `/api/visitor-town`, `/api/visitor/log` | No — degrades gracefully |
 | **Vision Appraisal (VGSI)** | Westport owner/sales records | `lib/vision-appraisal.ts`, `/api/owner-history` | Partial — Westport-focused UI |
 | **OpenStreetMap** | Map tile preview on listing pages | `/api/map/preview` | Yes (public tiles) |
 | **Local JSON files** | Leads, visitors | `data/leads.json`, `data/visitors.json` | Dev/prototype storage |

@@ -1,12 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import VisitorIdentityCell from "@/components/VisitorIdentityCell";
 import type { VisitorPropertyGroup } from "@/lib/visitors-property-groups";
-import {
-  formatVisitorIdentity,
-  visitorIdentitySourceLabel,
-  type VisitorRecord,
-} from "@/lib/visitors-types";
+import { type VisitorRecord } from "@/lib/visitors-types";
 
 function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -51,28 +48,7 @@ function DayVisitorRow({
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(12rem,1.1fr)_minmax(0,1fr)_auto] gap-2 lg:gap-6 lg:items-start pl-2 sm:pl-4">
-      <div className="min-w-0">
-        <p className="font-mono text-[11px] tracking-[0.12em] uppercase text-navy">
-          {formatVisitorIdentity(visitor)}
-        </p>
-        {visitor.phone ? (
-          <p className="mt-1 font-mono text-[11px] tabular-nums text-navy/70">
-            {visitor.phone}
-          </p>
-        ) : null}
-        {visitor.identitySources && visitor.identitySources.length > 0 ? (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {visitor.identitySources.map((source) => (
-              <span
-                key={source}
-                className="inline-flex rounded-full border border-charcoal/15 bg-cream/60 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.12em] uppercase text-charcoal/55"
-              >
-                {visitorIdentitySourceLabel(source)}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <VisitorIdentityCell visitor={visitor} />
 
       <div className="min-w-0">
         <p className="font-mono text-[10px] text-charcoal/35 truncate">

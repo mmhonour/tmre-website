@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { extractClientIp } from '@/lib/ipapi-geo'
+import { resolveVisitorIpGeo } from '@/lib/visitor-ip-geo'
 import { townFromPostal } from '@/lib/visitor-location'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// Approximate centroids for each supported town
 const TOWN_COORDS: Record<string, [number, number]> = {
   Norwalk:       [41.1177, -73.4082],
   Westport:      [41.1415, -73.3579],
@@ -37,38 +38,22 @@ function nearestTown(lat: number, lon: number): string | null {
       best = town
     }
   }
-  // Only personalize if visitor is within ~60 miles of Fairfield County
   return bestDist <= 60 ? best : null
 }
 
 export async function GET(req: NextRequest) {
-  // Resolve client IP
-  const forwarded = req.headers.get('x-forwarded-for')
-  const ip = forwarded ? forwarded.split(',')[0].trim() : req.headers.get('x-real-ip') ?? null
-
-  if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
-    return NextResponse.json({ town: null, postal: null })
-  }
-
-  try {
-    const res = await fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`, {
-      headers: { 'User-Agent': 'tmre-website/0.1' },
-      signal: AbortSignal.timeout(3000),
-    })
-    if (!res.ok) throw new Error(`ipapi status ${res.status}`)
-    const data = (await res.json()) as { latitude?: unknown; longitude?: unknown; postal?: unknown }
-    const lat = Number(data.latitude)
-    const lon = Number(data.longitude)
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('no coords')
-    const town =
-      nearestTown(lat, lon) ??
-      townFromPostal(typeof data.postal === 'string' ? data.postal : null)
-    const postal =
-      typeof data.postal === 'string' && data.postal.trim()
-        ? data.postal.trim().slice(0, 5)
-        : null
-    return NextResponse.json({ town, lat, lon, postal })
-  } catch {
-    return NextResponse.json({ town: null, postal: null })
-  }
+  const ip = extractClientIp(req.headers)
+  const lookup = await resolveVisitorIpGeo(ip)
+  const lat = lookup.latitude
+  const lon = lookup.longitude
+  const postal = lookup.postal
+  const townFromCoords =
+    lat != null && lon != null ? nearestTown(lat, lon) : null
+  const town = townFromCoords ?? townFromPostal(postal)
+  return NextResponse.json({
+    town,
+    lat,
+    lon,
+    postal,
+  })
 }

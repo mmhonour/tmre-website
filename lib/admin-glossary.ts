@@ -1237,7 +1237,13 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'Visitors log',
     category: 'sync-admin',
     definition:
-      'Admin → Visitors parent tab (same Admin Log in cookie). Top: Most viewed properties / pages (content_views running totals, side by side). Most viewed properties supports +/− into who viewed each listing, grouped by network provider → location (desc by views on that property). Below: visitors log grouped by provider → location or property → date with +/− drilldown (visitors table). Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
+      'Admin → Visitors parent tab (same Admin Log in cookie). Top: Most viewed properties / pages (content_views running totals, side by side). Most viewed properties supports +/− into who viewed each listing, grouped by network provider → location (desc by views on that property). Below: visitors log grouped by ZIP, provider → location, or property → date with +/− drilldown (visitors table). ZIP is the header pill when set, otherwise IP postal. You · Admin marks hits that carried the site-password cookie (tmre_site_pass); Hide my admin visits drops those rows. Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
+  },
+  {
+    term: 'ipapi.co',
+    category: 'sync-admin',
+    definition:
+      'Free IP → city/region/postal/lat/lon used by the header ZIP pill (`/api/visitor-town`) and the visitor beacon (`/api/visitor/log`). No API key; about 1000 lookups per 24h. Shared path is `lib/ipapi-geo.ts` + `lib/visitor-ip-geo.ts`: same-isolate memory cache, reuse `visitors.geo` for an IP we already stored (`idx_visitors_ip`), then one `https://ipapi.co/{ip}/json/` call. 429 / RateLimited returns empty geo and is remembered for 10 minutes — no paid key, no autobill. Private/loopback IPs skip the network. GPS is not used.',
   },
   {
     term: 'List with Me',
@@ -1249,7 +1255,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'VisitorLocationBadge',
     category: 'ui-tabs',
     definition:
-      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP (no personalization, no IP fallback), Reset (re-detect from /api/visitor-town), or Cancel the dialog. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared.',
+      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP (no personalization, no IP fallback), Reset (re-detect from /api/visitor-town), or Cancel the dialog. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared. Saved ZIP is posted on the visitor beacon to visitors.zip so Admin → Visitors can group traffic by ZIP.',
   },
 
   // —— Finance ——

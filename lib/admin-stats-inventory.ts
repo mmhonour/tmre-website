@@ -861,7 +861,7 @@ export const STATS_INVENTORY: StatsInventoryEntry[] = [
     location: 'visitors',
     keyPattern: 'visitors.vid',
     owner: 'lib/db/visitors-repo.ts',
-    notes: 'Replaces data/visitors.json — durable on Netlify serverless.',
+    notes: 'Replaces data/visitors.json — durable on Netlify serverless. zip is header pill or IP postal; is_admin is the site-password cookie.',
     live: { kind: 'postgres_table', table: 'visitors' },
   },
   {

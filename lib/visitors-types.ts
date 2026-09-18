@@ -1,11 +1,20 @@
 /** Shared visitor log types (safe for client imports). */
 
+import {
+  normalizeZip,
+  townForZip,
+  zipAreaNickname,
+} from '@/lib/tmre-towns'
+
 export type VisitorGeo = {
   city: string | null
   region: string | null
   postal: string | null
   country: string | null
   org: string | null
+  /** ipapi.co coords — kept so /api/visitor-town can reuse a stored lookup. */
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export type VisitorPageHit = {
@@ -32,6 +41,8 @@ export type VisitorRecord = {
   leadId?: string | null
   identitySources?: VisitorIdentitySource[]
   lastLoginAt?: string | null
+  /** True when a hit arrived with the site-password cookie (`tmre_site_pass`). */
+  isAdmin?: boolean
 }
 
 export function visitorIdentitySourceLabel(source: VisitorIdentitySource): string {
@@ -45,13 +56,37 @@ export function visitorIsIdentified(visitor: VisitorRecord): boolean {
   return Boolean(visitor.email || visitor.phone)
 }
 
+export function visitorIsAdmin(visitor: VisitorRecord): boolean {
+  return visitor.isAdmin === true
+}
+
 export function emptyVisitorGeo(): VisitorGeo {
   return { city: null, region: null, postal: null, country: null, org: null }
 }
 
+/** 5-digit ZIP from a beacon / header override / stored column. */
+export function normalizeVisitorZip(raw: unknown): string | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return normalizeZip(String(Math.trunc(raw)).padStart(5, '0'))
+  }
+  if (typeof raw !== 'string') return null
+  return normalizeZip(raw)
+}
+
+/** Header ZIP if stored, otherwise IP postal from geo. */
+export function visitorZip(visitor: VisitorRecord): string | null {
+  return normalizeVisitorZip(visitor.zip) ?? normalizeVisitorZip(visitor.geo.postal)
+}
+
 export function formatVisitorLocation(visitor: VisitorRecord): string {
-  const { geo, zip } = visitor
-  const parts = [geo.city, geo.region, geo.postal || zip].filter(Boolean)
+  const zip = visitorZip(visitor)
+  const town = townForZip(zip)
+  if (town && zip) {
+    const nick = zipAreaNickname(zip)
+    return nick ? `${town}, CT ${zip} · ${nick}` : `${town}, CT ${zip}`
+  }
+  const { geo } = visitor
+  const parts = [geo.city, geo.region, zip].filter(Boolean)
   if (parts.length > 0) return parts.join(', ')
   if (geo.country) return geo.country
   return 'Unknown location'
@@ -155,3 +190,52 @@ export function groupVisitorsByProviderThenLocation(
   })
   return groups
 }
+
+export const UNKNOWN_VISITOR_ZIP = 'Unknown ZIP'
+
+export type VisitorZipGroup = {
+  zip: string
+  location: string
+  visitors: VisitorRecord[]
+  visitorCount: number
+  pageviews: number
+  lastSeen: string
+}
+
+/** Group visitors by ZIP (header override or IP postal). Unknown last. */
+export function groupVisitorsByZip(
+  visitors: readonly VisitorRecord[],
+): VisitorZipGroup[] {
+  const byZip = new Map<string, VisitorRecord[]>()
+  for (const visitor of visitors) {
+    const zip = visitorZip(visitor) ?? UNKNOWN_VISITOR_ZIP
+    const bucket = byZip.get(zip) ?? []
+    bucket.push(visitor)
+    byZip.set(zip, bucket)
+  }
+
+  const groups: VisitorZipGroup[] = []
+  for (const [zip, rows] of byZip) {
+    const visitorsSorted = [...rows].sort((a, b) =>
+      compareLastSeenDesc(a.lastSeen, b.lastSeen),
+    )
+    groups.push({
+      zip,
+      location: formatVisitorLocation(visitorsSorted[0]!),
+      visitors: visitorsSorted,
+      visitorCount: visitorsSorted.length,
+      pageviews: visitorsSorted.reduce((sum, v) => sum + (v.pageviews || 0), 0),
+      lastSeen: visitorsSorted[0]?.lastSeen ?? '',
+    })
+  }
+
+  groups.sort((a, b) => {
+    if (a.zip === UNKNOWN_VISITOR_ZIP && b.zip !== UNKNOWN_VISITOR_ZIP) return 1
+    if (b.zip === UNKNOWN_VISITOR_ZIP && a.zip !== UNKNOWN_VISITOR_ZIP) return -1
+    if (b.pageviews !== a.pageviews) return b.pageviews - a.pageviews
+    if (b.visitorCount !== a.visitorCount) return b.visitorCount - a.visitorCount
+    return compareLastSeenDesc(a.lastSeen, b.lastSeen)
+  })
+  return groups
+}
+

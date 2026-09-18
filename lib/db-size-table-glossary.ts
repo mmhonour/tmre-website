@@ -51,7 +51,7 @@ const TABLE_PURPOSE: Record<(typeof POSTGRES_KNOWN_TABLES)[number], string> = {
   zip_boundaries:
     'Census TIGERweb ZCTA rings for Intelligence / Latest maps.',
   visitors:
-    'Anonymous / identified site visitors (pageviews, optional contact) for Admin visitor stats.',
+    'Anonymous / identified site visitors (pageviews, ZIP, optional contact, admin flag) for Admin visitor stats.',
   content_views:
     'Per-page view events used to attribute visitor activity.',
   fomc_meetings:

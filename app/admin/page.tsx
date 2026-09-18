@@ -138,10 +138,9 @@ import {
   readListingLabelsByMlsIds,
   readTopContentViews,
 } from "@/lib/db/content-views-repo";
-import { groupVisitorsByPropertyThenDate } from "@/lib/visitors-property-groups";
 import {
-  groupVisitorsByProviderThenLocation,
   readVisitorRecords,
+  visitorIsAdmin,
   visitorIsIdentified,
 } from "@/lib/visitors";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
@@ -334,8 +333,6 @@ export default async function AdminPage() {
     topViewedProperties,
     audienceHitsByKey,
   );
-  const visitorProviderGroups =
-    groupVisitorsByProviderThenLocation(visitorRecords);
   const visitorLoggedMlsIds = visitorRecords.flatMap((visitor) =>
     visitor.pages
       .map((hit) => resolveViewedContent(hit.path).mlsId)
@@ -346,21 +343,17 @@ export default async function AdminPage() {
     () => readListingLabelsByMlsIds(visitorLoggedMlsIds),
     {},
   );
-  const visitorPropertyGroups = groupVisitorsByPropertyThenDate(
-    visitorRecords,
-    visitorPropertyLabels,
-  );
+  const adminHits = visitorRecords.filter(visitorIsAdmin).length;
   const visitorsPanel = (
     <AdminVisitorsPanel
-      providerGroups={visitorProviderGroups}
-      propertyGroups={visitorPropertyGroups}
+      visitors={visitorRecords}
       propertyLabels={visitorPropertyLabels}
       topProperties={topViewedPropertiesWithAudience}
       topPages={topViewedPages}
       stats={{
         visitors: visitorRecords.length,
-        providers: visitorProviderGroups.length,
-        propertiesInLog: visitorPropertyGroups.length,
+        strangers: visitorRecords.length - adminHits,
+        admin: adminHits,
         identified: visitorRecords.filter(visitorIsIdentified).length,
         withPhone: visitorRecords.filter((v) => Boolean(v.phone)).length,
         pageviews: visitorRecords.reduce(
