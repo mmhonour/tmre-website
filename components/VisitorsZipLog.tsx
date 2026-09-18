@@ -7,11 +7,10 @@ import {
   resolveViewedContent,
 } from "@/lib/content-views";
 import {
-  type VisitorProviderGroup,
   type VisitorRecord,
+  type VisitorZipGroup,
 } from "@/lib/visitors-types";
 
-/** MLS id → "street, town", for the properties in this log. */
 type PropertyLabels = Record<string, string>;
 
 function formatTimestamp(iso: string | null | undefined): string {
@@ -24,7 +23,6 @@ function formatTimestamp(iso: string | null | undefined): string {
   }).format(date);
 }
 
-/** Property address where the path resolves to a listing, page name otherwise. */
 function pathLabel(path: string, properties: PropertyLabels): string {
   const content = resolveViewedContent(path);
   if (content.kind === "listing" && content.mlsId) {
@@ -83,7 +81,6 @@ function VisitorRow({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(12rem,1.1fr)_minmax(0,1.4fr)_auto] gap-2 lg:gap-6 lg:items-start pl-2 sm:pl-4">
       <VisitorIdentityCell visitor={visitor} />
-
       <div className="min-w-0">
         <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/40 mb-1">
           Recent pages
@@ -96,7 +93,6 @@ function VisitorRow({
           {visitor.ip ? ` · ${visitor.ip}` : ""}
         </p>
       </div>
-
       <div className="lg:text-right font-mono text-[11px] tabular-nums text-charcoal/55 space-y-1 shrink-0">
         <p>
           <span className="text-navy font-semibold">
@@ -113,31 +109,20 @@ function VisitorRow({
   );
 }
 
-export default function VisitorsGroupedLog({
+export default function VisitorsZipLog({
   groups,
   properties = {},
 }: {
-  groups: VisitorProviderGroup[];
+  groups: VisitorZipGroup[];
   properties?: PropertyLabels;
 }) {
-  const [openProviders, setOpenProviders] = useState<Set<string>>(() => new Set());
-  const [openLocations, setOpenLocations] = useState<Set<string>>(() => new Set());
+  const [openZips, setOpenZips] = useState<Set<string>>(() => new Set());
 
-  function toggleProvider(provider: string) {
-    setOpenProviders((prev) => {
+  function toggleZip(zip: string) {
+    setOpenZips((prev) => {
       const next = new Set(prev);
-      if (next.has(provider)) next.delete(provider);
-      else next.add(provider);
-      return next;
-    });
-  }
-
-  function toggleLocation(provider: string, location: string) {
-    const key = `${provider}\0${location}`;
-    setOpenLocations((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(zip)) next.delete(zip);
+      else next.add(zip);
       return next;
     });
   }
@@ -153,88 +138,43 @@ export default function VisitorsGroupedLog({
   return (
     <ul className="divide-y divide-charcoal/[0.08]">
       {groups.map((group) => {
-        const providerOpen = openProviders.has(group.provider);
+        const open = openZips.has(group.zip);
         return (
-          <li key={group.provider} className="px-5 sm:px-6 py-3">
+          <li key={group.zip} className="px-5 sm:px-6 py-3">
             <div className="flex items-start gap-3">
               <DrillToggle
-                expanded={providerOpen}
-                onToggle={() => toggleProvider(group.provider)}
-                label={group.provider}
+                expanded={open}
+                onToggle={() => toggleZip(group.zip)}
+                label={group.location}
               />
               <div className="min-w-0 flex-1">
                 <button
                   type="button"
-                  onClick={() => toggleProvider(group.provider)}
+                  onClick={() => toggleZip(group.zip)}
                   className="w-full text-left"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                     <p className="font-mono text-[12px] tracking-[0.1em] uppercase text-navy font-medium">
-                      {group.provider}
+                      {group.zip}
                     </p>
                     <p className="font-mono text-[11px] tabular-nums text-charcoal/50">
                       {group.visitorCount.toLocaleString()} visitors ·{" "}
                       {group.pageviews.toLocaleString()} views
                     </p>
                   </div>
+                  <p className="mt-0.5 text-sm text-slate">{group.location}</p>
                   <p className="mt-0.5 font-mono text-[10px] text-charcoal/40">
-                    {group.locations.length.toLocaleString()} location
-                    {group.locations.length === 1 ? "" : "s"} · last{" "}
-                    {formatTimestamp(group.lastSeen)}
+                    last {formatTimestamp(group.lastSeen)}
                   </p>
                 </button>
 
-                {providerOpen ? (
-                  <ul className="mt-3 ml-1 border-l border-charcoal/[0.08] pl-3 sm:pl-4 space-y-2">
-                    {group.locations.map((loc) => {
-                      const locKey = `${group.provider}\0${loc.location}`;
-                      const locOpen = openLocations.has(locKey);
-                      return (
-                        <li key={loc.location} className="py-1">
-                          <div className="flex items-start gap-3">
-                            <DrillToggle
-                              expanded={locOpen}
-                              onToggle={() =>
-                                toggleLocation(group.provider, loc.location)
-                              }
-                              label={loc.location}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  toggleLocation(group.provider, loc.location)
-                                }
-                                className="w-full text-left"
-                              >
-                                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                                  <p className="text-sm text-slate font-medium">
-                                    {loc.location}
-                                  </p>
-                                  <p className="font-mono text-[11px] tabular-nums text-charcoal/50">
-                                    {loc.visitorCount.toLocaleString()} ·{" "}
-                                    {loc.pageviews.toLocaleString()} views
-                                  </p>
-                                </div>
-                              </button>
-
-                              {locOpen ? (
-                                <ul className="mt-2 ml-1 border-l border-charcoal/[0.06] pl-3 sm:pl-4 divide-y divide-charcoal/[0.06]">
-                                  {loc.visitors.map((visitor) => (
-                                    <li key={visitor.vid} className="py-3">
-                                      <VisitorRow
-                                        visitor={visitor}
-                                        properties={properties}
-                                      />
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : null}
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })}
+                {open ? (
+                  <ul className="mt-3 ml-1 border-l border-charcoal/[0.08] pl-3 sm:pl-4 divide-y divide-charcoal/[0.06]">
+                    {group.visitors.map((visitor) => (
+                      <li key={visitor.vid} className="py-3">
+                        <VisitorRow visitor={visitor} properties={properties} />
+                      </li>
+                    ))}
                   </ul>
                 ) : null}
               </div>

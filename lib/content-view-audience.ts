@@ -57,6 +57,7 @@ export function stubVisitorRecord(vid: string): VisitorRecord {
     ip: null,
     geo: emptyVisitorGeo(),
     pages: [],
+    isAdmin: false,
   }
 }
 

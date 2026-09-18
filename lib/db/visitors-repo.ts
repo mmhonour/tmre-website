@@ -2,11 +2,12 @@ import 'server-only'
 
 import { query, queryOne, withTransaction } from '@/lib/db/postgres'
 import type { PoolClient } from 'pg'
-import type {
-  VisitorGeo,
-  VisitorIdentitySource,
-  VisitorPageHit,
-  VisitorRecord,
+import {
+  type VisitorGeo,
+  type VisitorIdentitySource,
+  type VisitorPageHit,
+  type VisitorRecord,
+  normalizeVisitorZip,
 } from '@/lib/visitors-types'
 
 export type { VisitorGeo, VisitorPageHit, VisitorRecord }
@@ -30,9 +31,20 @@ export async function ensureVisitorsTable(): Promise<void> {
       name           text,
       audience_type  text,
       lead_id        text,
+      is_admin       boolean NOT NULL DEFAULT false,
       created_at     timestamptz NOT NULL DEFAULT now(),
       updated_at     timestamptz NOT NULL DEFAULT now()
     )
+  `)
+  await query(`
+    ALTER TABLE visitors
+      ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false
+  `)
+  await query(`
+    UPDATE visitors
+       SET zip = geo->>'postal'
+     WHERE zip IS NULL
+       AND geo->>'postal' ~ '^\\d{5}$'
   `)
   await query(`
     CREATE INDEX IF NOT EXISTS idx_visitors_last_seen
@@ -42,6 +54,16 @@ export async function ensureVisitorsTable(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_visitors_email
       ON visitors (email)
       WHERE email IS NOT NULL
+  `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_visitors_zip
+      ON visitors (zip)
+      WHERE zip IS NOT NULL
+  `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_visitors_is_admin
+      ON visitors (is_admin)
+      WHERE is_admin = true
   `)
   ensured = true
 }
@@ -59,6 +81,7 @@ type VisitorRow = {
   name: string | null
   audience_type: string | null
   lead_id: string | null
+  is_admin: boolean | null
 }
 
 /**
@@ -124,12 +147,13 @@ function rowToRecord(row: VisitorRow): VisitorRecord {
     name: row.name,
     audienceType: row.audience_type,
     leadId: row.lead_id,
+    isAdmin: Boolean(row.is_admin),
   }
 }
 
 const SELECT_COLS = `
   vid, first_seen, last_seen, pageviews, ip, geo, pages,
-  email, zip, name, audience_type, lead_id
+  email, zip, name, audience_type, lead_id, is_admin
 `
 
 type IdentityJoins = { leads: boolean; siteUsers: boolean; alerts: boolean }
@@ -212,7 +236,7 @@ function identitySelect(joins: IdentityJoins): string {
 
   return `SELECT
        v.vid, v.first_seen, v.last_seen, v.pageviews, v.ip, v.geo, v.pages,
-       v.zip, v.audience_type, v.lead_id,
+       v.zip, v.audience_type, v.lead_id, v.is_admin,
        v.email AS visitor_email,
        v.name AS visitor_name,
        COALESCE(${emails.join(', ')}) AS email,
@@ -273,6 +297,10 @@ export async function recordVisitorPageview(input: {
   ip: string | null
   /** Only applied when inserting a new visitor row. */
   geo?: VisitorGeo | null
+  /** Header ZIP or IP postal; ignored when null. */
+  zip?: string | null
+  /** Sticky: once true, stays true. */
+  isAdmin?: boolean
 }): Promise<void> {
   await ensureVisitorsTable()
   const vid = input.vid.trim()
@@ -286,6 +314,9 @@ export async function recordVisitorPageview(input: {
     country: null,
     org: null,
   }
+  const zip =
+    normalizeVisitorZip(input.zip) ?? normalizeVisitorZip(geo.postal)
+  const isAdmin = input.isAdmin === true
 
   await withTransaction(async (client: PoolClient) => {
     const existing = await client.query<VisitorRow>(
@@ -301,9 +332,11 @@ export async function recordVisitorPageview(input: {
            pageviews = pageviews + 1,
            pages = $3::jsonb,
            ip = COALESCE(ip, $4),
+           zip = COALESCE($5, zip),
+           is_admin = is_admin OR $6,
            updated_at = now()
          WHERE vid = $1`,
-        [vid, input.at, JSON.stringify(pages), input.ip],
+        [vid, input.at, JSON.stringify(pages), input.ip, zip, isAdmin],
       )
       return
     }
@@ -311,10 +344,10 @@ export async function recordVisitorPageview(input: {
     await client.query(
       `INSERT INTO visitors (
          vid, first_seen, last_seen, pageviews, ip, geo, pages,
-         email, zip, name, audience_type, lead_id
+         email, zip, name, audience_type, lead_id, is_admin
        ) VALUES (
          $1, $2::timestamptz, $2::timestamptz, 1, $3, $4::jsonb, $5::jsonb,
-         NULL, NULL, NULL, NULL, NULL
+         NULL, $6, NULL, NULL, NULL, $7
        )
        ON CONFLICT (vid) DO UPDATE SET
          last_seen = EXCLUDED.last_seen,
@@ -334,10 +367,40 @@ export async function recordVisitorPageview(input: {
            ) ordered
          ),
          ip = COALESCE(visitors.ip, EXCLUDED.ip),
+         zip = COALESCE(EXCLUDED.zip, visitors.zip),
+         is_admin = visitors.is_admin OR EXCLUDED.is_admin,
          updated_at = now()`,
-      [vid, input.at, input.ip, JSON.stringify(geo), JSON.stringify([hit])],
+      [vid, input.at, input.ip, JSON.stringify(geo), JSON.stringify([hit]), zip, isAdmin],
     )
   })
+}
+
+/** Persist ZIP / admin flag without counting another pageview. */
+export async function attachVisitorVisitFields(
+  vid: string,
+  fields: { zip?: string | null; isAdmin?: boolean },
+): Promise<void> {
+  await ensureVisitorsTable()
+  const id = vid.trim()
+  if (!id) return
+  const zip = normalizeVisitorZip(fields.zip)
+  const isAdmin = fields.isAdmin === true
+  if (!zip && !isAdmin) return
+  const now = new Date().toISOString()
+  await query(
+    `INSERT INTO visitors (
+       vid, first_seen, last_seen, pageviews, ip, geo, pages,
+       email, zip, name, audience_type, lead_id, is_admin
+     ) VALUES (
+       $1, $2::timestamptz, $2::timestamptz, 0, NULL, '{}'::jsonb, '[]'::jsonb,
+       NULL, $3, NULL, NULL, NULL, $4
+     )
+     ON CONFLICT (vid) DO UPDATE SET
+       zip = COALESCE(EXCLUDED.zip, visitors.zip),
+       is_admin = visitors.is_admin OR EXCLUDED.is_admin,
+       updated_at = now()`,
+    [id, now, zip, isAdmin],
+  )
 }
 
 export async function attachLeadFieldsToVisitor(

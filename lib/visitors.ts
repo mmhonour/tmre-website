@@ -10,6 +10,7 @@ import 'server-only'
 
 import {
   attachLeadFieldsToVisitor,
+  attachVisitorVisitFields,
   listVisitorRecords,
   readVisitorByVid,
   recordVisitorPageview,
@@ -19,13 +20,18 @@ import {
   formatVisitorIdentity,
   formatVisitorLocation,
   groupVisitorsByProviderThenLocation,
+  groupVisitorsByZip,
+  normalizeVisitorZip,
   visitorIdentitySourceLabel,
+  visitorIsAdmin,
   visitorIsIdentified,
+  visitorZip,
   type VisitorGeo,
   type VisitorIdentitySource,
   type VisitorPageHit,
   type VisitorProviderGroup,
   type VisitorRecord,
+  type VisitorZipGroup,
 } from '@/lib/visitors-types'
 
 export type {
@@ -34,18 +40,24 @@ export type {
   VisitorPageHit,
   VisitorProviderGroup,
   VisitorRecord,
+  VisitorZipGroup,
 }
 export {
   emptyVisitorGeo,
   formatVisitorIdentity,
   formatVisitorLocation,
   groupVisitorsByProviderThenLocation,
+  groupVisitorsByZip,
+  normalizeVisitorZip,
   visitorIdentitySourceLabel,
+  visitorIsAdmin,
   visitorIsIdentified,
+  visitorZip,
 }
 
 export {
   attachLeadFieldsToVisitor,
+  attachVisitorVisitFields,
   readVisitorByVid,
   recordVisitorPageview,
 }

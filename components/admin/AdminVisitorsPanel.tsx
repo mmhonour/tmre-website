@@ -2,26 +2,23 @@ import MostViewedCard from "@/components/MostViewedCard";
 import VisitorsLogViews from "@/components/VisitorsLogViews";
 import type { ContentViewSummaryWithAudience } from "@/lib/content-view-audience";
 import type { ContentViewSummary } from "@/lib/content-views";
-import type { VisitorPropertyGroup } from "@/lib/visitors-property-groups";
-import type { VisitorProviderGroup } from "@/lib/visitors-types";
+import type { VisitorRecord } from "@/lib/visitors-types";
 
 export default function AdminVisitorsPanel({
-  providerGroups,
-  propertyGroups,
+  visitors,
   propertyLabels,
   topProperties,
   topPages,
   stats,
 }: {
-  providerGroups: VisitorProviderGroup[];
-  propertyGroups: VisitorPropertyGroup[];
+  visitors: VisitorRecord[];
   propertyLabels: Record<string, string>;
   topProperties: ContentViewSummaryWithAudience[];
   topPages: ContentViewSummary[];
   stats: {
     visitors: number;
-    providers: number;
-    propertiesInLog: number;
+    strangers: number;
+    admin: number;
     identified: number;
     withPhone: number;
     pageviews: number;
@@ -33,7 +30,7 @@ export default function AdminVisitorsPanel({
         <MostViewedCard
           id="admin-top-properties"
           title="Most viewed properties"
-          note="Running count from content_views. + / − opens who viewed it, grouped by provider → location (views desc)."
+          note="Running count from content_views. + / − opens who viewed it, grouped by provider → location (views desc). You · Admin marks site-password hits."
           rows={topProperties}
           emptyMessage="No property views counted yet — run the content_views backfill or wait for the next visit."
         />
@@ -51,17 +48,16 @@ export default function AdminVisitorsPanel({
           Visitors log
         </p>
         <p className="mt-2 max-w-3xl text-sm text-slate">
-          Activity from the{" "}
-          <span className="font-mono text-xs">visitors</span> table — provider →
-          location, or property → date. Distinct from the running totals above (
-          <span className="font-mono text-xs">content_views</span>).
+          ZIP on each visit is the header pill when the visitor set one,
+          otherwise the IP lookup.{" "}
+          <span className="font-medium text-navy">You · Admin</span> is the
+          site-password cookie, not a stranger. Use Hide my admin visits on the
+          log below.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-charcoal/50">
           <span>{stats.visitors.toLocaleString()} visitors</span>
-          <span>{stats.providers.toLocaleString()} providers</span>
-          <span>
-            {stats.propertiesInLog.toLocaleString()} properties in log
-          </span>
+          <span>{stats.strangers.toLocaleString()} strangers</span>
+          <span>{stats.admin.toLocaleString()} admin</span>
           <span>{stats.identified.toLocaleString()} identified</span>
           <span>{stats.withPhone.toLocaleString()} with phone</span>
           <span>{stats.pageviews.toLocaleString()} pageviews</span>
@@ -69,9 +65,9 @@ export default function AdminVisitorsPanel({
       </div>
 
       <VisitorsLogViews
-        providerGroups={providerGroups}
-        propertyGroups={propertyGroups}
+        visitors={visitors}
         propertyLabels={propertyLabels}
+        adminCount={stats.admin}
       />
     </div>
   );

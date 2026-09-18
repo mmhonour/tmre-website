@@ -423,7 +423,7 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; subtitle: string }[] =
     id: "visitors",
     label: "Visitors",
     subtitle:
-      "Visitor activity log — provider → location or property → date, with +/− drilldown",
+      "Visitor activity log — ZIP, provider → location, or property → date, with +/− drilldown. Admin hits are marked.",
   },
   {
     id: "data-controls",
@@ -850,7 +850,7 @@ export const ADMIN_PRODUCT_PAGES: AdminDocLink[] = [
     label: "Visitors",
     href: "/admin?tab=visitors",
     description:
-      "Admin → Visitors — provider → location or property → date log (unlocked only)",
+      "Admin → Visitors — ZIP / provider / property log; You · Admin vs strangers (unlocked only)",
   },
   {
     label: "Listing detail",

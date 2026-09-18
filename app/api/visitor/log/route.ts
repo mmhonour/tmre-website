@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { recordContentView } from '@/lib/db/content-views-repo'
 import {
+  attachVisitorVisitFields,
   emptyVisitorGeo,
+  normalizeVisitorZip,
   readVisitorByVid,
   recordVisitorPageview,
   type VisitorGeo,
@@ -51,14 +54,18 @@ async function geolocate(ip: string | null): Promise<VisitorGeo> {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { path?: unknown } = {}
+  let body: { path?: unknown; zip?: unknown } = {}
   try {
-    body = (await req.json()) as { path?: unknown }
+    body = (await req.json()) as { path?: unknown; zip?: unknown }
   } catch {
     // empty body is fine
   }
   const pagePath =
-    typeof body.path === 'string' && body.path.startsWith('/') ? body.path.slice(0, 200) : '/'
+    typeof body.path === 'string' && body.path.startsWith('/')
+      ? body.path.slice(0, 200)
+      : null
+  const zip = normalizeVisitorZip(body.zip)
+  const isAdmin = isAdminAuthorizedRequest(req)
 
   const existingVid = req.cookies.get(VID_COOKIE)?.value
   const vid = existingVid && /^[a-f0-9-]{36}$/i.test(existingVid) ? existingVid : randomUUID()
@@ -66,26 +73,33 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
 
   try {
-    // Geolocation is a slow network call — do it outside the write lock so it
-    // can't stall other pageviews. A cheap vid lookup decides whether this is
-    // a first-seen visitor that needs geo.
-    const preexisting = await readVisitorByVid(vid)
-    const geo = preexisting ? null : await geolocate(ip)
+    if (!pagePath) {
+      await attachVisitorVisitFields(vid, { zip, isAdmin })
+    } else {
+      // Geolocation is a slow network call — do it outside the write lock so it
+      // can't stall other pageviews. A cheap vid lookup decides whether this is
+      // a first-seen visitor that needs geo.
+      const preexisting = await readVisitorByVid(vid)
+      const geo = preexisting ? null : await geolocate(ip)
+      const zipOrPostal = zip ?? normalizeVisitorZip(geo?.postal)
 
-    await recordVisitorPageview({
-      vid,
-      path: pagePath,
-      at: now,
-      ip,
-      geo: geo ?? undefined,
-    })
+      await recordVisitorPageview({
+        vid,
+        path: pagePath,
+        at: now,
+        ip,
+        geo: geo ?? undefined,
+        zip: zipOrPostal,
+        isAdmin,
+      })
 
-    // Running per-property / per-page counts. Kept separate from the pageview
-    // write so a counter failure cannot cost the visitor record.
-    try {
-      await recordContentView({ vid, path: pagePath, at: now })
-    } catch (err) {
-      console.warn('[visitor/log] content view count failed', err)
+      // Running per-property / per-page counts. Kept separate from the pageview
+      // write so a counter failure cannot cost the visitor record.
+      try {
+        await recordContentView({ vid, path: pagePath, at: now })
+      } catch (err) {
+        console.warn('[visitor/log] content view count failed', err)
+      }
     }
   } catch (err) {
     console.error('[visitor/log] write failed', err)
