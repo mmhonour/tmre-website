@@ -332,6 +332,26 @@ export async function listOldestMlsIdsMissingPhotos(
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
 }
 
+/** True when every MLS slot (capped) is in the index — same bar as leftover count. */
+export async function listingHasAllIndexedPhotoSlots(
+  cacheId: string,
+  photoCount: number,
+): Promise<boolean> {
+  const id = cacheId.trim()
+  const expected = Math.min(Math.max(Math.round(photoCount) || 0, 0), LISTING_PHOTO_SLOT_CAP)
+  if (!id || expected <= 0) return true
+  const row = await queryOne<{ stored: number }>(
+    `SELECT COUNT(*)::int AS stored
+       FROM listing_photo_index
+      WHERE cache_id = $1
+        AND photo_index >= 0
+        AND photo_index < $2
+        AND byte_length >= $3`,
+    [id, expected, HERO_SLOT_INDEX_MIN_BYTES],
+  )
+  return (row?.stored ?? 0) >= expected
+}
+
 export async function deleteListingPhotoIndexRows(cacheId: string): Promise<void> {
   const id = cacheId.trim()
   if (!id) return

@@ -73,7 +73,7 @@ export function mergeHeroPhotosSkipMlsIds(
 export type HeroPhotosJobStatus = {
   generatedAt: string
   /**
-   * Listings-with-photos count used in the "was … (missing/total)" fraction
+   * Listings-with-photos count used in the "Started … still have holes" fraction
    * (any status). Must be the before-burst inventory so a growing book cannot
    * pull the displayed % down when this burst stored nothing.
    */
@@ -86,6 +86,11 @@ export type HeroPhotosJobStatus = {
   missingPctAfter: number
   filledListings: number
   filledPhotos: number
+  /**
+   * Filled listings whose galleries are now fully in R2/index this burst.
+   * Leftover count only drops by this number — partial fills stay missing.
+   */
+  completedListings?: number
   /** MLS ids this burst tried that stored nothing — walked on, skipped next burst. */
   walkedPast?: number
   /**
@@ -138,7 +143,32 @@ export function heroMissingPctAfter(input: {
 }
 
 function missingShare(pct: number, missing: number, total: number): string {
-  return `${pct}% missing (${missing.toLocaleString()}/${total.toLocaleString()})`
+  return `${pct}% missing — ${missing.toLocaleString()} of ${total.toLocaleString()} listings still have holes`
+}
+
+function avgPhotosPerListing(photos: number, listings: number): number {
+  if (listings <= 0) return 0
+  return Math.round(photos / listings)
+}
+
+function filledLine(
+  status: HeroPhotosJobStatus,
+  opts?: { soFar?: boolean },
+): string {
+  const avg = avgPhotosPerListing(status.filledPhotos, status.filledListings)
+  const avgBit =
+    status.filledListings > 0
+      ? ` (~${avg} avg / listing pushed to R2)`
+      : ''
+  const completed = status.completedListings ?? 0
+  const completeBit =
+    status.filledListings <= 0
+      ? ''
+      : completed > 0
+        ? `; ${completed} now fully in R2`
+        : '; 0 of those listings are fully in R2 yet'
+  const soFar = opts?.soFar ? ' so far' : ''
+  return `Filled ${status.filledListings} listings with ${status.filledPhotos} photos${soFar}${avgBit}${completeBit}`
 }
 
 export function formatHeroPhotosInterruptedMessage(
@@ -150,15 +180,15 @@ export function formatHeroPhotosInterruptedMessage(
   return `interrupted — ${reason}`
 }
 
-function walkedPastClause(status: HeroPhotosJobStatus): string {
+function walkedPastLine(status: HeroPhotosJobStatus): string | null {
   if (status.stalledEmpty) {
     const n = status.walkedPast ?? 0
     const tried = n > 0 ? ` ${n}` : ''
-    return ` · skipped${tried} that stored nothing (next burst continues past them)`
+    return `Walked past${tried} that stored nothing (next burst continues past them)`
   }
   const n = status.walkedPast ?? 0
-  if (n <= 0) return ''
-  return ` · walked past ${n} that stored nothing`
+  if (n <= 0) return null
+  return `Walked past ${n} that stored nothing`
 }
 
 export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string {
@@ -174,35 +204,44 @@ export function formatHeroPhotosJobMessage(status: HeroPhotosJobStatus): string 
     filledListings: status.filledListings,
     filledPhotos: status.filledPhotos,
   })
-  const before = missingShare(
+  const started = `Started ${missingShare(
     status.missingPctBefore,
     status.missingBefore,
     beforeTotal,
-  )
-  const after = missingShare(
+  )}`
+  const ended = `End ${missingShare(
     status.missingPctAfter,
     status.missingAfter,
     afterTotal,
-  )
-  const filled =
-    `filled ${status.filledListings} listings / ${status.filledPhotos} photos`
-  const walked = walkedPastClause(status)
+  )}`
+  const walked = walkedPastLine(status)
+  const lines: string[] = [started]
+
   if (status.running) {
     if (status.filledListings > 0 || status.filledPhotos > 0) {
-      return `running · was ${before} · ${filled} so far` + walked
+      lines.push(filledLine(status, { soFar: true }))
+    } else if (!status.stalledEmpty && (status.walkedPast ?? 0) <= 0) {
+      lines.push('Burst starting')
     }
-    if (status.stalledEmpty || (status.walkedPast ?? 0) > 0) {
-      return `running · ${before}` + walked
-    }
-    return `running · ${before} · burst starting`
+    if (walked) lines.push(walked)
+    return lines.join('\n')
   }
+
   if (status.idle || status.complete) {
     if (status.filledListings > 0) {
-      return `idle · was ${before} · ${filled}` + walked + ` · now ${after} · 100% complete`
+      lines.push(filledLine(status))
+      if (walked) lines.push(walked)
+      lines.push(`${ended} · 100% complete`)
+      return lines.join('\n')
     }
-    return `idle · ${after} · 100% complete`
+    lines.push(`${ended} · 100% complete`)
+    return lines.join('\n')
   }
-  return `was ${before} · ${filled}` + walked + ` · now ${after}`
+
+  lines.push(filledLine(status))
+  if (walked) lines.push(walked)
+  lines.push(ended)
+  return lines.join('\n')
 }
 
 export function parseHeroPhotosJobStatus(
@@ -222,6 +261,7 @@ export function parseHeroPhotosJobStatus(
       missingPctAfter: Number(parsed.missingPctAfter) || 0,
       filledListings: Number(parsed.filledListings) || 0,
       filledPhotos: Number(parsed.filledPhotos) || 0,
+      completedListings: Number(parsed.completedListings) || 0,
       walkedPast: Number(parsed.walkedPast) || 0,
       activeWithPhotosAfter:
         typeof parsed.activeWithPhotosAfter === 'number' &&

@@ -77,8 +77,12 @@ describe("formatHeroPhotosJobMessage", () => {
 
   it("reports a before/after snapshot: leftover counts on both sides", () => {
     assert.equal(
-      formatHeroPhotosJobMessage(base),
-      "was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 84.4% missing (1,300/1,540)",
+      formatHeroPhotosJobMessage({ ...base, completedListings: 40 }),
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 40 listings with 212 photos (~5 avg / listing pushed to R2); 40 now fully in R2",
+        "End 84.4% missing — 1,300 of 1,540 listings still have holes",
+      ].join("\n"),
     );
     assert.equal(
       formatHeroPhotosJobMessage({
@@ -86,8 +90,13 @@ describe("formatHeroPhotosJobMessage", () => {
         activeWithPhotosAfter: 1550,
         missingAfter: 1295,
         missingPctAfter: 83.5,
+        completedListings: 40,
       }),
-      "was 87% missing (1,340/1,540) · filled 40 listings / 212 photos · now 83.5% missing (1,295/1,550)",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 40 listings with 212 photos (~5 avg / listing pushed to R2); 40 now fully in R2",
+        "End 83.5% missing — 1,295 of 1,550 listings still have holes",
+      ].join("\n"),
     );
   });
 
@@ -101,7 +110,12 @@ describe("formatHeroPhotosJobMessage", () => {
         missingAfter: 1340,
         missingPctAfter: 87.0,
       }),
-      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · walked past 15 that stored nothing · now 87% missing (1,340/1,540)",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 0 listings with 0 photos",
+        "Walked past 15 that stored nothing",
+        "End 87% missing — 1,340 of 1,540 listings still have holes",
+      ].join("\n"),
     );
     assert.equal(
       formatHeroPhotosJobMessage({
@@ -111,7 +125,10 @@ describe("formatHeroPhotosJobMessage", () => {
         filledPhotos: 0,
         walkedPast: 10,
       }),
-      "running · 87% missing (1,340/1,540) · walked past 10 that stored nothing",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Walked past 10 that stored nothing",
+      ].join("\n"),
     );
   });
 
@@ -126,18 +143,29 @@ describe("formatHeroPhotosJobMessage", () => {
         missingPctAfter: 87.0,
         stalledEmpty: true,
       }),
-      "was 87% missing (1,340/1,540) · filled 0 listings / 0 photos · skipped 15 that stored nothing (next burst continues past them) · now 87% missing (1,340/1,540)",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 0 listings with 0 photos",
+        "Walked past 15 that stored nothing (next burst continues past them)",
+        "End 87% missing — 1,340 of 1,540 listings still have holes",
+      ].join("\n"),
     );
   });
 
   it("shows % immediately while a burst is running", () => {
     assert.equal(
       formatHeroPhotosJobMessage({ ...base, running: true, filledListings: 0, filledPhotos: 0 }),
-      "running · 87% missing (1,340/1,540) · burst starting",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Burst starting",
+      ].join("\n"),
     );
     assert.equal(
       formatHeroPhotosJobMessage({ ...base, running: true }),
-      "running · was 87% missing (1,340/1,540) · filled 40 listings / 212 photos so far",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 40 listings with 212 photos so far (~5 avg / listing pushed to R2); 0 of those listings are fully in R2 yet",
+      ].join("\n"),
     );
   });
 
@@ -154,7 +182,10 @@ describe("formatHeroPhotosJobMessage", () => {
         complete: true,
         idle: true,
       }),
-      "idle · 0% missing (0/1,540) · 100% complete",
+      [
+        "Started 0% missing — 0 of 1,540 listings still have holes",
+        "End 0% missing — 0 of 1,540 listings still have holes · 100% complete",
+      ].join("\n"),
     );
   });
 
@@ -188,10 +219,33 @@ describe("formatHeroPhotosJobMessage", () => {
         missingPctAfter: 0,
         filledListings: 5,
         filledPhotos: 30,
+        completedListings: 5,
         complete: true,
         idle: true,
       }),
-      "idle · was 87% missing (1,340/1,540) · filled 5 listings / 30 photos · now 0% missing (0/1,540) · 100% complete",
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 5 listings with 30 photos (~6 avg / listing pushed to R2); 5 now fully in R2",
+        "End 0% missing — 0 of 1,540 listings still have holes · 100% complete",
+      ].join("\n"),
+    );
+  });
+
+  it("says leftover does not drop when filled listings still have holes", () => {
+    assert.equal(
+      formatHeroPhotosJobMessage({
+        ...base,
+        filledListings: 17,
+        filledPhotos: 407,
+        completedListings: 0,
+        missingAfter: 1340,
+        missingPctAfter: 87.0,
+      }),
+      [
+        "Started 87% missing — 1,340 of 1,540 listings still have holes",
+        "Filled 17 listings with 407 photos (~24 avg / listing pushed to R2); 0 of those listings are fully in R2 yet",
+        "End 87% missing — 1,340 of 1,540 listings still have holes",
+      ].join("\n"),
     );
   });
 });

@@ -1857,7 +1857,7 @@ async function runAdminSyncActionImpl(
         message: status.message,
         detail: status.idle
           ? 'No Media fetch — coverage already complete'
-          : `Oldest-first · ${status.filledListings} listings / ${status.filledPhotos} photos this burst`,
+          : undefined,
       }
     }
     default: {
