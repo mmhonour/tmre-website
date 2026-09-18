@@ -6,7 +6,6 @@ import { useVisitorLocation } from '@/hooks/useVisitorLocation'
 import {
   clearVisitorPostalOverride,
   dismissZipPillGlow,
-  isZipPillGlowDismissed,
   resetVisitorPostalToInferred,
   setVisitorPostalOverride,
   townFromPostal,
@@ -26,7 +25,6 @@ export default function VisitorLocationBadge({
 }) {
   const { location: resolved, refresh } = useVisitorLocation()
   const location = resolved ?? EMPTY_LOCATION
-  const [glow, setGlow] = useState(false)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -40,10 +38,6 @@ export default function VisitorLocationBadge({
   const popRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogId = useId()
-
-  useEffect(() => {
-    setGlow(!isZipPillGlowDismissed())
-  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -128,7 +122,6 @@ export default function VisitorLocationBadge({
 
   function openPopover() {
     dismissZipPillGlow()
-    setGlow(false)
     setDraft(location.postal ?? '')
     setError(null)
     setOpen(true)
@@ -186,11 +179,10 @@ export default function VisitorLocationBadge({
         aria-haspopup="dialog"
         aria-controls={open ? dialogId : undefined}
         title={title}
-        className={`visitor-zip-pill group relative inline-flex cursor-pointer rounded-full p-[1.5px] transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 ${
-          glow ? 'visitor-zip-pill--glow' : ''
-        } ${location.confirmed && !location.cleared ? 'visitor-zip-pill--confirmed' : ''}`}
+        className={`visitor-zip-pill group relative inline-flex cursor-pointer rounded-full transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 ${
+          location.confirmed && !location.cleared ? 'visitor-zip-pill--confirmed' : ''
+        }`}
       >
-        {glow ? <span className="visitor-zip-pill__ring" aria-hidden /> : null}
         <span className="relative z-[1] inline-flex items-center rounded-full border border-white/15 bg-navy-dark/95 px-2.5 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-white/80 group-hover:text-white">
           {display}
         </span>

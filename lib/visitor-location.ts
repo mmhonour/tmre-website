@@ -110,6 +110,7 @@ export async function resetVisitorPostalToInferred(): Promise<VisitorLocation> {
   return next
 }
 
+/** Halo dismissal is still recorded; the header zip does not draw a halo for now. */
 export function isZipPillGlowDismissed(): boolean {
   if (typeof window === 'undefined') return true
   try {

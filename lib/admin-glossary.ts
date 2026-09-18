@@ -1249,7 +1249,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'VisitorLocationBadge',
     category: 'ui-tabs',
     definition:
-      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP (no personalization, no IP fallback), Reset (re-detect from /api/visitor-town), or Cancel the dialog. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared.',
+      'Zip-code pill in the main header (left of the email icon). No rotating gold halo for now (desktop or mobile). Click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP (no personalization, no IP fallback), Reset (re-detect from /api/visitor-town), or Cancel the dialog. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared.',
   },
 
   // —— Finance ——
