@@ -77,7 +77,7 @@ export type MarketDigestCategorySlice = {
   label: string
   /** Short scope for chart titles / footnote (e.g. "sales", "rentals"). */
   scopeLabel: string
-  /** Property type the visitor picked, for titles (e.g. "SFR", "condos"). */
+  /** Property type the visitor picked, for titles (e.g. "Single Family", "condos"). */
   selectionLabel: string
   market: MonthsSupplyPayload | null
   westport: MonthsSupplyPayload | null
@@ -120,7 +120,7 @@ export type MarketDigestSnapshot = {
   taxReady?: boolean
   taxYearLabel?: string | null
   taxYearKind?: 'current' | 'prior' | null
-  /** Market Pulse tabs (ALL / SFR / Condo / Rentals / Commercial). */
+  /** Market Pulse tabs (ALL / Single Family / Condo / Rentals / Commercial). */
   categories: MarketDigestCategorySlice[]
   dealOfTheWeek: MarketDigestDealOfTheWeek | null
   socialProfiles: { label: string; handleOrUrl: string }[]
