@@ -28,7 +28,8 @@ export default async function DodTownBleedDesktopPreviewPage() {
           Full working page: listing-photo bleed across the top half,
           pause · town · For Sale directly under the bleed, insight
           directly under the carousel, value-pick starting at the
-          bleed’s bottom then rising to its top. Click empty photo (not
+          bleed’s bottom then rising to sit under the site header (top of
+          the bleed below the menus). Click empty photo (not
           the headline, town names, or value-pick) to open that
           listing’s showcase. The next-town arrow stays put for the
           widest town name. {sourceLine}

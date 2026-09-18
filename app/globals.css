@@ -391,14 +391,14 @@ body {
 }
 
 /* Desktop: value-pick starts at the bottom of the 50dvh bleed, then rises
-   quickly until its top lines up with the top of the bleed. Transform so
-   the carousel + insight under the bleed stay put. */
+   until its top lines up with the bleed below the fixed site header.
+   Transform so the carousel + insight under the bleed stay put. */
 @keyframes dodValuePickRise {
   0% {
     transform: translateY(0);
   }
   100% {
-    transform: translateY(-50dvh);
+    transform: translateY(calc(-50dvh + var(--header-scroll-offset, 7rem)));
   }
 }
 

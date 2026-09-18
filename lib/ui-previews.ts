@@ -214,7 +214,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "dod-town-bleed-desktop",
     title: "Deal of the Day — desktop",
     summary:
-      "Full PR 167 desktop page: listing photo full-bleed across the top half, carousel under the bleed, insight under the carousel, value-pick rising to the bleed’s top. Empty bleed clicks open the listing showcase. Next-town arrow stays put for the widest town. Fixture towns when the weekly cache is empty.",
+      "Full PR 167 desktop page: listing photo full-bleed across the top half, carousel under the bleed, insight under the carousel, value-pick rising to the bleed below the site header. Empty bleed clicks open the listing showcase. Next-town arrow stays put for the widest town. Fixture towns when the weekly cache is empty.",
   },
   {
     slug: "dod-town-bleed-mobile",
