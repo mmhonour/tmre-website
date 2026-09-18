@@ -39,6 +39,13 @@ export type { MarketPulseCompareSet } from '@/lib/market-pulse-wow'
  */
 export const MARKET_PULSE_WEEK_KEY_PREFIX = 'market-pulse-week:sale:all:v1:'
 
+/** WoW / MoM / YoY Mondays to reconstruct when those slots are missing. */
+const COMPARE_SLOT_DAYS = [
+  { minDaysAgo: 1, reconstructDays: 7 },
+  { minDaysAgo: 28, reconstructDays: 28 },
+  { minDaysAgo: 350, reconstructDays: 364 },
+] as const
+
 export type MarketPulseWeekTownPoint = {
   city: string
   activeCount: number | null
@@ -171,11 +178,12 @@ async function persistWeekPoints(input: {
   return payload
 }
 
-async function ensurePriorWeekSlot(options: {
+async function ensureWeekSlotDaysAgo(options: {
   slotDate: string
   taxSource: MarketPulseWeekTownPoint[]
+  daysAgo: number
 }): Promise<{ payload: MarketPulseWeekPayload; created: boolean } | null> {
-  const priorSlot = addIsoDays(options.slotDate, -7)
+  const priorSlot = addIsoDays(options.slotDate, -options.daysAgo)
   const existing = await readStatsCacheRow(marketPulseWeekCacheKey(priorSlot))
   if (existing) {
     const payload = parseWeekPayload(existing.payload)
@@ -199,7 +207,7 @@ async function ensurePriorWeekSlot(options: {
     return { payload, created: true }
   } catch (err) {
     console.warn(
-      '[market-pulse-week] could not reconstruct prior Monday',
+      '[market-pulse-week] could not reconstruct slot',
       priorSlot,
       err,
     )
@@ -218,10 +226,10 @@ export async function loadMarketPulseCompares(
   )
   const taxSource = liveRows.map(townPointFromCombinedRow)
 
-  const weeks = await listMarketPulseWeekPayloads(60)
+  const weeks = await listMarketPulseWeekPayloads(80)
   const bySlot = new Map(weeks.map((w) => [w.slotDate, w] as const))
 
-  const snaps = await listMarketPulseSnapshots(60).catch(() => [])
+  const snaps = await listMarketPulseSnapshots(80).catch(() => [])
   for (const snap of snaps) {
     if (bySlot.has(snap.slotDate)) continue
     const payload = await persistWeekPoints({
@@ -235,8 +243,15 @@ export async function loadMarketPulseCompares(
     bySlot.set(snap.slotDate, payload)
   }
 
-  if (!pickPriorSlotDate([...bySlot.keys()], slotDate, 1)) {
-    const reconstructed = await ensurePriorWeekSlot({ slotDate, taxSource })
+  for (const spec of COMPARE_SLOT_DAYS) {
+    if (pickPriorSlotDate([...bySlot.keys()], slotDate, spec.minDaysAgo)) {
+      continue
+    }
+    const reconstructed = await ensureWeekSlotDaysAgo({
+      slotDate,
+      taxSource,
+      daysAgo: spec.reconstructDays,
+    })
     if (reconstructed) {
       bySlot.set(reconstructed.payload.slotDate, reconstructed.payload)
     }
@@ -263,9 +278,9 @@ export async function loadMarketPulseCompares(
 }
 
 /**
- * Freeze archived Mondays from market_pulse_snapshots. Seed a missing prior
- * Monday from listings as-of that send-day. Live numbers only fill the current
- * slot when that week has not been archived yet.
+ * Freeze archived Mondays from market_pulse_snapshots. Seed missing WoW / MoM /
+ * YoY Mondays from listings as-of those send-days. Live numbers only fill the
+ * current slot when that week has not been archived yet.
  */
 export async function rebuildMarketPulseWeekCache(options?: {
   snapshot?: MarketDigestSnapshot
@@ -286,7 +301,7 @@ export async function rebuildMarketPulseWeekCache(options?: {
   )
   const taxSource = liveRows.map(townPointFromCombinedRow)
 
-  const snaps = await listMarketPulseSnapshots(60).catch(() => [])
+  const snaps = await listMarketPulseSnapshots(80).catch(() => [])
   const snapDates = new Set(snaps.map((s) => s.slotDate))
   for (const snap of snaps) {
     await persistWeekPoints({
@@ -311,8 +326,14 @@ export async function rebuildMarketPulseWeekCache(options?: {
     written += 1
   }
 
-  const prior = await ensurePriorWeekSlot({ slotDate, taxSource })
-  if (prior?.created) written += 1
+  for (const spec of COMPARE_SLOT_DAYS) {
+    const seeded = await ensureWeekSlotDaysAgo({
+      slotDate,
+      taxSource,
+      daysAgo: spec.reconstructDays,
+    })
+    if (seeded?.created) written += 1
+  }
 
   return { written }
 }

@@ -207,9 +207,8 @@ export const EMPTY_MARKET_PULSE_COMPARES: MarketPulseCompareSet = {
 export function availableComparePeriods(
   set: MarketPulseCompareSet,
 ): MarketPulseComparePeriod[] {
-  // Month / year slots may exist on disk; the switch is WoW-only until they
-  // are a product surface.
-  return set.wow ? ['wow'] : []
+  const order: MarketPulseComparePeriod[] = ['wow', 'mom', 'yoy']
+  return order.filter((period) => set[period] != null)
 }
 
 /** Monday email always includes WoW. No month fallback — this is a weekly send. */
@@ -254,8 +253,8 @@ export const MARKET_PULSE_COMPARE_SWITCH_LABEL: Record<
 > = {
   off: 'Off',
   wow: 'Week Over Week',
-  mom: 'Month',
-  yoy: 'Year',
+  mom: 'Month Over Month',
+  yoy: 'Year Over Year',
 }
 
 export function marketPulseWowCaption(wow: MarketPulseWowCompare): string {
@@ -270,8 +269,8 @@ export function marketPulseCompareCaption(
     period === 'wow'
       ? 'Week over week'
       : period === 'mom'
-        ? 'Month'
-        : 'Year'
+        ? 'Month over month'
+        : 'Year over year'
   const label =
     period === 'yoy'
       ? formatMarketPulseWowSlotLabel(compare.priorSlotDate, true)
