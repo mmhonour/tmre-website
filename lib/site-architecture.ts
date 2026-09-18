@@ -144,7 +144,7 @@ export const SITE_ARCH_NODES: SiteArchNode[] = [
   {
     id: "ipapi",
     label: "ipapi.co",
-    role: "Visitor IP → town hint",
+    role: "Visitor IP → town/ZIP (free, cached)",
     kind: "optional",
   },
   {

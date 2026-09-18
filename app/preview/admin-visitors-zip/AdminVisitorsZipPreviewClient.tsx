@@ -31,7 +31,9 @@ export default function AdminVisitorsZipPreviewClient({
         <p className="mb-8 text-sm leading-relaxed text-slate">
           Fixture traffic. By ZIP is the default grouping. You · Admin is the
           site-password cookie. Hide my admin visits drops those rows so
-          strangers stay visible.
+          strangers stay visible. ZIP comes from the header pill or a shared
+          free ipapi.co lookup (memory + visitors.geo by IP, ~1000/day, no
+          key).
         </p>
         <AdminVisitorsPanel
           visitors={visitors}

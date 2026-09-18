@@ -65,6 +65,11 @@ export async function ensureVisitorsTable(): Promise<void> {
       ON visitors (is_admin)
       WHERE is_admin = true
   `)
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_visitors_ip
+      ON visitors (ip)
+      WHERE ip IS NOT NULL
+  `)
   ensured = true
 }
 
@@ -115,6 +120,8 @@ function parseGeo(raw: VisitorGeo | string | null | undefined): VisitorGeo {
     postal: geo.postal ?? null,
     country: geo.country ?? null,
     org: geo.org ?? null,
+    latitude: typeof geo.latitude === 'number' && Number.isFinite(geo.latitude) ? geo.latitude : null,
+    longitude: typeof geo.longitude === 'number' && Number.isFinite(geo.longitude) ? geo.longitude : null,
   }
 }
 
@@ -271,6 +278,26 @@ export async function readVisitorByVid(vid: string): Promise<VisitorRecord | nul
     [id],
   )
   return row ? identityRowToRecord(row) : null
+}
+
+/** Latest stored IP geo for this address — skips a second ipapi.co credit. */
+export async function readVisitorGeoByIp(ip: string): Promise<VisitorGeo | null> {
+  await ensureVisitorsTable()
+  const address = ip.trim()
+  if (!address) return null
+  const row = await queryOne<{ geo: VisitorGeo | string }>(
+    `SELECT geo
+       FROM visitors
+      WHERE ip = $1
+        AND (
+          NULLIF(geo->>'postal', '') IS NOT NULL
+          OR NULLIF(geo->>'city', '') IS NOT NULL
+        )
+      ORDER BY last_seen DESC
+      LIMIT 1`,
+    [address],
+  )
+  return row ? parseGeo(row.geo) : null
 }
 
 export async function listVisitorRecords(limit = 500): Promise<VisitorRecord[]> {

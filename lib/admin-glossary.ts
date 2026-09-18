@@ -1240,6 +1240,12 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
       'Admin → Visitors parent tab (same Admin Log in cookie). Top: Most viewed properties / pages (content_views running totals, side by side). Most viewed properties supports +/− into who viewed each listing, grouped by network provider → location (desc by views on that property). Below: visitors log grouped by ZIP, provider → location, or property → date with +/− drilldown (visitors table). ZIP is the header pill when set, otherwise IP postal. You · Admin marks hits that carried the site-password cookie (tmre_site_pass); Hide my admin visits drops those rows. Header “Visitors” link and legacy `/visitors` both open this tab; `/api/visitors` still requires the unlock.',
   },
   {
+    term: 'ipapi.co',
+    category: 'sync-admin',
+    definition:
+      'Free IP → city/region/postal/lat/lon used by the header ZIP pill (`/api/visitor-town`) and the visitor beacon (`/api/visitor/log`). No API key; about 1000 lookups per 24h. Shared path is `lib/ipapi-geo.ts` + `lib/visitor-ip-geo.ts`: same-isolate memory cache, reuse `visitors.geo` for an IP we already stored (`idx_visitors_ip`), then one `https://ipapi.co/{ip}/json/` call. 429 / RateLimited returns empty geo and is remembered for 10 minutes — no paid key, no autobill. Private/loopback IPs skip the network. GPS is not used.',
+  },
+  {
     term: 'List with Me',
     category: 'ui-tabs',
     definition:

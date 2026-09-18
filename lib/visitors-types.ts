@@ -12,6 +12,9 @@ export type VisitorGeo = {
   postal: string | null
   country: string | null
   org: string | null
+  /** ipapi.co coords — kept so /api/visitor-town can reuse a stored lookup. */
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export type VisitorPageHit = {
