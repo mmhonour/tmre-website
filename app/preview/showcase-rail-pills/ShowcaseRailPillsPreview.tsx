@@ -139,7 +139,7 @@ function SymbolRailDemo() {
             aria-label="Hide Insight"
             className="ml-2 px-1 font-mono text-white/70"
           >
-            ↑
+            ×
           </button>
         </div>
         <div className="bg-[#0d1424] px-4 py-3 text-sm text-white/85">
@@ -157,7 +157,7 @@ function SymbolRailDemo() {
             aria-label="Hide Details"
             className="ml-2 px-1 font-mono text-white/70"
           >
-            ↑
+            ×
           </button>
         </div>
         <div
@@ -205,7 +205,7 @@ function SymbolRailDemo() {
             aria-label="Hide Town pulse"
             className="ml-2 px-1 font-mono text-white/70"
           >
-            ↑
+            ×
           </button>
         </div>
         <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
@@ -233,7 +233,7 @@ function SymbolRailDemo() {
             aria-label="Hide Map"
             className="ml-2 px-1 font-mono text-white/70"
           >
-            ↑
+            ×
           </button>
         </div>
         <div className="min-h-0 flex-1 bg-[#1a2744]" />
@@ -254,9 +254,9 @@ function SymbolRailDemo() {
         data-testid="preview-comps-hide"
         onClick={() => setCompsOpen(false)}
         aria-label="Hide comps"
-        className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+        className="ml-2 shrink-0 px-1.5 font-mono text-[18px] leading-none text-white/70 hover:text-white"
       >
-        ↑
+        ×
       </button>
     </div>
   ) : (
@@ -283,9 +283,9 @@ function SymbolRailDemo() {
         data-testid="preview-if-hide"
         onClick={() => setIfOpen(false)}
         aria-label="Hide What if"
-        className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+        className="ml-2 shrink-0 px-1.5 font-mono text-[18px] leading-none text-white/70 hover:text-white"
       >
-        ↑
+        ×
       </button>
     </div>
   ) : (
@@ -420,7 +420,9 @@ function MapChromeDemo() {
             Corridors
           </span>
           <span className="flex-1" />
-          <span className="px-1 font-mono text-white/70">↑</span>
+          <span className="px-1 font-mono text-[18px] leading-none text-white/70">
+            ×
+          </span>
         </div>
         <div className="relative min-h-0 w-full flex-1">
           <div className="absolute inset-0">

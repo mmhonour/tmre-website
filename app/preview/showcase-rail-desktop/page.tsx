@@ -18,11 +18,10 @@ export default function ShowcaseRailDesktopPreviewPage() {
         </h1>
         <p className="mb-3 text-sm leading-relaxed text-slate">
           Fixture only. The right photo arrow stays on the vertical midpoint.
-          Maximize, Insight, Details, and Comps sit above it; What if, Town
-          pulse, and Map sit below. The gap from Comps to the arrow equals
-          the gap from the arrow to What if, and that same gap runs through
-          the rest of the column. Price stays top-right. Toggle maximize to
-          read the labels.
+          Open Town pulse or Details — the deck sits in front of that arrow,
+          and the upper-right close is an X. Maximize, Insight, Details, and
+          Comps sit above the arrow; What if, Town pulse, and Map sit below.
+          Price stays top-right. Toggle maximize to read the labels.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone frame:{" "}

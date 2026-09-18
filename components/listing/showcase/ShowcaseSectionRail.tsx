@@ -205,7 +205,7 @@ function DetailsOverlayTabs({
   );
 }
 
-function CollapseArrow({
+function CollapseClose({
   label,
   onClick,
 }: {
@@ -218,9 +218,9 @@ function CollapseArrow({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="ml-2 shrink-0 px-1 font-mono text-white/70 transition-colors hover:text-white"
+      className="ml-2 shrink-0 px-1.5 font-mono text-[18px] leading-none text-white/70 transition-colors hover:text-white"
     >
-      ↑
+      ×
     </button>
   );
 }
@@ -259,7 +259,7 @@ function CardChrome({
         )}
         {afterTitle}
         <span className="flex-1" />
-        <CollapseArrow label={`Hide ${title}`} onClick={onCollapse} />
+        <CollapseClose label={`Hide ${title}`} onClick={onCollapse} />
       </div>
       {children}
     </div>
@@ -562,7 +562,7 @@ export default function ShowcaseSectionRail({
           Comps
         </button>
         {compsChips}
-        <CollapseArrow
+        <CollapseClose
           label="Hide comps"
           onClick={() => toggleFigure("comps")}
         />
@@ -590,7 +590,7 @@ export default function ShowcaseSectionRail({
           What if
         </button>
         {whatIfChips}
-        <CollapseArrow
+        <CollapseClose
           label="Hide What if"
           onClick={() => toggleFigure("if")}
         />
@@ -654,6 +654,8 @@ export default function ShowcaseSectionRail({
     : deck && !phone
       ? CARD_RIGHT
       : "right-0";
+  /** Photo step arrows are z-40; an open deck must stack above the right one. */
+  const deckStack = deck ? "z-50" : "z-30";
 
   return (
     <>
@@ -663,7 +665,7 @@ export default function ShowcaseSectionRail({
        * is a separate center-right panel and the column shifts left.
        */}
       <div
-        className={`pointer-events-none absolute inset-y-0 z-30 ${RAIL_WIDTH} ${railRight}`}
+        className={`pointer-events-none absolute inset-y-0 ${deckStack} ${RAIL_WIDTH} ${railRight}`}
       >
         {price ? (
           <div className="pointer-events-auto absolute top-0 right-0 z-10 hidden pt-24 pr-3 sm:pr-6 lg:block lg:pt-28">
@@ -720,7 +722,7 @@ export default function ShowcaseSectionRail({
         ) : null}
       </div>
       {deck && !mapFullscreen && !phone ? (
-        <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-30 flex items-center justify-end pr-3 sm:pr-6">
+        <div className="pointer-events-none absolute bottom-24 right-0 top-28 z-50 flex items-center justify-end pr-3 sm:pr-6">
           <div
             className={`pointer-events-auto flex ${CARD_WIDTH} flex-col bg-[#0d1424] ${
               deck === "pulse"
@@ -735,7 +737,7 @@ export default function ShowcaseSectionRail({
         </div>
       ) : null}
       {mapFullscreen ? (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-[#0d1424] lg:absolute lg:inset-auto lg:bottom-0 lg:right-0 lg:top-28 lg:z-30 lg:w-[min(50vw,44rem)]">
+        <div className="fixed inset-0 z-[60] flex flex-col bg-[#0d1424] lg:absolute lg:inset-auto lg:bottom-0 lg:right-0 lg:top-28 lg:z-50 lg:w-[min(50vw,44rem)]">
           {mapChrome}
         </div>
       ) : null}

@@ -137,7 +137,7 @@ function ExpandedFigurePill({
         aria-label={`Hide ${label}`}
         className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
       >
-        ↑
+        ×
       </button>
     </div>
   );
@@ -187,9 +187,9 @@ function FitDeckCard({
           type="button"
           onClick={onHide}
           aria-label={`Hide ${title}`}
-          className="ml-2 shrink-0 px-1 font-mono text-white/70 hover:text-white"
+          className="ml-2 shrink-0 px-1.5 font-mono text-[18px] leading-none text-white/70 hover:text-white"
         >
-          ↑
+          ×
         </button>
       </div>
       <ul className="space-y-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80">
@@ -427,7 +427,7 @@ export function ShowcaseRailAroundArrowStage({
 
       {active === "pulse" || active === "details" ? (
         <div
-          className={`pointer-events-auto absolute z-20 -translate-y-1/2 ${
+          className={`pointer-events-auto absolute z-40 -translate-y-1/2 ${
             mobile
               ? "left-0 right-14 top-1/2"
               : "right-24 top-1/2 w-[min(24rem,calc(100%-8rem))]"
@@ -453,7 +453,7 @@ export function ShowcaseRailAroundArrowStage({
         direction="next"
         label="Next photo"
         onClick={() => undefined}
-        className={`absolute top-1/2 z-30 -translate-y-1/2 ${
+        className={`absolute top-1/2 z-20 -translate-y-1/2 ${
           mobile ? "right-3" : "right-6"
         }`}
       />
