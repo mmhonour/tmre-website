@@ -41,6 +41,7 @@ import {
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
   TRANSACT_TO_LIST_LABEL,
   MARKET_PULSE_JOIN_BRIEF_ID,
+  MARKET_PULSE_ACTIVE_KPI_LABEL,
   marketPulseFavorSortLabel,
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
@@ -1474,7 +1475,6 @@ function CombinedMetricsChart({
 
 function Kpi({
   label,
-  townLabel,
   final,
   kind,
   settle,
@@ -1483,8 +1483,6 @@ function Kpi({
   compareValue = null,
 }: {
   label: string;
-  /** Town the figure belongs to, prefixed onto the label. */
-  townLabel: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
@@ -1513,33 +1511,19 @@ function Kpi({
   const delta = comparing ? fmtSignedDelta(compareValue, final, kind) : null;
 
   return (
-    <div className="rounded-lg border border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
-      {/*
-       * The strip pins and follows you down the page, so the town it reports on
-       * changes under you. It gets its own line in the accent colour, keyed so
-       * it fades on each change — the one thing here that moves, marked as such.
-       */}
-      <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
-        <span
-          key={townLabel}
-          className="block animate-[fadeIn_0.22s_ease-out] text-[var(--mp-accent)]"
-        >
-          {townLabel}
-        </span>
+    <span className="inline-flex min-w-0 items-baseline gap-1">
+      <span className="[font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)]">
         {metricLabel}
-      </p>
-      <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
+      </span>
+      <span className="[font-family:var(--mp-heading-font)] text-base leading-none tabular-nums text-[var(--mp-text)] sm:text-lg">
         {text}
-      </p>
+      </span>
       {comparing ? (
-        <p className="mt-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums leading-tight text-[var(--mp-muted-text)]">
+        <span className="[font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-muted-text)]">
           {delta ?? "—"}
-          <span className="block tracking-[0.08em] uppercase">
-            vs All towns
-          </span>
-        </p>
+        </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -1949,10 +1933,17 @@ export default function WeeklyBriefContent({
   );
 
   const kpiStrip = (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+      <span
+        key={kpiTownLabel}
+        className="w-full animate-[fadeIn_0.22s_ease-out] [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent)] sm:w-auto"
+      >
+        {kpiTownLabel}
+      </span>
       <Kpi
-        label="Market active"
-        townLabel={kpiTownLabel}
+        label={
+          kind === "rental" ? "Active rentals" : MARKET_PULSE_ACTIVE_KPI_LABEL
+        }
         final={allTownsActive}
         kind="int"
         settle={settle}
@@ -1960,9 +1951,11 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.activeCount ?? null}
       />
+      <span aria-hidden className="text-[var(--mp-muted-text)]/50">
+        ·
+      </span>
       <Kpi
         label="Months Inventory"
-        townLabel={kpiTownLabel}
         final={allTownsMos}
         kind="mos"
         settle={settle}
@@ -1970,9 +1963,11 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.monthsSupply ?? null}
       />
+      <span aria-hidden className="text-[var(--mp-muted-text)]/50">
+        ·
+      </span>
       <Kpi
-        label="Avg days on market"
-        townLabel={kpiTownLabel}
+        label="Avg DOM"
         final={allTownsAvgDom}
         kind="dom"
         settle={settle}
@@ -2027,8 +2022,8 @@ export default function WeeklyBriefContent({
             <div
               className={
                 kpisPinned
-                  ? "mx-auto max-w-2xl space-y-3 px-3 py-2 sm:px-8"
-                  : "space-y-4"
+                  ? "mx-auto max-w-2xl space-y-1.5 px-3 py-1.5 sm:px-8"
+                  : "space-y-3"
               }
             >
               {kpisPinned && comparingTown ? (
@@ -2036,6 +2031,7 @@ export default function WeeklyBriefContent({
                   vs All towns
                 </p>
               ) : null}
+              {kpisPinned ? null : (
               <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase">
                 <a
                   href={`#${MARKET_PULSE_JOIN_BRIEF_ID}`}
@@ -2044,6 +2040,7 @@ export default function WeeklyBriefContent({
                   Join the brief
                 </a>
               </p>
+              )}
               {kpiStrip}
               {chromeToolbar}
             </div>

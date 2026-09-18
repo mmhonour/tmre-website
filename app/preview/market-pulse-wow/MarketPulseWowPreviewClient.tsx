@@ -29,7 +29,8 @@ export default function MarketPulseWowPreviewClient({
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Full unstacked Market Pulse with Week Over Week cream callouts on
-          every gold bar. Fixture towns — not live cache. Toggle Off / Month /
+          every gold bar. Compact one-line KPIs so the floating strip stays
+          thin on scroll. Fixture towns — not live cache. Toggle Off / Month /
           Year, or Stacked, the same way /market-pulse does.
         </p>
       </div>
