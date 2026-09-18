@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-wow",
     title: "Unstacked Week Over Week",
     summary:
-      "Full unstacked Market Pulse with Week Over Week cream callouts on every gold bar. Off / Month / Year and Stacked still switch. Fixture towns.",
+      "Full unstacked Market Pulse with Week Over Week cream callouts. Compact one-line KPIs on the floating strip. Fixture towns.",
   },
   {
     slug: "site-warm",
