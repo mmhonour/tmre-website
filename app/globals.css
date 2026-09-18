@@ -966,7 +966,7 @@ html.listing-split-test body {
   overflow: hidden !important;
 }
 
-/* Header zip pill — rotating border glow until first click */
+/* Header zip pill — rotating gold halo. Off for now (desktop + mobile). */
 @keyframes visitor-zip-border-spin {
   to {
     transform: rotate(360deg);

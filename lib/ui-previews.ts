@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "header-zip",
+    title: "Header ZIP — no halo",
+    summary:
+      "Site-header zip pill without the rotating gold ring, desktop and mobile. Click still opens the ZIP popover.",
+  },
+  {
     slug: "market-pulse-wow",
     title: "Market Pulse week change",
     summary:
