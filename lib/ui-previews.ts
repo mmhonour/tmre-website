@@ -190,19 +190,19 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "showcase-rail-pills",
     title: "Listing full-bleed rail pills",
     summary:
-      "Full-bleed rail: Offered at / Closed at sits in the top-right, same band as status. Desktop: Maximize, Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Phone: Maximize under Map; status and price rise and top-align, price flush to the right edge. Expanded Comps / What if use solid navy on every screen.",
+      "Full-bleed rail: Offered at / Closed at sits in the top-right, same band as status. Desktop: Maximize, Insight, Details, Comps above the right arrow; What if, Pulse, Map below. Phone: Maximize under Map; status and price rise and top-align, price flush to the right edge. Expanded Comps / What if use solid navy on every screen. Deck close is an X.",
   },
   {
     slug: "showcase-rail-desktop",
     title: "Showcase rail around the arrow — desktop",
     summary:
-      "Desktop listing chrome: Maximize → Insight → Details → Comps above the right arrow; What if → Town pulse → Map below. Price top-right. Town pulse and Details are content-sized cards that grow top and bottom.",
+      "Desktop listing chrome: Maximize → Insight → Details → Comps above the right arrow; What if → Town pulse → Map below. An open deck sits in front of the right photo arrow; close is an X. Price top-right. Town pulse and Details are content-sized cards that grow top and bottom.",
   },
   {
     slug: "showcase-rail-mobile",
     title: "Showcase rail around the arrow — mobile",
     summary:
-      "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. Expanded Comps / What if use solid navy. Town pulse and Details are content-sized cards that grow top and bottom. On a laptop, a 390×844 frame.",
+      "Phone listing chrome: Maximize under Map, status and Offered at / Closed at raised and top-aligned, price flush to the right edge. An open deck sits in front of the right photo arrow; close is an X. Expanded Comps / What if use solid navy. Town pulse and Details are content-sized cards that grow top and bottom. On a laptop, a 390×844 frame.",
   },
   {
     slug: "dod-bleed-showcase-click",

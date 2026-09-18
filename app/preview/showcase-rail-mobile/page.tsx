@@ -27,9 +27,10 @@ export default function ShowcaseRailMobilePreviewPage() {
           <p className="mb-3 text-sm leading-relaxed text-slate">
             Same chrome as the live listing: Maximize sits under Map, status
             and Offered at / Closed at rise and stay top-aligned, and the
-            price is flush to the right edge. On a phone this URL is
-            full-bleed under the live header. This laptop view keeps a
-            390×844 frame.
+            price is flush to the right edge. Open Town pulse or Details —
+            the deck sits in front of the right photo arrow, and close is an
+            X. On a phone this URL is full-bleed under the live header. This
+            laptop view keeps a 390×844 frame.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}

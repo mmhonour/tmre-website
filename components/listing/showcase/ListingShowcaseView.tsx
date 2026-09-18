@@ -120,6 +120,7 @@ export default function ListingShowcaseView({
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const [photoFocus, setPhotoFocus] = useState(false);
+  const [railDeckOpen, setRailDeckOpen] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const siteUnlocked = useSiteUnlocked();
   const visionHref =
@@ -265,7 +266,9 @@ export default function ListingShowcaseView({
           direction="next"
           label="Next photo"
           onClick={() => step(1)}
-          className="absolute right-3 top-1/2 z-40 -translate-y-1/2 sm:right-6"
+          className={`absolute right-3 top-1/2 -translate-y-1/2 sm:right-6 ${
+            railDeckOpen ? "z-20" : "z-40"
+          }`}
         />
         <ShowcaseSectionRail
           mlsId={listing.mlsId}
@@ -287,6 +290,7 @@ export default function ListingShowcaseView({
           compsFetchUrl={host.compsFetchUrl}
           uagFetchUrl={host.uagFetchUrl}
           map={host.map}
+          onMapStateChange={({ open }) => setRailDeckOpen(open)}
         />
 
         <div className="listing-showcase-type pointer-events-none relative z-20 flex min-h-[100dvh] flex-col justify-between px-4 pb-10 pt-20 sm:px-8 lg:px-12 lg:pb-14 lg:pt-28">
