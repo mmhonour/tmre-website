@@ -1572,6 +1572,7 @@ export default function WeeklyBriefContent({
   compares,
   weekOverWeek = false,
   initialChartLayout = DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+  initialComparePeriod = "off",
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1631,6 +1632,10 @@ export default function WeeklyBriefContent({
    * Preview pages can open unstacked. Production /market-pulse stays stacked.
    */
   initialChartLayout?: MarketPulseChartLayout;
+  /**
+   * Preview pages can open Week Over Week. Production /market-pulse stays Off.
+   */
+  initialComparePeriod?: "off" | MarketPulseComparePeriod;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
     initialChartLayout,
@@ -1650,7 +1655,7 @@ export default function WeeklyBriefContent({
   const [compareCity, setCompareCity] = useState<string | null>(null);
   const [comparePeriod, setComparePeriod] = useState<
     "off" | MarketPulseComparePeriod
-  >("off");
+  >(initialComparePeriod);
   const compareSet = weekOverWeek
     ? (compares ?? EMPTY_MARKET_PULSE_COMPARES)
     : EMPTY_MARKET_PULSE_COMPARES;

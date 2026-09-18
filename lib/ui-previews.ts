@@ -8,9 +8,9 @@ export type UiPreviewEntry = {
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
     slug: "market-pulse-wow",
-    title: "Market Pulse week change",
+    title: "Unstacked Week Over Week",
     summary:
-      "Off / Week Over Week / Month Over Month / Year Over Year cream callouts on stacked and unstacked gold bars. Fixture towns.",
+      "Full unstacked Market Pulse with Week Over Week cream callouts on every gold bar. Off / Month / Year and Stacked still switch. Fixture towns.",
   },
   {
     slug: "site-warm",
