@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-chrome",
     title: "Market Pulse chrome",
     summary:
-      "Lookback on the left, compact Active Homes KPIs, labeled yin-yang, unstacked heat maps first. Fixture towns.",
+      "Lookback on the left, compact Active Homes KPIs, labeled yin-yang, unstacked heat with seven towns named left of the bars.",
   },
   {
     slug: "market-pulse-wow",

@@ -68,7 +68,8 @@ export default function MarketPulseChromePreviewClient() {
         <p className="mb-6 text-sm leading-relaxed text-slate">
           Lookback sits left of All Towns. KPIs are one compact row (Active
           Homes). Yin-yang names Seller / Buyer Friendly and what a tap does.
-          Unstacked opens on a heat-map panel. Fixture towns, not live cache.
+          Unstacked opens on a heat-map panel with all seven towns, names left
+          of the bars. Fixture towns, not live cache.
         </p>
       </div>
       <div className="px-2 sm:px-6">
@@ -79,6 +80,7 @@ export default function MarketPulseChromePreviewClient() {
           lookbackId={lookbackId}
           onLookbackIdChange={setLookbackId}
           closedBarMax={500}
+          initialChartLayout="unstacked"
         />
       </div>
     </div>

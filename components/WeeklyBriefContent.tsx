@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  Fragment,
   type ReactNode,
 } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
@@ -1350,7 +1351,15 @@ function UnstackedHeatPanel({
   return (
     <section className={PANEL_SURFACE}>
       <p className={PANEL_TITLE}>Buyer / Seller heat</p>
-      <ul className="mt-2 space-y-3">
+      <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5">
+        <span className="sr-only">Town</span>
+        <div
+          className="flex items-baseline justify-between [font-family:var(--mp-mono-font)] text-[8px] uppercase tracking-[0.16em] text-white/45"
+          aria-hidden
+        >
+          <span>Seller</span>
+          <span>Buyer</span>
+        </div>
         {visible.map((row, rowIndex) => {
           const label = cityLabel(row);
           const heat = heatForCity(scale.heatByCity, row.city);
@@ -1365,8 +1374,11 @@ function UnstackedHeatPanel({
                   barScrambleNone,
                 ) / 100;
           return (
-            <li key={`heat-${row.city}`} data-mp-town={row.city}>
-              <p className="mb-1 [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold">
+            <Fragment key={`heat-${row.city}`}>
+              <div
+                data-mp-town={row.city}
+                className="min-w-0 max-w-[9.5rem] overflow-hidden whitespace-nowrap [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.16em] text-gold"
+              >
                 <TownName
                   city={row.city ?? label}
                   label={label}
@@ -1376,16 +1388,17 @@ function UnstackedHeatPanel({
                   settle={settle}
                   rotateTownNames={rotateNames}
                 />
-              </p>
+              </div>
               <MarketPulseFavorabilityBar
                 score={settled}
                 peerCount={aggregate ? null : scale.peerCount}
                 compact
+                showCaptions={false}
               />
-            </li>
+            </Fragment>
           );
         })}
-      </ul>
+      </div>
     </section>
   );
 }
@@ -1620,6 +1633,7 @@ export default function WeeklyBriefContent({
   closedBarMax = 0,
   compares,
   weekOverWeek = false,
+  initialChartLayout = DEFAULT_MARKET_PULSE_CHART_LAYOUT,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1674,14 +1688,21 @@ export default function WeeklyBriefContent({
    * Page switch defaults Off; month and year stay off the switch.
    */
   compares?: MarketPulseCompareSet;
+  /**
+   * Preview pages can open unstacked. Production /market-pulse stays stacked
+   * via the default.
+   */
+  initialChartLayout?: MarketPulseChartLayout;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
-    DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+    initialChartLayout,
   );
   const [favorSort, setFavorSort] = useState<FavorSort>(
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
-  const [townsExpanded, setTownsExpanded] = useState(false);
+  const [townsExpanded, setTownsExpanded] = useState(
+    initialChartLayout === "unstacked",
+  );
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
