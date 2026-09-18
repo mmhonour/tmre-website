@@ -18,10 +18,12 @@ export default function VisitorsLogViews({
   visitors,
   propertyLabels,
   adminCount,
+  defaultOpenZips,
 }: {
   visitors: VisitorRecord[];
   propertyLabels: Record<string, string>;
   adminCount: number;
+  defaultOpenZips?: string[];
 }) {
   const [view, setView] = useState<ViewId>("zip");
   const [hideAdmin, setHideAdmin] = useState(false);
@@ -109,7 +111,11 @@ export default function VisitorsLogViews({
       </div>
 
       {view === "zip" ? (
-        <VisitorsZipLog groups={zipGroups} properties={propertyLabels} />
+        <VisitorsZipLog
+          groups={zipGroups}
+          properties={propertyLabels}
+          defaultOpenZips={defaultOpenZips}
+        />
       ) : view === "provider" ? (
         <VisitorsGroupedLog
           groups={providerGroups}

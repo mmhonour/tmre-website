@@ -10,6 +10,7 @@ export default function AdminVisitorsPanel({
   topProperties,
   topPages,
   stats,
+  defaultOpenZips,
 }: {
   visitors: VisitorRecord[];
   propertyLabels: Record<string, string>;
@@ -23,6 +24,7 @@ export default function AdminVisitorsPanel({
     withPhone: number;
     pageviews: number;
   };
+  defaultOpenZips?: string[];
 }) {
   return (
     <div id="admin-visitors-log" className="scroll-mt-24 space-y-6">
@@ -68,6 +70,7 @@ export default function AdminVisitorsPanel({
         visitors={visitors}
         propertyLabels={propertyLabels}
         adminCount={stats.admin}
+        defaultOpenZips={defaultOpenZips}
       />
     </div>
   );

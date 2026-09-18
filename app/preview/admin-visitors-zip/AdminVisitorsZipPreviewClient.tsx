@@ -39,6 +39,7 @@ export default function AdminVisitorsZipPreviewClient({
           topProperties={[]}
           topPages={[]}
           stats={stats}
+          defaultOpenZips={["06880"]}
         />
       </div>
     </div>

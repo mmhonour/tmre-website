@@ -112,11 +112,15 @@ function VisitorRow({
 export default function VisitorsZipLog({
   groups,
   properties = {},
+  defaultOpenZips = [],
 }: {
   groups: VisitorZipGroup[];
   properties?: PropertyLabels;
+  defaultOpenZips?: string[];
 }) {
-  const [openZips, setOpenZips] = useState<Set<string>>(() => new Set());
+  const [openZips, setOpenZips] = useState<Set<string>>(
+    () => new Set(defaultOpenZips),
+  );
 
   function toggleZip(zip: string) {
     setOpenZips((prev) => {
