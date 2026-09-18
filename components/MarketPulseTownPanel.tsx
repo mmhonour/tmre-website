@@ -21,7 +21,7 @@ import {
   formatPriceDeltaK,
   formatPriceDeltaPct,
 } from "@/lib/market-pulse-price-delta";
-import { marketPulseHeatBand } from "@/lib/market-pulse-favorability";
+import MarketPulseFavorabilityBar from "@/components/MarketPulseFavorabilityBar";
 import {
   MARKET_PULSE_SETTLE_IDLE,
   settleBarPercent,
@@ -48,44 +48,6 @@ import {
   marketPulseFillDeltaText,
   type MarketPulseWowCompare,
 } from "@/lib/market-pulse-wow";
-
-/** Panel surface, lifted from the listing showcase tile. */
-/**
- * Buyer ↔ seller spectrum in the showcase's treatment: a coral-to-sage gradient
- * with a white marker, captioned at both ends.
- */
-function FavorabilityBar({
-  score,
-  peerCount,
-}: {
-  score: number | null;
-  /** Null on the composite row, which is the towns rather than one of them. */
-  peerCount: number | null;
-}) {
-  const pct = score == null ? null : Math.min(100, Math.max(0, score * 100));
-  const band = pct == null ? null : marketPulseHeatBand(pct / 100);
-  return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2 [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.16em] text-white/45">
-        <span>Seller</span>
-        <span className="truncate text-white/70">
-          {band?.label ?? "No signal"}
-          {peerCount != null ? ` · vs ${peerCount} towns` : ""}
-        </span>
-        <span>Buyer</span>
-      </div>
-      <div className="relative mt-1.5 h-2 w-full rounded-full bg-gradient-to-r from-coral via-gold to-sage">
-        {pct != null ? (
-          <span
-            className="absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_2px_rgba(38,55,79,0.9)]"
-            style={{ left: `${pct}%` }}
-            aria-hidden
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 /**
  * A town's pulse drawn the way the listing showcase draws it — dark panel, one
@@ -164,7 +126,7 @@ export default function MarketPulseTownPanel({
           {heading ?? townLabel}
         </span>
         <div className="min-w-0 flex-1">
-          <FavorabilityBar
+          <MarketPulseFavorabilityBar
             score={
               heat == null
                 ? null

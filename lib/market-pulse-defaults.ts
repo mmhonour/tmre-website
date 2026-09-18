@@ -17,7 +17,7 @@ export const DEFAULT_MARKET_PULSE_FAVOR_SORT: MarketPulseFavorSort = 'sellers'
 /** Footer form on /market-pulse — web jump + Monday email use this same hash. */
 export const MARKET_PULSE_JOIN_BRIEF_ID = 'join-the-brief'
 
-/** Compact floating KPI label for active inventory (sale tab). */
+/** Headline inventory KPI on /market-pulse, the floating strip, and the Monday email. */
 export const MARKET_PULSE_ACTIVE_KPI_LABEL = 'Active Homes'
 
 /** Visitor-facing name for close ÷ original ask (stacked, unstacked, Stats). */
