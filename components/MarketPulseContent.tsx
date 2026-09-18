@@ -7,8 +7,10 @@ import type {
   MarketDigestClosedTownCount,
   MarketDigestSnapshot,
 } from "@/lib/market-digest-types";
+import type { MarketPulseChartLayout } from "@/lib/market-pulse-defaults";
 import {
   EMPTY_MARKET_PULSE_COMPARES,
+  type MarketPulseComparePeriod,
   type MarketPulseCompareSet,
 } from "@/lib/market-pulse-wow";
 import {
@@ -60,6 +62,9 @@ export default function MarketPulseContent({
   etDate,
   compares,
   weekOverWeek = false,
+  initialChartLayout,
+  initialComparePeriod,
+  skipClosedFetch = false,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -69,6 +74,12 @@ export default function MarketPulseContent({
    * omit it so Week Over Week stays Off. Monday email is a separate path.
    */
   weekOverWeek?: boolean;
+  /** Preview pages can open unstacked. Production stays stacked. */
+  initialChartLayout?: MarketPulseChartLayout;
+  /** Preview pages can open Week Over Week. Production stays Off. */
+  initialComparePeriod?: "off" | MarketPulseComparePeriod;
+  /** Fixture previews keep snapshot closed counts instead of hitting the API. */
+  skipClosedFetch?: boolean;
 }) {
   const [categoryId, setCategoryId] = useState<MarketPulseCategoryId>("all");
   const [lookbackId, setLookbackId] = useState<MarketPulseLookbackId>(
@@ -139,8 +150,9 @@ export default function MarketPulseContent({
 
   const closedKey = closedCacheKey(category, lookbackId);
   const closedState = closedByKey[closedKey];
-  const closedPending =
-    closedState == null || closedState.status === "loading";
+  const closedPending = skipClosedFetch
+    ? false
+    : closedState == null || closedState.status === "loading";
   /**
    * Dragging the slider asks for a window we have not fetched, and handing the
    * chart nothing for that beat collapsed it to its empty state and then threw
@@ -173,6 +185,7 @@ export default function MarketPulseContent({
   const [closedFetchNonce, setClosedFetchNonce] = useState(0);
 
   useEffect(() => {
+    if (skipClosedFetch) return;
     const existing = closedByKeyRef.current[closedKey];
     if (existing?.status === "ok") return;
 
@@ -226,13 +239,14 @@ export default function MarketPulseContent({
     return () => {
       cancelled = true;
     };
-  }, [category, lookbackId, closedKey, closedFetchNonce]);
+  }, [category, lookbackId, closedKey, closedFetchNonce, skipClosedFetch]);
 
   const axisKey = closedCacheKey(
     category,
     MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID,
   );
   useEffect(() => {
+    if (skipClosedFetch) return;
     if (lookbackId === MARKET_PULSE_CLOSED_AXIS_LOOKBACK_ID) return;
     const existing = closedByKeyRef.current[axisKey];
     if (existing?.status === "ok" || existing?.status === "loading") return;
@@ -278,7 +292,7 @@ export default function MarketPulseContent({
     return () => {
       cancelled = true;
     };
-  }, [axisKey, category, lookbackId]);
+  }, [axisKey, category, lookbackId, skipClosedFetch]);
 
   const handleLookbackIdChange = useCallback(
     (id: MarketPulseLookbackId) => {
@@ -397,6 +411,8 @@ export default function MarketPulseContent({
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}
       weekOverWeek={weekOverWeek}
+      initialChartLayout={initialChartLayout}
+      initialComparePeriod={initialComparePeriod}
       compares={
         weekOverWeek &&
         category === "all" &&

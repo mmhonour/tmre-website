@@ -7,6 +7,18 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "market-pulse-desktop",
+    title: "Market Pulse — desktop",
+    summary:
+      "Full Market Pulse with every enhancement on: property type, labeled yin-yang, lookback left, seven unstacked towns, Week Over Week, one-line floating KPIs.",
+  },
+  {
+    slug: "market-pulse-mobile",
+    title: "Market Pulse — mobile",
+    summary:
+      "Same full Market Pulse in a phone frame (full-bleed on a phone). Scroll to pin the one-line KPIs.",
+  },
+  {
     slug: "market-pulse-chrome",
     title: "Market Pulse chrome",
     summary:
