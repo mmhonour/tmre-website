@@ -89,10 +89,12 @@ import {
   EMPTY_MARKET_PULSE_COMPARES,
   MARKET_PULSE_COMPARE_SWITCH_LABEL,
   marketPulseCompareCaption,
+  marketPulseFillDeltaText,
   type MarketPulseComparePeriod,
   type MarketPulseCompareSet,
   type MarketPulseWowCompare,
 } from "@/lib/market-pulse-wow";
+import type { MarketPulseStackedMetricId } from "@/lib/market-pulse-stacked-metrics";
 
 type ChartLayout = MarketPulseChartLayout;
 type FavorSort = MarketPulseFavorSort;
@@ -122,7 +124,7 @@ function ComparePeriodSwitch({
     <div
       className="flex min-w-0 flex-wrap gap-1"
       role="radiogroup"
-      aria-label="Compare to last week"
+      aria-label="Compare to a prior period"
     >
       {options.map((id) => {
         const selected = value === id;
@@ -656,6 +658,8 @@ function BarChart<Row extends { city: string }>({
   inPanel = false,
   townsExpanded = true,
   onAllTownsToggle,
+  compare = null,
+  metricId,
 }: {
   title: string;
   rows: Row[];
@@ -690,6 +694,8 @@ function BarChart<Row extends { city: string }>({
   };
   townsExpanded?: boolean;
   onAllTownsToggle?: () => void;
+  compare?: MarketPulseWowCompare | null;
+  metricId?: MarketPulseStackedMetricId;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
   /** null = use favorSortDir / snapshot order until the visitor picks a direction. */
@@ -880,6 +886,12 @@ function BarChart<Row extends { city: string }>({
                 asideNegative={asideNegative?.(row) ?? false}
                 widthTransition={widthTransition}
                 href={href}
+                fillDelta={
+                  metricId
+                    ? marketPulseFillDeltaText(compare, row.city, metricId)
+                    : null
+                }
+                fillDeltaInk="black"
                 tooltip={
                   <div
                     className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -970,6 +982,7 @@ function UnstackedPricePanel({
   townsExpanded,
   onAllTownsToggle,
   townHref,
+  compare = null,
 }: {
   rows: CombinedTownRow[];
   scale: MarketPulseTownScale;
@@ -978,6 +991,7 @@ function UnstackedPricePanel({
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
   townHref?: (cityLabel: string) => string;
+  compare?: MarketPulseWowCompare | null;
 }) {
   const priceMetrics = PRICE_METRIC_IDS.map((id) =>
     metrics.find((m) => m.id === id),
@@ -1117,6 +1131,8 @@ function UnstackedPricePanel({
                       }
                       widthTransition={widthTransition}
                       dense
+                      fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
+                      fillDeltaInk="black"
                     />
                   );
                 })}
@@ -1140,6 +1156,7 @@ function UnstackedTaxPanel({
   townsExpanded,
   onAllTownsToggle,
   townHref,
+  compare = null,
 }: {
   rows: CombinedTownRow[];
   scale: MarketPulseTownScale;
@@ -1148,6 +1165,7 @@ function UnstackedTaxPanel({
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
   townHref?: (cityLabel: string) => string;
+  compare?: MarketPulseWowCompare | null;
 }) {
   const taxMetrics = TAX_METRIC_IDS.map((id) =>
     metrics.find((m) => m.id === id),
@@ -1286,6 +1304,8 @@ function UnstackedTaxPanel({
                       }
                       widthTransition={widthTransition}
                       dense
+                      fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
+                      fillDeltaInk="black"
                     />
                   );
                 })}
@@ -1551,6 +1571,7 @@ export default function WeeklyBriefContent({
   closedBarMax = 0,
   compares,
   weekOverWeek = false,
+  initialChartLayout = DEFAULT_MARKET_PULSE_CHART_LAYOUT,
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1602,17 +1623,24 @@ export default function WeeklyBriefContent({
   weekOverWeek?: boolean;
   /**
    * Precomputed vs stored week slots. Ignored unless `weekOverWeek` is true.
-   * Page switch defaults Off; month and year stay off the switch.
+   * Page switch defaults Off; Month Over Month / Year Over Year appear when
+   * those slots exist (stacked and unstacked).
    */
   compares?: MarketPulseCompareSet;
+  /**
+   * Preview pages can open unstacked. Production /market-pulse stays stacked.
+   */
+  initialChartLayout?: MarketPulseChartLayout;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
-    DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+    initialChartLayout,
   );
   const [favorSort, setFavorSort] = useState<FavorSort>(
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
-  const [townsExpanded, setTownsExpanded] = useState(false);
+  const [townsExpanded, setTownsExpanded] = useState(
+    initialChartLayout === "unstacked",
+  );
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
@@ -1890,7 +1918,7 @@ export default function WeeklyBriefContent({
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       {categoryFilter}
       <div className="flex items-center gap-2">
-        {weekOverWeek && chartLayout === "stacked" ? (
+        {weekOverWeek ? (
           <ComparePeriodSwitch
             periods={comparePeriods}
             value={comparePeriod}
@@ -2063,6 +2091,11 @@ export default function WeeklyBriefContent({
         ) : (
         <div className="space-y-6">
           <>
+        {selectedCompare && comparePeriod !== "off" ? (
+          <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent,#C8A951)]">
+            {marketPulseCompareCaption(selectedCompare, comparePeriod)}
+          </p>
+        ) : null}
         {/* Lookback drives neither of these, so they take the full width. */}
         <BarChart
           title="Active inventory"
@@ -2077,6 +2110,8 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.activeCountCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "inventory")}
+          compare={selectedCompare}
+          metricId="inventory"
         />
 
         <BarChart
@@ -2092,6 +2127,8 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.avgDaysOnMarketCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
+          compare={selectedCompare}
+          metricId="avgDom"
         />
 
         {/*
@@ -2114,6 +2151,8 @@ export default function WeeklyBriefContent({
             calcOf={(r) => r.monthsSupplyCalc}
             sortable
             favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
+            compare={selectedCompare}
+            metricId="monthsSupply"
           />
 
           <BarChart
@@ -2140,6 +2179,8 @@ export default function WeeklyBriefContent({
                 formatMetricValue("int", display),
               )
             }
+            compare={selectedCompare}
+            metricId="closed"
           />
           </div>
           {onLookbackIdChange ? (
@@ -2160,6 +2201,7 @@ export default function WeeklyBriefContent({
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           townHref={townHref}
+          compare={selectedCompare}
         />
 
         <UnstackedTaxPanel
@@ -2170,6 +2212,7 @@ export default function WeeklyBriefContent({
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           townHref={townHref}
+          compare={selectedCompare}
         />
 
         <BarChart
@@ -2198,6 +2241,8 @@ export default function WeeklyBriefContent({
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.saleToAskCalc}
+          compare={selectedCompare}
+          metricId="saleToAsk"
         />
           </>
         </div>

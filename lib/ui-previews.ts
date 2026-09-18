@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-wow",
     title: "Market Pulse week change",
     summary:
-      "Week Over Week numbers on the 6px gold as a cream rectangle, navy type. Fixture towns.",
+      "Off / Week Over Week / Month Over Month / Year Over Year cream callouts on stacked and unstacked gold bars. Fixture towns.",
   },
   {
     slug: "site-warm",

@@ -7,6 +7,7 @@ import {
   availableComparePeriods,
   buildMarketPulseWow,
   formatMarketPulseWowSlotLabel,
+  marketPulseCompareCaption,
   marketPulseCompareBlurbLines,
   marketPulseFillDeltaText,
   marketPulseWowCaption,
@@ -157,10 +158,14 @@ describe('pickEmailMarketPulseCompare', () => {
       pickEmailMarketPulseCompare({ wow: null, mom: null, yoy: mom }),
       null,
     )
-    assert.deepEqual(availableComparePeriods({ wow, mom, yoy: null }), ['wow'])
+    assert.deepEqual(availableComparePeriods({ wow, mom, yoy: null }), ['wow', 'mom'])
     assert.deepEqual(
       availableComparePeriods({ wow: null, mom, yoy: null }),
-      [],
+      ['mom'],
+    )
+    assert.equal(
+      marketPulseCompareCaption(mom, 'mom'),
+      'Month over month vs 10 Aug',
     )
   })
 })

@@ -52,7 +52,7 @@ export const MARKET_PULSE_WOW_PRIOR_ROWS: MarketPulseCombinedTownRow[] = [
   }),
 ];
 
-/** Held for a later month surface. The preview switch is WoW-only. */
+/** Last month's archived Monday. */
 export const MARKET_PULSE_MOM_PRIOR_ROWS: MarketPulseCombinedTownRow[] = [
   row("All", {
     activeCount: 160,
@@ -110,3 +110,32 @@ export const MARKET_PULSE_WOW_CURRENT_ROWS: MarketPulseCombinedTownRow[] = [
 
 export const MARKET_PULSE_WOW_PRIOR_SLOT = "2026-09-07";
 export const MARKET_PULSE_MOM_PRIOR_SLOT = "2026-08-10";
+export const MARKET_PULSE_YOY_PRIOR_SLOT = "2025-09-15";
+
+/** Same Monday a year earlier. */
+export const MARKET_PULSE_YOY_PRIOR_ROWS: MarketPulseCombinedTownRow[] = [
+  row("All", {
+    activeCount: 210,
+    monthsSupply: 3.6,
+    avgDaysOnMarket: 28,
+    closedCount: 360,
+    medianPrice: 1_080_000,
+    averagePrice: 1_150_000,
+    priceDelta: 70_000,
+    priceDeltaPct: 6.5,
+    saleToAskPct: 95.8,
+    saleToAskDollars: -28_000,
+  }),
+  row("Westport", {
+    activeCount: 61,
+    monthsSupply: 2.6,
+    avgDaysOnMarket: 26,
+    closedCount: 78,
+    medianPrice: 1_780_000,
+    averagePrice: 1_920_000,
+    priceDelta: 140_000,
+    priceDeltaPct: 7.9,
+    saleToAskPct: 99.1,
+    saleToAskDollars: -4_000,
+  }),
+];
