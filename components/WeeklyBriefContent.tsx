@@ -1370,7 +1370,7 @@ function UnstackedHeatPanel({
 
   return (
     <section className={PANEL_SURFACE}>
-      <p className={PANEL_TITLE}>Buyer / Seller heat</p>
+      <p className={PANEL_TITLE}>BUYER / SELLER HEAT MAP</p>
       <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5">
         <span aria-hidden className="block h-3 w-px" />
         <div
