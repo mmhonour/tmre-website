@@ -1352,7 +1352,7 @@ function UnstackedHeatPanel({
     <section className={PANEL_SURFACE}>
       <p className={PANEL_TITLE}>Buyer / Seller heat</p>
       <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5">
-        <span className="sr-only">Town</span>
+        <span aria-hidden className="block h-3 w-px" />
         <div
           className="flex items-baseline justify-between [font-family:var(--mp-mono-font)] text-[8px] uppercase tracking-[0.16em] text-white/45"
           aria-hidden
