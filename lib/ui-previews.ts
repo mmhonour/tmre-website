@@ -16,7 +16,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-mobile",
     title: "Market Pulse — mobile",
     summary:
-      "Same full Market Pulse in a phone frame (full-bleed on a phone). Scroll to pin the one-line KPIs.",
+      "Same full Market Pulse in a phone frame. Type and Lookback are menu chips; the pin reads Norwalk vs All Towns.",
   },
   {
     slug: "market-pulse-chrome",

@@ -28,8 +28,9 @@ export default function MarketPulseMobilePreviewPage() {
             UI preview · mobile
           </p>
           <p className="text-sm leading-relaxed text-slate">
-            Same full Market Pulse as desktop, phone chrome. Scroll to pin the
-            one-line KPIs.
+            Same full Market Pulse as desktop, phone chrome. Type and Lookback
+            open as menus. Scroll to pin the KPIs — the town line reads
+            Norwalk vs All Towns.
           </p>
         </div>
         {board}
@@ -43,10 +44,11 @@ export default function MarketPulseMobilePreviewPage() {
             Market Pulse — mobile
           </h1>
           <p className="mb-3 text-sm leading-relaxed text-slate">
-            Full working phone page in this frame: property type, labeled
-            yin-yang, lookback left, all seven towns in unstacked, Week Over
-            Week cream callouts, one-line floating KPIs on scroll. On a phone
-            this URL is full-bleed under the live header.
+          Full working phone page in this frame: Type and Lookback are
+          Intelligence-style chips that open a menu — they do not wrap the
+          floating bar. Scroll updates the town in the pin as{" "}
+          <span className="whitespace-nowrap">Norwalk vs All Towns</span>.
+          On a phone this URL is full-bleed under the live header.
           </p>
           <p className="mb-6 font-mono text-[11px] text-slate">
             Desktop:{" "}

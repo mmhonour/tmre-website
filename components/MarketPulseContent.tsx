@@ -21,6 +21,7 @@ import {
   type MarketPulseLookbackId,
   closedCountBarMax,
 } from "@/lib/market-pulse-lookback";
+import MarketPulseSelectMenu from "@/components/MarketPulseSelectMenu";
 import {
   MARKET_PULSE_CATEGORY_IDS,
   marketPulseCategoryToIntelligenceFilters,
@@ -354,32 +355,41 @@ export default function MarketPulseContent({
   const metricStatsHref = (metricId: string, cityLabel: string) =>
     marketPulseTownMetricStatsHref(metricId, cityLabel, category);
   const categoryFilter = (
-    <div
-      className="flex min-w-0 flex-wrap gap-1"
-      role="tablist"
-      aria-label="Property type"
-    >
-      {categories.map((cat) => {
-        const selected = active?.id === cat.id;
-        return (
-          <button
-            key={cat.id}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-current={selected ? "page" : undefined}
-            onClick={() => setCategoryId(cat.id)}
-            className={`rounded-sm px-2 py-1 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase transition-colors ${
-              selected
-                ? "bg-[var(--mp-text)]/15 text-[var(--mp-text)]"
-                : "text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
-            }`}
-          >
-            {cat.label}
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <MarketPulseSelectMenu
+        className="md:hidden"
+        title="Type"
+        value={category}
+        options={categories.map((cat) => ({ id: cat.id, label: cat.label }))}
+        onChange={setCategoryId}
+      />
+      <div
+        className="hidden min-w-0 flex-wrap gap-1 md:flex"
+        role="tablist"
+        aria-label="Property type"
+      >
+        {categories.map((cat) => {
+          const selected = active?.id === cat.id;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-current={selected ? "page" : undefined}
+              onClick={() => setCategoryId(cat.id)}
+              className={`rounded-sm px-2 py-1 [font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase transition-colors ${
+                selected
+                  ? "bg-[var(--mp-text)]/15 text-[var(--mp-text)]"
+                  : "text-[var(--mp-muted-text)] hover:text-[var(--mp-text)]"
+              }`}
+            >
+              {cat.label}
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 
   return (

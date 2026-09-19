@@ -11,10 +11,14 @@ export default function IntelSortDrawer({
   open,
   onClose,
   children,
+  title = "Sort",
+  ariaLabel,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  title?: string;
+  ariaLabel?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -44,12 +48,12 @@ export default function IntelSortDrawer({
       className="fixed inset-0 z-[180]"
       role="dialog"
       aria-modal
-      aria-label="Sort listings"
+      aria-label={ariaLabel ?? title}
     >
       <button
         type="button"
         className="absolute inset-0 bg-navy/50 backdrop-blur-[2px] animate-fade-in"
-        aria-label="Close sort panel"
+        aria-label={`Close ${title} panel`}
         onClick={onClose}
       />
       <aside
@@ -63,7 +67,7 @@ export default function IntelSortDrawer({
             type="button"
             onClick={onClose}
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase text-navy/70 hover:text-navy hover:bg-navy/5 transition-colors"
-            aria-label="Hide sort panel"
+            aria-label={`Hide ${title} panel`}
           >
             <svg
               viewBox="0 0 12 12"
@@ -76,7 +80,7 @@ export default function IntelSortDrawer({
             Hide
           </button>
           <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gold">
-            Sort
+            {title}
           </p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">

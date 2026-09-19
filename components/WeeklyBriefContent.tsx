@@ -12,6 +12,7 @@ import {
 } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
+import MarketPulseSelectMenu from "@/components/MarketPulseSelectMenu";
 import MarketPulseFavorabilityBar from "@/components/MarketPulseFavorabilityBar";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
@@ -102,6 +103,21 @@ import type { MarketPulseStackedMetricId } from "@/lib/market-pulse-stacked-metr
 type ChartLayout = MarketPulseChartLayout;
 type FavorSort = MarketPulseFavorSort;
 type MetricSortDir = "asc" | "desc";
+
+function nearestScrollRoot(el: HTMLElement | null): HTMLElement | Window {
+  let node: HTMLElement | null = el;
+  while (node) {
+    const oy = window.getComputedStyle(node).overflowY;
+    if (
+      (oy === "auto" || oy === "scroll") &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return window;
+}
 
 /** Rentals are leased, not closed, and every label that says so follows. */
 function closedNounFor(kind: ListingKind): { title: string; lower: string } {
@@ -1731,6 +1747,7 @@ export default function WeeklyBriefContent({
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
   const [kpisPinned, setKpisPinned] = useState(false);
   const [chromeHeightPx, setChromeHeightPx] = useState(0);
   const [navOffsetPx, setNavOffsetPx] = useState(96);
@@ -1884,11 +1901,13 @@ export default function WeeklyBriefContent({
 
   useEffect(() => {
     const sentinel = kpiSentinelRef.current;
-    if (!sentinel) {
+    const root = articleRef.current;
+    if (!sentinel || !root) {
       setKpisPinned(false);
       return;
     }
     const header = document.querySelector("header");
+    const scrollRoot = nearestScrollRoot(root);
     let raf = 0;
     const update = () => {
       const offset = header?.getBoundingClientRect().bottom ?? 96;
@@ -1906,19 +1925,22 @@ export default function WeeklyBriefContent({
         return;
       }
       const scanY = barEl.getBoundingClientRect().bottom + 8;
-      const nodes = document.querySelectorAll<HTMLElement>("[data-mp-town]");
-      let next: string | null = null;
+      const nodes = root.querySelectorAll<HTMLElement>("[data-mp-town]");
+      let crossing: string | null = null;
+      let lastAbove: string | null = null;
       for (const el of nodes) {
         const r = el.getBoundingClientRect();
-        if (r.top <= scanY) {
-          const city = el.dataset.mpTown ?? null;
-          if (city && !isAllTownsCity(city)) next = city;
-        }
+        if (r.height < 1 || r.width < 1) continue;
+        const city = el.dataset.mpTown ?? null;
+        if (!city || isAllTownsCity(city)) continue;
+        if (r.top <= scanY) lastAbove = city;
+        if (r.top <= scanY && r.bottom >= scanY) crossing = city;
       }
-      setCompareCity(next);
+      setCompareCity(crossing ?? lastAbove);
     };
     update();
-    window.addEventListener("scroll", update, { passive: true });
+    const scrollTarget: Window | HTMLElement = scrollRoot;
+    scrollTarget.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
     const ro =
       header && typeof ResizeObserver !== "undefined"
@@ -1927,7 +1949,7 @@ export default function WeeklyBriefContent({
     if (header && ro) ro.observe(header);
     return () => {
       window.cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", update);
+      scrollTarget.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       ro?.disconnect();
     };
@@ -1999,18 +2021,50 @@ export default function WeeklyBriefContent({
       ? heatForCity(unstackedScale.heatByCity, compareRow.city)
       : null;
 
-  const kpiTownLabel = comparingTown ?? "All Towns";
+  const kpiTownLabel = comparingTown
+    ? `${comparingTown} vs All Towns`
+    : "All Towns";
 
   const chromeToolbar = (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      {categoryFilter}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {categoryFilter}
+        {onLookbackIdChange ? (
+          <MarketPulseSelectMenu
+            className="md:hidden"
+            title="Lookback"
+            value={lookbackId}
+            options={MARKET_PULSE_LOOKBACK_OPTIONS}
+            onChange={onLookbackIdChange}
+          />
+        ) : null}
+      </div>
       <div className="flex items-center gap-2">
         {weekOverWeek ? (
-          <ComparePeriodSwitch
-            periods={comparePeriods}
-            value={comparePeriod}
-            onChange={setComparePeriod}
-          />
+          <>
+            <MarketPulseSelectMenu
+              className="md:hidden"
+              title="Compare"
+              value={comparePeriod}
+              options={
+                [
+                  { id: "off" as const, label: COMPARE_PERIOD_LABEL.off },
+                  ...comparePeriods.map((id) => ({
+                    id,
+                    label: COMPARE_PERIOD_LABEL[id],
+                  })),
+                ] as const
+              }
+              onChange={setComparePeriod}
+            />
+            <div className="hidden md:block">
+              <ComparePeriodSwitch
+                periods={comparePeriods}
+                value={comparePeriod}
+                onChange={setComparePeriod}
+              />
+            </div>
+          </>
         ) : null}
         <FavorSortToggle
           favorSort={favorSort}
@@ -2077,7 +2131,7 @@ export default function WeeklyBriefContent({
   );
 
   return (
-    <article className="mx-auto max-w-2xl">
+    <article ref={articleRef} className="mx-auto max-w-2xl">
       <header className="rounded-t-2xl bg-[var(--mp-surface)] px-3 py-6 sm:px-8 sm:py-7">
         {/* House voice: plain words, comma, the subject in italics. */}
         <p className="[font-family:var(--mp-mono-font)] text-[11px] tracking-[0.2em] text-white mb-2">
@@ -2124,11 +2178,6 @@ export default function WeeklyBriefContent({
                   : "space-y-3"
               }
             >
-              {kpisPinned && comparingTown ? (
-                <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.12em] uppercase text-[var(--mp-muted-text)]">
-                  vs All towns
-                </p>
-              ) : null}
               {kpisPinned ? null : (
               <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase">
                 <a
@@ -2169,12 +2218,14 @@ export default function WeeklyBriefContent({
             taxYearLabel={taxYearLabel}
             lookbackRail={
               onLookbackIdChange ? (
-                <ClosedLookbackSlider
-                  lookbackId={lookbackId}
-                  onChange={onLookbackIdChange}
-                  pending={closedPending}
-                  fill
-                />
+                <div className="hidden h-full md:block">
+                  <ClosedLookbackSlider
+                    lookbackId={lookbackId}
+                    onChange={onLookbackIdChange}
+                    pending={closedPending}
+                    fill
+                  />
+                </div>
               ) : null
             }
             compare={
@@ -2198,12 +2249,14 @@ export default function WeeklyBriefContent({
         ) : null}
         {lookbackBesideBlock(
           onLookbackIdChange ? (
-            <ClosedLookbackSlider
-              lookbackId={lookbackId}
-              onChange={onLookbackIdChange}
-              pending={closedPending}
-              fill
-            />
+            <div className="hidden h-full md:block">
+              <ClosedLookbackSlider
+                lookbackId={lookbackId}
+                onChange={onLookbackIdChange}
+                pending={closedPending}
+                fill
+              />
+            </div>
           ) : null,
           <UnstackedHeatPanel
             rows={combinedRows}
