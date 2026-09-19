@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { barAsidePlacement } from "@/lib/market-pulse-bar-aside";
+import {
+  barAsidePlacement,
+  barFillDeltaPlacement,
+} from "@/lib/market-pulse-bar-aside";
 import { formatMarketPulseMoney } from "@/lib/market-pulse-price-delta";
 
 /**
@@ -114,7 +117,7 @@ export function PanelBarRow({
   dense?: boolean;
   /** Stats chart standing behind this bar, if there is one. */
   href?: string | null;
-  /** Change vs a prior week, centered on the shaded fill. */
+  /** Change vs a prior week. Centered on a fill that can hold it; just past a short fill when the track is empty to the right. */
   fillDelta?: string | null;
   fillDeltaInk?: PanelBarFillDeltaInk;
 }) {
@@ -123,6 +126,7 @@ export function PanelBarRow({
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
   const fillMid = leftPct + widthPct / 2;
   const delta = fillDelta?.trim() ? fillDelta.trim() : null;
+  const deltaPlacement = delta ? barFillDeltaPlacement(leftPct, widthPct) : null;
   return (
     <div
       className={`group relative grid grid-cols-[8.75rem_1fr_auto] items-center gap-2 ${
@@ -160,8 +164,14 @@ export function PanelBarRow({
         </span>
         {delta ? (
           <span
-            className={`pointer-events-none absolute top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm px-1 py-px [font-family:var(--mp-mono-font)] text-[9px] font-semibold leading-none tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]}`}
-            style={{ left: `${fillMid}%` }}
+            className={`pointer-events-none absolute top-1/2 z-[1] -translate-y-1/2 whitespace-nowrap rounded-sm px-1 py-px [font-family:var(--mp-mono-font)] text-[9px] font-semibold leading-none tabular-nums ${PANEL_FILL_DELTA_INK_CLASS[fillDeltaInk]} ${
+              deltaPlacement === "center" ? "-translate-x-1/2" : ""
+            }`}
+            style={
+              deltaPlacement === "right"
+                ? { left: `${fillRight}%`, marginLeft: 4 }
+                : { left: `${fillMid}%` }
+            }
           >
             {delta}
           </span>

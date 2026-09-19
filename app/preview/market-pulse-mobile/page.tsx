@@ -28,10 +28,10 @@ export default function MarketPulseMobilePreviewPage() {
             UI preview · mobile
           </p>
           <p className="text-sm leading-relaxed text-slate">
-            Same full Market Pulse as desktop, phone chrome. One FILTER chip
-            opens Type, Tracing, and Lookback as tabs. Scroll to pin the KPIs —
-            the town line reads Norwalk vs All Towns. Homes · Inventory · Days
-            on Market stay on one line.
+            One FILTER chip opens Type, Tracing, and Lookback as tabs. Scroll to
+            pin the KPIs — Homes · Inventory · Days on Market stay on one line.
+            A cream +/- that would hang off a short Active inventory fill sits
+            just to the right of the bar instead.
           </p>
         </div>
         {board}
@@ -47,8 +47,10 @@ export default function MarketPulseMobilePreviewPage() {
           <p className="mb-3 text-sm leading-relaxed text-slate">
           Full working phone page in this frame: one FILTER chip opens a
           drawer with Type, Tracing (Off / Week / Month / Year), and Lookback
-          tabs. Stacked and the ? stay on the bar. Scroll updates the town in
-          the pin as{" "}
+          tabs. KPIs read Homes · Inventory · Days on Market. A cream +/- that
+          would hang off a short Active inventory fill sits just to the right
+          of the bar. Stacked and the ? stay on the bar. Scroll updates the
+          town in the pin as{" "}
           <span className="whitespace-nowrap">Norwalk vs All Towns</span>.
           On a phone this URL is full-bleed under the live header.
           </p>

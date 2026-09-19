@@ -16,7 +16,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-mobile",
     title: "Market Pulse — mobile",
     summary:
-      "Same full Market Pulse in a phone frame. One FILTER chip with Type, Tracing, and Lookback tabs; KPIs read Homes · Inventory · Days on Market.",
+      "Same full Market Pulse in a phone frame. One FILTER chip with Type, Tracing, and Lookback tabs; KPIs read Homes · Inventory · Days on Market. Short-bar cream +/- sit to the right of the fill.",
   },
   {
     slug: "market-pulse-chrome",

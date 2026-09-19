@@ -35,3 +35,28 @@ export function barAsidePlacement(
   }
   return 100 - fillRight >= BAR_ASIDE_SPAN_PCT ? 'right' : 'outside-right'
 }
+
+/**
+ * Cream WoW / MoM / YoY chip. Centered on a short fill it hangs off both
+ * sides; if the track still has a chip-width of empty to the right, sit just
+ * past the fill instead.
+ */
+export const BAR_FILL_DELTA_SPAN_PCT = 18
+
+export type BarFillDeltaPlacement = 'center' | 'right'
+
+export function barFillDeltaPlacement(
+  leftPct: number,
+  widthPct: number,
+): BarFillDeltaPlacement {
+  const fillWidth = Math.min(Math.max(widthPct, 0), 100)
+  const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100)
+  const roomRight = 100 - fillRight
+  if (
+    fillWidth < BAR_FILL_DELTA_SPAN_PCT &&
+    roomRight >= BAR_FILL_DELTA_SPAN_PCT
+  ) {
+    return 'right'
+  }
+  return 'center'
+}
