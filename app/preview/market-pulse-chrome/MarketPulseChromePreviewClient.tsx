@@ -77,6 +77,11 @@ export default function MarketPulseChromePreviewClient() {
           snapshot={MARKET_PULSE_CHROME_SNAPSHOT}
           etDate="Thursday, September 17, 2026"
           categoryFilter={categoryFilter}
+          filterCategories={TABS}
+          filterCategoryId={tab}
+          onFilterCategoryChange={(id) =>
+            setTab(id as (typeof TABS)[number]["id"])
+          }
           lookbackId={lookbackId}
           onLookbackIdChange={setLookbackId}
           closedBarMax={500}

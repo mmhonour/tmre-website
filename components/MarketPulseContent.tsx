@@ -21,7 +21,6 @@ import {
   type MarketPulseLookbackId,
   closedCountBarMax,
 } from "@/lib/market-pulse-lookback";
-import MarketPulseSelectMenu from "@/components/MarketPulseSelectMenu";
 import {
   MARKET_PULSE_CATEGORY_IDS,
   marketPulseCategoryToIntelligenceFilters,
@@ -355,16 +354,8 @@ export default function MarketPulseContent({
   const metricStatsHref = (metricId: string, cityLabel: string) =>
     marketPulseTownMetricStatsHref(metricId, cityLabel, category);
   const categoryFilter = (
-    <>
-      <MarketPulseSelectMenu
-        className="md:hidden"
-        title="Type"
-        value={category}
-        options={categories.map((cat) => ({ id: cat.id, label: cat.label }))}
-        onChange={setCategoryId}
-      />
       <div
-        className="hidden min-w-0 flex-wrap gap-1 md:flex"
+        className="flex min-w-0 flex-wrap gap-1"
         role="tablist"
         aria-label="Property type"
       >
@@ -389,7 +380,6 @@ export default function MarketPulseContent({
           );
         })}
       </div>
-    </>
   );
 
   return (
@@ -417,6 +407,14 @@ export default function MarketPulseContent({
       closedPending={closedPending}
       closedLookbackId={closedDataLookbackId}
       categoryFilter={categoryFilter}
+      filterCategories={categories.map((cat) => ({
+        id: cat.id,
+        label: cat.label,
+      }))}
+      filterCategoryId={category}
+      onFilterCategoryChange={(id) =>
+        setCategoryId(id as MarketPulseCategoryId)
+      }
       lookbackId={lookbackId}
       onLookbackIdChange={handleLookbackIdChange}
       closedBarMax={closedBarMax}

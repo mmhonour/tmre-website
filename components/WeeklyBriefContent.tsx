@@ -12,7 +12,7 @@ import {
 } from "react";
 import { StatsCalcTooltipShell } from "@/components/StatsCalcTooltip";
 import YinYangPulseGlyph from "@/components/YinYangPulseGlyph";
-import MarketPulseSelectMenu from "@/components/MarketPulseSelectMenu";
+import MarketPulseFilterMenu from "@/components/MarketPulseFilterMenu";
 import MarketPulseFavorabilityBar from "@/components/MarketPulseFavorabilityBar";
 import MarketPulseDeltaLabel from "@/components/MarketPulseDeltaLabel";
 import { marketPulseTownMetrics } from "@/components/market-pulse-metrics";
@@ -417,9 +417,9 @@ function TownMetricsLayoutToggle({
       aria-label={`Showing ${layout} town metrics. Switch to ${next}.`}
       title={`Switch to ${next}`}
       onClick={() => onSelect(next)}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 hover:text-[var(--mp-text)]"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 hover:text-[var(--mp-text)] sm:h-10 sm:w-10"
     >
-      <svg viewBox="0 0 14 14" className="h-7 w-7" aria-hidden>
+      <svg viewBox="0 0 14 14" className="h-5 w-5 sm:h-7 sm:w-7" aria-hidden>
         {stacked ? (
           <>
             <rect x="1" y="3" width="12" height="2" rx="1" fill="currentColor" />
@@ -555,16 +555,16 @@ function FavorSortToggle({
       }
       aria-label={`Now ${current}. Tap to switch to ${next}.`}
       aria-pressed={buyers}
-      className="inline-flex min-h-10 shrink-0 items-center gap-2 overflow-visible rounded-sm px-1.5 py-1 text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10"
+      className="inline-flex min-h-8 min-w-0 shrink-0 items-center gap-1.5 overflow-visible rounded-sm px-1 py-1 text-[var(--mp-muted-text)] transition-colors hover:bg-[var(--mp-text)]/10 sm:min-h-10 sm:gap-2 sm:px-1.5"
     >
       {mode === "yin-yang" ? (
         <YinYangPulseGlyph
-          className={`h-7 w-7 shrink-0 origin-center transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          className={`h-6 w-6 shrink-0 origin-center transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] sm:h-7 sm:w-7 ${
             buyers ? "rotate-180" : "rotate-0"
           }`}
         />
       ) : (
-        <svg viewBox="-8 -16 58 48" className="h-12 w-12 shrink-0 overflow-visible" aria-hidden>
+        <svg viewBox="-8 -16 58 48" className="h-9 w-9 shrink-0 overflow-visible sm:h-12 sm:w-12" aria-hidden>
           <path d="M18 8.4 L11.2 20.2 L24.8 20.2 Z" fill="currentColor" />
           <g
             style={{
@@ -614,10 +614,10 @@ function FavorSortToggle({
         </svg>
       )}
       <span className="flex min-w-0 flex-col items-start text-left leading-tight">
-        <span className="[font-family:var(--mp-mono-font)] text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--mp-text)]">
+        <span className="[font-family:var(--mp-mono-font)] text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--mp-text)] sm:text-[9px] sm:tracking-[0.14em]">
           {current}
         </span>
-        <span className="[font-family:var(--mp-mono-font)] text-[8px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)]">
+        <span className="hidden [font-family:var(--mp-mono-font)] text-[8px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)] sm:block">
           tap → {next}
         </span>
       </span>
@@ -1589,6 +1589,7 @@ function CombinedMetricsChart({
 
 function Kpi({
   label,
+  shortLabel,
   final,
   kind,
   settle,
@@ -1597,6 +1598,8 @@ function Kpi({
   compareValue = null,
 }: {
   label: string;
+  /** Phone strip: Homes / Inventory / Days on Market. Desktop keeps `label`. */
+  shortLabel?: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
@@ -1607,6 +1610,8 @@ function Kpi({
 }) {
   const comparing = Boolean(compareCity && !isAllTownsCity(compareCity));
   const metricLabel = comparing && kind === "mos" ? "Months Inventory" : label;
+  const compactLabel =
+    comparing && kind === "mos" ? "Inventory" : (shortLabel ?? metricLabel);
   const value = comparing ? compareValue : final;
   const display =
     comparing
@@ -1626,10 +1631,13 @@ function Kpi({
 
   return (
     <span className="inline-flex min-w-0 items-baseline gap-1">
-      <span className="[font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)]">
+      <span className="[font-family:var(--mp-mono-font)] text-[8px] uppercase tracking-[0.1em] text-[var(--mp-muted-text)] md:hidden">
+        {compactLabel}
+      </span>
+      <span className="hidden [font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)] md:inline">
         {metricLabel}
       </span>
-      <span className="[font-family:var(--mp-heading-font)] text-base leading-none tabular-nums text-[var(--mp-text)] sm:text-lg">
+      <span className="[font-family:var(--mp-heading-font)] text-[15px] leading-none tabular-nums text-[var(--mp-text)] sm:text-lg">
         {text}
       </span>
       {comparing ? (
@@ -1663,6 +1671,9 @@ export default function WeeklyBriefContent({
   settle = MARKET_PULSE_SETTLE_IDLE,
   closedPending = false,
   categoryFilter,
+  filterCategories,
+  filterCategoryId,
+  onFilterCategoryChange,
   lookbackId = DEFAULT_MARKET_PULSE_LOOKBACK_ID,
   closedLookbackId,
   onLookbackIdChange,
@@ -1702,8 +1713,13 @@ export default function WeeklyBriefContent({
   closedPending?: boolean;
   /**
    * Property-type pills (All / Single Family / …). Own +/- disclosure — not a boxed panel.
+   * Desktop only; mobile uses the FILTER drawer.
    */
   categoryFilter?: ReactNode;
+  /** Property types for the mobile FILTER drawer. */
+  filterCategories?: readonly { id: string; label: string }[];
+  filterCategoryId?: string;
+  onFilterCategoryChange?: (id: string) => void;
   /** Closed-sales lookback window (Inventory / avg DOM stay current). */
   lookbackId?: MarketPulseLookbackId;
   /**
@@ -1971,7 +1987,7 @@ export default function WeeklyBriefContent({
   const deal = showDealOfTheWeek ? snapshot.dealOfTheWeek : null;
 
   const townMetricsControls = (
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 items-center gap-1 sm:gap-2">
       <TownMetricsLayoutToggle
         layout={chartLayout}
         onSelect={(next) => {
@@ -1984,12 +2000,12 @@ export default function WeeklyBriefContent({
        * context, not a destination, and asking for a modal to read two
        * sentences was more ceremony than the answer is worth.
        */}
-      <span className="group/why relative inline-flex">
+      <span className="group/why relative inline-flex shrink-0">
         <span
           tabIndex={0}
           role="note"
           aria-label="How the town metrics are laid out and ordered"
-          className="inline-flex h-10 w-10 cursor-help items-center justify-center rounded-full border border-[var(--mp-muted-text)]/40 [font-family:var(--mp-mono-font)] text-[15px] text-[var(--mp-muted-text)] transition-colors hover:border-[var(--mp-accent)] hover:text-[var(--mp-accent)]"
+          className="inline-flex h-8 w-8 cursor-help items-center justify-center rounded-full border border-[var(--mp-muted-text)]/40 [font-family:var(--mp-mono-font)] text-[13px] text-[var(--mp-muted-text)] transition-colors hover:border-[var(--mp-accent)] hover:text-[var(--mp-accent)] sm:h-10 sm:w-10 sm:text-[15px]"
         >
           ?
         </span>
@@ -2025,46 +2041,53 @@ export default function WeeklyBriefContent({
     ? `${comparingTown} vs All Towns`
     : "All Towns";
 
+  const tracingOptions = weekOverWeek
+    ? ([
+        { id: "off" as const, label: COMPARE_PERIOD_LABEL.off },
+        ...comparePeriods.map((id) => ({
+          id,
+          label: COMPARE_PERIOD_LABEL[id],
+        })),
+      ] as const)
+    : undefined;
+
   const chromeToolbar = (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {categoryFilter}
-        {onLookbackIdChange ? (
-          <MarketPulseSelectMenu
-            className="md:hidden"
-            title="Lookback"
-            value={lookbackId}
-            options={MARKET_PULSE_LOOKBACK_OPTIONS}
-            onChange={onLookbackIdChange}
-          />
-        ) : null}
+        <MarketPulseFilterMenu
+          className="md:hidden"
+          typeValue={filterCategoryId}
+          typeOptions={filterCategories}
+          onTypeChange={onFilterCategoryChange}
+          tracingValue={weekOverWeek ? comparePeriod : undefined}
+          tracingOptions={tracingOptions}
+          onTracingChange={
+            weekOverWeek
+              ? (id) =>
+                  setComparePeriod(id as "off" | MarketPulseComparePeriod)
+              : undefined
+          }
+          lookbackValue={onLookbackIdChange ? lookbackId : undefined}
+          lookbackOptions={
+            onLookbackIdChange ? MARKET_PULSE_LOOKBACK_OPTIONS : undefined
+          }
+          onLookbackChange={
+            onLookbackIdChange
+              ? (id) => onLookbackIdChange(id as MarketPulseLookbackId)
+              : undefined
+          }
+        />
+        <div className="hidden min-w-0 md:contents">{categoryFilter}</div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 sm:gap-2">
         {weekOverWeek ? (
-          <>
-            <MarketPulseSelectMenu
-              className="md:hidden"
-              title="Compare"
+          <div className="hidden md:block">
+            <ComparePeriodSwitch
+              periods={comparePeriods}
               value={comparePeriod}
-              options={
-                [
-                  { id: "off" as const, label: COMPARE_PERIOD_LABEL.off },
-                  ...comparePeriods.map((id) => ({
-                    id,
-                    label: COMPARE_PERIOD_LABEL[id],
-                  })),
-                ] as const
-              }
               onChange={setComparePeriod}
             />
-            <div className="hidden md:block">
-              <ComparePeriodSwitch
-                periods={comparePeriods}
-                value={comparePeriod}
-                onChange={setComparePeriod}
-              />
-            </div>
-          </>
+          </div>
         ) : null}
         <FavorSortToggle
           favorSort={favorSort}
@@ -2085,17 +2108,19 @@ export default function WeeklyBriefContent({
   );
 
   const kpiStrip = (
-    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
       <span
         key={kpiTownLabel}
         className="w-full animate-[fadeIn_0.22s_ease-out] [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent)] sm:w-auto"
       >
         {kpiTownLabel}
       </span>
+      <div className="flex min-w-0 flex-nowrap items-baseline gap-x-2 overflow-x-auto md:flex-wrap md:overflow-visible">
       <Kpi
         label={
           kind === "rental" ? "Active rentals" : MARKET_PULSE_ACTIVE_KPI_LABEL
         }
+        shortLabel={kind === "rental" ? "Rentals" : "Homes"}
         final={allTownsActive}
         kind="int"
         settle={settle}
@@ -2108,6 +2133,7 @@ export default function WeeklyBriefContent({
       </span>
       <Kpi
         label="Months Inventory"
+        shortLabel="Inventory"
         final={allTownsMos}
         kind="mos"
         settle={settle}
@@ -2120,6 +2146,7 @@ export default function WeeklyBriefContent({
       </span>
       <Kpi
         label="Avg DOM"
+        shortLabel="Days on Market"
         final={allTownsAvgDom}
         kind="dom"
         settle={settle}
@@ -2127,6 +2154,7 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.avgDaysOnMarket ?? null}
       />
+      </div>
     </div>
   );
 
