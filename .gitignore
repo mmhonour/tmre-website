@@ -42,6 +42,9 @@ data/leads.json
 # vendor reference PDFs parked in docs/ — licensed MLS material, keep local only
 docs/*.pdf
 
+# CLI resume cursor for npm run backfill:listing-photos (cwd of the photo-backfill clone)
+.listing-photo-backfill-progress.json
+
 # local dump / probe scratch (not for commit)
 .tmp-*
 .tmp

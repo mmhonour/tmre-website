@@ -21,6 +21,10 @@ import {
   listingPhotosNeedRefresh,
   resolveListingPhotoBuffer,
 } from '@/lib/listing-photo-store'
+import {
+  formatListingPhotoBackfillStamp,
+  formatListingPhotoSyncProgressLine,
+} from '@/lib/listing-photo-backfill-cli'
 import type { Listing } from '@/lib/rets'
 
 const DEFAULT_CONCURRENCY = 2
@@ -238,7 +242,7 @@ async function listAllModeCandidatesFromIndex(
       label && ids.length >= 200
         ? (done, total) => {
             console.info(
-              `[listing-photos-sync] ${label} · scanning gaps ${done}/${total} (index chunks)`,
+              `[listing-photos-sync] ${formatListingPhotoBackfillStamp()} ${label} · scanning gaps ${done}/${total} (index chunks)`,
             )
           }
         : undefined,
@@ -267,14 +271,16 @@ export async function listPhotoBackfillCandidates(
     async (listing, index) => {
       if (label && total >= 200 && (index + 1) % 250 === 0) {
         console.info(
-          `[listing-photos-sync] ${label} · scanning gaps ${index + 1}/${total}`,
+          `[listing-photos-sync] ${formatListingPhotoBackfillStamp()} ${label} · scanning gaps ${index + 1}/${total}`,
         )
       }
       return (await listingNeedsPhotoBackfill(listing, mode)) ? listing : null
     },
   )
   if (label && total >= 200) {
-    console.info(`[listing-photos-sync] ${label} · scanning gaps ${total}/${total}`)
+    console.info(
+      `[listing-photos-sync] ${formatListingPhotoBackfillStamp()} ${label} · scanning gaps ${total}/${total}`,
+    )
   }
   return flags.filter((listing): listing is Listing => listing != null)
 }
@@ -341,6 +347,9 @@ export type ListingPhotoBackfillResult = {
   needed: number
   listings: number
   photos: number
+  /** Listings claimed by a worker but not finished when shouldStop flipped. */
+  remaining: number
+  stopped: boolean
   /** Listings that still need bytes. Dry-run uses this for the sample log. */
   candidates: Listing[]
 }
@@ -358,6 +367,20 @@ export async function backfillListingPhotos(
     dryRun?: boolean
     /** Caller already ran listPhotoBackfillCandidates — do not scan again. */
     alreadyCandidates?: boolean
+    shouldStop?: () => boolean
+    onListingDone?: (info: {
+      listing: Listing
+      stored: number
+      position: number
+      listingsDone: number
+      photosStored: number
+    }) => void
+    /** Listings already finished in a prior run of this job (resume). */
+    progressOffset?: number
+    progressTotal?: number
+    photosAlreadyStored?: number
+    startedAtMs?: number
+    priorElapsedMs?: number
   } = {},
 ): Promise<ListingPhotoBackfillResult> {
   const mode = options.mode ?? 'hero'
@@ -371,20 +394,32 @@ export async function backfillListingPhotos(
   const needed = candidates.length
 
   if (options.dryRun || candidates.length === 0) {
-    return { scanned, needed, listings: 0, photos: 0, candidates }
+    return {
+      scanned,
+      needed,
+      listings: 0,
+      photos: 0,
+      remaining: needed,
+      stopped: Boolean(options.shouldStop?.()),
+      candidates,
+    }
   }
 
   const label = options.progressLabel
-  const total = candidates.length
+  const progressOffset = Math.max(0, options.progressOffset ?? 0)
+  const total = Math.max(options.progressTotal ?? 0, progressOffset + candidates.length)
+  const startedAtMs = options.startedAtMs ?? Date.now()
+  const priorElapsedMs = options.priorElapsedMs ?? 0
   let index = 0
   let listingsDone = 0
-  let photosStored = 0
+  let photosStored = options.photosAlreadyStored ?? 0
 
   async function worker(): Promise<void> {
     while (index < candidates.length) {
+      if (options.shouldStop?.()) return
       const current = candidates[index]!
       index += 1
-      const position = index
+      const position = progressOffset + index
       try {
         const stored =
           mode === 'hero'
@@ -395,13 +430,28 @@ export async function backfillListingPhotos(
         if (label) {
           const addr = current.address?.street?.trim() || listingRowId(current)
           console.info(
-            `[listing-photos-sync] ${label} ${position}/${total} · ${addr} — ` +
-              `${stored} new (${photosStored} total this town)`,
+            formatListingPhotoSyncProgressLine({
+              label,
+              position,
+              total,
+              address: addr,
+              stored,
+              photosStored,
+              startedAtMs,
+              priorElapsedMs,
+            }),
           )
         }
+        options.onListingDone?.({
+          listing: current,
+          stored,
+          position,
+          listingsDone,
+          photosStored,
+        })
       } catch (err) {
         console.warn(
-          `[listing-photos-sync] ${listingRowId(current)} failed`,
+          `[listing-photos-sync] ${formatListingPhotoBackfillStamp()} ${listingRowId(current)} failed`,
           err instanceof Error ? err.message : err,
         )
       }
@@ -409,11 +459,15 @@ export async function backfillListingPhotos(
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()))
+  const remaining = Math.max(0, candidates.length - index)
+  const stopped = Boolean(options.shouldStop?.()) && remaining > 0
   return {
     scanned,
     needed,
     listings: listingsDone,
-    photos: photosStored,
+    photos: photosStored - (options.photosAlreadyStored ?? 0),
+    remaining,
+    stopped,
     candidates,
   }
 }
