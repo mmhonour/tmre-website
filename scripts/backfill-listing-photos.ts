@@ -22,6 +22,11 @@
  * inventory does not exhaust the Neon pooler (`timeout exceeded when trying
  * to connect`). Hero mode still walks two listings at a time.
  *
+ * Stop / resume: Ctrl+C finishes the listings already in flight (concurrency,
+ * default 2), writes `.listing-photo-backfill-progress.json`, and exits.
+ * Re-run the same command to continue. `--fresh` ignores that file and starts
+ * the gap scan from scratch. Complete galleries are still skipped either way.
+ *
  * Usage:
  *   npm run backfill:listing-photos
  *   npm run backfill:listing-photos -- --dry-run
@@ -29,13 +34,33 @@
  *   npm run backfill:listing-photos -- --towns=Westport,Norwalk --limit=40
  *   npm run backfill:listing-photos -- --all --concurrency=2
  *   npm run backfill:listing-photos -- --status=Closed
+ *   npm run backfill:listing-photos -- --all --status=Closed --town=Westport --concurrency=2
+ *   npm run backfill:listing-photos -- --fresh
  *   npm run backfill:listing-photos -- --index-local
  *
  * If yesterday already filled R2 and only the index is on localhost:
  *   npm run backfill:photo-index -- --from-local
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { readListingsFromDb } from '../lib/db/listings-repo'
+import {
+  emptyListingPhotoBackfillCheckpoint,
+  filterListingsNotYetAttempted,
+  formatListingPhotoBackfillDuration,
+  formatListingPhotoBackfillStamp,
+  LISTING_PHOTO_BACKFILL_PROGRESS_FILE,
+  listingPhotoBackfillCacheId,
+  listingPhotoBackfillJobKey,
+  listingPhotoBackfillResumeCounts,
+  listingPhotoBackfillTownKey,
+  parseListingPhotoBackfillProgressFile,
+  recordListingPhotoBackfillListing,
+  removeListingPhotoBackfillJob,
+  upsertListingPhotoBackfillJob,
+  type ListingPhotoBackfillCheckpoint,
+  type ListingPhotoBackfillProgressFile,
+} from '../lib/listing-photo-backfill-cli'
 import {
   backfillListingPhotos,
   listPhotoBackfillCandidates,
@@ -94,6 +119,7 @@ function parseArgs() {
   const mode: ListingPhotoBackfillMode = all ? 'all' : 'hero'
   const dryRun = argValue('--dry-run') === 'true'
   const indexLocal = argValue('--index-local') === 'true'
+  const fresh = argValue('--fresh') === 'true'
   const concurrency = Math.max(1, Number(argValue('--concurrency') ?? '2') || 2)
   const limitRaw = argValue('--limit')
   const limit = limitRaw != null ? Math.max(0, Number(limitRaw) || 0) : 0
@@ -101,11 +127,35 @@ function parseArgs() {
     mode,
     dryRun,
     indexLocal,
+    fresh,
     concurrency,
     limit,
     towns: parseTowns(),
     statuses: parseStatuses(),
   }
+}
+
+function progressFilePath(): string {
+  return join(process.cwd(), LISTING_PHOTO_BACKFILL_PROGRESS_FILE)
+}
+
+function readProgressFile(): ListingPhotoBackfillProgressFile {
+  const path = progressFilePath()
+  if (!existsSync(path)) return { version: 1, jobs: {} }
+  try {
+    return parseListingPhotoBackfillProgressFile(readFileSync(path, 'utf8'))
+  } catch {
+    return { version: 1, jobs: {} }
+  }
+}
+
+function writeProgressFile(file: ListingPhotoBackfillProgressFile): void {
+  const path = progressFilePath()
+  if (Object.keys(file.jobs).length === 0) {
+    if (existsSync(path)) unlinkSync(path)
+    return
+  }
+  writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, 'utf8')
 }
 
 function resolvePhotoIndexTarget(indexLocal: boolean): void {
@@ -170,17 +220,46 @@ function listingLabel(listing: Listing): string {
   return `${addr} · ${id} · photos=${count}`
 }
 
+function stamp(): string {
+  return formatListingPhotoBackfillStamp()
+}
+
 async function main() {
-  const { mode, dryRun, indexLocal, concurrency, limit, towns, statuses } =
+  const { mode, dryRun, indexLocal, fresh, concurrency, limit, towns, statuses } =
     parseArgs()
+  const jobKey = listingPhotoBackfillJobKey({
+    mode,
+    towns,
+    statuses,
+    limit,
+  })
+  const runStartedAtMs = Date.now()
+
+  let stopRequested = false
+  const shouldStop = () => stopRequested
+  const onSignal = (signal: NodeJS.Signals) => {
+    if (stopRequested) {
+      console.warn(
+        `[backfill:listing-photos] ${stamp()} ${signal} again — exiting now`,
+      )
+      process.exit(130)
+    }
+    stopRequested = true
+    console.info(
+      `[backfill:listing-photos] ${stamp()} stopping after the listings in flight · Ctrl+C again exits immediately`,
+    )
+  }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
 
   console.info(
-    `[backfill:listing-photos] mode=${mode}` +
+    `[backfill:listing-photos] ${stamp()} mode=${mode}` +
       `${dryRun ? ' (dry-run)' : ''}` +
       ` · towns=${towns.join(',')}` +
       ` · status=${statuses.join(',')}` +
       ` · concurrency=${concurrency}` +
-      (limit > 0 ? ` · limit=${limit}` : ''),
+      (limit > 0 ? ` · limit=${limit}` : '') +
+      (fresh ? ' · fresh' : ''),
   )
 
   resolvePhotoIndexTarget(indexLocal)
@@ -191,29 +270,112 @@ async function main() {
     )
   }
 
+  let progressFile = readProgressFile()
+  if (fresh && !dryRun) {
+    progressFile = removeListingPhotoBackfillJob(progressFile, jobKey)
+    writeProgressFile(progressFile)
+  }
+
+  let checkpoint: ListingPhotoBackfillCheckpoint =
+    !dryRun && !fresh && progressFile.jobs[jobKey]
+      ? progressFile.jobs[jobKey]!
+      : emptyListingPhotoBackfillCheckpoint({
+          key: jobKey,
+          mode,
+          towns,
+          statuses,
+          limit,
+          nowMs: runStartedAtMs,
+        })
+  const priorElapsedMs = checkpoint.elapsedMs
+  const doneIds = new Set(checkpoint.doneIds)
+
+  if (dryRun) {
+    console.info(
+      `[backfill:listing-photos] ${stamp()} dry-run · no photos pulled · no resume file`,
+    )
+  } else if (checkpoint.listingsDone > 0) {
+    console.info(
+      `[backfill:listing-photos] ${stamp()} resume · ${checkpoint.listingsDone} listings already pulled · ` +
+        `${checkpoint.photosStored} photos · ${formatListingPhotoBackfillDuration(priorElapsedMs)} elapsed · ` +
+        `Ctrl+C stops after the listings in flight`,
+    )
+  } else {
+    console.info(
+      `[backfill:listing-photos] ${stamp()} started · Ctrl+C stops after the listings in flight · ` +
+        `re-run the same command to continue`,
+    )
+  }
+
+  const persistCheckpoint = () => {
+    if (dryRun) return
+    const nowMs = Date.now()
+    checkpoint = {
+      ...checkpoint,
+      doneIds: [...doneIds],
+      updatedAtMs: nowMs,
+      elapsedMs: priorElapsedMs + Math.max(0, nowMs - runStartedAtMs),
+    }
+    progressFile = upsertListingPhotoBackfillJob(progressFile, checkpoint)
+    writeProgressFile(progressFile)
+  }
+
   let scanned = 0
   let needed = 0
   let listingsDone = 0
   let photosStored = 0
-  let remaining = limit > 0 ? limit : Infinity
+  let remaining = limit > 0 ? Math.max(0, limit - checkpoint.listingsDone) : Infinity
+  let stopped = false
   const drySamples: string[] = []
 
-  for (const town of towns) {
+  townLoop: for (const town of towns) {
     if (remaining <= 0) break
+    if (shouldStop()) {
+      stopped = true
+      break
+    }
     for (const status of statuses) {
       if (remaining <= 0) break
+      if (shouldStop()) {
+        stopped = true
+        break townLoop
+      }
+      const townStatus = listingPhotoBackfillTownKey(town, status)
       const rows = await readListingsFromDb(town, status)
+      if (shouldStop()) {
+        stopped = true
+        break townLoop
+      }
       const withPhotos = rows.filter((row) => (row.photoCount ?? 0) > 0)
       const gaps = await listPhotoBackfillCandidates(withPhotos, mode, {
-        progressLabel: `${town} ${status}`,
+        progressLabel: townStatus,
       })
-      const batch =
-        remaining < Infinity ? gaps.slice(0, remaining) : gaps
-      const skipped = gaps.length - batch.length
+      if (shouldStop()) {
+        stopped = true
+        break townLoop
+      }
+      const work = filterListingsNotYetAttempted(gaps, doneIds)
+      const skippedAttempted = gaps.length - work.length
+      const resume = listingPhotoBackfillResumeCounts({
+        neededFromScan: work.length,
+        skippedAttempted,
+        saved: checkpoint.townsByLabel[townStatus],
+      })
+      const batch = remaining < Infinity ? work.slice(0, remaining) : work
+      const skipped = work.length - batch.length
 
       scanned += withPhotos.length
       needed += batch.length
       if (limit > 0) remaining -= batch.length
+
+      if (!dryRun && (resume.offset > 0 || skippedAttempted > 0) && batch.length > 0) {
+        console.info(
+          `[backfill:listing-photos] ${stamp()} ${townStatus} · continuing ${resume.offset}/${resume.total}` +
+            (skippedAttempted > 0
+              ? ` · skipped ${skippedAttempted} already attempted this job`
+              : ''),
+        )
+      }
 
       let townPulled = 0
       let townPhotos = 0
@@ -226,20 +388,52 @@ async function main() {
         const pulled = await backfillListingPhotos(batch, {
           mode,
           concurrency,
-          progressLabel: `${town} ${status}`,
+          progressLabel: townStatus,
           alreadyCandidates: true,
+          shouldStop,
+          progressOffset: resume.offset,
+          progressTotal: resume.total,
+          photosAlreadyStored: resume.photosAlreadyStored,
+          startedAtMs: runStartedAtMs,
+          priorElapsedMs,
+          onListingDone: ({ listing, stored }) => {
+            try {
+              const cacheId = listingPhotoBackfillCacheId(listing)
+              if (cacheId) doneIds.add(cacheId)
+              checkpoint = recordListingPhotoBackfillListing(checkpoint, {
+                townStatus,
+                cacheId,
+                stored,
+                needed: resume.total,
+                nowMs: Date.now(),
+                runStartedAtMs,
+                priorElapsedMs,
+              })
+              persistCheckpoint()
+            } catch (err) {
+              console.warn(
+                `[backfill:listing-photos] ${stamp()} could not write resume file`,
+                err instanceof Error ? err.message : err,
+              )
+            }
+          },
         })
         listingsDone += pulled.listings
         photosStored += pulled.photos
         townPulled = pulled.listings
         townPhotos = pulled.photos
+        if (pulled.stopped) {
+          stopped = true
+        }
       }
 
       console.info(
-        `[backfill:listing-photos] ${town} ${status} — scanned=${withPhotos.length} missing=${batch.length}` +
+        `[backfill:listing-photos] ${stamp()} ${town} ${status} — scanned=${withPhotos.length} missing=${batch.length}` +
           (skipped > 0 ? ` (${skipped} more in town, over --limit)` : '') +
           (dryRun ? '' : ` pulled=${townPulled} photos=${townPhotos}`),
       )
+
+      if (stopped) break townLoop
     }
   }
 
@@ -251,9 +445,27 @@ async function main() {
     }
   }
 
+  const elapsedMs = priorElapsedMs + Math.max(0, Date.now() - runStartedAtMs)
+  if (stopped) {
+    persistCheckpoint()
+    console.info(
+      `[backfill:listing-photos] ${stamp()} stopped — scanned=${scanned} missing=${needed}` +
+        ` listings=${listingsDone} photos=${photosStored}` +
+        ` · ${formatListingPhotoBackfillDuration(elapsedMs)} elapsed` +
+        ` · re-run the same command to continue`,
+    )
+    return
+  }
+
+  if (!dryRun) {
+    progressFile = removeListingPhotoBackfillJob(progressFile, jobKey)
+    writeProgressFile(progressFile)
+  }
+
   console.info(
-    `[backfill:listing-photos] done — scanned=${scanned} missing=${needed}` +
-      (dryRun ? '' : ` listings=${listingsDone} photos=${photosStored}`),
+    `[backfill:listing-photos] ${stamp()} done — scanned=${scanned} missing=${needed}` +
+      (dryRun ? '' : ` listings=${listingsDone} photos=${photosStored}`) +
+      ` · ${formatListingPhotoBackfillDuration(elapsedMs)} elapsed`,
   )
 }
 
