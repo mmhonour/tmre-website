@@ -23,12 +23,13 @@ export default function MarketPulseDesktopPreviewPage() {
         </h1>
         <p className="mb-3 text-sm leading-relaxed text-slate">
           Full Market Pulse with every enhancement on: property type (ALL /
-          Single Family / Condo / Rentals / Commercial), labeled yin-yang
-          (Seller Friendly · tap → Buyer Friendly), lookback left of All
-          Towns, unstacked heat first with all seven towns named left of the
-          bars, Off / Week / Month / Year cream callouts, one-line floating
-          KPIs. Fixture towns — not live cache. Toggle Stacked the same way
-          /market-pulse does.
+          Single Family / Condo / Rentals / Commercial), then Off / Week Over
+          Week / Month Over Month / Year Over Year on one line under the types.
+          Labeled yin-yang (Seller Friendly · tap → Buyer Friendly), lookback
+          left of All Towns, unstacked heat first with all seven towns named
+          left of the bars, cream callouts, one-line floating KPIs. Fixture
+          towns — not live cache. Toggle Stacked the same way /market-pulse
+          does.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           Phone:{" "}

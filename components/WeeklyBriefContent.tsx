@@ -141,7 +141,7 @@ function ComparePeriodSwitch({
   const options: Array<"off" | MarketPulseComparePeriod> = ["off", ...periods];
   return (
     <div
-      className="flex min-w-0 flex-wrap gap-1"
+      className="flex flex-nowrap gap-1 whitespace-nowrap"
       role="radiogroup"
       aria-label="Compare to a prior period"
     >
@@ -2072,8 +2072,8 @@ export default function WeeklyBriefContent({
     : undefined;
 
   const chromeToolbar = (
-    <div className="flex min-w-0 max-w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className="flex min-w-0 max-w-full flex-wrap items-start justify-between gap-x-2 gap-y-1">
+      <div className="flex min-w-0 flex-col items-start gap-1">
         <MarketPulseFilterMenu
           className="md:hidden"
           typeValue={filterCategoryId}
@@ -2097,9 +2097,7 @@ export default function WeeklyBriefContent({
               : undefined
           }
         />
-        <div className="hidden min-w-0 md:contents">{categoryFilter}</div>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 sm:gap-2">
+        <div className="hidden min-w-0 md:block">{categoryFilter}</div>
         {weekOverWeek ? (
           <div className="hidden md:block">
             <ComparePeriodSwitch
@@ -2109,6 +2107,8 @@ export default function WeeklyBriefContent({
             />
           </div>
         ) : null}
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
         <FavorSortToggle
           favorSort={favorSort}
           mode={comparingTown ? "scale" : "yin-yang"}

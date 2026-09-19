@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "market-pulse-desktop",
     title: "Market Pulse — desktop",
     summary:
-      "Full Market Pulse with every enhancement on: property type, labeled yin-yang, lookback left, seven unstacked towns, Week Over Week, one-line floating KPIs.",
+      "Full Market Pulse with every enhancement on: property type, Off / Week Over Week / Month Over Month / Year Over Year on one line under the types, labeled yin-yang, lookback left, seven unstacked towns, Week Over Week, one-line floating KPIs.",
   },
   {
     slug: "market-pulse-mobile",
