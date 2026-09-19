@@ -265,8 +265,11 @@ function ClosedLookbackSlider({
   );
 
   if (!fill) return body;
+  // Direct flex child of lookbackBesideBlock. Height stays `auto` so
+  // `self-stretch` can match the card; `h-full` made the ticks collapse
+  // onto one line. Hidden on the phone — FILTER owns lookback there.
   return (
-    <div className="relative h-full w-[4.75rem] shrink-0 self-stretch sm:w-20">
+    <div className="relative hidden w-[4.75rem] shrink-0 self-stretch sm:w-20 md:block">
       {body}
     </div>
   );
@@ -283,7 +286,7 @@ function lookbackBesideBlock(rail: ReactNode, block: ReactNode) {
   );
 }
 
-/** Desktop-only lookback. `md:contents` keeps the slider a flex child so fill + stretch still size the rail; `md:block` collapsed it and stacked every tick on one line. */
+/** Desktop-only lookback rail. The slider itself is `hidden md:block` so it stays a stretching flex child. */
 function desktopLookbackRail(
   lookbackId: MarketPulseLookbackId,
   onChange: ((id: MarketPulseLookbackId) => void) | undefined,
@@ -291,14 +294,12 @@ function desktopLookbackRail(
 ) {
   if (!onChange) return null;
   return (
-    <div className="hidden md:contents">
-      <ClosedLookbackSlider
-        lookbackId={lookbackId}
-        onChange={onChange}
-        pending={pending}
-        fill
-      />
-    </div>
+    <ClosedLookbackSlider
+      lookbackId={lookbackId}
+      onChange={onChange}
+      pending={pending}
+      fill
+    />
   );
 }
 
