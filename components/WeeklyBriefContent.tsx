@@ -266,7 +266,7 @@ function ClosedLookbackSlider({
 
   if (!fill) return body;
   return (
-    <div className="relative w-[4.75rem] shrink-0 self-stretch sm:w-20">
+    <div className="relative h-full w-[4.75rem] shrink-0 self-stretch sm:w-20">
       {body}
     </div>
   );
@@ -279,6 +279,25 @@ function lookbackBesideBlock(rail: ReactNode, block: ReactNode) {
     <div className="flex items-stretch gap-2 sm:gap-3">
       {rail}
       <div className="min-w-0 flex-1">{block}</div>
+    </div>
+  );
+}
+
+/** Desktop-only lookback. `md:contents` keeps the slider a flex child so fill + stretch still size the rail; `md:block` collapsed it and stacked every tick on one line. */
+function desktopLookbackRail(
+  lookbackId: MarketPulseLookbackId,
+  onChange: ((id: MarketPulseLookbackId) => void) | undefined,
+  pending: boolean,
+) {
+  if (!onChange) return null;
+  return (
+    <div className="hidden md:contents">
+      <ClosedLookbackSlider
+        lookbackId={lookbackId}
+        onChange={onChange}
+        pending={pending}
+        fill
+      />
     </div>
   );
 }
@@ -2244,18 +2263,11 @@ export default function WeeklyBriefContent({
             kind={kind}
             includeTax={includeTax}
             taxYearLabel={taxYearLabel}
-            lookbackRail={
-              onLookbackIdChange ? (
-                <div className="hidden h-full md:block">
-                  <ClosedLookbackSlider
-                    lookbackId={lookbackId}
-                    onChange={onLookbackIdChange}
-                    pending={closedPending}
-                    fill
-                  />
-                </div>
-              ) : null
-            }
+            lookbackRail={desktopLookbackRail(
+              lookbackId,
+              onLookbackIdChange,
+              closedPending,
+            )}
             compare={
               chartLayout === DEFAULT_MARKET_PULSE_CHART_LAYOUT
                 ? selectedCompare
@@ -2276,16 +2288,7 @@ export default function WeeklyBriefContent({
           </p>
         ) : null}
         {lookbackBesideBlock(
-          onLookbackIdChange ? (
-            <div className="hidden h-full md:block">
-              <ClosedLookbackSlider
-                lookbackId={lookbackId}
-                onChange={onLookbackIdChange}
-                pending={closedPending}
-                fill
-              />
-            </div>
-          ) : null,
+          desktopLookbackRail(lookbackId, onLookbackIdChange, closedPending),
           <UnstackedHeatPanel
             rows={combinedRows}
             scale={unstackedScale}

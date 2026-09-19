@@ -40,22 +40,29 @@ export function barAsidePlacement(
  * Cream WoW / MoM / YoY chip. Centered on a short fill it hangs off both
  * sides; if the track still has a chip-width of empty to the right, sit just
  * past the fill instead.
+ *
+ * Share of the track is a stand-in for chip pixels (9px tabular-nums + pad)
+ * on a phone-width bar. Longer figures (`−0.4 mo`) need more than `−6`.
  */
-export const BAR_FILL_DELTA_SPAN_PCT = 18
+export const BAR_FILL_DELTA_SPAN_PCT = 16
 
 export type BarFillDeltaPlacement = 'center' | 'right'
+
+export function barFillDeltaChipPct(deltaText: string): number {
+  const n = deltaText.trim().length
+  return Math.min(40, Math.max(BAR_FILL_DELTA_SPAN_PCT, 8 + n * 3))
+}
 
 export function barFillDeltaPlacement(
   leftPct: number,
   widthPct: number,
+  deltaText = '',
 ): BarFillDeltaPlacement {
   const fillWidth = Math.min(Math.max(widthPct, 0), 100)
   const fillRight = Math.min(Math.max(leftPct + widthPct, 0), 100)
   const roomRight = 100 - fillRight
-  if (
-    fillWidth < BAR_FILL_DELTA_SPAN_PCT &&
-    roomRight >= BAR_FILL_DELTA_SPAN_PCT
-  ) {
+  const chipPct = barFillDeltaChipPct(deltaText)
+  if (fillWidth < chipPct && roomRight >= chipPct) {
     return 'right'
   }
   return 'center'

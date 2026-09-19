@@ -126,7 +126,9 @@ export function PanelBarRow({
   const fillRight = Math.min(100, Math.max(0, leftPct + widthPct));
   const fillMid = leftPct + widthPct / 2;
   const delta = fillDelta?.trim() ? fillDelta.trim() : null;
-  const deltaPlacement = delta ? barFillDeltaPlacement(leftPct, widthPct) : null;
+  const deltaPlacement = delta
+    ? barFillDeltaPlacement(leftPct, widthPct, delta)
+    : null;
   return (
     <div
       className={`group relative grid grid-cols-[8.75rem_1fr_auto] items-center gap-2 ${
