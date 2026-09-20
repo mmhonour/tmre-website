@@ -52,9 +52,8 @@ function readBrowserPosition(): Promise<GeolocationPosition> {
 }
 
 /**
- * Opt-in only: pill → Use precise location.
- * Do not call on page load — Chrome will demand OS location settings, which
- * Google Search does not need (it uses IP + account, not this API).
+ * Opt-in only: admin pill → Use precise location.
+ * Hidden for visitors. Do not call on page load.
  */
 export async function refineVisitorLocationFromWifi(
   force = false,

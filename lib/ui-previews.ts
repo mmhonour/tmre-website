@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "header-zip-wifi",
     title: "Header ZIP from Wi-Fi",
     summary:
-      "ISP IP often reports unique 06858. Google can still name 06880 with Chrome location off. TMRE does not auto-prompt; type the ZIP or tap Use precise location.",
+      "ISP IP often reports unique 06858. Visitors type a ZIP. Use precise location stays on for admin (site password) only.",
   },
   {
     slug: "admin-visitors-zip",

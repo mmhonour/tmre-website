@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useVisitorLocation } from '@/hooks/useVisitorLocation'
+import { useSiteUnlocked } from '@/components/SiteUnlockProvider'
 import {
   clearVisitorPostalOverride,
   dismissZipPillGlow,
@@ -25,11 +26,16 @@ const EMPTY_LOCATION = {
 
 export default function VisitorLocationBadge({
   className = '',
+  showPreciseLocation: showPreciseLocationProp,
 }: {
   className?: string
+  /** Preview override. Live header uses the site-password unlock. */
+  showPreciseLocation?: boolean
 }) {
   const { location: resolved, refresh } = useVisitorLocation()
   const location = resolved ?? EMPTY_LOCATION
+  const siteUnlocked = useSiteUnlocked()
+  const showPreciseLocation = showPreciseLocationProp ?? siteUnlocked
   const [glow, setGlow] = useState(false)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
@@ -241,10 +247,14 @@ export default function VisitorLocationBadge({
                 </p>
                 <p className="mt-0.5 text-xs text-charcoal/60 leading-snug">
                   {location.cleared
-                    ? 'ZIP is cleared. Set one, use precise location, or reset.'
+                    ? showPreciseLocation
+                      ? 'ZIP is cleared. Set one, use precise location, or reset.'
+                      : 'ZIP is cleared. Set one or reset.'
                     : location.confirmed
                       ? 'Change, clear, or reset the ZIP used for towns and filters.'
-                      : 'IP ZIP is the cable block, not your house. Type 06880, or Use precise location if Chrome location is on.'}
+                      : showPreciseLocation
+                        ? 'IP ZIP is the cable block, not your house. Type 06880, or Use precise location if Chrome location is on.'
+                        : 'Type your ZIP (for example 06880). The number we detect from your internet connection can be the cable block, not the house.'}
                 </p>
               </div>
               <form
@@ -296,16 +306,18 @@ export default function VisitorLocationBadge({
                     Cancel
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void usePreciseLocation()}
-                    disabled={busy}
-                    className="flex-1 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-navy hover:bg-gold/20 disabled:opacity-40"
-                  >
-                    {busy ? 'Locating…' : 'Use precise location'}
-                  </button>
-                </div>
+                {showPreciseLocation ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void usePreciseLocation()}
+                      disabled={busy}
+                      className="flex-1 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-navy hover:bg-gold/20 disabled:opacity-40"
+                    >
+                      {busy ? 'Locating…' : 'Use precise location'}
+                    </button>
+                  </div>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -319,7 +331,7 @@ export default function VisitorLocationBadge({
                     type="button"
                     onClick={() => void resetZip()}
                     disabled={busy}
-                    title="Use the ZIP detected from your location"
+                    title="Go back to the ZIP from your internet connection"
                     className="flex-1 rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/70 hover:text-navy disabled:opacity-40"
                   >
                     {busy ? 'Reset…' : 'Reset'}
