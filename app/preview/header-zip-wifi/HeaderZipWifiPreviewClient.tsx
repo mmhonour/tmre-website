@@ -32,11 +32,12 @@ export default function HeaderZipWifiPreviewClient() {
 
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Google on a laptop uses Wi-Fi. TMRE used to use only the public IP,
-          which often lands on a unique commercial ZIP such as 06858 (Norwalk /
-          Setan Industries) instead of Saugatuck / Westport 06880. When the IP
-          ZIP is not a TMRE town ZIP, the header now asks the browser for
-          location (one Allow prompt) and maps the point onto our ZCTA rings.
+          Google Search can name Saugatuck / 06880 with Chrome location
+          turned off — it uses Google’s own IP and account graph, not the
+          device location switch. TMRE’s free IP lookup still lands on unique
+          06858. We do not auto-ask Chrome to turn location on. Type the ZIP,
+          or tap Use precise location only if you want the browser location
+          API (that is what triggers Chrome’s setting prompt).
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           06858 needs refine:{' '}
@@ -68,8 +69,8 @@ export default function HeaderZipWifiPreviewClient() {
           </button>
         </div>
         <p className="mt-8 text-sm text-slate">
-          Live header pill: Allow location when the inferred ZIP is not a TMRE
-          town, or tap the pill → Use precise location.
+          Live header pill does not prompt. Tap it → type a ZIP, or Use
+          precise location (only then Chrome may ask to turn location on).
         </p>
       </div>
     </div>

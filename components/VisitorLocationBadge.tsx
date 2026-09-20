@@ -173,7 +173,6 @@ export default function VisitorLocationBadge({
     try {
       clearGeoDenied()
       await resetVisitorPostalToInferred()
-      await refineVisitorLocationFromWifi()
       closePopover()
     } catch {
       setBusy(false)
@@ -245,7 +244,7 @@ export default function VisitorLocationBadge({
                     ? 'ZIP is cleared. Set one, use precise location, or reset.'
                     : location.confirmed
                       ? 'Change, clear, or reset the ZIP used for towns and filters.'
-                      : 'IP ZIP can be the ISP office, not your house. Confirm, type one, or use precise location (Wi-Fi).'}
+                      : 'IP ZIP is the cable block, not your house. Type 06880, or Use precise location if Chrome location is on.'}
                 </p>
               </div>
               <form

@@ -52,8 +52,9 @@ function readBrowserPosition(): Promise<GeolocationPosition> {
 }
 
 /**
- * Same channel Google uses on a laptop: OS Wi-Fi location, then our ZCTA.
- * `force` is the pill button. Auto-run only when the IP ZIP is not a TMRE town.
+ * Opt-in only: pill → Use precise location.
+ * Do not call on page load — Chrome will demand OS location settings, which
+ * Google Search does not need (it uses IP + account, not this API).
  */
 export async function refineVisitorLocationFromWifi(
   force = false,

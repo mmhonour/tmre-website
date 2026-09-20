@@ -10,7 +10,7 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
     slug: "header-zip-wifi",
     title: "Header ZIP from Wi-Fi",
     summary:
-      "ISP IP often reports unique 06858. After Allow, Wi-Fi coordinates map to the TMRE ZCTA (Westport 06880). Fixture IP vs Allow states.",
+      "ISP IP often reports unique 06858. Google can still name 06880 with Chrome location off. TMRE does not auto-prompt; type the ZIP or tap Use precise location.",
   },
   {
     slug: "admin-visitors-zip",
