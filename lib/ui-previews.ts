@@ -8,9 +8,9 @@ export type UiPreviewEntry = {
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
     slug: "header-zip-wifi",
-    title: "Header ZIP from Wi-Fi",
+    title: "Header ZIP pill (admin)",
     summary:
-      "ISP IP often reports unique 06858. Visitors type a ZIP. Use precise location stays on for admin (site password) only.",
+      "ZIP pill is hidden for visitors. Admin (site password) still sees it, including Use precise location.",
   },
   {
     slug: "admin-visitors-zip",

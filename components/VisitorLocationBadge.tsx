@@ -27,15 +27,34 @@ const EMPTY_LOCATION = {
 export default function VisitorLocationBadge({
   className = '',
   showPreciseLocation: showPreciseLocationProp,
+  visible,
 }: {
   className?: string
   /** Preview override. Live header uses the site-password unlock. */
   showPreciseLocation?: boolean
+  /** Preview override. Live header hides the pill unless admin. */
+  visible?: boolean
+}) {
+  const siteUnlocked = useSiteUnlocked()
+  const showPill = visible ?? siteUnlocked
+  if (!showPill) return null
+  return (
+    <VisitorLocationBadgeInner
+      className={className}
+      showPreciseLocation={showPreciseLocationProp ?? true}
+    />
+  )
+}
+
+function VisitorLocationBadgeInner({
+  className = '',
+  showPreciseLocation,
+}: {
+  className?: string
+  showPreciseLocation: boolean
 }) {
   const { location: resolved, refresh } = useVisitorLocation()
   const location = resolved ?? EMPTY_LOCATION
-  const siteUnlocked = useSiteUnlocked()
-  const showPreciseLocation = showPreciseLocationProp ?? siteUnlocked
   const [glow, setGlow] = useState(false)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')

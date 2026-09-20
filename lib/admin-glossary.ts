@@ -1255,7 +1255,7 @@ export const ADMIN_GLOSSARY: GlossaryEntry[] = [
     term: 'VisitorLocationBadge',
     category: 'ui-tabs',
     definition:
-      'Zip-code pill in the main header (left of the email icon). Rotating gold border glow until first click; click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP (no personalization, no IP fallback), Reset (reload ZIP from /api/visitor-town), or Cancel the dialog. Use precise location is admin-only (site-password cookie); visitors do not see it. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared. Saved ZIP is posted on the visitor beacon to visitors.zip so Admin → Visitors can group traffic by ZIP.',
+      'Zip-code pill in the main header (left of the email icon). Hidden for visitors for now; site-password admin still sees it. Rotating gold border glow until first click; click opens confirm/edit ZIP popover — Save a ZIP, Clear ZIP, Reset (reload ZIP from /api/visitor-town), Use precise location, or Cancel. Override in tmre_visitor_postal_override; cleared flag in tmre_visitor_postal_cleared. Saved ZIP is posted on the visitor beacon to visitors.zip so Admin → Visitors can group traffic by ZIP.',
   },
 
   // —— Finance ——

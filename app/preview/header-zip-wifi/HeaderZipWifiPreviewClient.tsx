@@ -21,22 +21,24 @@ export default function HeaderZipWifiPreviewClient() {
         </p>
         <div className="flex items-center justify-between gap-4">
           <h1 className="font-serif text-3xl text-white">
-            Wi-Fi ZIP vs ISP ZIP
+            Header ZIP pill
           </h1>
-          <VisitorLocationBadge showPreciseLocation={admin} />
+          <VisitorLocationBadge
+            visible={admin}
+            showPreciseLocation={admin}
+          />
         </div>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/75">
-          What changed: Use precise location is hidden for visitors. Admin
-          (site password) still has the button. Fixture ZIP {shown.postal} ·{' '}
-          {shown.town}, CT — no listing database.
+          What changed: the ZIP pill is hidden for visitors. Admin (site
+          password) still sees it. Fixture {shown.postal} · {shown.town}, CT
+          — no listing database.
         </p>
       </div>
 
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <p className="mb-4 text-sm leading-relaxed text-slate">
-          Visitors type a ZIP. The live pill does not ask Chrome to turn
-          location on. Open the pill in the header above — visitor has no
-          Use precise location button; admin does.
+          Toggle Visitor / Admin. The live pill in this header appears only
+          in Admin. Use precise location stays on that admin dialog.
         </p>
         <p className="mb-6 font-mono text-[11px] text-slate">
           06858 needs refine:{' '}
@@ -53,7 +55,7 @@ export default function HeaderZipWifiPreviewClient() {
                 : 'border border-charcoal/15 text-navy'
             }`}
           >
-            Visitor — no precise location
+            Visitor — no ZIP pill
           </button>
           <button
             type="button"
@@ -64,10 +66,17 @@ export default function HeaderZipWifiPreviewClient() {
                 : 'border border-charcoal/15 text-navy'
             }`}
           >
-            Admin — precise location on
+            Admin — ZIP pill on
           </button>
         </div>
-        <ZipDialogFixture admin={admin} postal={shown.postal} />
+        {admin ? (
+          <ZipDialogFixture postal={shown.postal} />
+        ) : (
+          <p className="text-sm text-slate">
+            Visitor header has no ZIP pill. Town personalization can still
+            use the internet-connection ZIP in the background.
+          </p>
+        )}
         <div className="mt-8 flex flex-wrap gap-3">
           <button
             type="button"
@@ -97,23 +106,16 @@ export default function HeaderZipWifiPreviewClient() {
   )
 }
 
-function ZipDialogFixture({
-  admin,
-  postal,
-}: {
-  admin: boolean
-  postal: string
-}) {
+function ZipDialogFixture({ postal }: { postal: string }) {
   return (
     <div className="w-[260px] rounded-xl border border-charcoal/10 bg-cream shadow-lg shadow-charcoal/15">
       <div className="border-b border-charcoal/[0.08] px-3.5 py-2.5">
         <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-gold">
-          Your ZIP · {admin ? 'admin' : 'visitor'} fixture
+          Your ZIP · admin fixture
         </p>
         <p className="mt-0.5 text-xs text-charcoal/60 leading-snug">
-          {admin
-            ? 'IP ZIP is the cable block, not your house. Type 06880, or Use precise location if Chrome location is on.'
-            : 'Type your ZIP (for example 06880). The number we detect from your internet connection can be the cable block, not the house.'}
+          IP ZIP is the cable block, not your house. Type 06880, or Use
+          precise location if Chrome location is on.
         </p>
       </div>
       <div className="space-y-3 px-3.5 py-3">
@@ -128,15 +130,9 @@ function ZipDialogFixture({
             Cancel
           </span>
         </div>
-        {admin ? (
-          <span className="block rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-center font-mono text-[10px] tracking-[0.14em] uppercase text-navy">
-            Use precise location
-          </span>
-        ) : (
-          <p className="text-[11px] text-charcoal/45">
-            Use precise location is not shown.
-          </p>
-        )}
+        <span className="block rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-center font-mono text-[10px] tracking-[0.14em] uppercase text-navy">
+          Use precise location
+        </span>
         <div className="flex items-center gap-2">
           <span className="flex-1 rounded-lg border border-charcoal/15 px-3 py-2 text-center font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/70">
             Clear ZIP

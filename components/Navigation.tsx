@@ -546,6 +546,7 @@ export default function Navigation({
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const brokerage = brokerageName.trim() || DEFAULT_BROKERAGE_NAME;
+  const zipUnlocked = useSiteUnlocked();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -607,7 +608,7 @@ export default function Navigation({
           </div>
 
           <div className="hidden md:flex items-start gap-2 shrink-0">
-            <VisitorLocationBadge />
+            {zipUnlocked ? <VisitorLocationBadge /> : null}
             <ContactButton className={iconCtaButtonClass} />
             <PhoneCallWithLogout phone={phone} />
             {SHOW_BHHS_LOGO ? (
@@ -617,7 +618,7 @@ export default function Navigation({
 
           <div className="md:hidden flex flex-col items-end gap-0.5 shrink-0">
             <div className="flex items-center gap-2">
-              <VisitorLocationBadge />
+              {zipUnlocked ? <VisitorLocationBadge /> : null}
               <button
                 type="button"
                 onClick={() => setMobileOpen((v) => !v)}

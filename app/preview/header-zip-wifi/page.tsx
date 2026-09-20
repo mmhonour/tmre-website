@@ -1,7 +1,7 @@
 import HeaderZipWifiPreviewClient from "./HeaderZipWifiPreviewClient";
 
 export const metadata = {
-  title: "Preview — Header ZIP from Wi-Fi — TMRE",
+  title: "Preview — Header ZIP pill — TMRE",
   robots: { index: false, follow: false },
 };
 
