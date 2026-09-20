@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "header-zip-wifi",
+    title: "Header ZIP from Wi-Fi",
+    summary:
+      "ISP IP often reports unique 06858. After Allow, Wi-Fi coordinates map to the TMRE ZCTA (Westport 06880). Fixture IP vs Allow states.",
+  },
+  {
     slug: "admin-visitors-zip",
     title: "Admin visitors — ZIP + you",
     summary:

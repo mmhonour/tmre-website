@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   fetchVisitorLocation,
+  peekVisitorLocation,
   refreshVisitorLocation,
   VISITOR_LOCATION_CHANGED_EVENT,
   type VisitorLocation,
 } from '@/lib/visitor-location'
+import { refineVisitorLocationFromWifi } from '@/lib/visitor-wifi-location'
 
 export function useVisitorLocation(): {
   location: VisitorLocation | null
@@ -17,18 +19,21 @@ export function useVisitorLocation(): {
   const refresh = useCallback(async () => {
     const loc = await refreshVisitorLocation()
     setLocation(loc)
-    return loc
+    const refined = await refineVisitorLocationFromWifi()
+    if (refined) setLocation(refined)
+    return refined ?? loc
   }, [])
 
   useEffect(() => {
     let cancelled = false
-    void fetchVisitorLocation().then((loc) => {
+    void fetchVisitorLocation().then(async (loc) => {
       if (!cancelled) setLocation(loc)
+      const refined = await refineVisitorLocationFromWifi()
+      if (!cancelled && refined) setLocation(refined)
     })
     const onChange = () => {
-      void refreshVisitorLocation().then((loc) => {
-        if (!cancelled) setLocation(loc)
-      })
+      const loc = peekVisitorLocation()
+      if (!cancelled && loc) setLocation(loc)
     }
     window.addEventListener(VISITOR_LOCATION_CHANGED_EVENT, onChange)
     return () => {

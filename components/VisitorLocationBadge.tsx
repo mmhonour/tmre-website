@@ -11,6 +11,10 @@ import {
   setVisitorPostalOverride,
   townFromPostal,
 } from '@/lib/visitor-location'
+import {
+  clearGeoDenied,
+  refineVisitorLocationFromWifi,
+} from '@/lib/visitor-wifi-location'
 
 const EMPTY_LOCATION = {
   town: null as string | null,
@@ -58,7 +62,7 @@ export default function VisitorLocationBadge({
       const el = btnRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const popH = 280
+      const popH = 340
       const popW = 260
       const placeAbove = rect.top >= popH + 12
       const left = Math.min(
@@ -112,7 +116,7 @@ export default function VisitorLocationBadge({
     const el = btnRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const popH = 280
+    const popH = 340
     const popW = 260
     const placeAbove = rect.top >= popH + 12
     const left = Math.min(
@@ -167,12 +171,31 @@ export default function VisitorLocationBadge({
     setBusy(true)
     setError(null)
     try {
+      clearGeoDenied()
       await resetVisitorPostalToInferred()
-      await refresh()
+      await refineVisitorLocationFromWifi()
       closePopover()
     } catch {
       setBusy(false)
       setError('Could not detect a ZIP — enter one or clear it')
+    }
+  }
+
+  async function usePreciseLocation() {
+    setBusy(true)
+    setError(null)
+    clearGeoDenied()
+    try {
+      const next = await refineVisitorLocationFromWifi(true)
+      if (!next?.postal) {
+        setBusy(false)
+        setError('Location was blocked or unavailable — enter a ZIP')
+        return
+      }
+      closePopover()
+    } catch {
+      setBusy(false)
+      setError('Location was blocked or unavailable — enter a ZIP')
     }
   }
 
@@ -219,10 +242,10 @@ export default function VisitorLocationBadge({
                 </p>
                 <p className="mt-0.5 text-xs text-charcoal/60 leading-snug">
                   {location.cleared
-                    ? 'ZIP is cleared. Set one, or reset to the detected location.'
+                    ? 'ZIP is cleared. Set one, use precise location, or reset.'
                     : location.confirmed
                       ? 'Change, clear, or reset the ZIP used for towns and filters.'
-                      : 'Confirm, change, clear, or reset the ZIP we inferred.'}
+                      : 'IP ZIP can be the ISP office, not your house. Confirm, type one, or use precise location (Wi-Fi).'}
                 </p>
               </div>
               <form
@@ -272,6 +295,16 @@ export default function VisitorLocationBadge({
                     className="rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/55 hover:text-navy"
                   >
                     Cancel
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void usePreciseLocation()}
+                    disabled={busy}
+                    className="flex-1 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-navy hover:bg-gold/20 disabled:opacity-40"
+                  >
+                    {busy ? 'Locating…' : 'Use precise location'}
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
