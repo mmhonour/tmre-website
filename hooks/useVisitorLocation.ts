@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   fetchVisitorLocation,
+  peekVisitorLocation,
   refreshVisitorLocation,
   VISITOR_LOCATION_CHANGED_EVENT,
   type VisitorLocation,
@@ -26,9 +27,8 @@ export function useVisitorLocation(): {
       if (!cancelled) setLocation(loc)
     })
     const onChange = () => {
-      void refreshVisitorLocation().then((loc) => {
-        if (!cancelled) setLocation(loc)
-      })
+      const loc = peekVisitorLocation()
+      if (!cancelled && loc) setLocation(loc)
     }
     window.addEventListener(VISITOR_LOCATION_CHANGED_EVENT, onChange)
     return () => {

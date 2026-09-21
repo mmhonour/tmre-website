@@ -174,6 +174,36 @@ export function clearVisitorLocationCache(): void {
   cached = undefined
 }
 
+export function peekVisitorLocation(): VisitorLocation | undefined {
+  return cached
+}
+
+/** IP or Wi-Fi inference — not a typed/confirmed override. */
+export function applyInferredVisitorLocation(
+  postal: string,
+  town?: string | null,
+): VisitorLocation {
+  const nextPostal = normalizePostal(postal)
+  if (!nextPostal) {
+    return (
+      cached ?? {
+        postal: null,
+        town: null,
+        confirmed: false,
+        cleared: false,
+      }
+    )
+  }
+  cached = {
+    postal: nextPostal,
+    town: (town && town.trim()) || townFromPostal(nextPostal),
+    confirmed: false,
+    cleared: false,
+  }
+  notifyVisitorLocationChanged()
+  return cached
+}
+
 /** Drop memory cache and re-resolve (honors postal override). */
 export async function refreshVisitorLocation(): Promise<VisitorLocation> {
   clearVisitorLocationCache()

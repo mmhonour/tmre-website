@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useVisitorLocation } from '@/hooks/useVisitorLocation'
+import { useSiteUnlocked } from '@/components/SiteUnlockProvider'
 import {
   clearVisitorPostalOverride,
   dismissZipPillGlow,
@@ -11,6 +12,10 @@ import {
   setVisitorPostalOverride,
   townFromPostal,
 } from '@/lib/visitor-location'
+import {
+  clearGeoDenied,
+  refineVisitorLocationFromWifi,
+} from '@/lib/visitor-wifi-location'
 
 const EMPTY_LOCATION = {
   town: null as string | null,
@@ -21,8 +26,32 @@ const EMPTY_LOCATION = {
 
 export default function VisitorLocationBadge({
   className = '',
+  showPreciseLocation: showPreciseLocationProp,
+  visible,
 }: {
   className?: string
+  /** Preview override. Live header uses the site-password unlock. */
+  showPreciseLocation?: boolean
+  /** Preview override. Live header hides the pill unless admin. */
+  visible?: boolean
+}) {
+  const siteUnlocked = useSiteUnlocked()
+  const showPill = visible ?? siteUnlocked
+  if (!showPill) return null
+  return (
+    <VisitorLocationBadgeInner
+      className={className}
+      showPreciseLocation={showPreciseLocationProp ?? true}
+    />
+  )
+}
+
+function VisitorLocationBadgeInner({
+  className = '',
+  showPreciseLocation,
+}: {
+  className?: string
+  showPreciseLocation: boolean
 }) {
   const { location: resolved, refresh } = useVisitorLocation()
   const location = resolved ?? EMPTY_LOCATION
@@ -58,7 +87,7 @@ export default function VisitorLocationBadge({
       const el = btnRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const popH = 280
+      const popH = 340
       const popW = 260
       const placeAbove = rect.top >= popH + 12
       const left = Math.min(
@@ -112,7 +141,7 @@ export default function VisitorLocationBadge({
     const el = btnRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const popH = 280
+    const popH = 340
     const popW = 260
     const placeAbove = rect.top >= popH + 12
     const left = Math.min(
@@ -167,12 +196,30 @@ export default function VisitorLocationBadge({
     setBusy(true)
     setError(null)
     try {
+      clearGeoDenied()
       await resetVisitorPostalToInferred()
-      await refresh()
       closePopover()
     } catch {
       setBusy(false)
       setError('Could not detect a ZIP — enter one or clear it')
+    }
+  }
+
+  async function usePreciseLocation() {
+    setBusy(true)
+    setError(null)
+    clearGeoDenied()
+    try {
+      const next = await refineVisitorLocationFromWifi(true)
+      if (!next?.postal) {
+        setBusy(false)
+        setError('Location was blocked or unavailable — enter a ZIP')
+        return
+      }
+      closePopover()
+    } catch {
+      setBusy(false)
+      setError('Location was blocked or unavailable — enter a ZIP')
     }
   }
 
@@ -219,10 +266,14 @@ export default function VisitorLocationBadge({
                 </p>
                 <p className="mt-0.5 text-xs text-charcoal/60 leading-snug">
                   {location.cleared
-                    ? 'ZIP is cleared. Set one, or reset to the detected location.'
+                    ? showPreciseLocation
+                      ? 'ZIP is cleared. Set one, use precise location, or reset.'
+                      : 'ZIP is cleared. Set one or reset.'
                     : location.confirmed
                       ? 'Change, clear, or reset the ZIP used for towns and filters.'
-                      : 'Confirm, change, clear, or reset the ZIP we inferred.'}
+                      : showPreciseLocation
+                        ? 'IP ZIP is the cable block, not your house. Type 06880, or Use precise location if Chrome location is on.'
+                        : 'Type your ZIP (for example 06880). The number we detect from your internet connection can be the cable block, not the house.'}
                 </p>
               </div>
               <form
@@ -274,6 +325,18 @@ export default function VisitorLocationBadge({
                     Cancel
                   </button>
                 </div>
+                {showPreciseLocation ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void usePreciseLocation()}
+                      disabled={busy}
+                      className="flex-1 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-navy hover:bg-gold/20 disabled:opacity-40"
+                    >
+                      {busy ? 'Locating…' : 'Use precise location'}
+                    </button>
+                  </div>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -287,7 +350,7 @@ export default function VisitorLocationBadge({
                     type="button"
                     onClick={() => void resetZip()}
                     disabled={busy}
-                    title="Use the ZIP detected from your location"
+                    title="Go back to the ZIP from your internet connection"
                     className="flex-1 rounded-lg border border-charcoal/15 px-3 py-2 font-mono text-[10px] tracking-[0.14em] uppercase text-charcoal/70 hover:text-navy disabled:opacity-40"
                   >
                     {busy ? 'Reset…' : 'Reset'}

@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "header-zip-wifi",
+    title: "Header ZIP pill (admin)",
+    summary:
+      "ZIP pill is hidden for visitors. Admin (site password) still sees it, including Use precise location.",
+  },
+  {
     slug: "admin-visitors-zip",
     title: "Admin visitors — ZIP + you",
     summary:
