@@ -20,9 +20,9 @@ export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   },
   {
     slug: "market-pulse-wow",
-    title: "Market Pulse week change",
+    title: "Unstacked Week Over Week",
     summary:
-      "Week Over Week numbers on the 6px gold as a cream rectangle, navy type. Fixture towns.",
+      "Full unstacked Market Pulse with Week Over Week cream callouts. Compact one-line KPIs on the floating strip. Fixture towns.",
   },
   {
     slug: "site-warm",

@@ -41,6 +41,7 @@ import {
   DEFAULT_MARKET_PULSE_FAVOR_SORT,
   TRANSACT_TO_LIST_LABEL,
   MARKET_PULSE_JOIN_BRIEF_ID,
+  MARKET_PULSE_ACTIVE_KPI_LABEL,
   marketPulseFavorSortLabel,
   type MarketPulseChartLayout,
 } from "@/lib/market-pulse-defaults";
@@ -89,10 +90,12 @@ import {
   EMPTY_MARKET_PULSE_COMPARES,
   MARKET_PULSE_COMPARE_SWITCH_LABEL,
   marketPulseCompareCaption,
+  marketPulseFillDeltaText,
   type MarketPulseComparePeriod,
   type MarketPulseCompareSet,
   type MarketPulseWowCompare,
 } from "@/lib/market-pulse-wow";
+import type { MarketPulseStackedMetricId } from "@/lib/market-pulse-stacked-metrics";
 
 type ChartLayout = MarketPulseChartLayout;
 type FavorSort = MarketPulseFavorSort;
@@ -122,7 +125,7 @@ function ComparePeriodSwitch({
     <div
       className="flex min-w-0 flex-wrap gap-1"
       role="radiogroup"
-      aria-label="Compare to last week"
+      aria-label="Compare to a prior period"
     >
       {options.map((id) => {
         const selected = value === id;
@@ -656,6 +659,8 @@ function BarChart<Row extends { city: string }>({
   inPanel = false,
   townsExpanded = true,
   onAllTownsToggle,
+  compare = null,
+  metricId,
 }: {
   title: string;
   rows: Row[];
@@ -690,6 +695,8 @@ function BarChart<Row extends { city: string }>({
   };
   townsExpanded?: boolean;
   onAllTownsToggle?: () => void;
+  compare?: MarketPulseWowCompare | null;
+  metricId?: MarketPulseStackedMetricId;
 }) {
   const [barScramble, setBarScramble] = useState<number[] | null>(null);
   /** null = use favorSortDir / snapshot order until the visitor picks a direction. */
@@ -880,6 +887,12 @@ function BarChart<Row extends { city: string }>({
                 asideNegative={asideNegative?.(row) ?? false}
                 widthTransition={widthTransition}
                 href={href}
+                fillDelta={
+                  metricId
+                    ? marketPulseFillDeltaText(compare, row.city, metricId)
+                    : null
+                }
+                fillDeltaInk="black"
                 tooltip={
                   <div
                     className="pointer-events-none absolute left-1/2 bottom-[calc(100%+6px)] z-20 w-max max-w-[min(280px,70vw)] -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -970,6 +983,7 @@ function UnstackedPricePanel({
   townsExpanded,
   onAllTownsToggle,
   townHref,
+  compare = null,
 }: {
   rows: CombinedTownRow[];
   scale: MarketPulseTownScale;
@@ -978,6 +992,7 @@ function UnstackedPricePanel({
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
   townHref?: (cityLabel: string) => string;
+  compare?: MarketPulseWowCompare | null;
 }) {
   const priceMetrics = PRICE_METRIC_IDS.map((id) =>
     metrics.find((m) => m.id === id),
@@ -1117,6 +1132,8 @@ function UnstackedPricePanel({
                       }
                       widthTransition={widthTransition}
                       dense
+                      fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
+                      fillDeltaInk="black"
                     />
                   );
                 })}
@@ -1140,6 +1157,7 @@ function UnstackedTaxPanel({
   townsExpanded,
   onAllTownsToggle,
   townHref,
+  compare = null,
 }: {
   rows: CombinedTownRow[];
   scale: MarketPulseTownScale;
@@ -1148,6 +1166,7 @@ function UnstackedTaxPanel({
   townsExpanded: boolean;
   onAllTownsToggle: () => void;
   townHref?: (cityLabel: string) => string;
+  compare?: MarketPulseWowCompare | null;
 }) {
   const taxMetrics = TAX_METRIC_IDS.map((id) =>
     metrics.find((m) => m.id === id),
@@ -1286,6 +1305,8 @@ function UnstackedTaxPanel({
                       }
                       widthTransition={widthTransition}
                       dense
+                      fillDelta={marketPulseFillDeltaText(compare, row.city, m.id)}
+                      fillDeltaInk="black"
                     />
                   );
                 })}
@@ -1454,7 +1475,6 @@ function CombinedMetricsChart({
 
 function Kpi({
   label,
-  townLabel,
   final,
   kind,
   settle,
@@ -1463,8 +1483,6 @@ function Kpi({
   compareValue = null,
 }: {
   label: string;
-  /** Town the figure belongs to, prefixed onto the label. */
-  townLabel: string;
   final: number | null | undefined;
   kind: "int" | "mos" | "dom";
   settle: MarketPulseSettleState;
@@ -1493,33 +1511,19 @@ function Kpi({
   const delta = comparing ? fmtSignedDelta(compareValue, final, kind) : null;
 
   return (
-    <div className="rounded-lg border border-[var(--mp-hairline,rgba(0,0,0,0.08))] bg-[var(--mp-page-bg)] px-3 py-4 text-center">
-      {/*
-       * The strip pins and follows you down the page, so the town it reports on
-       * changes under you. It gets its own line in the accent colour, keyed so
-       * it fades on each change — the one thing here that moves, marked as such.
-       */}
-      <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.1em] uppercase text-[var(--mp-muted-text)] mb-1.5 leading-tight">
-        <span
-          key={townLabel}
-          className="block animate-[fadeIn_0.22s_ease-out] text-[var(--mp-accent)]"
-        >
-          {townLabel}
-        </span>
+    <span className="inline-flex min-w-0 items-baseline gap-1">
+      <span className="[font-family:var(--mp-mono-font)] text-[9px] uppercase tracking-[0.12em] text-[var(--mp-muted-text)]">
         {metricLabel}
-      </p>
-      <p className="[font-family:var(--mp-heading-font)] text-2xl text-[var(--mp-text)] leading-tight tabular-nums">
+      </span>
+      <span className="[font-family:var(--mp-heading-font)] text-base leading-none tabular-nums text-[var(--mp-text)] sm:text-lg">
         {text}
-      </p>
+      </span>
       {comparing ? (
-        <p className="mt-1 [font-family:var(--mp-mono-font)] text-[10px] tabular-nums leading-tight text-[var(--mp-muted-text)]">
+        <span className="[font-family:var(--mp-mono-font)] text-[9px] tabular-nums text-[var(--mp-muted-text)]">
           {delta ?? "—"}
-          <span className="block tracking-[0.08em] uppercase">
-            vs All towns
-          </span>
-        </p>
+        </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -1551,6 +1555,8 @@ export default function WeeklyBriefContent({
   closedBarMax = 0,
   compares,
   weekOverWeek = false,
+  initialChartLayout = DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+  initialComparePeriod = "off",
 }: {
   snapshot: MarketDigestSnapshot;
   etDate: string;
@@ -1602,17 +1608,28 @@ export default function WeeklyBriefContent({
   weekOverWeek?: boolean;
   /**
    * Precomputed vs stored week slots. Ignored unless `weekOverWeek` is true.
-   * Page switch defaults Off; month and year stay off the switch.
+   * Page switch defaults Off; Month Over Month / Year Over Year appear when
+   * those slots exist (stacked and unstacked).
    */
   compares?: MarketPulseCompareSet;
+  /**
+   * Preview pages can open unstacked. Production /market-pulse stays stacked.
+   */
+  initialChartLayout?: MarketPulseChartLayout;
+  /**
+   * Preview pages can open Week Over Week. Production /market-pulse stays Off.
+   */
+  initialComparePeriod?: "off" | MarketPulseComparePeriod;
 }) {
   const [chartLayout, setChartLayout] = useState<ChartLayout>(
-    DEFAULT_MARKET_PULSE_CHART_LAYOUT,
+    initialChartLayout,
   );
   const [favorSort, setFavorSort] = useState<FavorSort>(
     DEFAULT_MARKET_PULSE_FAVOR_SORT,
   );
-  const [townsExpanded, setTownsExpanded] = useState(false);
+  const [townsExpanded, setTownsExpanded] = useState(
+    initialChartLayout === "unstacked",
+  );
   const kpiSentinelRef = useRef<HTMLDivElement>(null);
   const pinnedKpiBarRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
@@ -1622,7 +1639,7 @@ export default function WeeklyBriefContent({
   const [compareCity, setCompareCity] = useState<string | null>(null);
   const [comparePeriod, setComparePeriod] = useState<
     "off" | MarketPulseComparePeriod
-  >("off");
+  >(initialComparePeriod);
   const compareSet = weekOverWeek
     ? (compares ?? EMPTY_MARKET_PULSE_COMPARES)
     : EMPTY_MARKET_PULSE_COMPARES;
@@ -1890,7 +1907,7 @@ export default function WeeklyBriefContent({
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       {categoryFilter}
       <div className="flex items-center gap-2">
-        {weekOverWeek && chartLayout === "stacked" ? (
+        {weekOverWeek ? (
           <ComparePeriodSwitch
             periods={comparePeriods}
             value={comparePeriod}
@@ -1916,10 +1933,17 @@ export default function WeeklyBriefContent({
   );
 
   const kpiStrip = (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+      <span
+        key={kpiTownLabel}
+        className="w-full animate-[fadeIn_0.22s_ease-out] [font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent)] sm:w-auto"
+      >
+        {kpiTownLabel}
+      </span>
       <Kpi
-        label="Market active"
-        townLabel={kpiTownLabel}
+        label={
+          kind === "rental" ? "Active rentals" : MARKET_PULSE_ACTIVE_KPI_LABEL
+        }
         final={allTownsActive}
         kind="int"
         settle={settle}
@@ -1927,9 +1951,11 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.activeCount ?? null}
       />
+      <span aria-hidden className="text-[var(--mp-muted-text)]/50">
+        ·
+      </span>
       <Kpi
         label="Months Inventory"
-        townLabel={kpiTownLabel}
         final={allTownsMos}
         kind="mos"
         settle={settle}
@@ -1937,9 +1963,11 @@ export default function WeeklyBriefContent({
         compareCity={comparingTown ? compareCity : null}
         compareValue={compareRow?.monthsSupply ?? null}
       />
+      <span aria-hidden className="text-[var(--mp-muted-text)]/50">
+        ·
+      </span>
       <Kpi
-        label="Avg days on market"
-        townLabel={kpiTownLabel}
+        label="Avg DOM"
         final={allTownsAvgDom}
         kind="dom"
         settle={settle}
@@ -1994,8 +2022,8 @@ export default function WeeklyBriefContent({
             <div
               className={
                 kpisPinned
-                  ? "mx-auto max-w-2xl space-y-3 px-3 py-2 sm:px-8"
-                  : "space-y-4"
+                  ? "mx-auto max-w-2xl space-y-1.5 px-3 py-1.5 sm:px-8"
+                  : "space-y-3"
               }
             >
               {kpisPinned && comparingTown ? (
@@ -2003,6 +2031,7 @@ export default function WeeklyBriefContent({
                   vs All towns
                 </p>
               ) : null}
+              {kpisPinned ? null : (
               <p className="[font-family:var(--mp-mono-font)] text-[10px] tracking-[0.14em] uppercase">
                 <a
                   href={`#${MARKET_PULSE_JOIN_BRIEF_ID}`}
@@ -2011,6 +2040,7 @@ export default function WeeklyBriefContent({
                   Join the brief
                 </a>
               </p>
+              )}
               {kpiStrip}
               {chromeToolbar}
             </div>
@@ -2063,6 +2093,11 @@ export default function WeeklyBriefContent({
         ) : (
         <div className="space-y-6">
           <>
+        {selectedCompare && comparePeriod !== "off" ? (
+          <p className="[font-family:var(--mp-mono-font)] text-[10px] uppercase tracking-[0.14em] text-[var(--mp-accent,#C8A951)]">
+            {marketPulseCompareCaption(selectedCompare, comparePeriod)}
+          </p>
+        ) : null}
         {/* Lookback drives neither of these, so they take the full width. */}
         <BarChart
           title="Active inventory"
@@ -2077,6 +2112,8 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.activeCountCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "inventory")}
+          compare={selectedCompare}
+          metricId="inventory"
         />
 
         <BarChart
@@ -2092,6 +2129,8 @@ export default function WeeklyBriefContent({
           calcOf={(r) => r.avgDaysOnMarketCalc}
           sortable
           favorSortDir={unstackedFavorSortDir(favorSort, "avgDom")}
+          compare={selectedCompare}
+          metricId="avgDom"
         />
 
         {/*
@@ -2114,6 +2153,8 @@ export default function WeeklyBriefContent({
             calcOf={(r) => r.monthsSupplyCalc}
             sortable
             favorSortDir={unstackedFavorSortDir(favorSort, "monthsSupply")}
+            compare={selectedCompare}
+            metricId="monthsSupply"
           />
 
           <BarChart
@@ -2140,6 +2181,8 @@ export default function WeeklyBriefContent({
                 formatMetricValue("int", display),
               )
             }
+            compare={selectedCompare}
+            metricId="closed"
           />
           </div>
           {onLookbackIdChange ? (
@@ -2160,6 +2203,7 @@ export default function WeeklyBriefContent({
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           townHref={townHref}
+          compare={selectedCompare}
         />
 
         <UnstackedTaxPanel
@@ -2170,6 +2214,7 @@ export default function WeeklyBriefContent({
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           townHref={townHref}
+          compare={selectedCompare}
         />
 
         <BarChart
@@ -2198,6 +2243,8 @@ export default function WeeklyBriefContent({
           townsExpanded={townsExpanded}
           onAllTownsToggle={() => setTownsExpanded((open) => !open)}
           calcOf={(r) => r.saleToAskCalc}
+          compare={selectedCompare}
+          metricId="saleToAsk"
         />
           </>
         </div>
