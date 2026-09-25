@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "admin-hero-photo-count",
+    title: "Admin hero — listings + R2 photo index",
+    summary:
+      "Status hero shows listing count and how many photos listing_photo_index references in R2. Fixture numbers; buttons swap empty / refreshing.",
+  },
+  {
     slug: "header-zip-wifi",
     title: "Header ZIP pill (admin)",
     summary:
