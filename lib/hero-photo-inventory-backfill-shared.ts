@@ -21,7 +21,7 @@ export const HERO_PHOTOS_SKIP_MAX = 400
 /**
  * After wrap, three empty hops (15 listings) with zero fills means Media/RETS
  * is down. First pass never aborts for empties — skip persists so the next
- * hop (and the next 15-minute burst) walks past unfillable oldest leftovers.
+ * hop (and the next 15-minute burst) walks past unfillable leftovers.
  */
 export const HERO_SCAVENGE_EMPTY_ABORT_BATCHES = 3
 
