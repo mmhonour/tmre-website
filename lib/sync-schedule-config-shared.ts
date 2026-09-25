@@ -14,6 +14,11 @@ import {
   defaultJobBudgetMinutes,
   isSyncQueueRunnerJob,
 } from '@/lib/sync-queue-shared'
+import {
+  isHeroPhotoHarvestId,
+  parseHeroPhotoHarvest,
+  type HeroPhotoHarvestId,
+} from '@/lib/hero-photo-harvest-strategy'
 
 export const SYNC_SCHEDULE_FREQUENCIES = [
   { id: '15m', label: '15 mins', intervalMs: 15 * 60 * 1000 },
@@ -79,6 +84,11 @@ export type SyncJobScheduleConfig = {
    * leaving a Start with no End for someone to guess about later.
    */
   budgetMinutes?: number
+  /**
+   * R2 photo scavenger (`hero-photos`) only — which leftovers to pick first.
+   * Ignored on every other job. Defaults to newest listings.
+   */
+  harvest?: HeroPhotoHarvestId
 }
 
 /** Minutes this job gets before the runner kills its child. */
@@ -309,6 +319,7 @@ export function defaultSyncScheduleConfig(): SyncScheduleConfig {
       'hero-photos': {
         frequency: '15m',
         startTimeEt: '00:00',
+        harvest: 'newest',
       },
     },
   }
@@ -400,6 +411,11 @@ export function mergeSyncScheduleConfig(
           next.weekdayEt = row.weekdayEt
         } else if (frequency === 'weekly') {
           next.weekdayEt = resolveWeekdayEt(defaults.jobs[jobId])
+        }
+        if (jobId === 'hero-photos') {
+          next.harvest = isHeroPhotoHarvestId(row.harvest)
+            ? row.harvest
+            : parseHeroPhotoHarvest(defaults.jobs[jobId]?.harvest)
         }
         jobs[jobId] = next
       }

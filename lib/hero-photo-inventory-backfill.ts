@@ -4,7 +4,7 @@ import {
   countListingPhotoCoverage,
   listActiveMlsIdsMissingShowcaseHeroes,
   listingHasAllIndexedPhotoSlots,
-  listNewestMlsIdsMissingPhotos,
+  listMlsIdsMissingPhotos,
 } from '@/lib/db/listing-photo-index-repo'
 import { getSyncMeta, setSyncMetaDurable } from '@/lib/db/sync-meta-store'
 import {
@@ -28,6 +28,8 @@ import {
   type HeroInventoryCursor,
   type HeroPhotosJobStatus,
 } from '@/lib/hero-photo-inventory-backfill-shared'
+import { resolveHeroPhotoHarvest } from '@/lib/hero-photo-harvest-strategy'
+import { readSyncScheduleConfig } from '@/lib/sync-schedule-config'
 import { warmListingInventoryPhotos } from '@/lib/listing-photos-sync'
 import { listingPhotoCacheId } from '@/lib/listing-photo-store'
 import { readListingFromDbByMlsId } from '@/lib/listings-store'
@@ -190,10 +192,9 @@ async function warmIds(
 /**
  * Low-priority sync-queue job. Every listing still missing R2/index slots
  * (Active first, then Closed/Expired), every photo up to the slot cap. Short
- * bursts so Incremental / stats / CAMA stay ahead. Newest Active first so
- * live listings still have Media bytes; the laptop CLI covers old Closed.
- * Unfillable ids stay on the skip list so the next hop — and the next
- * 15-minute slot — picks up leftovers.
+ * bursts so Incremental / stats / CAMA stay ahead. Harvest order is Configure
+ * (`newest` default). Unfillable ids stay on the skip list so the next hop —
+ * and the next 15-minute slot — picks up leftovers.
  * When every listing with photos is indexed, the run is a count + status write
  * (idle). Operator CLI remains optional faster catch-up.
  */
@@ -227,6 +228,9 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   await persistProgress(started)
   console.info(`[hero-photos] ${started.message}`)
 
+  const harvest = resolveHeroPhotoHarvest(
+    readSyncScheduleConfig().jobs['hero-photos'],
+  )
   const deadline = Date.now() + HERO_SCAVENGE_BURST_MS
   let filledListings = 0
   let filledPhotos = 0
@@ -239,16 +243,18 @@ export async function runHeroPhotoScavengeJob(): Promise<HeroPhotosJobStatus> {
   let stalledEmpty = false
 
   while (Date.now() < deadline) {
-    let ids = await listNewestMlsIdsMissingPhotos(HERO_SCAVENGE_BATCH, {
+    let ids = await listMlsIdsMissingPhotos(HERO_SCAVENGE_BATCH, {
       excludeMlsIds: [...skipIds, ...triedThisBurst],
+      harvest,
     })
     if (ids.length === 0) {
       if (wrappedSkip || skipIds.length === 0) break
       const skipBeforeWrap = skipIds
       skipIds = []
       wrappedSkip = true
-      ids = await listNewestMlsIdsMissingPhotos(HERO_SCAVENGE_BATCH, {
+      ids = await listMlsIdsMissingPhotos(HERO_SCAVENGE_BATCH, {
         excludeMlsIds: [...triedThisBurst],
+        harvest,
       })
       if (ids.length === 0) {
         // Already tried the leftover set this burst — keep skip so the next

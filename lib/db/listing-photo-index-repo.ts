@@ -5,6 +5,10 @@ import {
   LISTING_PHOTO_SLOT_CAP,
   SHOWCASE_HERO_PHOTO_SLOTS,
 } from '@/lib/hero-photo-inventory-backfill-shared'
+import {
+  DEFAULT_HERO_PHOTO_HARVEST,
+  type HeroPhotoHarvestId,
+} from '@/lib/hero-photo-harvest-strategy'
 
 /** Match upsertListingPhotoIndexRow — ignore junk / empty objects. */
 const HERO_SLOT_INDEX_MIN_BYTES = 100
@@ -301,16 +305,48 @@ export async function countListingPhotoCoverage(): Promise<{
   }
 }
 
+function harvestOrderSql(harvest: HeroPhotoHarvestId): string {
+  switch (harvest) {
+    case 'oldest':
+      return `CASE WHEN l.status_bucket = 'Active' THEN 0 ELSE 1 END,
+               l.list_date ASC NULLS LAST,
+               l.mls_id ASC`
+    case 'closed-oldest':
+      return `CASE WHEN l.status_bucket = 'Active' THEN 1 ELSE 0 END,
+               l.list_date ASC NULLS LAST,
+               l.mls_id ASC`
+    case 'almost-full':
+      return `(
+          SELECT COUNT(*)::float / NULLIF(LEAST($1, l.photo_count), 0)
+            FROM listing_photo_index i
+           WHERE i.cache_id = COALESCE(NULLIF(BTRIM(l.listing_key), ''), l.mls_id)
+             AND i.photo_index >= 0
+             AND i.photo_index < LEAST($1, l.photo_count)
+             AND i.byte_length >= $2
+        ) DESC NULLS LAST,
+        CASE WHEN l.status_bucket = 'Active' THEN 0 ELSE 1 END,
+        l.list_date DESC NULLS LAST`
+    case 'newest':
+    default:
+      return `CASE WHEN l.status_bucket = 'Active' THEN 0 ELSE 1 END,
+               l.list_date DESC NULLS LAST,
+               l.mls_id DESC`
+  }
+}
+
 /**
- * Active leftovers first (live new listings), then Closed/Expired.
- * Newest `list_date` first so Media/RETS still has bytes and the laptop
- * Closed CLI is not competing for the same oldest galleries.
+ * Leftover photo slots, ordered by Configure harvest strategy.
+ * Default newest Active so live Media still has bytes.
  */
-export async function listNewestMlsIdsMissingPhotos(
+export async function listMlsIdsMissingPhotos(
   limit: number,
-  options?: { excludeMlsIds?: readonly string[] },
+  options?: {
+    excludeMlsIds?: readonly string[]
+    harvest?: HeroPhotoHarvestId
+  },
 ): Promise<string[]> {
   const cap = Math.max(1, Math.min(Math.round(limit), 40))
+  const harvest = options?.harvest ?? DEFAULT_HERO_PHOTO_HARVEST
   const exclude = [
     ...new Set(
       (options?.excludeMlsIds ?? [])
@@ -324,13 +360,19 @@ export async function listNewestMlsIdsMissingPhotos(
       WHERE COALESCE(l.photo_count, 0) > 0
         AND ${missingIndexedSlotsSql('l')}
         AND NOT (l.mls_id = ANY($4::text[]))
-      ORDER BY CASE WHEN l.status_bucket = 'Active' THEN 0 ELSE 1 END,
-               l.list_date DESC NULLS LAST,
-               l.mls_id DESC
+      ORDER BY ${harvestOrderSql(harvest)}
       LIMIT $3`,
     [LISTING_PHOTO_SLOT_CAP, HERO_SLOT_INDEX_MIN_BYTES, cap, exclude],
   )
   return rows.map((row) => row.mls_id).filter((id) => id.trim().length > 0)
+}
+
+/** @deprecated Use listMlsIdsMissingPhotos({ harvest: 'newest' }). */
+export async function listNewestMlsIdsMissingPhotos(
+  limit: number,
+  options?: { excludeMlsIds?: readonly string[] },
+): Promise<string[]> {
+  return listMlsIdsMissingPhotos(limit, { ...options, harvest: 'newest' })
 }
 
 /** True when every MLS slot (capped) is in the index — same bar as leftover count. */
