@@ -332,7 +332,7 @@ describe("heroMissingPctAfter", () => {
 });
 
 describe("shouldAbortHeroScavengeEmptyBurst", () => {
-  it("keeps walking the first pass so leftovers behind unfillable oldest still get R2", () => {
+  it("keeps walking the first pass so leftovers behind unfillable listings still get R2", () => {
     assert.equal(
       shouldAbortHeroScavengeEmptyBurst({
         consecutiveEmptyBatches: HERO_SCAVENGE_EMPTY_ABORT_BATCHES,

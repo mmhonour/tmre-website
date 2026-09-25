@@ -302,10 +302,11 @@ export async function countListingPhotoCoverage(): Promise<{
 }
 
 /**
- * Active leftovers first, then other statuses, oldest list_date first.
- * Live showcase still fills before Closed / Expired dump.
+ * Active leftovers first (live new listings), then Closed/Expired.
+ * Newest `list_date` first so Media/RETS still has bytes and the laptop
+ * Closed CLI is not competing for the same oldest galleries.
  */
-export async function listOldestMlsIdsMissingPhotos(
+export async function listNewestMlsIdsMissingPhotos(
   limit: number,
   options?: { excludeMlsIds?: readonly string[] },
 ): Promise<string[]> {
@@ -324,8 +325,8 @@ export async function listOldestMlsIdsMissingPhotos(
         AND ${missingIndexedSlotsSql('l')}
         AND NOT (l.mls_id = ANY($4::text[]))
       ORDER BY CASE WHEN l.status_bucket = 'Active' THEN 0 ELSE 1 END,
-               l.list_date ASC NULLS LAST,
-               l.mls_id ASC
+               l.list_date DESC NULLS LAST,
+               l.mls_id DESC
       LIMIT $3`,
     [LISTING_PHOTO_SLOT_CAP, HERO_SLOT_INDEX_MIN_BYTES, cap, exclude],
   )
