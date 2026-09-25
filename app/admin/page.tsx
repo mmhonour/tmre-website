@@ -145,6 +145,7 @@ import {
 } from "@/lib/visitors";
 import { getScheduledSyncPausedJobsFresh } from "@/lib/scheduled-sync-toggle";
 import AdminTabbedLayout from "@/components/admin/AdminTabbedLayout";
+import AdminHeroInventoryLines from "@/components/admin/AdminHeroInventoryLines";
 import SitePasswordGate from "@/components/SitePasswordGate";
 import {
   ADMIN_SYNC_HISTORY_DEFAULT_DAYS,
@@ -158,6 +159,7 @@ import {
   type InventorySnapshot,
 } from "@/lib/db/listings-repo";
 import { getSyncMeta } from "@/lib/db/sync-meta-store";
+import { countIndexedListingPhotos } from "@/lib/db/listing-photo-index-repo";
 import { isR2PhotoStoreConfigured } from "@/lib/r2-photo-store";
 import {
   describePhotosBlobPersistRuntime,
@@ -446,6 +448,11 @@ export default async function AdminPage() {
   const photosOnR2 = isR2PhotoStoreConfigured();
   const inventorySnapshot = await readInventorySnapshot();
   const listingsDbEmpty = stats.total === 0;
+  const indexedR2Photos = await safe<number | null>(
+    "listing-photo-index-count",
+    () => countIndexedListingPhotos(),
+    null,
+  );
   const startupProcess = describeStartupProcess();
   const statsCacheArchitecture = describeStatsCacheArchitecture();
   const pulseTaxQuorum = await safe(
@@ -1207,29 +1214,13 @@ export default async function AdminPage() {
             Database sync, web server schedules, product pages, and site controls — use
             the tabs below or jump links to navigate.
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs animate-fade-up-delay-2">
-            <span className="flex items-center gap-2">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  refresh.refreshing
-                    ? "bg-gold animate-pulse-dot"
-                    : listingsDbEmpty
-                      ? "bg-coral animate-pulse-dot"
-                      : "bg-sage"
-                }`}
-              />
-              <span
-                className={
-                  listingsDbEmpty ? "text-coral font-semibold" : "text-white/50"
-                }
-              >
-                {refresh.refreshing
-                  ? "Refresh in progress"
-                  : listingsDbEmpty
-                    ? "⚠ 0 listings — run Incremental"
-                    : `${stats.total.toLocaleString()} listings in Postgres`}
-              </span>
-            </span>
+          <div className="mt-4 font-mono text-xs animate-fade-up-delay-2">
+            <AdminHeroInventoryLines
+              listings={stats.total}
+              photos={indexedR2Photos}
+              refreshing={refresh.refreshing}
+              listingsEmpty={listingsDbEmpty}
+            />
           </div>
         </div>
       </section>

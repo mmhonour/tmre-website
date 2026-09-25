@@ -353,6 +353,17 @@ export async function listingHasAllIndexedPhotoSlots(
   return (row?.stored ?? 0) >= expected
 }
 
+/** Rows that count as real R2 photos — same byte floor as leftover coverage. */
+export async function countIndexedListingPhotos(): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count
+       FROM listing_photo_index
+      WHERE byte_length >= $1`,
+    [HERO_SLOT_INDEX_MIN_BYTES],
+  )
+  return row?.count ?? 0
+}
+
 export async function deleteListingPhotoIndexRows(cacheId: string): Promise<void> {
   const id = cacheId.trim()
   if (!id) return
