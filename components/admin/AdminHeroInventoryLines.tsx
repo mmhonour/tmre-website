@@ -23,26 +23,30 @@ export default function AdminHeroInventoryLines({
       ? '⚠ 0 listings — run Incremental'
       : formatAdminListingsInPostgresLine(listings)
   return (
-    <span className="flex items-start gap-2">
-      <span
-        className={`mt-1 w-1.5 h-1.5 shrink-0 rounded-full ${
-          refreshing
-            ? 'bg-gold animate-pulse-dot'
-            : listingsEmpty
-              ? 'bg-coral animate-pulse-dot'
-              : 'bg-sage'
-        }`}
-      />
-      <span
-        className={
-          listingsEmpty ? 'text-coral font-semibold' : 'text-white/50'
-        }
-      >
-        <span className="block">{listingsLine}</span>
-        {photos != null && !refreshing ? (
-          <span className="mt-1 block">{formatAdminIndexedR2PhotosLine(photos)}</span>
-        ) : null}
+    <span className="flex flex-col gap-1">
+      <span className="flex items-center gap-2">
+        <span
+          className={`w-1.5 h-1.5 shrink-0 rounded-full ${
+            refreshing
+              ? 'bg-gold animate-pulse-dot'
+              : listingsEmpty
+                ? 'bg-coral animate-pulse-dot'
+                : 'bg-sage'
+          }`}
+        />
+        <span
+          className={
+            listingsEmpty ? 'text-coral font-semibold' : 'text-white/50'
+          }
+        >
+          {listingsLine}
+        </span>
       </span>
+      {photos != null && !refreshing ? (
+        <span className="pl-3.5 text-white/50">
+          {formatAdminIndexedR2PhotosLine(photos)}
+        </span>
+      ) : null}
     </span>
   )
 }

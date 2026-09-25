@@ -1214,7 +1214,7 @@ export default async function AdminPage() {
             Database sync, web server schedules, product pages, and site controls — use
             the tabs below or jump links to navigate.
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs animate-fade-up-delay-2">
+          <div className="mt-4 font-mono text-xs animate-fade-up-delay-2">
             <AdminHeroInventoryLines
               listings={stats.total}
               photos={indexedR2Photos}
