@@ -1024,7 +1024,7 @@ export const ADMIN_NETLIFY_FUNCTIONS: AdminServerEntry[] = [
   {
     label: "sync-hero-photos",
     detail:
-      "Thin R2 photo scavenger trigger — enqueues hero-photos on the sync runner when Configure is due (default every 15m). Every listing missing R2 photo slots (Active first, then Closed/Expired, newest list_date first); skip persists so leftovers still get filled. Idle when 100% complete. No Netlify worker.",
+      "Thin R2 photo scavenger trigger — enqueues hero-photos on the sync runner when Configure is due (default every 15m). Harvest order is Configure (newest listings default). Skip persists so leftovers still get filled. Idle when 100% complete. No Netlify worker.",
     schedule: "Every 15 min (Configure-gated)",
   },
   {

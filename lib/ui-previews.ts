@@ -7,6 +7,12 @@ export type UiPreviewEntry = {
 /** Noindex UI sandboxes. Add a row when you add `/preview/<slug>`. */
 export const UI_PREVIEWS: readonly UiPreviewEntry[] = [
   {
+    slug: "admin-scavenger-harvest",
+    title: "Admin Configure — R2 scavenger harvest",
+    summary:
+      "Harvest strategy select on R2 photo scavenger: newest, oldest, oldest Closed, almost complete. Fixture — does not write Configure.",
+  },
+  {
     slug: "admin-hero-photo-count",
     title: "Admin hero — listings + R2 photo index",
     summary:

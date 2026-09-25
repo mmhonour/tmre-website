@@ -88,7 +88,7 @@ export const ADMIN_SYNC_ACTIONS = {
   'hero-photos': {
     label: 'R2 photo scavenger',
     description:
-      'Low-priority scavenge: every listing missing R2 photo slots (Active first, then Closed/Expired), newest list_date first, every index up to 60. Five listings per hop; hops walk on inside the ~9 minute burst, stop mid-listing when the clock runs out, and persist skip so unfillable listings do not block newer leftovers. Idle when coverage is 100% — still counts and reports % missing on the run board.',
+      'Low-priority scavenge: every listing missing R2 photo slots, every index up to 60. Harvest order is Configure (newest listings default; oldest, oldest Closed, or almost complete). Five listings per hop; hops walk on inside the ~9 minute burst, stop mid-listing when the clock runs out, and persist skip so unfillable listings do not block leftovers. Idle when coverage is 100% — still counts and reports % missing on the run board.',
   },
 } as const
 

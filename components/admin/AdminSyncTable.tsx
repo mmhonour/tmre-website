@@ -63,6 +63,11 @@ import {
   type SyncScheduleWeekdayEt,
 } from "@/lib/sync-schedule-config-shared";
 import {
+  HERO_PHOTO_HARVEST_STRATEGIES,
+  resolveHeroPhotoHarvest,
+  type HeroPhotoHarvestId,
+} from "@/lib/hero-photo-harvest-strategy";
+import {
   applyFrozenAdminSyncRowOrder,
   nextAdminSyncColumnSort,
   snapshotAdminSyncSortIds,
@@ -2203,6 +2208,7 @@ export default function AdminSyncTable({
         | { jobId: ScheduledSyncJobId; startTimeEt: string }
         | { jobId: ScheduledSyncJobId; weekdayEt: SyncScheduleWeekdayEt }
         | { jobId: ScheduledSyncJobId; budgetMinutes: number }
+        | { jobId: ScheduledSyncJobId; harvest: HeroPhotoHarvestId }
         | { moveJobId: ScheduledSyncJobId; direction: "up" | "down" },
     ) => {
       const savingKey =
@@ -3383,7 +3389,7 @@ export default function AdminSyncTable({
               {isConfigure ? (
                 <th
                   className={TH}
-                  title="Weekly send day + time of day in America/New_York (day applies when Frequency is Weekly)"
+                  title="Weekly send day + time of day in America/New_York (day applies when Frequency is Weekly). R2 photo scavenger also picks harvest strategy here."
                 >
                   Day / Start
                 </th>
@@ -4456,6 +4462,38 @@ export default function AdminSyncTable({
                     <td className={TD_EXPAND}>
                       {jobSchedule && pauseJob ? (
                         <div className="flex flex-col gap-1 min-w-0">
+                          {pauseJob === "hero-photos" ? (
+                            <select
+                              className="w-full max-w-[9.5rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] text-navy disabled:opacity-40"
+                              value={resolveHeroPhotoHarvest(jobSchedule)}
+                              disabled={scheduleSavingJob === pauseJob}
+                              aria-label={`Harvest strategy for ${row.label}`}
+                              title={
+                                HERO_PHOTO_HARVEST_STRATEGIES.find(
+                                  (opt) =>
+                                    opt.id ===
+                                    resolveHeroPhotoHarvest(jobSchedule),
+                                )?.hint
+                              }
+                              onChange={(e) =>
+                                void patchScheduleConfig({
+                                  jobId: pauseJob,
+                                  harvest: e.target
+                                    .value as HeroPhotoHarvestId,
+                                })
+                              }
+                            >
+                              {HERO_PHOTO_HARVEST_STRATEGIES.map((opt) => (
+                                <option
+                                  key={opt.id}
+                                  value={opt.id}
+                                  title={opt.hint}
+                                >
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
                           {jobSchedule.frequency === "weekly" ? (
                             <select
                               className="w-full max-w-[8.5rem] rounded border border-charcoal/15 bg-white px-1.5 py-1 font-mono text-[11px] text-navy disabled:opacity-40"

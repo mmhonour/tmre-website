@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthorizedRequest } from '@/lib/admin-auth'
 import { hydrateSyncMetaStore } from '@/lib/db/sync-meta-store'
 import { updateMarketDigestSchedule } from '@/lib/market-digest-schedule'
+import { isHeroPhotoHarvestId } from '@/lib/hero-photo-harvest-strategy'
 import { isScheduledSyncJobId } from '@/lib/scheduled-sync-jobs-shared'
 import {
   isSyncScheduleFrequencyId,
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
  *   { jobId, frequency }
  *   { jobId, startTimeEt: "HH:MM" }
  *   { jobId, weekdayEt: 0-6 }  // weekly send day (ET)
- *   { jobId, budgetMinutes: number }  // runner kills the child at this deadline
+ *   { jobId, harvest: newest|oldest|closed-oldest|almost-full }  // hero-photos only
  *   { order: ScheduledSyncJobId[] }
  *   { moveJobId, direction: "up" | "down" }
  */
@@ -87,6 +88,7 @@ export async function PATCH(req: NextRequest) {
     startTimeEt?: unknown
     weekdayEt?: unknown
     budgetMinutes?: unknown
+    harvest?: unknown
     order?: unknown
     moveJobId?: unknown
     direction?: unknown
@@ -125,12 +127,13 @@ export async function PATCH(req: NextRequest) {
     const hasStart = typeof raw.startTimeEt === 'string'
     const hasWeekday = raw.weekdayEt !== undefined && raw.weekdayEt !== null
     const hasBudget = raw.budgetMinutes !== undefined && raw.budgetMinutes !== null
+    const hasHarvest = raw.harvest !== undefined && raw.harvest !== null
 
-    if (!hasFrequency && !hasStart && !hasWeekday && !hasBudget) {
+    if (!hasFrequency && !hasStart && !hasWeekday && !hasBudget && !hasHarvest) {
       return NextResponse.json(
         {
           error:
-            'Provide frequency, startTimeEt, weekdayEt, and/or budgetMinutes',
+            'Provide frequency, startTimeEt, weekdayEt, budgetMinutes, and/or harvest',
         },
         { status: 400 },
       )
@@ -158,6 +161,21 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    if (hasHarvest) {
+      if (raw.jobId !== 'hero-photos') {
+        return NextResponse.json(
+          { error: 'harvest is only valid on hero-photos' },
+          { status: 400 },
+        )
+      }
+      if (!isHeroPhotoHarvestId(raw.harvest)) {
+        return NextResponse.json(
+          { error: 'harvest must be newest, oldest, closed-oldest, or almost-full' },
+          { status: 400 },
+        )
+      }
+    }
+
     // Market digest day/time lives on sync_schedule_config and also rewrites
     // the email subject day name when weekday changes.
     if (raw.jobId === 'market-digest' && (hasWeekday || hasStart)) {
@@ -178,6 +196,7 @@ export async function PATCH(req: NextRequest) {
     if (
       hasFrequency ||
       hasBudget ||
+      hasHarvest ||
       (raw.jobId !== 'market-digest' && (hasStart || hasWeekday))
     ) {
       const job = { ...config.jobs[raw.jobId] }
@@ -189,6 +208,9 @@ export async function PATCH(req: NextRequest) {
       }
       if (hasBudget) {
         job.budgetMinutes = clampJobBudgetMinutes(Number(raw.budgetMinutes))
+      }
+      if (hasHarvest && isHeroPhotoHarvestId(raw.harvest)) {
+        job.harvest = raw.harvest
       }
       if (raw.jobId !== 'market-digest') {
         if (hasStart) {
@@ -214,7 +236,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Provide { jobId, frequency|startTimeEt|weekdayEt|budgetMinutes }, { order }, or { moveJobId, direction }',
+          'Provide { jobId, frequency|startTimeEt|weekdayEt|budgetMinutes|harvest }, { order }, or { moveJobId, direction }',
       },
       { status: 400 },
     )
