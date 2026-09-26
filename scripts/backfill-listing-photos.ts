@@ -20,12 +20,15 @@
  * every photo slot at display quality (the post-town-sync warm).
  * `--all` gap scan reads listing_photo_index in 400-id SQL chunks so Closed
  * inventory does not exhaust the Neon pooler (`timeout exceeded when trying
- * to connect`). Hero mode still walks two listings at a time.
+ * to connect`). When listings=localhost and index=prod Neon, that scan reads
+ * the Neon sidecar so complete galleries already on prod are not re-queued.
+ * Hero mode still walks two listings at a time.
  *
  * Stop / resume: Ctrl+C finishes the listings already in flight (concurrency,
  * default 2), writes `.listing-photo-backfill-progress.json`, and exits.
  * Re-run the same command to continue. `--fresh` ignores that file and starts
  * the gap scan from scratch. Complete galleries are still skipped either way.
+ * An idle Neon index drop logs and reconnects; it must not exit the process.
  *
  * Usage:
  *   npm run backfill:listing-photos

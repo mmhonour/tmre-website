@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { query, queryOne } from '@/lib/db/postgres'
+import { listListingPhotoIndicesForCacheIdsWithQuery } from '@/lib/listing-photo-index-coverage'
 import {
   LISTING_PHOTO_SLOT_CAP,
   SHOWCASE_HERO_PHOTO_SLOTS,
@@ -69,13 +70,6 @@ export async function readListingPhotoIndexRow(
   }
 }
 
-function asIntArray(value: unknown): number[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((entry) => Number(entry))
-    .filter((entry) => Number.isFinite(entry))
-}
-
 /** Stored photo indices for one listing, ascending. */
 export async function listListingPhotoIndicesFromDb(
   cacheId: string,
@@ -92,43 +86,21 @@ export async function listListingPhotoIndicesFromDb(
   return rows.map((row) => row.photo_index)
 }
 
-/** One query per chunk — Closed gap-scan must not open a waiter per listing. */
-const PHOTO_INDEX_COVERAGE_CHUNK = 400
-
 /**
  * Indexed slots (`byte_length >= 100`) for many cache ids.
  * Listings with no index rows are omitted from the map (treat as empty).
+ * CLI `--all` gap scan uses listListingPhotoCoverageForBackfill so a localhost
+ * DATABASE_URL still reads the Neon sidecar.
  */
 export async function listListingPhotoIndicesForCacheIds(
   cacheIds: readonly string[],
   options?: { onChunk?: (done: number, total: number) => void },
 ): Promise<Map<string, number[]>> {
-  const ids = [
-    ...new Set(cacheIds.map((id) => id.trim()).filter((id) => id.length > 0)),
-  ]
-  const out = new Map<string, number[]>()
-  for (let offset = 0; offset < ids.length; offset += PHOTO_INDEX_COVERAGE_CHUNK) {
-    const chunk = ids.slice(offset, offset + PHOTO_INDEX_COVERAGE_CHUNK)
-    const rows = await query<{ cache_id: string; indices: unknown }>(
-      `SELECT cache_id,
-              COALESCE(
-                array_agg(photo_index ORDER BY photo_index)
-                  FILTER (WHERE byte_length >= 100),
-                ARRAY[]::int[]
-              ) AS indices
-         FROM listing_photo_index
-        WHERE cache_id = ANY($1::text[])
-        GROUP BY cache_id`,
-      [chunk],
-    )
-    for (const row of rows) {
-      const id = row.cache_id?.trim()
-      if (!id) continue
-      out.set(id, asIntArray(row.indices))
-    }
-    options?.onChunk?.(Math.min(offset + chunk.length, ids.length), ids.length)
-  }
-  return out
+  return listListingPhotoIndicesForCacheIdsWithQuery(
+    cacheIds,
+    (text, params) => query(text, params),
+    options?.onChunk,
+  )
 }
 
 export async function firstStoredListingPhotoIndexFromDb(
