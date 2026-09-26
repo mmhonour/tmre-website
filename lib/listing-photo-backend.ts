@@ -12,6 +12,7 @@ import {
   upsertListingPhotoIndexRow,
 } from '@/lib/db/listing-photo-index-repo'
 import {
+  isListingPhotoIndexConnectionError,
   listListingPhotoIndicesForCacheIdsWithQuery,
   listingPhotoGapScanUsesSidecarIndex,
 } from '@/lib/listing-photo-index-coverage'
@@ -58,8 +59,7 @@ export type PhotoMeta = {
   syncedAt: string
 }
 
-let indexSidecar: pg.Client | null = null
-let indexSidecarConnect: Promise<pg.Client> | null = null
+let indexSidecarPool: pg.Pool | null = null
 
 function listingPhotoIndexSidecarUrl(): string {
   return process.env.LISTING_PHOTO_INDEX_URL?.trim() || ''
@@ -72,22 +72,51 @@ function listingPhotoIndexSidecarIsDistinct(): boolean {
   })
 }
 
-async function getListingPhotoIndexSidecar(): Promise<pg.Client | null> {
+/**
+ * Pool, not a long-lived Client. An idle Neon sidecar Client emits
+ * `Connection terminated unexpectedly` with no listener and kills the CLI
+ * (Ridgefield Closed 96/3579 at 13:43 ET while printing 0 new).
+ */
+function getListingPhotoIndexSidecarPool(): pg.Pool | null {
   if (!listingPhotoIndexSidecarIsDistinct()) return null
-  if (indexSidecar) return indexSidecar
-  if (!indexSidecarConnect) {
-    const url = listingPhotoIndexSidecarUrl()
-    indexSidecarConnect = (async () => {
-      const client = new pg.Client({
-        connectionString: url,
-        ssl: shouldUseSslForDbUrl(url) ? { rejectUnauthorized: false } : false,
-      })
-      await client.connect()
-      indexSidecar = client
-      return client
-    })()
+  if (indexSidecarPool) return indexSidecarPool
+  const url = listingPhotoIndexSidecarUrl()
+  if (!url) return null
+  const pool = new pg.Pool({
+    connectionString: url,
+    ssl: shouldUseSslForDbUrl(url) ? { rejectUnauthorized: false } : false,
+    max: 1,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  })
+  pool.on('error', (err) => {
+    console.warn(
+      '[listing-photo-backend] index sidecar idle connection dropped — will reconnect',
+      err instanceof Error ? err.message : err,
+    )
+  })
+  indexSidecarPool = pool
+  return pool
+}
+
+async function queryListingPhotoIndexSidecar(
+  text: string,
+  params?: unknown[],
+): Promise<pg.QueryResult> {
+  const pool = getListingPhotoIndexSidecarPool()
+  if (!pool) {
+    throw new Error('listing photo index sidecar is not configured')
   }
-  return indexSidecarConnect
+  try {
+    return await pool.query(text, params)
+  } catch (err) {
+    if (!isListingPhotoIndexConnectionError(err)) throw err
+    console.warn(
+      '[listing-photo-backend] index sidecar query dropped — retrying once',
+      err instanceof Error ? err.message : err,
+    )
+    return await pool.query(text, params)
+  }
 }
 
 /**
@@ -99,12 +128,15 @@ export async function listListingPhotoCoverageForBackfill(
   cacheIds: readonly string[],
   options?: { onChunk?: (done: number, total: number) => void },
 ): Promise<Map<string, number[]>> {
-  const client = await getListingPhotoIndexSidecar()
-  if (!client) return listListingPhotoIndicesForCacheIds(cacheIds, options)
+  const pool = getListingPhotoIndexSidecarPool()
+  if (!pool) return listListingPhotoIndicesForCacheIds(cacheIds, options)
   return listListingPhotoIndicesForCacheIdsWithQuery(
     cacheIds,
     async (text, params) => {
-      const result = await client.query(text, params as unknown[])
+      const result = await queryListingPhotoIndexSidecar(
+        text,
+        params as unknown[],
+      )
       return result.rows
     },
     options?.onChunk,
@@ -117,10 +149,9 @@ async function upsertListingPhotoIndexSidecar(
   contentType: string,
   byteLength: number,
 ): Promise<void> {
-  const client = await getListingPhotoIndexSidecar()
-  if (!client) return
+  if (!getListingPhotoIndexSidecarPool()) return
   if (!cacheId || photoIndex < 0 || byteLength < 100) return
-  await client.query(
+  await queryListingPhotoIndexSidecar(
     `INSERT INTO listing_photo_index (cache_id, photo_index, content_type, byte_length, synced_at)
      VALUES ($1, $2, $3, $4, now())
      ON CONFLICT (cache_id, photo_index) DO UPDATE SET

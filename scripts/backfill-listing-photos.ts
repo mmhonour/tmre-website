@@ -28,6 +28,7 @@
  * default 2), writes `.listing-photo-backfill-progress.json`, and exits.
  * Re-run the same command to continue. `--fresh` ignores that file and starts
  * the gap scan from scratch. Complete galleries are still skipped either way.
+ * An idle Neon index drop logs and reconnects; it must not exit the process.
  *
  * Usage:
  *   npm run backfill:listing-photos

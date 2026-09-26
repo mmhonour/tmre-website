@@ -41,6 +41,14 @@ export function listingPhotoGapScanUsesSidecarIndex(input: {
   return !app || dest.host !== app.host
 }
 
+/** Idle Neon/pooler drops on the index sidecar Client used to crash the CLI. */
+export function isListingPhotoIndexConnectionError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /connection terminated|Client has encountered a connection error|ECONNRESET|EPIPE|server closed the connection/i.test(
+    msg,
+  )
+}
+
 export function listingPhotoIndexCoverageIds(
   cacheIds: readonly string[],
 ): string[] {

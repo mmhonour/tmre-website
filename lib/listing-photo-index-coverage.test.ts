@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   PHOTO_INDEX_COVERAGE_CHUNK,
   applyListingPhotoIndexCoverageRows,
+  isListingPhotoIndexConnectionError,
   listListingPhotoIndicesForCacheIdsWithQuery,
   listingPhotoGapScanUsesSidecarIndex,
   listingPhotoIndexCoverageIds,
@@ -40,6 +41,18 @@ describe('listingPhotoGapScanUsesSidecarIndex', () => {
       }),
       false,
     )
+  })
+})
+
+describe('isListingPhotoIndexConnectionError', () => {
+  it('matches the CLI crash from an idle Neon drop', () => {
+    assert.equal(
+      isListingPhotoIndexConnectionError(
+        new Error('Connection terminated unexpectedly'),
+      ),
+      true,
+    )
+    assert.equal(isListingPhotoIndexConnectionError(new Error('syntax error')), false)
   })
 })
 
