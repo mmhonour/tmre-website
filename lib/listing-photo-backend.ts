@@ -5,15 +5,17 @@ import {
   countFreshListingPhotosFromDb,
   deleteListingPhotoIndexRows,
   firstStoredListingPhotoIndexFromDb,
+  listListingPhotoIndicesForCacheIds,
   listListingPhotoIndicesFromDb,
   listingPhotoStorageSpanFromDb,
   readListingPhotoIndexRow,
   upsertListingPhotoIndexRow,
 } from '@/lib/db/listing-photo-index-repo'
 import {
-  parseScriptDbUrl,
-  shouldUseSslForDbUrl,
-} from '@/lib/script-postgres-target'
+  listListingPhotoIndicesForCacheIdsWithQuery,
+  listingPhotoGapScanUsesSidecarIndex,
+} from '@/lib/listing-photo-index-coverage'
+import { shouldUseSslForDbUrl } from '@/lib/script-postgres-target'
 import {
   countFreshListingPhotos as sqliteCountFresh,
   deleteListingPhotos as sqliteDelete,
@@ -64,14 +66,10 @@ function listingPhotoIndexSidecarUrl(): string {
 }
 
 function listingPhotoIndexSidecarIsDistinct(): boolean {
-  const url = listingPhotoIndexSidecarUrl()
-  if (!url) return false
-  const dest = parseScriptDbUrl(url)
-  if (!dest) return false
-  const app = parseScriptDbUrl(
-    process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || '',
-  )
-  return !app || dest.host !== app.host
+  return listingPhotoGapScanUsesSidecarIndex({
+    databaseUrl: process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL,
+    indexUrl: listingPhotoIndexSidecarUrl(),
+  })
 }
 
 async function getListingPhotoIndexSidecar(): Promise<pg.Client | null> {
@@ -90,6 +88,27 @@ async function getListingPhotoIndexSidecar(): Promise<pg.Client | null> {
     })()
   }
   return indexSidecarConnect
+}
+
+/**
+ * `--all` gap scan coverage. When listings are localhost and the CLI set
+ * LISTING_PHOTO_INDEX_URL to Neon, read that sidecar — DATABASE_URL's index
+ * does not have last night's Closed fills.
+ */
+export async function listListingPhotoCoverageForBackfill(
+  cacheIds: readonly string[],
+  options?: { onChunk?: (done: number, total: number) => void },
+): Promise<Map<string, number[]>> {
+  const client = await getListingPhotoIndexSidecar()
+  if (!client) return listListingPhotoIndicesForCacheIds(cacheIds, options)
+  return listListingPhotoIndicesForCacheIdsWithQuery(
+    cacheIds,
+    async (text, params) => {
+      const result = await client.query(text, params as unknown[])
+      return result.rows
+    },
+    options?.onChunk,
+  )
 }
 
 async function upsertListingPhotoIndexSidecar(

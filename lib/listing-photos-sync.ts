@@ -1,14 +1,15 @@
 import 'server-only'
 
-import { listListingPhotoIndicesForCacheIds } from '@/lib/db/listing-photo-index-repo'
 import { listingRowId } from '@/lib/db/listings-repo'
 import { LISTING_PHOTO_SLOT_CAP } from '@/lib/hero-photo-inventory-backfill-shared'
 import {
   ensureListingPhotoIndexFromR2,
+  listListingPhotoCoverageForBackfill,
   photoBackendUsesR2,
   readListingPhotoMeta,
 } from '@/lib/listing-photo-backend'
 import { listingPhotosHaveRequiredSlots } from '@/lib/listing-photo-coverage'
+import { listingPhotoGapScanUsesSidecarIndex } from '@/lib/listing-photo-index-coverage'
 import {
   cacheSatisfiesQuality,
   fullCacheOutrankedByMid,
@@ -221,8 +222,10 @@ export async function listingNeedsPhotoBackfill(
 
 /**
  * `--all` catch-up: one SQL chunk instead of three queries per Closed row.
- * Skips TTL so a 30-minute default on a cold CLI does not re-queue every
- * complete gallery; pull still skips fresh slots via isListingPhotoFresh.
+ * Reads LISTING_PHOTO_INDEX_URL (Neon) when listings are localhost so last
+ * night's fills are skipped. Skips TTL so a 30-minute default on a cold CLI
+ * does not re-queue every complete gallery; pull still skips fresh slots
+ * via isListingPhotoFresh.
  */
 async function listAllModeCandidatesFromIndex(
   listings: Listing[],
@@ -237,12 +240,17 @@ async function listAllModeCandidatesFromIndex(
     .filter((item) => item.cacheId && item.expected > 0)
   const ids = [...new Set(items.map((item) => item.cacheId))]
   const label = options?.progressLabel
-  const coverage = await listListingPhotoIndicesForCacheIds(ids, {
+  const prodIndex = listingPhotoGapScanUsesSidecarIndex({
+    databaseUrl: process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL,
+    indexUrl: process.env.LISTING_PHOTO_INDEX_URL,
+  })
+  const coverage = await listListingPhotoCoverageForBackfill(ids, {
     onChunk:
       label && ids.length >= 200
         ? (done, total) => {
             console.info(
-              `[listing-photos-sync] ${formatListingPhotoBackfillStamp()} ${label} · scanning gaps ${done}/${total} (index chunks)`,
+              `[listing-photos-sync] ${formatListingPhotoBackfillStamp()} ${label} · scanning gaps ${done}/${total}` +
+                (prodIndex ? ' (prod index chunks)' : ' (index chunks)'),
             )
           }
         : undefined,
